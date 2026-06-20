@@ -1,0 +1,51 @@
+type: VbuPreviewMcpUi
+category: embed
+source: custom
+description: |
+  Domain-side preview for the bundle currently being authored. Renders
+  a device-frame chrome with a top toolbar (size / orientation /
+  brightness / refresh) and a body slot. When `child` is supplied the
+  atom frames it; otherwise the placeholder body shows bundleId / uiPath
+  / device meta until the real-mount factory wires an MCPUIRuntime.
+properties:
+  bundleId:
+    type: "string"
+    description: Target bundle id; omit to use the active project.
+  uiPath:
+    type: "string"
+    description: Relative path inside the bundle. Default `ui/app.json`.
+    default: "ui/app.json"
+  deviceSize:
+    type: "string"
+    description: |
+      `<w>x<h>` (e.g. `390x844`) or `custom`. Drives the inner frame
+      size. Omit to fit parent.
+  orientation:
+    type: "string"
+    enum: ['portrait', 'landscape']
+    default: "portrait"
+  brightness:
+    type: "string"
+    enum: ['auto', 'light', 'dark']
+    default: "auto"
+  showInspector:
+    type: "boolean"
+    default: false
+  onSizeChange:
+    type: "Action"
+    description: Fires with the picked deviceSize string.
+  onOrientChange:
+    type: "Action"
+    description: Fires with the new orientation.
+  onBrightnessChange:
+    type: "Action"
+    description: Fires with the new brightness mode.
+  onRefresh:
+    type: "Action"
+    description: Fires when the refresh button is tapped.
+  child:
+    type: "Widget"
+    description: |
+      Body content rendered inside the device frame. Omit to show
+      the placeholder body.
+examples: []

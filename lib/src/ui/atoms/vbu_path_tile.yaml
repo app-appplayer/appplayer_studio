@@ -1,0 +1,28 @@
+type: VbuPathTile
+category: form
+source: custom
+description: |
+  Vbu atom — PathTile. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  meta:
+    type: "string"
+    description: "(auto) resolve"
+  selected:
+    type: "boolean"
+    description: "(auto) resolve"
+  leading:
+    type: "Widget"
+    description: "(auto) child"
+  trailing:
+    type: "Widget"
+    description: "(auto) child"
+  click:
+    type: "Action"
+    description: "(auto) callback"
+  onTap:
+    type: "unknown"
+    description: "(auto) raw"
+examples: []

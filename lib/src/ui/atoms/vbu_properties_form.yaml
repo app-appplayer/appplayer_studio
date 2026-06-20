@@ -1,0 +1,31 @@
+type: VbuPropertiesForm
+category: layout
+source: custom
+description: |
+  Vertical scrollable form rendering layer-specific property sections.
+  Header `PROPERTIES` + optional context line (stripe + focus id) +
+  divider + scrolling body. Each section = title + N rows; each row
+  = label (96w) + editor matched to `field.kind`: `text` / `number` /
+  `bool` / `enum` / `color` / `widget` / `asset`. Field changes fire
+  `field.onChange` actions.
+properties:
+  sections:
+    type: "Array<Object>"
+    description: |
+      Array of `{title, fields:[{label, kind, value?, hint?, enumValues?,
+      onChange?}]}`. `enumValues` required for `kind: enum`.
+  contextLabel:
+    type: "string"
+    description: |
+      Rendered between header and divider. Use to show the current
+      focus (e.g. `pages / home`). Omit to hide the context line.
+  contextStripeColor:
+    type: "string"
+    description: |
+      Hex stripe color for the context line (typically the active
+      layer's color).
+  emptyText:
+    type: "string"
+    description: Shown when sections is empty (no focused layer).
+    default: "No focused layer"
+examples: []

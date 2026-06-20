@@ -1,0 +1,22 @@
+type: VbuPill
+category: atom
+source: custom
+description: |
+  Vbu atom — Pill. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  background:
+    type: "string"
+    description: "(auto) color"
+  foreground:
+    type: "string"
+    description: "(auto) color"
+  leading:
+    type: "Widget"
+    description: "(auto) child"
+  onTap:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

@@ -1,0 +1,25 @@
+type: VbuLabelledMenu
+category: form
+source: custom
+description: |
+  Vbu atom — LabelledMenu. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  options:
+    type: "Object"
+    description: "(auto) resolve"
+  labels:
+    type: "Object"
+    description: "(auto) resolve"
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  value:
+    type: "Object"
+    description: "(auto) resolve"
+  labelWidth:
+    type: "number"
+    description: "(auto) resolve"
+  onChanged:
+    type: "Action<Object?>"
+    description: "(auto) valueCallback"
+examples: []

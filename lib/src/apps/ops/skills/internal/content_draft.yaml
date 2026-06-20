@@ -1,0 +1,35 @@
+id: content_draft
+version: 1
+description: Generate a draft for site content.
+inputSchema:
+  type: object
+  properties:
+    title:    { type: string }
+    category: { type: string }
+    body:     { type: string }
+    notes:    { type: string }
+  required: [ title, category ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: llm
+      id: draft
+      output: draft
+      prompt: |
+        Write a site content draft under the conditions below.
+
+        Title: {{ in.title }}
+        Category: {{ in.category }}
+        Body hint: {{ in.body }}
+        Additional notes: {{ in.notes }}
+      maxTokens: 2000
+    - kind: fact.save
+      id: fact
+      output: fact
+      category: draft_created
+      inputs:
+        content: "{{ step.draft.text }}"
+tags: [ content, write ]
+budget:
+  llmTokens: 3000
+  timeMs: 30000

@@ -1,0 +1,43 @@
+{
+  "type": "page",
+  "title": "{{name}}",
+  "content": {
+    "type": "linear",
+    "direction": "vertical",
+    "crossAxisAlignment": "stretch",
+    "children": [
+      {
+        "type": "expanded",
+        "child": {
+          "type": "box",
+          "padding": 24,
+          "child": {
+            "type": "linear",
+            "direction": "vertical",
+            "gap": 16,
+            "mainAxisAlignment": "center",
+            "crossAxisAlignment": "center",
+            "children": [
+              {
+                "type": "icon",
+                "icon": "rocket_launch",
+                "size": 48,
+                "color": "#5fa8ff"
+              },
+              {
+                "type": "text",
+                "value": "{{name}}",
+                "variant": "headlineSmall"
+              },
+              {
+                "type": "text",
+                "value": "Starter app — describe what to build in chat.",
+                "variant": "bodyMedium"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

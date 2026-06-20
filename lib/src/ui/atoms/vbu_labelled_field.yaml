@@ -1,0 +1,28 @@
+type: VbuLabelledField
+category: form
+source: custom
+description: |
+  Vbu atom — LabelledField. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  value:
+    type: "unknown"
+    description: "(auto) raw"
+  onChanged:
+    type: "unknown"
+    description: "(auto) raw"
+  label:
+    type: "unknown"
+    description: "(auto) raw"
+  hint:
+    type: "unknown"
+    description: "(auto) raw"
+  obscure:
+    type: "unknown"
+    description: "(auto) raw"
+  trailing:
+    type: "unknown"
+    description: "(auto) raw"
+  labelWidth:
+    type: "unknown"
+    description: "(auto) raw"
+examples: []

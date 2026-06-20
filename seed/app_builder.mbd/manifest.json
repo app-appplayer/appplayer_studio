@@ -1,0 +1,897 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifest": {
+    "id": "app.makemind.app_builder",
+    "name": "App Builder",
+    "version": "0.1.0",
+    "icon": "build",
+    "description": "vibe app authoring tool — 8-layer model (App / Theme / Component / Dashboard / Navigation / Page / Assets / Whole) + Live Reactive Preview + Dart / Embed converters. Chat with the manager to scaffold, design, and convert new app projects. Migrated from vibe_app_builder (AUTHOR scope only — host surfaces absorbed into vibe_studio builtins)."
+  },
+  "requires": {
+    "builtinAtoms": [
+      "mcp",
+      "fs",
+      "ui",
+      "workspace",
+      "bundle"
+    ]
+  },
+  "agents": {
+    "agents": [
+      {
+        "id": "manager",
+        "name": "App Builder Manager",
+        "role": "manager",
+        "systemPrompt": "You are the manager agent for App Builder — an mcp_ui_dsl app authoring surface inside vibe_studio. Classify the user's intent and dispatch: (a) NEW APP → studio.project.new + studio.workspace.adopt (use the newAppProject tool); (b) EDIT 8-LAYER → ux_designer for wireframes, ui_implementer for mcp_ui_dsl JSON via studio.builder.* mutators; (c) CONVERT → dart_converter for `.app` standalone, embed_converter for LVGL / Qt firmware; (d) PREVIEW → studio.chrome.reload_tab to refresh the VbuPreviewMcpUi; (e) KNOWLEDGE QUERY → studio.knowledge.query under sourceId='app_builder_six_layers' / 'app_builder_wiring' / 'app_builder_pitfalls' / 'dart_conversion_patterns' / 'embed_conversion_patterns'. Authoring uses the studio.builder.* mutators only (no studio.fs.write of canonical paths). When a needed mutator is missing, stop and surface 'host defect — needs <mutator>' so the user can approve a host fix.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "studio.project.new",
+          "studio.project.open",
+          "studio.project.close",
+          "studio.project.save",
+          "studio.workspace.adopt",
+          "studio.bundle.list",
+          "studio.bundle.install",
+          "studio.bundle.uninstall",
+          "studio.builder.readManifest",
+          "studio.builder.readBundle",
+          "studio.builder.patchManifest",
+          "studio.builder.writeUI",
+          "studio.builder.ui.applyPatch",
+          "studio.knowledge.query",
+          "studio.agent.dispatch",
+          "studio.chrome.reload_tab",
+          "studio.chrome.select_tab",
+          "studio.renderer.screenshot",
+          "newAppProject",
+          "convertToDart",
+          "convertToEmbed"
+        ]
+      },
+      {
+        "id": "ux_designer",
+        "name": "UX Designer",
+        "role": "specialist",
+        "systemPrompt": "You design wireframes for one of the 8 layers (App · Theme · Component · Dashboard · Navigation · Page · Assets · Whole). Inputs: blueprint or user request. Output (markdown): (1) PURPOSE — one line. (2) WIDGETS — list of vbu_* atoms + their props (label, icon, state binding). (3) LAYOUT — text sketch (linear · box · expanded · sized). (4) WIRING — which buttons dispatch which tools (camelCase, named after manifest.tools[].name). (5) STATE BINDINGS — `{{key}}` references and where they live in state.initial. Query studio.knowledge.query under sourceId='app_builder_wiring' for action shape conventions before writing.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "tool_designer",
+        "name": "Tool Designer",
+        "role": "specialist",
+        "systemPrompt": "Given a wireframe + verb list from ux_designer, design the kind:'js' tools that drive the dynamic behaviour. For each: name (camelCase verb), inputSchema (JSON Schema), outputSchema (top-level keys named to match state keys for auto-merge per mcp_ui_dsl spec §3.10), and JS source body. Body conventions: receive `args` (current state slice) + global `host` (host.fs / host.kb / host.mcp / host.ui / host.workspace / host.bundle); return JSON-serializable object whose keys map to state. Add tools via studio.builder.addTool. Query studio.knowledge.query under sourceId='app_builder_six_layers' + 'app_builder_pitfalls' for tool boundaries.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "studio.builder.addTool",
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "knowledge_designer",
+        "name": "Knowledge Designer",
+        "role": "specialist",
+        "systemPrompt": "Design the 6-category cold-start knowledge for a new app project (sources · facts · skills · profiles · philosophies · workflows). For App Builder itself the seeded sources are app_builder_six_layers / app_builder_wiring / app_builder_pitfalls / dart_conversion_patterns / embed_conversion_patterns. Add new sources / docs via studio.builder.addKnowledgeSource + addKnowledgeDoc. Each doc is plain markdown — query existing knowledge first to avoid duplication.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "studio.builder.addKnowledgeSource",
+          "studio.builder.addKnowledgeDoc",
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "ui_implementer",
+        "name": "UI Implementer",
+        "role": "specialist",
+        "systemPrompt": "Materialise the wireframe + tool list into mcp_ui_dsl 1.3 JSON. Lowercase canonical widget names (page / box / linear / text / button / list / sizedBox / card / conditional / switch / expanded / icon). PascalCase for custom widgets (Vbu* / Tool*). Bind click handlers as `click:{type:'tool', tool:'<exposedName>', params:{...}}` — NEVER `action:`. State binding via `state.initial` + `{{key}}` templates. Page lifecycle uses `lifecycle.onInit` (mcp_ui_dsl 1.3 hook) for first-mount data load — action shape `{type:'tool', name:'<tool>'}`. Application root = `type:'application'` envelope with initialRoute + routes; pages live at `ui/pages/<id>.json`. After writing call studio.chrome.reload_tab so the change surfaces.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "studio.builder.writeUI",
+          "studio.builder.ui.applyPatch",
+          "studio.builder.ui.addNode",
+          "studio.builder.ui.setProp",
+          "studio.chrome.reload_tab",
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "dart_converter",
+        "name": "Dart Converter",
+        "role": "specialist",
+        "systemPrompt": "Convert the canonical .mbd (manifest + ui + tools + knowledge) into a self-contained Flutter Dart project written under `build/dart/` of the active app project. Output structure: pubspec.yaml · lib/main.dart (bootstraps MCPUIRuntime with the bundle embedded as Dart maps) · assets/ (copied from app.mbd/assets) · README.md. Generate the Dart code as a single LLM call (no hand-written templates per [[feedback_vibe_codegen_is_llm]]). Write via studio.fs.write through host.fs atom. After write, return `{ok:true, path:'<build/dart>'}`.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "convertToDart",
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "embed_converter",
+        "name": "Embed Converter",
+        "role": "specialist",
+        "systemPrompt": "Convert the canonical mcp_ui_dsl into LVGL (C) or Qt (C++) source under `build/embed/<flavor>/`. Read the spec from knowledge corpus before generating — embedded targets have strict memory / no-alloc constraints documented under sourceId='embed_conversion_patterns'. Default flavor=LVGL. Output: src/ui_<page>.c · src/ui_main.c · CMakeLists.txt · README.md. Generate via LLM call (no hand-written code templates).",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": [
+          "convertToEmbed",
+          "studio.knowledge.query"
+        ]
+      },
+      {
+        "id": "debug_analyst",
+        "name": "Debug Analyst",
+        "role": "specialist",
+        "systemPrompt": "You are the debug specialist for the unified builder. Your domain is the Debug mode (inspector / runtime state / dispatch log / variant cards / scenario replay). Tools you typically use: studio.debug.runtime_state, studio.debug.dispatch_log, studio.debug.layout_snapshot, studio.debug.screenshot, studio.debug.activation, studio.scenario.* (when present), studio.recorder.* (when present). Read the wire log + state snapshot to localise an issue, then propose the smallest reproduction + concrete fix path. Do not mutate the bundle's manifest — that is the bundle / authoring specialists' job.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": []
+      }
+    ]
+  },
+  "knowledge": {
+    "sources": [
+      {
+        "id": "app_builder_six_layers",
+        "title": "App Builder — 8-Layer Model",
+        "description": "Canonical 8-layer authoring model (App · Theme · Component · Dashboard · Navigation · Page · Assets · Whole) — what each layer owns and which manifest section it maps to.",
+        "documents": [
+          {
+            "id": "01_app",
+            "title": "Layer 01 — App",
+            "content": "App layer owns bundle metadata: `manifest.manifest.{id, name, version, description}`, `schemaVersion`, top-level `type`. Identity + packaging. UI placeholder shows id + name + description with edit affordances. Save = studio.builder.patchManifest({patch:{manifest:{...}}})."
+          },
+          {
+            "id": "02_theme",
+            "title": "Layer 02 — Theme",
+            "content": "Theme layer = `manifest.theme.tokens` (M3 token map) + variant pickers. Token shape: colorScheme.{primary, secondary, tertiary, surface, surface1..5, error, onPrimary, ...}. UI shows color swatch grid + brightness toggle (light/dark/auto) + font picker. Save via patchManifest({patch:{theme:{tokens:{...}}}})."
+          },
+          {
+            "id": "03_component",
+            "title": "Layer 03 — Component",
+            "content": "Component layer = `manifest.templates` (reusable widget templates, per mcp_ui_dsl spec §template). Each template = {id, parameters:[{key,type,default}], body:<widget tree>}. UI shows template list + per-template editor. Use `use` widget in pages to instantiate. Save via studio.builder.lib.create / .placeInline / .read / .rename."
+          },
+          {
+            "id": "04_dashboard",
+            "title": "Layer 04 — Dashboard",
+            "content": "Dashboard layer = `manifest.dashboard.content` (metric grid view per mcp_ui_dsl). Shows live counters + chart placeholders. Each panel widget = card + label + value/chart. State binding pulls live data through `state.bindings` or `data:` URIs. Save via patchManifest({patch:{dashboard:{...}}})."
+          },
+          {
+            "id": "05_navigation",
+            "title": "Layer 05 — Navigation",
+            "content": "Navigation layer = `manifest.navigation` (route map + header / drawer / bottom nav config). Each route binds to `ui://pages/<id>` or inline page def. Header navigation entries: {label, icon, route}. Save via patchManifest({patch:{navigation:{routes:[...], header:[...]}}})."
+          },
+          {
+            "id": "06_page",
+            "title": "Layer 06 — Page",
+            "content": "Page layer = `ui/pages/<id>.json` files. Each page = {type:'page', title, content:<widget tree>, state:{initial:{...}}, lifecycle:{onInit:[...]}}. New page = studio.builder.ui.applyPatch on routes + writeUI to create the file. State.initial declares all state keys the page reads; values without initial entry default to empty string. lifecycle.onInit fires on first mount + on resume."
+          },
+          {
+            "id": "07_assets",
+            "title": "Layer 07 — Assets",
+            "content": "Assets layer = `manifest.assets` (images / fonts / icons) under `app.mbd/assets/`. Reference via `asset:<id>` or `assets/<path>` URI from widgets (icon, image). Save = studio.fs.write under app.mbd/assets/ + studio.builder.patchManifest to register the entry."
+          },
+          {
+            "id": "08_whole",
+            "title": "Layer 08 — Whole",
+            "content": "Whole layer = composite view of the application — envelope (type:'application' + initialRoute + routes) + page bag + service map + theme + manifest summary. Read-only consolidated view; mutations land on the individual layers, this view re-derives."
+          }
+        ],
+        "name": "App Builder — 8-Layer Model"
+      },
+      {
+        "id": "app_builder_wiring",
+        "title": "App Builder — Wiring conventions",
+        "description": "How buttons, slash commands, lifecycle slots, and domain icons are wired across an mcp_ui_dsl bundle. Mirrors the in-bundle wiring section.",
+        "documents": [
+          {
+            "id": "action_shape",
+            "title": "Action shape — click handlers",
+            "content": "Canonical click handler shape: `{\"type\":\"tool\", \"tool\":\"<exposedName>\", \"params\":{...}}`. NEVER use `\"action\":...`. The runtime IGNORES `action`. Optional `onSuccess` / `onError` for chained actions. Tool name = manifest.tools[].name (camelCase verb) — no shortId prefix in the bundle's own tools."
+          },
+          {
+            "id": "lifecycle_hooks",
+            "title": "Page lifecycle — onInit/onMount",
+            "content": "mcp_ui_dsl 1.3 page-level hooks: onInit (first mount, before paint), onReady (after first frame), onMount (after attach to navigator), onPause / onResume (visibility), onUnmount / onDestroy (teardown). Action list shape: `[{type:'tool', name:'<tool>'}, ...]`. For first-mount data loads (e.g. studio.scenario.list), put the tool call in `onInit`. Application-level lifecycle is also `onInit`."
+          },
+          {
+            "id": "domain_actions",
+            "title": "manifest.wiring.domainActions[]",
+            "content": "Row 2 of ProjectHeader renders each entry. Two kinds: `button` (single icon + tooltip + onTap) and `selectGroup` (stateKey-driven row of items with emphasis when matching value). selectGroup item: {icon, tooltip, value, tool, args} — on tap dispatches tool then sets state[stateKey]=value. App Builder's 8-card strip is a selectGroup with stateKey='focused' and 8 items (appStructure, theme, components, dashboard, navigation, pages, assets, whole)."
+          },
+          {
+            "id": "lifecycle_slots",
+            "title": "manifest.wiring.lifecycle[]",
+            "content": "Row 1 system buttons of ProjectHeader. 9 canonical slots: project.new, project.open, project.save, edit.undo, edit.redo, history.show, project.revert, project.close, export.bundle. Each entry: {slot, tool, args?}. Unbound slot = button disabled. App Builder binds project.new → newAppProject tool, project.save → studio.builder.patchManifest noop (writes are immediate), export.bundle → convertToDart with default flavor."
+          },
+          {
+            "id": "slash_commands",
+            "title": "manifest.chat.slashCommands[]",
+            "content": "Slash chips above the chat composer. Each entry: {command:'/<name>', description, directDispatch?:{tool, args}}. directDispatch fires the tool immediately on chip tap (skipping the manager); without it the slash text expands into the input. App Builder seeds 6: /new (→ newAppProject), /convert (→ manager classify), /preview (→ studio.chrome.reload_tab), /install (→ studio.bundle.install picker), /find (→ studio.knowledge.query), /embed (→ convertToEmbed)."
+          },
+          {
+            "id": "chrome_user_zones",
+            "title": "manifest.wiring.titlebar / wiring.statusbar — chrome user zones (spec §6.4a)",
+            "content": "Two optional single-string fields on the wiring section that render in the studio host's chrome user areas. `wiring.titlebar`: rendered in the titlebar between the fixed pills (server URL · transport · version) and the right edge. `wiring.statusbar`: rendered in the statusbar between the host's fixed lint group and the right edge (version · locale). Both support `{{key}}` bindings against the active tab's runtime state (dot paths like `{{foo.bar}}` walk maps; missing keys interpolate to empty string). Host enforces ONE single payload — do not try to declare items[]. If the bundle needs multiple pieces, combine them in a tool / state binding and emit one string. The host clears both zones on Home / inactive tabs (no last-write-wins leak). Schema: `\"wiring\": {\"titlebar\": \"build {{status}} · {{commit}}\", \"statusbar\": \"recordings: {{count}}\"}`. Edit path: BundleManifestView's CHROME ZONES section (300ms debounce autosave; empty value removes the key). Round-trip preserve since mcp_bundle 0.3.3 (WiringSection.titlebar / statusbar String? fields). Use this for live state surfacing (build status, count, last activity) — NOT for static branding (that goes in manifest.name / icon)."
+          }
+        ],
+        "name": "App Builder — Wiring conventions"
+      },
+      {
+        "id": "app_builder_pitfalls",
+        "title": "App Builder — Common pitfalls",
+        "description": "Recurring mistakes inherited from vibe_app_builder (28k LOC source). Read before authoring.",
+        "documents": [
+          {
+            "id": "raw_box_over_vbu",
+            "title": "Raw box/linear/text/button hand-roll",
+            "content": "Never hand-roll page chrome with raw `box`/`linear`/`text`/`button` when a Vbu* atom exists. The atoms ship the host-vetted tone (mono / mint / surface3) and survive theme changes; raw widgets drift. Use VbuTitleBar / VbuPaneHeader / VbuFormSection / VbuLabelled* / VbuTabStrip / VbuRouter / VbuDomainActionsRow / VbuPathTile / VbuPill — full catalog in studio-widget-catalog.md. Raw widgets only at leaf level inside an atom."
+          },
+          {
+            "id": "action_vs_click",
+            "title": "`action:` vs `click:` confusion",
+            "content": "Runtime accepts `click:` (button + tappable) and `onTap:` (alias). `action:` is silently IGNORED. If a button shows but does nothing on tap, check for `action:` instead of `click:` — most common dead-button cause."
+          },
+          {
+            "id": "state_initial_required",
+            "title": "State keys without state.initial",
+            "content": "Every state key referenced via `{{key}}` MUST appear in state.initial. Otherwise the template binds to empty string and the conditional / switch branches surprisingly. Add `key: <default>` to state.initial when introducing a new binding."
+          },
+          {
+            "id": "preview_target_binding",
+            "title": "VbuPreviewMcpUi target binding",
+            "content": "VbuPreviewMcpUi.bundlePath must point to the user's app project (not App Builder's own bundle). Bind `{{currentProject}}` via state.initial + manager's newAppProject tool which writes currentProject after scaffold. Empty currentProject = the preview shows 'No bundle to embed yet' placeholder (canonical inert wireframe; do not fallback to self-mount)."
+          },
+          {
+            "id": "convert_codegen_llm",
+            "title": "Converter codegen via LLM",
+            "content": "Dart / Embed converter outputs are LLM-generated (per [[feedback_vibe_codegen_is_llm]]). Never embed hand-written code templates in the converter JS — the JS just orchestrates the LLM call (host.mcp.dispatch to dart_converter agent), writes the LLM result to disk via host.fs.write, and returns the build path."
+          }
+        ],
+        "name": "App Builder — Common pitfalls"
+      },
+      {
+        "id": "dart_conversion_patterns",
+        "title": "Dart Conversion Patterns",
+        "description": "How an mcp_ui_dsl bundle maps to a self-contained Flutter Dart project.",
+        "documents": [
+          {
+            "id": "project_layout",
+            "title": "Output project layout",
+            "content": "build/dart/<name>/\n  pubspec.yaml             — declares flutter_mcp_ui_runtime + mcp_bundle deps\n  lib/main.dart            — main() bootstraps MCPUIRuntime.initialize with embedded bundle\n  lib/bundle.g.dart        — generated: bundle as `Map<String, dynamic>` literals (manifest + ui + tools + knowledge)\n  assets/                  — copied from app.mbd/assets/\n  README.md                — how to flutter run / build"
+          },
+          {
+            "id": "bundle_inlining",
+            "title": "Inlining bundle into Dart literals",
+            "content": "ui/app.json + ui/pages/*.json + manifest.json read at generation time → emit as Dart `const Map<String, dynamic>` literals (escaped via json.encode + JSON.parse-style decoding). Tools (kind:js) embed body as raw String, executed by flutter_js at runtime. Knowledge sources stay as Map literals; the runtime indexes them via mcp_knowledge BM25."
+          },
+          {
+            "id": "runtime_bootstrap",
+            "title": "main.dart bootstrap",
+            "content": "```dart\nimport 'package:flutter/material.dart';\nimport 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart';\nimport 'bundle.g.dart' show kBundle;\n\nFuture<void> main() async {\n  WidgetsFlutterBinding.ensureInitialized();\n  final runtime = MCPUIRuntime();\n  await runtime.initialize(kBundle);\n  runApp(runtime.buildRoot());\n}\n```\nNo host MCP server needed for the standalone — tools dispatch through the runtime's in-process executor."
+          }
+        ],
+        "name": "Dart Conversion Patterns"
+      },
+      {
+        "id": "embed_conversion_patterns",
+        "title": "Embed Conversion Patterns",
+        "description": "How an mcp_ui_dsl bundle maps to embedded C/C++ (LVGL · Qt) source.",
+        "documents": [
+          {
+            "id": "lvgl_mapping",
+            "title": "Widget → LVGL object map",
+            "content": "page → lv_obj_create(parent)\nlinear vertical → lv_obj with `lv_obj_set_flex_flow(LV_FLEX_FLOW_COLUMN)`\nlinear horizontal → LV_FLEX_FLOW_ROW\nbox → lv_obj_create + padding/size\nbutton → lv_btn_create + lv_obj_add_event_cb(LV_EVENT_CLICKED)\ntext → lv_label_create + lv_label_set_text\nicon → lv_img_create + lv_img_set_src(LV_SYMBOL_*)\nexpanded → flex_grow:1\nstate binding `{{key}}` → C variable read in periodic refresh handler."
+          },
+          {
+            "id": "lvgl_layout",
+            "title": "Output layout",
+            "content": "build/embed/lvgl/<name>/\n  src/ui_main.c           — ui_init() builds the screen tree, ui_event_<page>() handlers per page\n  src/ui_<page>.c         — per-page builders\n  inc/ui.h                — public ui_init prototype\n  CMakeLists.txt          — list .c sources, link lvgl\n  README.md               — integration: include lv_conf.h, call ui_init() after lv_init()"
+          },
+          {
+            "id": "memory_constraints",
+            "title": "Memory + no-alloc constraints",
+            "content": "Embedded targets cannot allocate during a frame. All lv_obj* are created in ui_init() and reused (visibility / text / src updated via setters). State bindings cannot use string templating at runtime — compile templates to setter call sequences in ui_<page>.c. Lifecycle.onInit calls become explicit init function calls inside ui_init()."
+          }
+        ],
+        "name": "Embed Conversion Patterns"
+      },
+      {
+        "id": "mcp_ui_dsl_widgets",
+        "documents": [
+          {
+            "id": "dsl-page",
+            "title": "page widget",
+            "source": "mcp_ui_dsl/1.3/widgets/page",
+            "content": "page is the root widget of every ui/app.json. Required fields: type:'page', content:<Widget>. Optional: title:string (used by host chrome for tab labels), state.initial:object (initial state map for {{...}} bindings), lifecycle.onInit:Action (runs once after the runtime mounts), lifecycle.onDestroy:Action. Example: {\"type\":\"page\",\"title\":\"Counter\",\"state\":{\"initial\":{\"count\":0}},\"content\":{\"type\":\"text\",\"value\":\"{{count}}\"}}. The page widget has no visual chrome of its own — it just hosts the content tree."
+          },
+          {
+            "id": "dsl-box",
+            "title": "box widget",
+            "source": "mcp_ui_dsl/1.3/widgets/box",
+            "content": "box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"value\":\"hello\"}}."
+          },
+          {
+            "id": "dsl-linear",
+            "title": "linear widget",
+            "source": "mcp_ui_dsl/1.3/widgets/linear",
+            "content": "linear is the row/column layout widget. Replaces Flutter's Row/Column. Required: type:'linear', children:[<Widget>...]. Properties: direction:'horizontal'|'vertical' (default horizontal), gap:number (spacing between children), mainAxisAlignment:'start'|'center'|'end'|'spaceBetween'|'spaceAround'|'spaceEvenly', crossAxisAlignment:'start'|'center'|'end'|'stretch', mainAxisSize:'min'|'max'. Example vertical: {\"type\":\"linear\",\"direction\":\"vertical\",\"gap\":8,\"children\":[{\"type\":\"text\",\"value\":\"a\"},{\"type\":\"text\",\"value\":\"b\"}]}."
+          },
+          {
+            "id": "dsl-text",
+            "title": "text widget",
+            "source": "mcp_ui_dsl/1.3/widgets/text",
+            "content": "text renders a string. Required: type:'text', value:string. Properties: style:object (fontSize:number, fontWeight:'bold'|'normal'|'w100'..'w900', color:string, fontFamily:string), variant:string (Material 3 typography role — camelCase: displayLarge, displayMedium, displaySmall, headlineLarge..Small, titleLarge..Small, bodyLarge..Small, labelLarge..Small — 15 roles total), maxLines:number, overflow:'ellipsis'|'fade'|'clip'. variant is layered with style. Example: {\"type\":\"text\",\"value\":\"Hello {{name}}\",\"variant\":\"titleMedium\",\"style\":{\"color\":\"#7DD3FC\"}}."
+          },
+          {
+            "id": "dsl-button",
+            "title": "button widget",
+            "source": "mcp_ui_dsl/1.3/widgets/button",
+            "content": "button is a clickable action surface. Required: type:'button', label:string, click:Action. The click handler property is named `click` (or alias `onTap`); do NOT use a property named `action` — the runtime ignores it. Properties: variant:'filled'|'outlined'|'text'|'tonal' (Material 3 button kinds), icon:string (icon name), enabled:bool. click is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"click\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
+          },
+          {
+            "id": "dsl-list",
+            "title": "list widget",
+            "source": "mcp_ui_dsl/1.3/widgets/list",
+            "content": "list renders a collection. Required: type:'list', either children:[<Widget>...] OR items:array + itemTemplate:<Widget>. With itemTemplate, each row is rendered from the template with {{item}} and {{index}} bound to the current entry. Properties: orientation:'vertical'|'horizontal' (default vertical), spacing:number, emptyMessage:string, itemExtent:number, shrinkWrap:bool (set true when inside a scroll view so list doesn't take all remaining space), padding:number|EdgeInsets. Use itemTemplate over children for bound dynamic lists. Example: {\"type\":\"list\",\"items\":\"{{todos}}\",\"shrinkWrap\":true,\"itemTemplate\":{\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"{{item.title}}\"}]}}."
+          },
+          {
+            "id": "dsl-sizedBox",
+            "title": "sizedBox widget",
+            "source": "mcp_ui_dsl/1.3/widgets/sizedBox",
+            "content": "sizedBox is a fixed-size empty box. Common as a spacer in linear children. Properties: width:number, height:number, child:<Widget> (optional). Example spacer: {\"type\":\"sizedBox\",\"height\":12}. Use linear.gap instead of sizedBox spacers when possible."
+          },
+          {
+            "id": "dsl-card",
+            "title": "card widget",
+            "source": "mcp_ui_dsl/1.3/widgets/card",
+            "content": "card is an elevated container with rounded corners + shadow. Material 3 surface. Required: type:'card', child:<Widget>. Properties: padding:number|EdgeInsets, elevation:number, margin:number, color:string. Example: {\"type\":\"card\",\"padding\":16,\"child\":{\"type\":\"text\",\"value\":\"card body\"}}."
+          },
+          {
+            "id": "dsl-conditional",
+            "title": "conditional widget",
+            "source": "mcp_ui_dsl/1.3/widgets/conditional",
+            "content": "conditional renders one of two branches based on a boolean binding. Required: type:'conditional', condition:bool|string, then:<Widget>. Optional: else:<Widget>. condition evaluates via _isTruthy: null/false/0/empty-string/empty-list/empty-map are falsy. Note: equality expressions like {{a == b}} are NOT supported — use plain bindings to a precomputed boolean OR rely on truthy/falsy of values. Example: {\"type\":\"conditional\",\"condition\":\"{{loaded}}\",\"then\":{\"type\":\"text\",\"value\":\"ready\"},\"else\":{\"type\":\"text\",\"value\":\"loading…\"}}."
+          },
+          {
+            "id": "dsl-expanded",
+            "title": "expanded widget",
+            "source": "mcp_ui_dsl/1.3/widgets/expanded",
+            "content": "expanded is a flexible-fill child inside a linear. Replaces Flutter's Expanded. Required: type:'expanded', child:<Widget>. Properties: flex:number (default 1). Use inside linear when one child should absorb remaining space. Example: {\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"left\"},{\"type\":\"expanded\",\"child\":{\"type\":\"text\",\"value\":\"fills\"}}]}."
+          },
+          {
+            "id": "dsl-icon",
+            "title": "icon widget",
+            "source": "mcp_ui_dsl/1.3/widgets/icon",
+            "content": "icon renders a Material icon by name. Required: type:'icon', name:string (Material icon name like 'home', 'add', 'folder_open', 'settings'). Properties: size:number, color:string. Example: {\"type\":\"icon\",\"name\":\"home\",\"size\":20,\"color\":\"#7DD3FC\"}. Common names: home, add, close, edit, delete, folder, folder_open, settings, info, warning, error, search, refresh, play_arrow, stop, chevron_left, chevron_right, expand_more, expand_less, more_vert, extension, star, push_pin, history."
+          }
+        ]
+      },
+      {
+        "id": "mcp_ui_dsl_state_actions",
+        "documents": [
+          {
+            "id": "state-initial",
+            "title": "state.initial — page state",
+            "source": "mcp_ui_dsl/1.3/state",
+            "content": "Every page can declare an initial state map under state.initial. NOT state directly — the wrap layer is state.initial:{}. The map's keys are addressable from any widget via {{key}} bindings. After initialize, the runtime owns the state tree; tool action results are auto-merged into top-level state (every key in the tool's outputSchema becomes a state key). Example: {\"type\":\"page\",\"state\":{\"initial\":{\"count\":0,\"text\":\"\"}},\"content\":...}. Anti-pattern: 'state':{...} directly (NOT supported)."
+          },
+          {
+            "id": "state-bindings",
+            "title": "template bindings — {{path}}",
+            "source": "mcp_ui_dsl/1.3/bindings",
+            "content": "Any string value in a widget property can be a template binding using {{path}} syntax. The path is dot-separated for nested objects ({{user.name}}). For list items, the runtime injects {{item}} and {{index}} into the template scope. Bindings re-evaluate whenever the bound state changes — the widget rebuilds. Note: arithmetic and equality expressions ({{a + b}}, {{x == y}}) are NOT supported in this runtime version — pre-compute the value in tool handlers or use conditional with a precomputed boolean. Example simple value: 'value':'{{count}}'. Example list item: 'value':'{{item.title}}'."
+          },
+          {
+            "id": "action-tool",
+            "title": "tool action — invoke an MCP tool",
+            "source": "mcp_ui_dsl/1.3/actions",
+            "content": "Canonical action shape: {\"type\":\"tool\",\"tool\":\"<short.name>\",\"params\":{...}}. Anti-patterns: {action:'tool', args:{...}} (wrong field names — use type+params). Action params can include {{binding}} references — they're resolved at dispatch time. Tool responses are JSON-decoded and the top-level keys auto-merge into the page state (spec §3.10), so a tool returning {shouted:'HI'} sets state.shouted='HI' which downstream widgets like {\"value\":\"{{shouted}}\"} render automatically. Example button action: {\"type\":\"button\",\"label\":\"Run\",\"action\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
+          },
+          {
+            "id": "action-event-arg",
+            "title": "callback event values — $event",
+            "source": "mcp_ui_dsl/1.3/actions/event",
+            "content": "Custom widgets that fire callbacks with a value (onSelect getting a tab index, onChanged getting a text value, onPick getting a selected item) inject the value into action.params under the key $event. Authors can wire this through params.$event or reference it from within params for forwarding. Example: a list pick handler that records the picked index — {\"onSelect\":{\"type\":\"tool\",\"tool\":\"recordTab\",\"params\":{\"index\":\"{{$event}}\"}}}. The runtime resolves $event before dispatching the tool."
+          },
+          {
+            "id": "lifecycle-onInit",
+            "title": "lifecycle.onInit — auto-load on mount",
+            "source": "mcp_ui_dsl/1.3/lifecycle",
+            "content": "page.lifecycle.onInit fires ONCE after the runtime initializes the page tree. Common use: auto-call a refresh tool that populates initial state. Example: {\"type\":\"page\",\"lifecycle\":{\"onInit\":{\"type\":\"tool\",\"tool\":\"refresh\",\"params\":{}}},\"content\":...}. Caveat in this runtime version: onInit may fire during initialize() before tool executors are registered — hosts re-fire onInit manually after registerToolExecutor. Authors do not need to handle this; just declare onInit and the host re-fires."
+          },
+          {
+            "id": "auto-merge",
+            "title": "tool response auto-merge — spec §3.10",
+            "source": "mcp_ui_dsl/1.3/auto-merge",
+            "content": "Every tool response (the JSON-decoded body) has its top-level keys auto-merged into the page state. Naming the output schema fields the same as the binding keys in widgets means zero glue code — tool returns {count:5} and widgets binding {{count}} update. Anti-pattern: declaring an explicit onSuccess on the action — that overrides the auto-merge and you must do the merge yourself. Just rely on auto-merge unless you need a custom side effect."
+          }
+        ]
+      },
+      {
+        "id": "mcp_ui_dsl_custom_widgets",
+        "documents": [
+          {
+            "id": "custom-ToolForm",
+            "title": "ToolForm custom widget",
+            "source": "studio/custom_widgets/ToolForm",
+            "content": "ToolForm auto-generates a form from a tool's inputSchema (JSON Schema). Required: type:'ToolForm', tool:'<name>', inputSchema:object. Optional: submitLabel:string (default 'Submit'), bindResult:string (state key to merge result into; default = auto-merge top-level), loadingBinding:string (bool flag flipped during submission). Field type mapping: string→TextField; number/integer→numeric TextField; boolean→Switch; string+enum→Dropdown. Example: {\"type\":\"ToolForm\",\"tool\":\"shout\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}}."
+          },
+          {
+            "id": "custom-ToolResult",
+            "title": "ToolResult custom widget",
+            "source": "studio/custom_widgets/ToolResult",
+            "content": "ToolResult renders the last tool result with type-aware fields based on outputSchema. Required: type:'ToolResult', resultBinding:string (state key holding the result), outputSchema:object. Properties: emptyMessage:string. Pairs with ToolForm or any tool action — auto-merge populates the state key, ToolResult re-renders. Example: {\"type\":\"ToolResult\",\"resultBinding\":\"shouted\",\"outputSchema\":{\"type\":\"object\",\"properties\":{\"shouted\":{\"type\":\"string\"}}}}."
+          },
+          {
+            "id": "custom-ToolPicker",
+            "title": "ToolPicker custom widget",
+            "source": "studio/custom_widgets/ToolPicker",
+            "content": "ToolPicker renders a dropdown of available tools and dispatches the selected one on change. Required: type:'ToolPicker', tools:array of tool names. Properties: label:string, value:string (currently selected — usually bound to state). Use when the UI lets the user pick which tool to run before forming inputs."
+          },
+          {
+            "id": "custom-VbuTitleBar",
+            "title": "VbuTitleBar custom widget",
+            "source": "studio/custom_widgets/VbuTitleBar",
+            "content": "VbuTitleBar is the studio's chrome-style strip for the top of a bundle's page — full-width, 28px tall (VbuTokens.titlebarHeight, matches the studio's own titlebar), `surface` background, `borderDefault` 1px bottom border, mono 12pt w600 title. Tool aesthetic — thin and quiet. When a page needs a header bar, this atom usually fits and keeps the bundle's tone consistent with the studio chrome around it. Required: type:'VbuTitleBar', title:string. Properties: subtitle:string (small secondary line shown inline with a · separator, mono 11pt), leading:<Widget> (small leading icon, optional), trailing:[<Widget>...] (small icon buttons / VbuPills, optional — 14-16px icons match the tool tone), height:number (default 28), background:string (hex; defaults to surface token). Pairs naturally with `linear(direction:'vertical', crossAxisAlignment:'stretch')` at page root + `expanded` body below. Example minimal: {\"type\":\"VbuTitleBar\",\"title\":\"My App\"}. Example with subtitle + trailing: {\"type\":\"VbuTitleBar\",\"title\":\"Counter\",\"subtitle\":\"count {{count}}\",\"trailing\":[{\"type\":\"icon\",\"name\":\"settings\",\"size\":14}]}. When the user asks for something taller / larger-font (44px+, 16pt+ titles, prominent shadow), that's typically a mobile-AppBar request — suggest the lighter atom first and confirm; the studio is a desktop tool, so a mobile-style header usually reads as out-of-place inside it."
+          },
+          {
+            "id": "custom-VbuPaneHeader",
+            "title": "VbuPaneHeader custom widget",
+            "source": "studio/custom_widgets/VbuPaneHeader",
+            "content": "VbuPaneHeader is the studio's panel-title bar — small uppercase label + optional trailing actions + optional clear button. Required: type:'VbuPaneHeader', label:string. Properties: actions:[<Widget>...] (trailing icons/buttons), onClear:Action (renders an X icon, fires this action), clearTooltip:string, height:number (default 36). Example: {\"type\":\"VbuPaneHeader\",\"label\":\"RECENT\",\"actions\":[]}. Distinct from VbuTitleBar: VbuPaneHeader = uppercase SECTION label inside a panel; VbuTitleBar = window-chrome strip across the top of the whole page."
+          },
+          {
+            "id": "custom-VbuPill",
+            "title": "VbuPill custom widget",
+            "source": "studio/custom_widgets/VbuPill",
+            "content": "VbuPill is a small rounded chip — badge or tag. Required: type:'VbuPill', label:string. Properties: leading:<Widget> (icon before label), onTap:Action, background:string (hex color), foreground:string (hex color). Default: studio's subtle pill colour. Example: {\"type\":\"VbuPill\",\"label\":\"draft\",\"background\":\"#22C55E\",\"foreground\":\"#0B1220\"}."
+          },
+          {
+            "id": "custom-VbuLabelledField",
+            "title": "VbuLabelledField custom widget",
+            "source": "studio/custom_widgets/VbuLabelledField",
+            "content": "VbuLabelledField is a label-prefixed text input — studio form convention. Required: type:'VbuLabelledField', label:string, hint:string. Properties: value:string (initial value binding), obscure:bool (password-style), trailing:<Widget>, labelWidth:number (default 92), onChanged:Action (fires with each keystroke; the new text is in {{$event}}). Example: {\"type\":\"VbuLabelledField\",\"label\":\"Name\",\"hint\":\"my-project\",\"value\":\"{{name}}\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setName\",\"params\":{\"name\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuLabelledToggle",
+            "title": "VbuLabelledToggle custom widget",
+            "source": "studio/custom_widgets/VbuLabelledToggle",
+            "content": "VbuLabelledToggle is a label-prefixed switch. Required: type:'VbuLabelledToggle', label:string, value:bool, onChanged:Action. Properties: hint:string. onChanged receives the new bool in {{$event}}. Example: {\"type\":\"VbuLabelledToggle\",\"label\":\"Enable\",\"value\":\"{{enabled}}\",\"hint\":\"toggle the feature\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setEnabled\",\"params\":{\"v\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuLabelledMenu",
+            "title": "VbuLabelledMenu custom widget",
+            "source": "studio/custom_widgets/VbuLabelledMenu",
+            "content": "VbuLabelledMenu is a label-prefixed dropdown. Required: type:'VbuLabelledMenu', label:string, value:any, options:[any...], onChanged:Action. Properties: labels:map{value→displayLabel}, labelWidth:number (default 92). Picked value lands in {{$event}}. Example: {\"type\":\"VbuLabelledMenu\",\"label\":\"Mode\",\"value\":\"{{mode}}\",\"options\":[\"dev\",\"prod\"],\"labels\":{\"dev\":\"Development\",\"prod\":\"Production\"},\"onChanged\":{\"type\":\"tool\",\"tool\":\"setMode\",\"params\":{\"m\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuSystemNote",
+            "title": "VbuSystemNote custom widget",
+            "source": "studio/custom_widgets/VbuSystemNote",
+            "content": "VbuSystemNote is a callout / banner for informational or error messages. Required: type:'VbuSystemNote', text:string. Properties: error:bool (red-styled when true), onDelete:Action (renders dismiss X). Default is the studio's subtle note tone. Example info: {\"type\":\"VbuSystemNote\",\"text\":\"Saved — 3 changes\"}. Example error: {\"type\":\"VbuSystemNote\",\"text\":\"Permission denied\",\"error\":true}."
+          },
+          {
+            "id": "custom-VbuBusyIndicator",
+            "title": "VbuBusyIndicator custom widget",
+            "source": "studio/custom_widgets/VbuBusyIndicator",
+            "content": "VbuBusyIndicator is a small rotating-dots spinner with optional label. Properties: label:string (default 'thinking…'), dotColor:string, cycleMs:number (default 1200 ms). Use to indicate background work. Example: {\"type\":\"VbuBusyIndicator\",\"label\":\"loading…\"}."
+          },
+          {
+            "id": "custom-VbuFormSection",
+            "title": "VbuFormSection custom widget",
+            "source": "studio/custom_widgets/VbuFormSection",
+            "content": "VbuFormSection wraps a labelled group of form fields with consistent spacing. Required: type:'VbuFormSection', label:string, children:[<Widget>...]. Properties: rowGap:number (default 8). Use as the outer container for related VbuLabelledField/VbuLabelledToggle/VbuLabelledMenu rows. Example: {\"type\":\"VbuFormSection\",\"label\":\"AUTH\",\"children\":[{\"type\":\"VbuLabelledField\",\"label\":\"Email\",\"hint\":\"you@example.com\",\"value\":\"{{email}}\"}]}."
+          },
+          {
+            "id": "custom-VbuStatusbar",
+            "title": "VbuStatusbar custom widget",
+            "source": "studio/custom_widgets/VbuStatusbar",
+            "content": "VbuStatusbar is a thin bottom strip with left and right slot lists — common chrome footer pattern. Required: type:'VbuStatusbar'. Properties: left:[<Widget>...], right:[<Widget>...], height:number (default 22), gap:number (default 16). Use inside the page body for a custom status line; the host chrome already has its own statusbar so don't duplicate."
+          }
+        ]
+      },
+      {
+        "id": "bundle_structure",
+        "documents": [
+          {
+            "id": "manifest-schema",
+            "title": "bundle manifest schema",
+            "source": "mcp_bundle/manifest",
+            "content": "A bundle's manifest.json has four top-level sections. (1) manifest:{id,name,version,description} — descriptive metadata; id should be reverse-DNS like 'com.example.myapp'. (2) tools:{tools:[<ToolDef>...]} — kind:'js' tool definitions with inputSchema/outputSchema. (3) requires:{builtinAtoms:[string...], builtinTools:[string...]} — host capabilities the bundle needs (kb, mcp, ui, workspace, agent, bus, bundle, fs). (4) ui:{kind:'mcp_ui_dsl', path:'ui/app.json'} — points to the DSL UI file. Optional: agents (declares per-bundle LLM agents), wiring (per-tool surface entry points — see wiring-section). Example skeleton: {\"manifest\":{\"id\":\"com.example.counter\",\"name\":\"Counter\",\"version\":\"0.1.0\",\"description\":\"\"},\"requires\":{\"builtinAtoms\":[]},\"ui\":{\"kind\":\"mcp_ui_dsl\",\"path\":\"ui/app.json\"}}."
+          },
+          {
+            "id": "tool-definition-js",
+            "title": "kind:'js' tool definition",
+            "source": "mcp_bundle/tools/js",
+            "content": "JS tools run in flutter_js inside the host process — no extra server. Each tool entry: {name:'shout', kind:'js', target:{entry:'tools/shout.js', fn:'shout'}, description:string, inputSchema:JSONSchema, outputSchema:JSONSchema}. The .js file exports an async function matching the target.fn name. The runtime invokes it with args parsed from inputSchema; the return value is wrapped as the tool result. Host atoms are accessible via global host.* (host.kb, host.mcp, host.ui, host.workspace, host.bus, host.bundle, host.agent, host.fs). Example tools/shout.js: 'async function shout(args) { return { shouted: args.text.toUpperCase() }; }'."
+          },
+          {
+            "id": "requires-builtinAtoms",
+            "title": "requires.builtinAtoms — host capability declaration",
+            "source": "mcp_bundle/requires",
+            "content": "List the atoms a bundle's JS tools use under requires.builtinAtoms. Available atoms (registered into JS global as host.<name>): fs (read/write files inside bundle), bus (cross-bundle pub/sub messaging), bundle (introspect own manifest), kb (knowledge query + per-domain key/value storage — get/put/list/delete), mcp (call other bundles' MCP tools), ui (notify/dialog/prompt the host shell), agent (run per-bundle LLM agent), workspace (read/write the project canonical). Example for a bundle that stores recents and calls a sibling: {\"requires\":{\"builtinAtoms\":[\"kb\",\"mcp\"]}}. Declare only what tools actually call — undeclared atom access throws."
+          },
+          {
+            "id": "domain-storage-kb",
+            "title": "domain storage — host.kb.put/get/list/delete",
+            "source": "studio/atoms/kb",
+            "content": "host.kb has four verbs for per-domain key/value storage scoped to the bundle's manifest.id namespace: host.kb.put(key, value) → {ok:true}; host.kb.get(key) → value or null; host.kb.list(prefix) → array of {key, value} rows under prefix; host.kb.delete(key) → {removed:bool}. Values are JSON-serializable. Storage backs to disk under <configRoot>/domains/<sanitized-namespace>.json with atomic writes. Use for recents, pins, user preferences, draft state — anything domain-scoped that survives restarts. Example: 'await host.kb.put(\"recent/\" + ns, {namespace:ns, lastUsedAt:new Date().toISOString()});'."
+          },
+          {
+            "id": "kb-query",
+            "title": "knowledge query — host.kb.query",
+            "source": "studio/atoms/kb_query",
+            "content": "host.kb.query(text, opts?) → BM25 search across installed knowledge bundles. opts: {topK:5, namespace?:string, sourceId?:string}. Returns array of {score, text, source, namespace, sourceId, title?, chunkId?}. Studio ships a 'studio_knowledge' bundle with DSL spec / custom widgets / bundle structure docs — when authoring DSL, query this first to get correct shapes. Example: 'const hits = await host.kb.query(\"VbuPill properties\", {topK:3});'. The chat agent calls this internally before generating DSL."
+          },
+          {
+            "id": "wiring-section",
+            "title": "manifest.wiring — surface every tool to the user",
+            "source": "mcp_bundle/wiring",
+            "content": "A tool's definition (under tools.tools[]) lives separately from where the user TRIGGERS it. The wiring section names those entry-point surfaces so every trigger surface in the studio shares the same source. Today's slot: `wiring.domainActions[]` — each entry `{tool: <bareName>, icon: <materialIconName>, tooltip: <hover label>}` adds an icon button to the left panel's domain row (after the built-in Import/Export/UI/Tools/Knowledge/Manifest icons); tapping the icon calls the bundle's exposed tool (host resolves to `<bundleNs>.<tool>` automatically). Add via studio.builder.addDomainAction. icon names available today: extension/play/stop/refresh/add/delete/edit/save/search/filter/history/star/flag/bug/check/sync/cloud/database/terminal/graph/chart/table/mail/send/lock/unlock/key/shield/palette/image/audio/video/file/folder/link/share/export/import — unknown names fall back to extension. Coming in follow-up rounds: `chat.slashCommands[].tool` (slash command becomes a tool trigger) and `wiring.settings[]` (settings dialog entry). Suggest a domain icon only for verbs the user invokes repeatedly across tabs — single-page actions live inside the page UI itself."
+          },
+          {
+            "id": "ui-app-json-layout",
+            "title": "ui/app.json typical skeleton",
+            "source": "mcp_ui_dsl/skeleton",
+            "content": "Standard ui/app.json shape: page → box(padding) → linear(direction:vertical, gap) → [header, content, footer]. The page is the root, box adds outer padding, linear lays out the section stack. For scrollable content, wrap in singleChildScrollView at the page-content level or use list with shrinkWrap:true. Example: {\"type\":\"page\",\"title\":\"My App\",\"state\":{\"initial\":{}},\"content\":{\"type\":\"box\",\"padding\":16,\"child\":{\"type\":\"linear\",\"direction\":\"vertical\",\"gap\":12,\"children\":[{\"type\":\"VbuPaneHeader\",\"label\":\"MAIN\"},{\"type\":\"text\",\"value\":\"body\"}]}}}."
+          },
+          {
+            "id": "ui-canonical-page-shape",
+            "title": "canonical page shape — start from atoms",
+            "source": "mcp_ui_dsl/canonical_page",
+            "content": "Most authored pages benefit from starting at the canonical shape: page → linear(direction:'vertical', crossAxisAlignment:'stretch') → [VbuTitleBar · expanded(body)]. The body is your own composition; for things atoms already cover (a title bar, a section header, a labelled field, a status pill, a busy indicator) the registered atoms (VbuTitleBar / VbuPaneHeader / VbuFormSection / VbuLabelledField / VbuLabelledToggle / VbuLabelledMenu / VbuPill / VbuSystemNote / VbuBusyIndicator / VbuStatusbar / VbuHeroPanel / VbuTabStrip / ToolForm / ToolResult) usually keep the tone consistent. When you'd reach for raw box/linear/text for one of those affordances, propose the matching atom first; if no atom fits AND you find yourself building the same hand-roll across bundles, that is a good signal to suggest extracting a new atom rather than continuing to hand-roll. Example canonical empty scaffold: {\"type\":\"page\",\"title\":\"My App\",\"state\":{\"initial\":{}},\"content\":{\"type\":\"linear\",\"direction\":\"vertical\",\"crossAxisAlignment\":\"stretch\",\"children\":[{\"type\":\"VbuTitleBar\",\"title\":\"My App\"},{\"type\":\"expanded\",\"child\":{\"type\":\"box\",\"padding\":24,\"child\":{\"type\":\"text\",\"value\":\"body goes here\"}}}]}}."
+          },
+          {
+            "id": "ui-tool-aesthetic",
+            "title": "design tone — desktop TOOL aesthetic, not mobile app",
+            "source": "studio/design_tone",
+            "content": "AppPlayer Studio is a desktop TOOL — VS Code, Figma, Linear class — not a phone app. Authored pages embed inside the studio's chrome and usually feel right when they inherit that tool aesthetic. Calibration: chrome strips are thin (28px is the canonical titlebar height matching VbuTokens.titlebarHeight, 36px is the section-header height for VbuPaneHeader); fonts are small (11-13pt working range, mono `VbuTokens.fontMono` for code/identifiers/values, sans `VbuTokens.fontSans` for prose, w600 for strip labels); icons are 14-16px in chrome rows, 18-20px max in body actions; backgrounds are dark and close (`surface` / `surface2` / `surface3`); padding is tight (`space2`/`space3` 8/12px in chrome, `space4` 16px in body sections). When the user asks for taller (44px+), large titles (16pt+), prominent shadows, Material AppBar / FAB / bottom navigation patterns — those are typically mobile-app tropes and would feel out of place. Suggest the lighter / thinner alternative first and confirm before going prominent. Mirror the studio's own VibeTitlebar (28px / surface / mono 12pt) and VbuPaneHeader (36px / 13pt w600) as the calibration reference."
+          }
+        ]
+      },
+      {
+        "id": "chat_surface",
+        "documents": [
+          {
+            "id": "chat-slash-overview",
+            "title": "chat surface — slash command catalog",
+            "source": "studio/chat/slash_overview",
+            "content": "The studio's chat panel exposes a strip of slash command chips above the composer. The active tab determines the catalog: Home (universal host) shows minimal defaults (/help, /agents, /clear); when a bundle is the active tab, the bundle's own `manifest.chat.slashCommands[]` entries are APPENDED to the defaults. Tapping a chip inserts `command + template` into the composer with the caret at the end. Slash commands are pure text templates today — they do NOT auto-dispatch a tool; the user submits the line and the chat agent (manager) interprets it as natural-language input."
+          },
+          {
+            "id": "chat-slash-schema",
+            "title": "manifest.chat.slashCommands schema",
+            "source": "studio/chat/slash_schema",
+            "content": "Bundles declare slash commands under `manifest.chat.slashCommands` — an array of entries. Each entry: {command: '/foo' (required, starts with '/'), template?: 'bar' (optional — appended after the command; end with ' ' when an arg follows so the caret lands ready), description?: '...' (optional one-liner)}. Author via studio.builder.addSlashCommand. Examples: {command:'/find ', template:''} → composer inserts '/find '; {command:'/preset ', template:''} → '/preset '."
+          },
+          {
+            "id": "chat-slash-author-guide",
+            "title": "slash command authoring guide",
+            "source": "studio/chat/slash_author_guide",
+            "content": "When the bundle has clearly-named recurring actions, add a slash command per action so the user types fewer characters. Keep the catalog small — 5–10 commands per bundle. Avoid colliding with the studio defaults (/help, /agents, /clear). Use a leading verb ('/find', '/list', '/audit'), trailing space when an arg is required ('/find ' '/desc '), no space when standalone ('/health'). Reserve very short commands (/h, /a) for top-frequency cases only — clarity beats brevity for occasional ones."
+          }
+        ]
+      },
+      {
+        "id": "ux_patterns",
+        "documents": [
+          {
+            "id": "ux-page-shell",
+            "title": "page shell — header / body / footer anatomy",
+            "source": "studio/ux/page_shell",
+            "content": "Every screen has three slots: header (title + primary action right) · body (the main work surface) · optional footer (statusbar / pagination / global actions). Default outer = box(padding=16) → linear(direction:vertical, gap:12). Header pattern: linear(horizontal) → [text(variant:titleLarge) · Spacer · button/icon]. Use VbuPaneHeader for studio-tone uppercase section labels inside the body. Footer pattern (when needed): VbuStatusbar with left/right slot widgets. Skip footer for single-purpose tools."
+          },
+          {
+            "id": "ux-form-pattern",
+            "title": "form pattern — label-field-button stack",
+            "source": "studio/ux/form",
+            "content": "Forms are vertical stacks of (label · input · helper text) rows + a trailing primary button row. Use VbuFormSection wrapping VbuLabelledField / VbuLabelledToggle / VbuLabelledMenu children. State: each input bound to a state key (e.g. {{email}}). Submit button click → tool call passing all field values as params. ToolForm custom widget can auto-generate the form from an inputSchema when the schema is the source of truth."
+          },
+          {
+            "id": "ux-counter-pattern",
+            "title": "counter / value-with-controls pattern",
+            "source": "studio/ux/counter",
+            "content": "Single value + controls layout: page → box → linear(vertical) → [VbuPaneHeader · text(value display) · linear(horizontal, gap:12)→[control buttons]]. State: one numeric key. Each control button click invokes a tool whose input takes the current value and whose output returns the new value (auto-merge updates state). Reset variants take no input. Family: counter, vote tally, score keeper, timer."
+          },
+          {
+            "id": "ux-list-detail",
+            "title": "list / detail two-pane pattern",
+            "source": "studio/ux/list_detail",
+            "content": "Browse + inspect layout: linear(horizontal) → [list pane (left, fixed width) · detail pane (right, expanded)]. List pane = list widget with items bound to a state array + itemTemplate showing one row + onTap setting state.selectedId. Detail pane = conditional widget gating on {{selectedId}} → either selected-item view or empty-state placeholder. Use this for inbox, item catalog, file browser, knowledge query result list."
+          },
+          {
+            "id": "ux-empty-loading-error",
+            "title": "lifecycle states — empty / loading / error",
+            "source": "studio/ux/states",
+            "content": "Every data-driven view has four states: (1) loading — VbuBusyIndicator + label · (2) empty — icon + text + CTA button · (3) populated — the actual content · (4) error — VbuSystemNote(error:true) + retry button. Use conditional widget with a state-derived discriminator (e.g. {{state}} = 'loading'|'empty'|'ok'|'error'). Lifecycle.onInit calls a load tool that returns {state: '...'}. Each branch is a different widget subtree."
+          },
+          {
+            "id": "ux-multi-screen-nav",
+            "title": "multi-screen — tabs / stack navigation",
+            "source": "studio/ux/multi_screen",
+            "content": "When one page is too dense, split into sections behind a top-level switch: VbuTabStrip with N tabs + body = conditional on {{activeTab}}. Each branch is its own linear(vertical) subtree. State: activeTab (string or int). Tab onSelect action sets state.activeTab. Use this for settings (general/account/about), dashboards (metrics/logs/alerts), wizards (step1/step2/step3 with `back`/`next` buttons updating state.step)."
+          },
+          {
+            "id": "ux-dashboard-cards",
+            "title": "dashboard — grid of metric cards",
+            "source": "studio/ux/dashboard",
+            "content": "Overview screen pattern: linear(vertical) → [VbuPaneHeader · linear(horizontal, wrap-style)→[card · card · card · ...]]. Each card = card widget → linear(vertical) → [text(label, small, secondary) · text(value, headlineMedium) · optional VbuPill(trend)]. Cards bound to state keys populated by a single refresh tool. Lifecycle.onInit fires refresh on mount."
+          },
+          {
+            "id": "ux-modal-dialog",
+            "title": "modal dialog — overlay + actions",
+            "source": "studio/ux/modal_dialog",
+            "content": "Confirmations / quick prompts use VbuDialogScaffold or VbuPanelDialogScaffold inside a conditional gated on {{dialogOpen}}. Layout: title + optional subtitle + body + actions list (Cancel / Confirm). Cancel sets state.dialogOpen=false. Confirm runs the action tool then closes. Avoid modals for primary work surfaces — they don't carry persistent state across reopens."
+          },
+          {
+            "id": "ux-wireframe-convention",
+            "title": "wireframe convention — ASCII output format",
+            "source": "studio/ux/wireframe_convention",
+            "content": "When sketching for downstream agents, output the wireframe as a fixed-width ASCII box with labelled regions and arrows for tap targets. Example: '+-------------------+ | TITLE        [⚙] | +-------------------+ | Count: 0          | | [ + Increment ]   | | [ Reset       ]   | +-------------------+' — header / body separators / button labels / settings affordance. Follow with an affordance list and state-shape sketch in plain prose. Keep box width ≤ 60 chars so it stays readable in chat scrollback."
+          },
+          {
+            "id": "ux-state-shape-sketch",
+            "title": "state shape sketch — naming + auto-merge alignment",
+            "source": "studio/ux/state_shape",
+            "content": "After the wireframe, list the page state keys + their initial values + which tool's output produces them. Name keys to match the tool's outputSchema property names so spec §3.10 auto-merge wires for free. Example: 'state.initial = {count: 0}. Tool increment(count) returns {count: <new>} → auto-merge updates state.count'. The tool designer turns this list into outputSchema definitions verbatim."
+          }
+        ]
+      },
+      {
+        "id": "ops_patterns",
+        "documents": [
+          {
+            "id": "ops-project-shape",
+            "title": "what a project is in studio ops",
+            "source": "studio/ops/project_shape",
+            "content": "A project = a coordinated body of work executed by combining agents into a sequence (or parallel fan-out) of steps. Studio's ops_orchestrator does NOT own a persistent project store in its first cut — state lives in the conversation context. Long-lived projects with structured task state come via a future makemind_ops.mbd domain bundle (which adds workspace + member + task + process MCP tools). For now: a project is a chat thread + a pipeline plan + a result summary. Naming convention: refer to in-flight projects by a short slug ('q3-invoice-audit') so the user can later track / resume."
+          },
+          {
+            "id": "ops-member-types",
+            "title": "members — human + AI agent (lightweight)",
+            "source": "studio/ops/members",
+            "content": "Members of a project are either (a) the user (human, default participant), (b) studio defaults — ux_designer / knowledge_designer / tool_designer / ui_implementer / ops_orchestrator itself, or (c) specialists contributed by activated domain bundles. Each AI member has its own LLM context + model. List available members via studio.agent.list; pick the most specialised one for each step. Never invent agent ids — only dispatch to ids returned by studio.agent.list. If no member matches a step, ask the user to install / activate the relevant bundle."
+          },
+          {
+            "id": "ops-task-lifecycle",
+            "title": "task lifecycle — assign → in-progress → reviewed → done",
+            "source": "studio/ops/task_lifecycle",
+            "content": "Each step in a project pipeline is a task. Lifecycle: (1) ASSIGN — orchestrator picks the agent + prepares the dispatch payload with context from prior tasks. (2) IN-PROGRESS — agent works, may call tools, returns output. (3) REVIEWED (optional) — for high-stakes work, dispatch to a reviewer-role agent that critiques. (4) DONE — orchestrator records the output and moves on. If the reviewer rejects, return to step 2 with the critique appended as context. Short tasks (single dispatch) skip step 3. Long tasks (multi-call agents) need explicit checkpoints — orchestrator pings the agent between calls."
+          },
+          {
+            "id": "ops-process-pipeline",
+            "title": "process pipeline — sequential + parallel branches",
+            "source": "studio/ops/process_pipeline",
+            "content": "A process is a named pipeline of tasks. Two composition modes: SEQUENTIAL (task A → B → C; each takes prior output) and PARALLEL FAN-OUT (one input → N agents work concurrently → reduce results). Default to sequential; use parallel only when steps are genuinely independent (e.g. fact-gathering across multiple sources). When designing: keep ≤ 5 steps for cognitive tractability — if more, split into sub-processes. Orchestrator emits a plan summary BEFORE executing so the user can intervene early."
+          },
+          {
+            "id": "ops-gate-types",
+            "title": "gates — philosophy / quality / approval",
+            "source": "studio/ops/gate_types",
+            "content": "Gates pause the pipeline pending a decision. Three kinds: PHILOSOPHY CHECK — a reviewer-role agent applies the relevant philosophies (knowledge.philosophies) and decides pass / fail. QUALITY GATE — automatic check via a tool (schema valid? coverage % ≥ threshold? cost ≤ budget?). APPROVAL GATE — user explicitly confirms in chat ('approve to continue / reject with reason'). Use gates sparingly — they add latency. Reserve for: irreversible writes, external-system mutations, spend over a threshold, conflicting evidence."
+          },
+          {
+            "id": "ops-dispatch-pattern",
+            "title": "manager-broker dispatch pattern",
+            "source": "studio/ops/dispatch_pattern",
+            "content": "Each step: orchestrator calls studio.agent.dispatch with: {agentId: <specialist>, prompt: <task instruction>, context: <prior outputs distilled>}. Agent returns text + optional toolCalls. Orchestrator forwards toolCalls to dispatcher (studio.agent.dispatch handles tool-use loops internally for the dispatched agent). On return, distill the agent's output into the next step's context — DO NOT pass the entire reply verbatim if it's long (token cost). Summarise to the bullet points the next agent actually needs."
+          },
+          {
+            "id": "ops-state-storage",
+            "title": "project state storage — DomainStorage option",
+            "source": "studio/ops/state_storage",
+            "content": "For persistent project state beyond the chat thread, a future makemind_ops.mbd domain bundle will register host.kb (DomainStorage) namespaced under 'ops/projects/<slug>'. Until then, the orchestrator's first cut keeps state in conversation history only. When you want to persist: ask the user to install the ops domain bundle. Pattern when it's available: host.kb.put('project/<slug>', {steps, gates, results, members, createdAt, status}). DO NOT invent storage APIs that don't exist yet — current MCP surface has no ops.* tools."
+          },
+          {
+            "id": "ops-recipe-template",
+            "title": "recipe templates — preconfigured project starters",
+            "source": "studio/ops/recipe_template",
+            "content": "Recipe = a project template (pipeline + member roles + initial knowledge) baked for a common scenario. Studio defaults ship four conceptual recipes (no MCP tool yet — the orchestrator describes them and the user picks): RESEARCH BRIEF (define question → gather sources → summarise → review) · CODE REVIEW (read diff → run linters → file findings → suggest fixes) · CONTENT DRAFT (outline → draft → critique → polish) · PERSONAL FINANCE WEEKLY (pull tx → categorise → compute KPIs → flag anomalies). Match user intent to recipe when possible — saves the user from spelling out the pipeline."
+          },
+          {
+            "id": "ops-multi-agent-combo",
+            "title": "combining specialists from different bundles",
+            "source": "studio/ops/multi_agent_combo",
+            "content": "A project may want a finance specialist (from finance.mbd) + a writer (from content.mbd) + a reviewer (studio default). Orchestrator inventories via studio.bundle.list + studio.agent.list, then picks. Cross-bundle agents talk via dispatch payloads only — no shared memory. The orchestrator is the integration point. If a needed bundle is not activated, prompt the user: 'I need finance.mbd activated for the categorisation step — proceed with activation or skip that step?'."
+          },
+          {
+            "id": "ops-observability",
+            "title": "observability — surfacing pipeline state to the user",
+            "source": "studio/ops/observability",
+            "content": "The user must see what's running. Best practice for the orchestrator: emit the plan upfront (numbered steps + which agent handles each + estimated time). At each step's completion, post a brief progress line (✓ step 1 / step 2 in progress). On gate, post the gate prompt with [approve / reject] phrasing. On completion, post a summary of outputs. Do NOT silently chain — that's a black box. Long pipelines emit intermediate token / latency counts when available."
+          }
+        ]
+      },
+      {
+        "id": "knowledge_design_patterns",
+        "documents": [
+          {
+            "id": "kd-six-categories",
+            "title": "6-category knowledge model",
+            "source": "studio/knowledge_design/categories",
+            "content": "A bundle's knowledge has six asset categories: (1) chunks — sources[].documents[] with title + content (BM25 RAG corpus, the facts you can quote), (2) facts — SPO triples + confidence (the relations you can reason over), (3) skills — tool definition metadata: name/description/inputSchema (what the bundle can DO), (4) profiles — personae: name/description/traits (HOW the agent presents itself), (5) philosophies — principle statements + rationale + tags (WHY one path is chosen over another), (6) agents — the actual instance combining the previous five plus a model + a system prompt. Same fact + different skill/profile/philosophy combo → different behaviour. That is why categories exist separately."
+          },
+          {
+            "id": "kd-chunk-schema",
+            "title": "chunks schema (knowledge.sources[].documents[])",
+            "source": "studio/knowledge_design/chunks",
+            "content": "knowledge.sources is an array. Each source: {id: <namespace-like string>, documents: [<Document>]}. Each Document: {id: <stable identifier>, title: <short label>, source: <provenance string, e.g. 'mcp_ui_dsl/1.3/widgets/text'>, content: <the actual searchable text>}. content is the BM25-indexed body. Keep each document ~100–800 tokens — too short = poor signal, too long = imprecise hits. Group documents into sources by topic so callers can scope queries with sourceId. Examples of source ids: 'mcp_ui_dsl_widgets', 'common_pitfalls', 'ux_patterns', 'finance_terms', 'kpi_definitions'."
+          },
+          {
+            "id": "kd-fact-schema",
+            "title": "facts schema (knowledge.facts[])",
+            "source": "studio/knowledge_design/facts",
+            "content": "knowledge.facts is an array of SPO triples + metadata: {id, subject, predicate, object, confidence?: number 0–1, source?: string, evidence?: [<ref>], createdAt?: ISO8601}. Use facts for queryable relations the agent should be able to traverse — 'customer hasOrder order-123', 'order-123 hasAmount 4200'. NOT for free-text knowledge (that's chunks). NOT for behaviours (that's skills/philosophy). confidence guides agent uncertainty handling. Source the triple from a document chunk when possible (set source = document.id) so the graph stays grounded."
+          },
+          {
+            "id": "kd-skill-schema",
+            "title": "skills schema (knowledge.skills[])",
+            "source": "studio/knowledge_design/skills",
+            "content": "knowledge.skills is metadata DECLARING capabilities — separate from the runtime tools (kind:'js') that actually implement them. Schema per skill: {id, name, description, inputSchema?: JSON Schema, outputSchema?: JSON Schema, tags?: [string]}. Skill ≠ tool. A skill says 'this agent CAN do X'; a tool is the executable. The same skill can have zero or many tool implementations; tool can be added later without changing the skill. Use skills to plan capability coverage before authoring tools."
+          },
+          {
+            "id": "kd-profile-schema",
+            "title": "profiles schema (knowledge.profiles[])",
+            "source": "studio/knowledge_design/profiles",
+            "content": "knowledge.profiles is an array of persona definitions: {id, name, description, traits?: [string], voiceSample?: string, language?: string, audience?: string}. Profile controls TONE / FORMAT / AUDIENCE awareness — 'concise technical reviewer' vs 'warm hospitality assistant'. NOT what the agent knows (that's chunks/facts), NOT what it can do (skills). Multiple agents in one bundle can share a profile."
+          },
+          {
+            "id": "kd-philosophy-schema",
+            "title": "philosophies schema (knowledge.philosophies[])",
+            "source": "studio/knowledge_design/philosophies",
+            "content": "knowledge.philosophies is an array of principle entries: {id, statement, rationale?, tags?: [string], priority?: number, conflictsWith?: [philosophyId]}. Use this for value judgements: 'PREFER LOCAL DATA OVER REMOTE WHEN BOTH AVAILABLE', 'BLOCK destructive actions without confirmation', 'WEIGHT recent evidence higher than old when contradicting'. Tag with domains so agents pick applicable principles for the current task. priority breaks ties. conflictsWith flags philosophies that must not co-exist on the same agent."
+          },
+          {
+            "id": "kd-agent-schema",
+            "title": "agents schema (top-level agents[])",
+            "source": "studio/knowledge_design/agents",
+            "content": "Agents live at top-level `agents[]` (NOT under knowledge). Canonical mcp_bundle schema per agent: {id: <namespace.<verb>>, name: <human label>, role: 'worker'|'manager'|'reviewer', systemPrompt, model: {provider: 'anthropic'|'openai'|'gemini'|..., model: '<model id>'}, tools: [<MCP tool name>...], profileIds?: [], skillIds?: [], factSourceIds?: [], philosophyIds?: [], behavior?: {...}}. The systemPrompt is the everyday voice; reference the other categories by id so the runtime knows what to fork on assign. tools is the curated MCP surface this agent can call — keep tight to focus the agent. role drives router/reviewer routing in FlowBrain agent stack. NOTE: legacy {displayName, modelId, toolNames} field names are accepted as fallback but canonical fields above are preferred for new authoring."
+          },
+          {
+            "id": "kd-cold-start",
+            "title": "cold-start minimum",
+            "source": "studio/knowledge_design/cold_start",
+            "content": "Smallest viable knowledge for a new bundle: (a) 1 chunks source with 3–5 documents covering the domain's core concepts so the agent can answer 'what is X', (b) 1 manager agent referencing that chunks source via factQuery / systemPrompt mention. Skip facts / skills / profiles / philosophies in the first pass — add them once the agent's failure modes show what's missing. Resist the urge to author all six categories upfront; that wastes effort on assets the agent never queries."
+          },
+          {
+            "id": "kd-naming-convention",
+            "title": "naming conventions",
+            "source": "studio/knowledge_design/naming",
+            "content": "ids should be stable, lower_snake_case, namespaced when cross-bundle: '<bundle>.<category>.<verb>' for facts/skills/agents, plain slug for sources/documents. Examples: agents 'finance.accountant' / 'inbox.triage'; sources 'finance_terms' / 'inbox_routing_rules'; documents 'doc-fee-schedule' / 'doc-spam-heuristics-v2'. Stable ids = referencable lineage when forks evolve owned instances. Avoid timestamps / random suffixes in ids — they break cross-references."
+          },
+          {
+            "id": "kd-domain-template-todo",
+            "title": "domain template — todo manager",
+            "source": "studio/knowledge_design/template_todo",
+            "content": "Todo manager skeleton: (chunks) 'task_lifecycle' source with 3 docs (creating tasks · status transitions · gtd basics). (facts) optional — task statuses as enum facts. (skills) 'todo.create' / 'todo.complete' / 'todo.list' (one skill per verb). (profile) 'concise-coach' — terse, action-oriented, no fluff. (philosophy) 'one-action-at-a-time' / 'capture-everything-defer-decisions'. (agent) one manager: 'todo.manager' with systemPrompt referencing the profile + philosophies, tools including the three todo tools + studio.knowledge.query."
+          },
+          {
+            "id": "kd-domain-template-finance",
+            "title": "domain template — personal finance tracker",
+            "source": "studio/knowledge_design/template_finance",
+            "content": "Personal finance skeleton: (chunks) 'finance_terms' source (income · expense categories · tax basics) and 'kpi_definitions' (cashflow · runway · savings rate). (facts) account → balance relations · transaction → category links. (skills) 'tx.record' / 'tx.list' / 'kpi.compute' / 'budget.report'. (profile) 'careful-analyst' — uses confidence intervals, flags assumptions. (philosophy) 'verify-before-acting-on-financial-data' / 'separate-accounts-strictly'. (agent) 'finance.tracker' (worker) + 'finance.advisor' (manager — uses tx.list + kpi.compute, never auto-records)."
+          },
+          {
+            "id": "kd-validation-checklist",
+            "title": "validation checklist before export",
+            "source": "studio/knowledge_design/validation",
+            "content": "Before exporting a knowledge bundle: (1) every chunk document has non-empty content. (2) every fact's subject/predicate/object is non-empty; confidence in [0,1]. (3) every skill's inputSchema is valid JSON Schema. (4) every profile has a description. (5) every philosophy has a statement and rationale. (6) every agent references existing ids (skillIds / profileId / philosophyIds resolvable). (7) every agent's tools maps to a registered MCP tool. (8) at least one agent has role=manager. (9) bundle's manifest.id is reverse-DNS unique. (10) sample BM25 query returns hits from at least the cold-start source. Call studio.knowledge.test to confirm (10)."
+          }
+        ]
+      },
+      {
+        "id": "common_pitfalls",
+        "documents": [
+          {
+            "id": "pitfall-pascalcase",
+            "title": "pitfall — built-in widgets are lowercase",
+            "source": "studio/pitfalls/casing",
+            "content": "Built-in DSL widgets use lowercase canonical names: page, box, linear, text, button, list, sizedBox, card, conditional, expanded, icon, image, divider, center, stack, row→linear(horizontal), column→linear(vertical), container→box. Custom widgets use PascalCase: ToolForm, VbuPill, etc. Anti-pattern: writing {\"type\":\"Column\"} (Flutter-style PascalCase) — won't render. Correct: {\"type\":\"linear\",\"direction\":\"vertical\"}."
+          },
+          {
+            "id": "pitfall-state-shape",
+            "title": "pitfall — state must be state.initial",
+            "source": "studio/pitfalls/state",
+            "content": "page.state expects state:{initial:{...}}, not state:{...} directly. Anti-pattern: {\"type\":\"page\",\"state\":{\"count\":0}}. Correct: {\"type\":\"page\",\"state\":{\"initial\":{\"count\":0}}}. The initial wrap lets future runtime versions add other state policies (persisted, scoped, computed) under sibling keys."
+          },
+          {
+            "id": "pitfall-action-fields",
+            "title": "pitfall — action uses type+params (not action+args)",
+            "source": "studio/pitfalls/action",
+            "content": "Canonical action: {\"type\":\"tool\",\"tool\":\"shout\",\"params\":{...}}. Anti-pattern: {\"action\":\"tool\",\"args\":{...}} (legacy/Flutter-style field names — won't dispatch). The runtime looks for type and params keys."
+          },
+          {
+            "id": "pitfall-button-click-not-action",
+            "title": "pitfall — button uses click property (not action)",
+            "source": "studio/pitfalls/button_action",
+            "content": "button widget reads the action handler from a property named `click` (alias `onTap`) — NOT `action`. A button declaring {\"type\":\"button\",\"label\":\"...\",\"action\":{...}} renders but the click does nothing because the runtime never sees the action. Correct: {\"type\":\"button\",\"label\":\"...\",\"click\":{\"type\":\"tool\",\"tool\":\"...\",\"params\":{...}}}."
+          },
+          {
+            "id": "pitfall-list-takes-space",
+            "title": "pitfall — list takes all vertical space without shrinkWrap",
+            "source": "studio/pitfalls/list",
+            "content": "By default list expects bounded constraints (it's scrollable). Inside a linear column, a default list takes ALL remaining vertical space, hiding sibling sections below it. Fix: set shrinkWrap:true so list sizes to content. If multiple lists in one scroll, wrap the outer page-content in singleChildScrollView and use shrinkWrap on each list."
+          },
+          {
+            "id": "pitfall-equality-bindings",
+            "title": "pitfall — equality and arithmetic bindings unsupported",
+            "source": "studio/pitfalls/bindings",
+            "content": "Bindings like {{count == 0}} or {{a + b}} are NOT evaluated by this runtime version — they're treated as opaque strings. For conditional rendering, either rely on truthy/falsy of the value directly (an empty list IS falsy, length 0 string IS falsy) or pre-compute the boolean in a tool handler and expose it as a state key. Example: instead of conditional.condition='{{count == 0}}', expose isEmpty:bool from the refresh tool and bind condition='{{isEmpty}}'."
+          },
+          {
+            "id": "pitfall-handroll-title-bar",
+            "title": "pitfall — when a title-bar hand-roll keeps showing up, suggest VbuTitleBar",
+            "source": "studio/pitfalls/handroll_title_bar",
+            "content": "When you (or the user) keep building little title-bar headers as box(height:36, color:'#0B1220') → linear → [text, expanded, icon] with different colour / height / font / spacing each time, that hand-roll keeps the bundles visually inconsistent. The VbuTitleBar atom is the canonical chrome strip and usually fits when a page needs a header. Same heuristic applies to other atoms — VbuPaneHeader (section labels), VbuFormSection (form groups), VbuLabelledField/Toggle/Menu (form inputs), VbuPill (badges), VbuSystemNote (callouts / errors), VbuBusyIndicator (spinners): when a hand-roll keeps appearing across bundles, propose the matching atom first. If none of the existing atoms fit AND the hand-roll keeps repeating, that's the signal to suggest extracting a new atom rather than continuing to duplicate the shape."
+          }
+        ]
+      },
+      {
+        "id": "external_llm_app_builder",
+        "title": "External LLM - App Builder authoring lock-down",
+        "description": "External LLM (Claude Desktop/Inspector etc) authoring lock-down. Source = docs/builder/manual/10-external-llm-app-builder.md.",
+        "documents": [
+          {
+            "id": "context_and_surface",
+            "title": "Context - MCP surface for external LLM",
+            "content": "App Builder builtin exposes 2 host tools at port 7831:\n- app_builder.newAppProject - new workspace project (with/without dialog)\n- app_builder.dispatch_builder_tool {name, args} - passthrough to active mount in-process MCP server. Single channel for all vibe_* mutators.\n\nHost side (studio.*):\n- studio.chrome.{list_tabs, select_tab, reload_tab}\n- studio.project.{info, close, new, open, recents}\n- studio.bundle.{install, activate, list, uninstall, read_file, list_files}\n- studio.debug.{screenshot, runtime_state, dispatch_log, boot_log}\n\nExternal LLM permission = MCP surface only. Local cat/ls/rm/find, code edits, infra ops forbidden."
+          },
+          {
+            "id": "stage_flow",
+            "title": "Stage flow - A architecture to G multi-target",
+            "content": "External LLM serial execution (internal LLM = builder.manager delegates to specialists, same stages).\n\nA. Architecture - design/ARCHITECTURE.md: domain definition, use scenarios, external deps, tool surface candidates.\nB. App structure - design/pages.md (page map + routes + initial) + contracts/state.md (per-page state, actions, wiring).\nC. Layout - design/layout-<page>.md per page (region tree).\nD. Component - vibe_build_search + studio.builder.lib.* for reuse candidate identification (template vs inline).\nE. Widget - vibe_build_page_create / set_property / add_child for atom-level build. After every change: vibe_widget_lint, vibe_validate, vibe_check_wiring.\nF. Verification - vibe_lint_canonical, vibe_route_audit, vibe_widget_shape_audit, vibe_runtime_errors, vibe_a11y_audit (zero violations).\nG. Multi-target - manifest meta (G.1) > vibe_project_save (G.2) > vibe_build_pack_bundle (G.3) > studio.bundle.install (G.7) > activate + reload_tab > visual verification (G.8) > Home INSTALLED APPS check (G.9).\n\nNo progression without stage artifact. User confirmation gate mandatory."
+          },
+          {
+            "id": "gotcha_table",
+            "title": "Pitfalls - 12 lockdown points",
+            "content": "P-1 routes bare pageId -> routes[/] = ui://pages/<id> (URI scheme required)\nP-2 manifest missing ui field -> Home INSTALLED APPS hidden. manifest.ui = {kind:mcp_ui_dsl, path:ui/app.json} required\nP-3 flat state {count:0} -> spec sec 1.6: state:{initial:{count:0}}\nP-4 text widget value:{{...}} -> canonical = text field. Legacy alias content. value ignored.\nP-5 action type:setState -> spec sec 3.5: {type:state, action:set, binding, value}\nP-6 newAppProject dialog not opening -> dispatchLifecycleSlot uses state.context (host fix applied)\nP-7 new .mbd directory canonical.open throws -> KernelCanonicalAdapter.open seeds empty manifest (host fix applied)\nP-8 studio.builder.ui.* used for App bundle -> catalog unknownType:application. App bundles via app_builder.dispatch_builder_tool + vibe_* mutators only.\nP-9 widget placement only without manifest/multi-target/install/activate/visual verification -> sec 2.G stages mandatory\nP-10 bundle tab open but not in Home INSTALLED APPS -> suspect manifest.ui missing (P-2). tabs.json persist and Home filter are different paths.\nP-11 page body does not fill tab area -> linear mainAxisAlignment center only works at intrinsic size. Page root needs expand (open).\nP-12 displayLarge variant renders small -> theme.typography unset. Need theme block with variant mapping (open)."
+          },
+          {
+            "id": "counter_end_to_end",
+            "title": "Counter app - end-to-end sequence",
+            "content": "External LLM serial sequence (concrete dispatch examples):\n\n1. vibe_build_page_create({id:home, title:Counter, route:/, home:true})\n2. vibe_build_set_property({path:/ui/routes, key:/, value:ui://pages/home})  # P-1 fix\n3. vibe_build_set_property({path:/ui/pages/home, key:state, value:{initial:{count:0}}})  # P-3\n4. vibe_build_set_property({path:/ui/pages/home/content, key:mainAxisAlignment, value:center})\n5. vibe_build_set_property({path:/ui/pages/home/content, key:crossAxisAlignment, value:center})\n6. vibe_build_add_child({parentPath:/ui/pages/home/content, widget:{type:text, text:{{count}}, variant:displayLarge, textAlign:center}})  # P-4\n7. vibe_build_add_child({parentPath:/ui/pages/home/content, widget:{type:linear, direction:horizontal, mainAxisAlignment:center, children:[]}})\n8. vibe_build_add_child({parentPath:/ui/pages/home/content/children/1, widget:{type:button, label:-, onTap:{type:state, action:set, binding:count, value:{{count - 1}}}}})  # P-5\n9. + button same pattern\n10. vibe_build_set_property({path:/manifest, key:id, value:com.<author>.<name>})  # G.1\n11. vibe_build_set_property({path:/manifest, key:ui, value:{kind:mcp_ui_dsl, path:ui/app.json}})  # P-2\n12. vibe_project_save  # G.2\n13. vibe_build_pack_bundle({channel:serving, outPath:build/mcpb/<name>.mcpb})  # G.3\n14. studio.bundle.install({path:<projectPath>/build/mcpb/<name>.mcpb})  # G.7\n15. studio.bundle.activate({mbdPath:<install path>})\n16. studio.chrome.reload_tab({key:<install path>})\n17. studio.debug.screenshot + interaction verification (G.8)\n18. studio.chrome.select_tab({key:home}) + screenshot > INSTALLED APPS card visible (G.9)"
+          },
+          {
+            "id": "verification_checklist",
+            "title": "Self-verification - completion gate",
+            "content": "All 8 items must be OK before declaring complete:\n- sec 2 A-F all stage artifacts on disk (design/, contracts/, ui/, bundles/serving.mbd/{manifest.json, ui/app.json, ui/pages/*.json})\n- sec 4 pitfalls P-1 through P-10 all not violated\n- vibe_runtime_errors count == 0\n- vibe_lint_canonical violations 0\n- vibe_route_audit violations 0\n- .mcpb file generated\n- studio.bundle.list contains new namespace\n- new tab visual capture - normal render + interaction works\n- Home INSTALLED APPS section shows new app card (G.9)"
+          },
+          {
+            "id": "permission_boundary",
+            "title": "Permission boundary - external LLM scope",
+            "content": "Allowed:\n- All MCP server tools on port 7831\n- studio.* host tools + app_builder.dispatch_builder_tool > vibe_* mutators\n- MCP resources/list + resources/read (registered resources only)\n- MCP prompts/* (registered prompts only)\n\nForbidden:\n- Local file system direct access (cat, ls, find, rm) - use host-exposed vibe_file_* only\n- Code edits (host-direct Edit/Write)\n- Shell command direct (bash) - vibe_build_run_shell only (within project root)\n- Backup / git / infra operations\n- Diora (vibe_studio dev) tools (Read, Edit, Write etc)"
+          },
+          {
+            "id": "tool_gaps",
+            "title": "Known tool gaps - external LLM current limits",
+            "content": "Verifications not possible with current MCP surface + improvement proposals:\n\n1. Manual not in MCP resources/list > external LLM access only via studio.knowledge.query. This source (external_llm_app_builder) is the workaround - critical lockdown content registered as knowledge.\n2. UI interaction simulation absent > studio.debug.dispatch_tool (state action only). Coord/widget-id-based click NO. Proposal: studio.ui.{click, type, find}\n3. vibe_build_pack_bundle does not auto-backfill manifest.ui > P-2 mistake hides app in Home. Proposal: pack pre-check + auto-fill ui field\n4. vibe_build_page_create writes routes with bare pageId > P-1 trap. Proposal: auto-convert to ui://pages/<id>\n5. Home INSTALLED APPS display verification tool absent > screenshot + LLM interpretation only. Proposal: studio.bundle.list response with homeVisible boolean"
+          }
+        ]
+      }
+    ]
+  }
+}

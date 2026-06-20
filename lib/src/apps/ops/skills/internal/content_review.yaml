@@ -1,0 +1,28 @@
+id: content_review
+version: 1
+description: Review a draft against editorial principles and output requested revisions.
+inputSchema:
+  type: object
+  properties:
+    postId: { type: string }
+  required: [ postId ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: llm
+      id: review
+      output: review
+      prompt: |
+        Review the draft of post {{ in.postId }} against the editorial principles.
+        Result JSON:
+        {
+          "verdict": "approve" | "revise" | "reject",
+          "issues": [ ... ],
+          "suggestions": [ ... ]
+        }
+      maxTokens: 2000
+    - kind: fact.save
+      category: content_reviewed
+      inputs:
+        content: "{{ step.review.text }}"
+tags: [ content, review ]

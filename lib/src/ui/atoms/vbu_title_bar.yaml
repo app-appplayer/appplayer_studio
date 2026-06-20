@@ -1,0 +1,25 @@
+type: VbuTitleBar
+category: chrome
+source: custom
+description: |
+  Vbu atom — TitleBar. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  title:
+    type: "string"
+    description: "(auto) resolve"
+  subtitle:
+    type: "string"
+    description: "(auto) resolve"
+  height:
+    type: "number"
+    description: "(auto) resolve"
+  background:
+    type: "string"
+    description: "(auto) color"
+  leading:
+    type: "Widget"
+    description: "(auto) child"
+  trailing:
+    type: "Array<Widget>"
+    description: "(auto) children"
+examples: []

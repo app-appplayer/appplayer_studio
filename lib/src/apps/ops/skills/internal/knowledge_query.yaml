@@ -1,0 +1,30 @@
+id: knowledge_query
+version: 1
+description: Query accumulated knowledge (Fact / Summary / Pattern) by natural language.
+inputSchema:
+  type: object
+  properties:
+    question: { type: string }
+    category: { type: string }
+    limit:    { type: integer, default: 10 }
+  required: [ question ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: fact.query
+      id: results
+      output: results
+      inputs:
+        tags: "{{ in.category }}"
+        limit: "{{ in.limit }}"
+    - kind: llm
+      id: answer
+      output: answer
+      prompt: |
+        Question: {{ in.question }}
+        Related Facts:
+        {{ step.results.facts }}
+
+        Write an accurate, evidence-backed answer. Cite supporting fact ids in parentheses.
+      maxTokens: 1500
+tags: [ knowledge, readOnly ]

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifest": {
+    "id": "com.makemind.scene_builder",
+    "name": "Scene Builder",
+    "version": "0.1.0",
+    "description": "Authoring surface for scenario-driven recordings — chat with the Scene Manager to script a flow that drives any installed bundle (or the studio itself), record it via the built-in studio.recorder.* tools, and decorate with overlays (subtitles, arrows, check marks, lecture-style markup). The recorder, overlay, and chat-send primitives are HOST built-ins (always on); this bundle is the user-facing library / composer / branding.",
+    "schemaVersion": "1.0.0",
+    "type": "application",
+    "icon": "movie_creation_outlined"
+  },
+  "knowledge": {
+    "schemaVersion": "1.0.0",
+    "sources": [
+      {
+        "id": "scene_builder_tool_surface",
+        "title": "Scene Builder — tool surface + workflow",
+        "description": "Host tools used by Scene Builder and the domain workflow. No inner vibe_* tools — operates solely via studio.scenario.* + studio.recorder.* + studio.overlay.*.",
+        "documents": [
+          {
+            "id": "overview",
+            "title": "Scene Builder overview",
+            "content": "Scene Builder = demo / screencast authoring domain built-in. Uses only host (studio.*) scenario / recorder / overlay tools — no vibe_* tools of its own. 4 sub-views (Scenarios · Recordings · Edit · Branding) + 4 agents (scene.manager · scene.composer · scene.annotator · scene.runner). Output = scenario JSON (scenarios/<id>.json) + mp4 recording."
+          },
+          {
+            "id": "tool_surface",
+            "title": "Tool surface — host tools used",
+            "content": "scenario:\n- studio.scenario.list — seed + project scenario list\n- studio.scenario.read({path}) — JSON read\n- studio.scenario.run({path, dry?}) — execute (dry=preview)\n- studio.scenario.save({path, json}) — JSON write\n- studio.scenario.preview({path}) — first step preview\nrecorder:\n- studio.recorder.start({fps?:24, includeAudio?:false})\n- studio.recorder.stop\n- studio.recorder.status — when active: {id, frames, elapsedMs, fps}\n- studio.recorder.recordings.list — mp4 archive\n- studio.recorder.encode({recordingId}) — frame seq → mp4\noverlay:\n- studio.overlay.push({...}) — add marker\n- studio.overlay.list / .remove / .clear — management\n\nAlso: studio.renderer.screenshot · screenshot_region — frame snapshot. studio.scene.project.{info, new, open} — Scene-specific project lifecycle. studio.chrome.* — tab navigation."
+          },
+          {
+            "id": "workflow",
+            "title": "End-to-end workflow",
+            "content": "1. studio.chrome.select_tab({key:'/Users/jsha/.config/vibe_studio/workspaces/scene_builder'}) — activate Scene Builder tab\n2. studio.scene.project.new({name}) — new scene project (scenario + branding directories created automatically)\n3. Recordings tab: studio.recorder.start → capture user interaction → stop → encode → mp4 archive\n4. Edit tab: studio.scenario.save({path, json}) — author step list. step = {label, tool, args, settleMs?, overlay?}\n5. studio.scenario.preview / run — verify\n6. (optional) studio.overlay.push — add annotations to scenario steps\n7. Output = scenarios/<id>.json + recordings/<id>.mp4\n\nLLM automation: scene.manager agent distributes across 4 phases (composer defines steps, annotator handles overlays, runner executes + verifies)."
+          },
+          {
+            "id": "scenario_schema",
+            "title": "Scenario JSON schema",
+            "content": "{\n  \"id\": \"<scene id>\",\n  \"title\": \"...\",\n  \"description\": \"...\",\n  \"steps\": [\n    {\n      \"label\": \"step description\",\n      \"tool\": \"studio.chrome.select_tab\",\n      \"args\": {\"key\": \"...\"},\n      \"settleMs\": 500,\n      \"overlay\": [{\"type\": \"highlight\", \"target\": \"<widget id>\", \"text\": \"...\"}]\n    }\n  ]\n}\n\nstep.tool = any MCP tool (studio.* / vibe_* / app_builder.*). studio.scenario.run dispatches each step, waits for settle, applies overlay, then advances to the next step.\n\nWhen authored by an external LLM — write to disk with studio.scenario.save, validate each step with studio.scenario.preview, then verify actual execution with run."
+          },
+          {
+            "id": "agents",
+            "title": "Scene Builder agents — 4 specialists + 1 manager",
+            "content": "scene.manager — classifies user intent + distributes (compose / annotate / record / run)\nscene.composer — authors scenario steps (tool + args + settleMs)\nscene.annotator — adds overlays (highlight · arrow · note · pulse)\nscene.runner — studio.scenario.run + result analysis + retry / fix proposal\n\nWhen driven by an external LLM — call the specialist with studio.agent.dispatch({agentId:'scene.composer', userText:'...'}). The manager uses the same path for delegation."
+          }
+        ]
+      }
+    ]
+  },
+  "agents": {
+    "schemaVersion": "1.0.0",
+    "agents": [
+      {
+        "id": "manager",
+        "name": "Scene Manager",
+        "role": "manager",
+        "systemPrompt": "You are the Scene Builder manager. Your job is to help the user produce screen recordings of any package's workflow — a tutorial, a demo, or a lecture-style walkthrough — by composing a SCENARIO (sequence of MCP tool calls + overlay annotations), running it with the recorder on, and exporting the result. Drive everything through host built-in tools: `studio.recorder.start/stop/status` (frame capture), `studio.overlay.push/remove/clear/list` (in-frame subtitles, arrows, check marks, lecture-style underlines / brackets / numbered labels, etc.), `studio.chat.send` (drop a simulated user turn into another tab's chat), `studio.renderer.activate/screenshot/layout_snapshot` (drive views + grab evidence), and any `studio.builder.*` / `studio.bundle.*` / domain tools. The bundle's purpose is the LIBRARY (scenarios/*.json) plus the AUTHORING UI; the actual recording happens against whatever tab is active when you run the scenario, so demos can span ANY package, not just this one. Ask the user what to record, draft the scenario JSON, dry-run it (no recording) to verify the steps, then run it with `studio.recorder.start` + overlays + `studio.recorder.stop`.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "tools": [
+          "studio.recorder.start",
+          "studio.recorder.stop",
+          "studio.recorder.status",
+          "studio.overlay.push",
+          "studio.overlay.remove",
+          "studio.overlay.clear",
+          "studio.overlay.list",
+          "studio.chat.send",
+          "studio.renderer.activate",
+          "studio.renderer.screenshot",
+          "studio.renderer.layout_snapshot",
+          "studio.renderer.current_view",
+          "studio.bundle.list",
+          "studio.chrome.list_tabs",
+          "studio.chrome.select_tab",
+          "studio.debug.tabs",
+          "studio.debug.activation",
+          "studio.fs.read",
+          "studio.fs.write",
+          "studio.fs.ls"
+        ]
+      }
+    ]
+  },
+  "requires": {
+    "schemaVersion": "1.0.0",
+    "builtinAtoms": [
+      "mcp",
+      "fs",
+      "workspace",
+      "ui"
+    ]
+  }
+}

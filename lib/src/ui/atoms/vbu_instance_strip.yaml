@@ -1,0 +1,50 @@
+type: VbuInstanceStrip
+category: layout
+source: custom
+description: |
+  Instance card row used by app_builder's [3] slot and similar layer-list
+  surfaces. Two orientations: `horizontal` (56px scrollable strip, 152×32
+  cards) and `vertical` (168px sidebar column, full-width 32px cards with
+  an optional section title). Selection is external via `selectedId`.
+  Each card may carry an `issue` pill, a `⋮` popup menu, and the strip
+  itself can append a trailing `+ Add` card.
+properties:
+  items:
+    type: "Array<Object>"
+    description: |
+      Array of `{id, label, color?, subtitle?, issue?, menuItems?}`
+      entries. `color` = hex (`#RRGGBB`) drawn as 3px left stripe.
+      `issue` = 1-3 char glyph rendered as coral pill. `menuItems` =
+      `[{label, onTap?, danger?}]` for the `⋮` popup.
+  selectedId:
+    type: "string"
+    description: id of the highlighted item.
+  onSelect:
+    type: "Action"
+    description: Fires with the tapped item's id.
+  orientation:
+    type: "string"
+    enum: ['horizontal', 'vertical']
+    description: Strip orientation. Default `horizontal`.
+    default: "horizontal"
+  sectionTitle:
+    type: "string"
+    description: |
+      Uppercase mono header for vertical mode (e.g. `PAGES`,
+      `TEMPLATES`). Ignored in horizontal.
+  sectionDotColor:
+    type: "string"
+    description: Hex color of the dot next to `sectionTitle`.
+  addLabel:
+    type: "string"
+    description: |
+      Label for the trailing `+ Add <label>` card. Omit to hide
+      the add affordance.
+  onAdd:
+    type: "Action"
+    description: Fires when the `+ Add` card is tapped.
+  emptyText:
+    type: "string"
+    description: Shown when items is empty AND no add label is wired.
+    default: "No instances yet"
+examples: []

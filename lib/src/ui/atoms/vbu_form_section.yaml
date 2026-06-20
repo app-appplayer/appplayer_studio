@@ -1,0 +1,16 @@
+type: VbuFormSection
+category: form
+source: custom
+description: |
+  Vbu atom — FormSection. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  rowGap:
+    type: "number"
+    description: "(auto) resolve"
+  children:
+    type: "Array<Widget>"
+    description: "(auto) children"
+examples: []

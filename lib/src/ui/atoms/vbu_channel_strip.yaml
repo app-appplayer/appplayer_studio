@@ -1,0 +1,20 @@
+type: VbuChannelStrip
+category: control
+source: custom
+description: |
+  Compact pill row representing build channels (serving / native /
+  preview / …). Used in app_builder's action row as the left-side
+  channel selector. Selection is external via `activeChannel`.
+properties:
+  channels:
+    type: "Array<string>"
+    description: Channel labels to render in order.
+  activeChannel:
+    type: "string"
+    description: Currently active channel label. Highlights its pill.
+  onSelect:
+    type: "Action"
+    description: |
+      Fires with the tapped channel label. Wire to a state mutation
+      (e.g. `{type:state,action:set,binding:activeChannel,value:"{{event.value}}"}`).
+examples: []

@@ -1,0 +1,91 @@
+name: appplayer_studio
+description: >
+  AppPlayer Studio — universal desktop host that loads any installed domain
+  bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
+  DSL UI; the host is a universal launcher.
+version: 0.1.0
+homepage: https://appplayer.app
+repository: https://github.com/app-appplayer/appplayer_studio
+publish_to: none
+
+environment:
+  sdk: ^3.7.0
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  args: ^2.5.0
+  collection: ^1.18.0
+  file_picker: ^8.0.0
+  flutter_markdown: ^0.7.0
+  path: ^1.9.0
+  mcp_bundle: ^0.4.0
+  google_fonts: ^6.2.1
+  video_player: ^2.9.1
+  meta: ^1.15.0
+  logging: ^1.2.0
+  archive: ^3.6.1
+  crypto: ^3.0.3
+  shelf: ^1.4.0
+  mcp_server: ^2.0.0
+  mcp_client: ^2.0.0
+  mcp_llm: ^2.1.0
+  flutter_mcp_ui_runtime: ^0.5.0
+  flutter_mcp_ui_core: ^0.4.0
+  json_schema: ^5.1.1
+  flutter_js: ^0.8.7
+  ffmpeg_kit_flutter_new: ^3.0.0
+  file_selector: ^1.0.3
+  flowbrain_core: ^0.1.1
+  flutter_riverpod: ^2.5.1
+  mcp_browser: ^0.1.2
+  mcp_channel: ^0.2.0
+  mcp_form: ^0.1.0
+  mcp_ingest: ^0.1.0
+  flutter_mcp_ui_generator: ^0.4.0
+  mcp_knowledge: ^0.2.4
+  mcp_fact_graph: ^0.2.2
+  uuid: ^4.0.0
+  yaml: ^3.1.2
+  # Published AppPlayer utility packages (pub.dev): UI view widgets, the
+  # Claude Code provider, and signature/secure helpers.
+  appplayer_ui_view: ^0.1.0
+  appplayer_claude_code_provider: ^0.1.0
+  appplayer_secure: ^0.1.0
+  brain_kernel: ^0.1.2
+  # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
+  # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the
+  # studio host builds these transports and injects them via the kernel
+  # seam (`mcp.connect_extension` -> backbone.connectExtensionTransport).
+  mcp_bridge: ^0.2.0-rc.2
+
+  device_info_plus: ^10.1.2
+  http: ^1.6.0
+  shared_preferences: ^2.5.5
+  watcher: ^1.2.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  async: ^2.13.1
+# Local dev-latest overrides live in `pubspec_overrides.yaml` (gitignored)
+# so this committed pubspec stays release-clean (published versions only)
+# and a fresh clone resolves everything from pub.dev.
+
+flutter:
+  uses-material-design: true
+  assets:
+    # App Builder seed templates. Flutter does not recurse into asset
+    # directories, so each one is declared explicitly.
+    - lib/src/apps/app_builder/seed/app_player_app/
+    - lib/src/apps/app_builder/seed/app_player_app/ui/
+    - lib/src/apps/app_builder/seed/app_player_app/ui/pages/
+    - lib/src/apps/app_builder/seed/studio_package/
+    - lib/src/apps/app_builder/seed/studio_package/ui/
+    - lib/src/apps/app_builder/seed/studio_package/ui/pages/
+    - lib/src/apps/ops/seed/project/
+    - lib/src/apps/ops/seed/project/project.mbd/
+    - lib/src/apps/ops/seed/workspace/

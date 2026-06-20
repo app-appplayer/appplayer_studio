@@ -1,0 +1,47 @@
+{
+  "type": "page",
+  "title": "{{name}}",
+  "content": {
+    "type": "linear",
+    "direction": "vertical",
+    "crossAxisAlignment": "stretch",
+    "children": [
+      {
+        "type": "VbuTitleBar",
+        "title": "{{name}}"
+      },
+      {
+        "type": "expanded",
+        "child": {
+          "type": "box",
+          "padding": 24,
+          "child": {
+            "type": "linear",
+            "direction": "vertical",
+            "gap": 16,
+            "mainAxisAlignment": "center",
+            "crossAxisAlignment": "center",
+            "children": [
+              {
+                "type": "icon",
+                "icon": "extension",
+                "size": 48,
+                "color": "#7dd3c0"
+              },
+              {
+                "type": "text",
+                "value": "{{name}}",
+                "variant": "headlineSmall"
+              },
+              {
+                "type": "text",
+                "value": "Starter scaffold — describe what to build in chat.",
+                "variant": "bodyMedium"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

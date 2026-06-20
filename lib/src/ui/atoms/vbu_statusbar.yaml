@@ -1,0 +1,19 @@
+type: VbuStatusbar
+category: chrome
+source: custom
+description: |
+  Vbu atom — Statusbar. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  height:
+    type: "number"
+    description: "(auto) resolve"
+  gap:
+    type: "number"
+    description: "(auto) resolve"
+  left:
+    type: "Array<Widget>"
+    description: "(auto) children"
+  right:
+    type: "Array<Widget>"
+    description: "(auto) children"
+examples: []

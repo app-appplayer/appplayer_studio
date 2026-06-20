@@ -1,0 +1,10 @@
+type: VbuBundleManifestView
+category: embed
+source: custom
+description: |
+  Vbu atom — BundleManifestView. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  bundlePath:
+    type: "string"
+    description: "(auto) resolve"
+examples: []

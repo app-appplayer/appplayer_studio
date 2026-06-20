@@ -1,0 +1,32 @@
+id: status_report
+version: 1
+description: Generate a periodic operations report (publishing/ads/task summary + LLM narrative).
+inputSchema:
+  type: object
+  properties:
+    period:   { type: string, enum: [ day, week, month ] }
+    sections: { type: array, items: { type: string } }
+  required: [ period ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: fact.query
+      id: evidence
+      output: evidence
+      inputs:
+        tags: [ published_post, ad_reviewed, content_reviewed ]
+        limit: 200
+    - kind: llm
+      id: summary
+      output: summary
+      prompt: |
+        Period: {{ in.period }}
+        Sections: {{ in.sections }}
+        Organize the events below into a per-section Markdown report.
+        Events: {{ step.evidence.facts }}
+      maxTokens: 3000
+    - kind: fact.save
+      category: status_report
+      inputs:
+        content: "{{ step.summary.text }}"
+tags: [ readOnly, report ]

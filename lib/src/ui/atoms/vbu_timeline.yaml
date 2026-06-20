@@ -1,0 +1,31 @@
+type: VbuTimeline
+category: media
+source: custom
+description: |
+  Vbu atom — Timeline. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  steps:
+    type: "Object"
+    description: "(auto) resolve"
+  tracks:
+    type: "Object"
+    description: "(auto) resolve"
+  selectedIndex:
+    type: "number"
+    description: "(auto) resolve"
+  scrubMs:
+    type: "number"
+    description: "(auto) resolve"
+  pixelsPerSecond:
+    type: "number"
+    description: "(auto) resolve"
+  stepHeight:
+    type: "number"
+    description: "(auto) resolve"
+  trackHeight:
+    type: "number"
+    description: "(auto) resolve"
+  selectStep:
+    type: "Action<int>"
+    description: "(auto) valueCallback"
+examples: []

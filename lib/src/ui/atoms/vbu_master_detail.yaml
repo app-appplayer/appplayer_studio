@@ -1,0 +1,22 @@
+type: VbuMasterDetail
+category: layout
+source: custom
+description: |
+  Vbu atom — MasterDetail. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  sections:
+    type: "Object"
+    description: "(auto) resolve"
+  panelLabel:
+    type: "string"
+    description: "(auto) resolve"
+  panelWidth:
+    type: "number"
+    description: "(auto) resolve"
+  body:
+    type: "Widget"
+    description: "(auto) child"
+  onTap:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

@@ -1,0 +1,48 @@
+{
+  "manifest": {
+    "id": "com.makemind.examples.wire_demo",
+    "name": "Wire Demo",
+    "version": "0.1.0",
+    "description": "Phase 5.6 testbed — minimal tool↔UI wiring sample. One JS tool, one mcp_ui_dsl page that submits a form and renders the tool result. Portable: zero atom dependencies (the only host capability used is the standard `tool` action on a button), so this same bundle should activate in AppPlayer once the latter ships kind:'js' dispatch."
+  },
+  "tools": {
+    "tools": [
+      {
+        "name": "shout",
+        "kind": "js",
+        "target": {
+          "entry": "tools/shout.js",
+          "fn": "shout"
+        },
+        "description": "Returns the input text upper-cased.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "title": "Text to shout",
+              "description": "Plain text. Whitespace is preserved."
+            }
+          },
+          "required": ["text"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "shouted": {
+              "type": "string",
+              "title": "Shouted text"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  }
+}

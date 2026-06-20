@@ -1,0 +1,34 @@
+type: VbuDialogScaffold
+category: dialog
+source: custom
+description: |
+  Vbu atom — DialogScaffold. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  title:
+    type: "string"
+    description: "(auto) resolve"
+  subtitle:
+    type: "string"
+    description: "(auto) resolve"
+  titleIcon:
+    type: "Object"
+    description: "(auto) resolve"
+  titleIconColor:
+    type: "string"
+    description: "(auto) color"
+  maxWidth:
+    type: "number"
+    description: "(auto) resolve"
+  maxHeight:
+    type: "number"
+    description: "(auto) resolve"
+  body:
+    type: "Widget"
+    description: "(auto) child"
+  leadingAction:
+    type: "Widget"
+    description: "(auto) child"
+  actions:
+    type: "Array<Widget>"
+    description: "(auto) children"
+examples: []

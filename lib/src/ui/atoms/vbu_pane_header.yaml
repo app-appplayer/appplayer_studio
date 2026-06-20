@@ -1,0 +1,22 @@
+type: VbuPaneHeader
+category: chrome
+source: custom
+description: |
+  Vbu atom — PaneHeader. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  clearTooltip:
+    type: "string"
+    description: "(auto) resolve"
+  height:
+    type: "number"
+    description: "(auto) resolve"
+  actions:
+    type: "Array<Widget>"
+    description: "(auto) children"
+  onClear:
+    type: "unknown"
+    description: "(auto) raw"
+examples: []

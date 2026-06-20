@@ -1,0 +1,46 @@
+type: VbuInspectorPanel
+category: embed
+source: custom
+description: |
+  Debug-mode inspector. Variant strip (96h, 168×80 cards) + toolbar
+  (36h, size/orient/brightness) + render split (left=live render
+  child, right=wire log child). The actual RenderMetadata walker is
+  fed via `renderChild` / `logChild` so the atom stays free of
+  runtime dependencies.
+properties:
+  variants:
+    type: "Array<Object>"
+    description: |
+      `[{id, label, icon?}]` — variant entries shown in the top strip.
+      `icon` = Material icon name (e.g. `code`, `folder_zip`,
+      `desktop_windows`, `dashboard_customize`).
+  activeVariantId:
+    type: "string"
+    description: id of the highlighted variant.
+  onVariantChange:
+    type: "Action"
+    description: Fires with the tapped variant's id.
+  deviceSize:
+    type: "string"
+    description: "`<w>x<h>` device size; null = fit."
+  orientation:
+    type: "string"
+    enum: ['portrait', 'landscape']
+    default: "portrait"
+  brightness:
+    type: "string"
+    enum: ['auto', 'light', 'dark']
+    default: "auto"
+  onSizeChange:
+    type: "Action"
+  onOrientChange:
+    type: "Action"
+  onBrightnessChange:
+    type: "Action"
+  renderChild:
+    type: "Widget"
+    description: Left pane body — typically a runtime mount.
+  logChild:
+    type: "Widget"
+    description: Right pane body — wire frame log.
+examples: []

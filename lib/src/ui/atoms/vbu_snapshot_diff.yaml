@@ -1,0 +1,25 @@
+type: VbuSnapshotDiff
+category: display
+source: custom
+description: |
+  Vbu atom — SnapshotDiff. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  title:
+    type: "string"
+    description: "(auto) resolve"
+  leftLabel:
+    type: "string"
+    description: "(auto) resolve"
+  rightLabel:
+    type: "string"
+    description: "(auto) resolve"
+  leftAccent:
+    type: "string"
+    description: "(auto) color"
+  rightAccent:
+    type: "string"
+    description: "(auto) color"
+  sections:
+    type: "Object"
+    description: "(auto) resolve"
+examples: []

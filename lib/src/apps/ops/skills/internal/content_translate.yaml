@@ -1,0 +1,28 @@
+id: content_translate
+version: 1
+description: Translate a published post into the specified languages. Code blocks and package names are preserved.
+inputSchema:
+  type: object
+  properties:
+    postId: { type: string }
+    from:   { type: string }
+    to:     { type: array, items: { type: string }, minItems: 1 }
+  required: [ postId, to ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: llm
+      id: translate
+      output: translate
+      prompt: |
+        Translate the body of post {{ in.postId }} into the following languages: {{ in.to }}.
+        Rules:
+        - Preserve code blocks (```) and package names verbatim
+        - Do not translate English proper nouns
+        - Return the result as a YAML dictionary (locale -> translation)
+      maxTokens: 4000
+    - kind: fact.save
+      category: translation_completed
+      inputs:
+        content: "{{ step.translate.text }}"
+tags: [ content, translate ]

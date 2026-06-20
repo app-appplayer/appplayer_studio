@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "Sample Project",
+  "createdAt": "2026-05-11T00:00:00Z",
+  "lastOpenedAt": "2026-05-11T00:00:00Z",
+  "bundleSubdir": "app.mbd",
+  "description": "Reference app-in-project layout. The .apbproj container holds project-level metadata; the actual end-user app bundle lives at <project>/app.mbd. A builder package (e.g. app_builder_vibe.mbd) loads this project and edits the inner bundle in place."
+}

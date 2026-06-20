@@ -1,0 +1,28 @@
+id: content_check_duplicate
+version: 1
+description: Check whether a proposed title/tags duplicate an existing publication.
+inputSchema:
+  type: object
+  properties:
+    title: { type: string }
+    tags:  { type: array, items: { type: string } }
+  required: [ title ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: fact.query
+      id: prior
+      output: prior
+      inputs:
+        tags: "{{ in.tags }}"
+        limit: 20
+    - kind: llm
+      id: judgement
+      output: judgement
+      prompt: |
+        Judge whether the candidate title is effectively a duplicate of existing publications.
+        Candidate: {{ in.title }}
+        Existing publications summary: {{ step.prior.facts }}
+        Conclude with one of "duplicate" | "similar" | "unique".
+      maxTokens: 500
+tags: [ content, readOnly ]

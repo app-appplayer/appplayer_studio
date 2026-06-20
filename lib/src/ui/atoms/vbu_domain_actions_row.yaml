@@ -1,0 +1,22 @@
+type: VbuDomainActionsRow
+category: display
+source: custom
+description: |
+  Vbu atom — DomainActionsRow. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  entries:
+    type: "Object"
+    description: "(auto) resolve"
+  iconSize:
+    type: "number"
+    description: "(auto) resolve"
+  chipSize:
+    type: "number"
+    description: "(auto) resolve"
+  spacing:
+    type: "number"
+    description: "(auto) resolve"
+  onTap:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

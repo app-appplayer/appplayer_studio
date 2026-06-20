@@ -1,0 +1,19 @@
+type: VbuLabelledToggle
+category: form
+source: custom
+description: |
+  Vbu atom — LabelledToggle. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  value:
+    type: "boolean"
+    description: "(auto) resolve"
+  hint:
+    type: "string"
+    description: "(auto) resolve"
+  onChanged:
+    type: "Action<bool>"
+    description: "(auto) valueCallback"
+examples: []

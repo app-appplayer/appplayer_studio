@@ -1,0 +1,31 @@
+type: VbuJsonEditor
+category: form
+source: custom
+description: |
+  Vbu atom — JsonEditor. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  initialText:
+    type: "string"
+    description: "(auto) resolve"
+  value:
+    type: "string"
+    description: "(auto) resolve"
+  readOnly:
+    type: "boolean"
+    description: "(auto) resolve"
+  minLines:
+    type: "number"
+    description: "(auto) resolve"
+  maxLines:
+    type: "number"
+    description: "(auto) resolve"
+  placeholder:
+    type: "string"
+    description: "(auto) resolve"
+  change:
+    type: "Action<String>"
+    description: "(auto) valueCallback"
+  parsed:
+    type: "Action<Object?>"
+    description: "(auto) valueCallback"
+examples: []

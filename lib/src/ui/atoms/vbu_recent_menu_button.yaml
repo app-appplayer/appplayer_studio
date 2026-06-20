@@ -1,0 +1,25 @@
+type: VbuRecentMenuButton
+category: chrome
+source: custom
+description: |
+  Vbu atom — RecentMenuButton. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  recents:
+    type: "Object"
+    description: "(auto) resolve"
+  tooltip:
+    type: "string"
+    description: "(auto) resolve"
+  headerLabel:
+    type: "string"
+    description: "(auto) resolve"
+  minMenuWidth:
+    type: "number"
+    description: "(auto) resolve"
+  maxMenuWidth:
+    type: "number"
+    description: "(auto) resolve"
+  onPick:
+    type: "Action<String>"
+    description: "(auto) valueCallback"
+examples: []

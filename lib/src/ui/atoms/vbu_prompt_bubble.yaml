@@ -1,0 +1,16 @@
+type: VbuPromptBubble
+category: chat
+source: custom
+description: |
+  Vbu atom — PromptBubble. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  text:
+    type: "string"
+    description: "(auto) resolve"
+  maxWidth:
+    type: "number"
+    description: "(auto) resolve"
+  onDelete:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

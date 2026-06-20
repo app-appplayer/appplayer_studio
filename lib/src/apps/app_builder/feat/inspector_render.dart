@@ -1,0 +1,2 @@
+// Collapsed onto the platform widget — App Builder no longer forks it.
+export '../../../base/widgets/inspector_render.dart';

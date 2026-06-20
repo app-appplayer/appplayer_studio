@@ -1,0 +1,19 @@
+type: VbuProjectNameRow
+category: form
+source: custom
+description: |
+  Vbu atom — ProjectNameRow. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  projectName:
+    type: "string"
+    description: "(auto) resolve"
+  dirty:
+    type: "boolean"
+    description: "(auto) resolve"
+  hasProject:
+    type: "boolean"
+    description: "(auto) resolve"
+  onRename:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

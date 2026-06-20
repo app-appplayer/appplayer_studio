@@ -1,0 +1,25 @@
+id: quality_appraise
+version: 1
+description: Compute a quality metric score for the previous step's output via LLM.
+inputSchema:
+  type: object
+  properties:
+    metric: { type: string }
+    prev:   {}
+  required: [ metric ]
+outputSchema:
+  type: object
+  properties:
+    score:  { type: number }
+    reason: { type: string }
+actionBody:
+  kind: llm
+  data:
+    prompt: |
+      Evaluate the output below against the metric "{{ in.metric }}".
+      Output: {{ in.prev }}
+
+      Return a score between 0.0 and 1.0 plus a one-line rationale as JSON:
+      { "score": <0..1>, "reason": "<brief rationale>" }
+    maxTokens: 500
+tags: [ readOnly, quality ]

@@ -1,0 +1,15 @@
+{
+  "manifest": {
+    "id": "{{id}}",
+    "name": "{{name}}",
+    "version": "0.1.0",
+    "description": "New AppPlayer app — edit via chat."
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  }
+}

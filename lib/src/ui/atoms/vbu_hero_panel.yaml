@@ -1,0 +1,22 @@
+type: VbuHeroPanel
+category: layout
+source: custom
+description: |
+  Vbu atom — HeroPanel. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  actions:
+    type: "Object"
+    description: "(auto) resolve"
+  title:
+    type: "string"
+    description: "(auto) resolve"
+  subtitle:
+    type: "string"
+    description: "(auto) resolve"
+  maxWidth:
+    type: "number"
+    description: "(auto) resolve"
+  footer:
+    type: "Widget"
+    description: "(auto) child"
+examples: []

@@ -1,0 +1,22 @@
+type: VbuIconButton
+category: atom
+source: custom
+description: |
+  Vbu atom — IconButton. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  tooltip:
+    type: "string"
+    description: "(auto) resolve"
+  icon:
+    type: "Object"
+    description: "(auto) resolve"
+  emphasised:
+    type: "boolean"
+    description: "(auto) resolve"
+  iconSize:
+    type: "number"
+    description: "(auto) resolve"
+  onTap:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

@@ -1,0 +1,13 @@
+type: VbuBundleEmbed
+category: embed
+source: custom
+description: |
+  Vbu atom — BundleEmbed. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  bundlePath:
+    type: "string"
+    description: "(auto) resolve"
+  uiPath:
+    type: "string"
+    description: "(auto) resolve"
+examples: []

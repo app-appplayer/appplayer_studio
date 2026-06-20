@@ -1,0 +1,18 @@
+id: ad_publish
+version: 1
+description: Approve and publish a review-approved ad via the admin UI.
+inputSchema:
+  type: object
+  properties:
+    adId:   { type: string }
+    action: { type: string, enum: [ approve, reject ], default: approve }
+  required: [ adId ]
+actionBody:
+  kind: browser
+  operation: submit_form
+  data:
+    url: "https://makemind.dev/admin/ads/{{ in.adId }}/review"
+    steps:
+      - { selector: "button[data-action={{ in.action }}]", action: click }
+    capture_receipt: true
+tags: [ ads, destructive ]

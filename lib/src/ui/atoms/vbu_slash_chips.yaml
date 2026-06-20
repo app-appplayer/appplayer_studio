@@ -1,0 +1,13 @@
+type: VbuSlashChips
+category: chat
+source: custom
+description: |
+  Vbu atom — SlashChips. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  chips:
+    type: "Object"
+    description: "(auto) resolve"
+  spacing:
+    type: "number"
+    description: "(auto) resolve"
+examples: []

@@ -1,0 +1,10 @@
+type: VbuBundleKnowledgeView
+category: embed
+source: custom
+description: |
+  Vbu atom — BundleKnowledgeView. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  bundlePath:
+    type: "string"
+    description: "(auto) resolve"
+examples: []

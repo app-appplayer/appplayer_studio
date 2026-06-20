@@ -1,0 +1,25 @@
+type: VbuPanelSplitter
+category: chrome
+source: custom
+description: |
+  Vbu atom — PanelSplitter. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  axis:
+    type: "string"
+    description: "(auto) resolve"
+  color:
+    type: "string"
+    description: "(auto) color"
+  thickness:
+    type: "number"
+    description: "(auto) resolve"
+  hitWidth:
+    type: "number"
+    description: "(auto) resolve"
+  onDragEnd:
+    type: "Action"
+    description: "(auto) callback"
+  onDrag:
+    type: "Action<double>"
+    description: "(auto) valueCallback"
+examples: []

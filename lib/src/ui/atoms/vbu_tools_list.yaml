@@ -1,0 +1,10 @@
+type: VbuToolsList
+category: display
+source: custom
+description: |
+  Vbu atom — ToolsList. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  tools:
+    type: "Object"
+    description: "(auto) resolve"
+examples: []

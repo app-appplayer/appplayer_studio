@@ -1,0 +1,34 @@
+type: VbuPanelDialogScaffold
+category: dialog
+source: custom
+description: |
+  Vbu atom — PanelDialogScaffold. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  title:
+    type: "string"
+    description: "(auto) resolve"
+  width:
+    type: "number"
+    description: "(auto) resolve"
+  height:
+    type: "number"
+    description: "(auto) resolve"
+  body:
+    type: "Widget"
+    description: "(auto) child"
+  titleTrailing:
+    type: "Widget"
+    description: "(auto) child"
+  headerExtra:
+    type: "Widget"
+    description: "(auto) child"
+  actionsLeading:
+    type: "Widget"
+    description: "(auto) child"
+  actions:
+    type: "Array<Widget>"
+    description: "(auto) children"
+  quickActions:
+    type: "Array<Widget>"
+    description: "(auto) children"
+examples: []

@@ -1,0 +1,16 @@
+type: VbuRouter
+category: layout
+source: custom
+description: |
+  Vbu atom — Router. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  value:
+    type: "string"
+    description: "(auto) resolve"
+  cases:
+    type: "Object"
+    description: "(auto) resolve"
+  fallback:
+    type: "Widget"
+    description: "(auto) child"
+examples: []

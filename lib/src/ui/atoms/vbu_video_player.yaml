@@ -1,0 +1,37 @@
+type: VbuVideoPlayer
+category: media
+source: custom
+description: |
+  Vbu atom — VideoPlayer. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  src:
+    type: "string"
+    description: "(auto) resolve"
+  autoplay:
+    type: "boolean"
+    description: "(auto) resolve"
+  loop:
+    type: "boolean"
+    description: "(auto) resolve"
+  showControls:
+    type: "boolean"
+    description: "(auto) resolve"
+  aspectRatio:
+    type: "number"
+    description: "(auto) resolve"
+  value:
+    type: "string"
+    description: "(auto) resolve"
+  variant:
+    type: "string"
+    description: "(auto) resolve"
+  maxLines:
+    type: "number"
+    description: "(auto) resolve"
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  click:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

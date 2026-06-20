@@ -1,0 +1,25 @@
+type: VbuLabelledFolder
+category: form
+source: custom
+description: |
+  Vbu atom — LabelledFolder. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  label:
+    type: "string"
+    description: "(auto) resolve"
+  value:
+    type: "string"
+    description: "(auto) resolve"
+  hint:
+    type: "string"
+    description: "(auto) resolve"
+  labelWidth:
+    type: "number"
+    description: "(auto) resolve"
+  onClear:
+    type: "Action"
+    description: "(auto) callback"
+  onPick:
+    type: "unknown"
+    description: "(auto) raw"
+examples: []

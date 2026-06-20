@@ -1,0 +1,95 @@
+{
+  "manifest": {
+    "id": "{{id}}",
+    "name": "{{name}}",
+    "version": "0.1.0",
+    "type": "extension",
+    "description": "New package scaffold — edit via chat."
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  },
+  "tools": {
+    "tools": [
+      {
+        "name": "hello",
+        "kind": "host",
+        "description": "Sample greeting tool. Replace with your own verb — see studio.builder.addTool to add more.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Who to greet."
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      {
+        "name": "ping",
+        "kind": "host",
+        "description": "Health-check sample. Returns `pong` so callers can confirm the bundle is reachable.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ]
+  },
+  "agents": {
+    "agents": [
+      {
+        "id": "manager",
+        "name": "Manager",
+        "role": "manager",
+        "systemPrompt": "You are the manager agent for {{name}}. Classify the user's intent, route to the right capability, and answer questions about this package. When asked to add tools / settings / slash commands / domain icons, use the studio.builder.* MCP tools to mutate the bundle's manifest on disk.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "toolNames": []
+      }
+    ]
+  },
+  "knowledge": {
+    "facts": [],
+    "skills": [],
+    "profiles": [],
+    "philosophies": [],
+    "workflows": []
+  },
+  "settings": {
+    "sections": [
+      {
+        "key": "general",
+        "label": "General",
+        "fields": []
+      }
+    ]
+  },
+  "chat": {
+    "slashCommands": [
+      {
+        "command": "/help",
+        "description": "List available chat commands."
+      },
+      {
+        "command": "/agents",
+        "description": "Show the registered agents and which are dispatchable."
+      },
+      {
+        "command": "/clear",
+        "description": "Clear the current chat thread."
+      }
+    ]
+  },
+  "wiring": {
+    "domainActions": [],
+    "lifecycle": []
+  }
+}

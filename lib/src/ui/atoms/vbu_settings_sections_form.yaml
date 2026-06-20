@@ -1,0 +1,10 @@
+type: VbuSettingsSectionsForm
+category: form
+source: custom
+description: |
+  Vbu atom — SettingsSectionsForm. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  sections:
+    type: "Object"
+    description: "(auto) resolve"
+examples: []

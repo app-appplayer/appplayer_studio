@@ -1,0 +1,15 @@
+{
+  "manifest": {
+    "id": "com.makemind.examples.sample_app",
+    "name": "Sample App",
+    "version": "0.1.0",
+    "description": "End-user app inside sample_project.apbproj. UI-only — no tools, no agents, no atom requirements. The kind of bundle a builder package produces and a player runs."
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  }
+}

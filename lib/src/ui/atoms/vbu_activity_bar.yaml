@@ -1,0 +1,13 @@
+type: VbuActivityBar
+category: chrome
+source: custom
+description: |
+  Vbu atom — ActivityBar. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  groups:
+    type: "Object"
+    description: "(auto) resolve"
+  width:
+    type: "number"
+    description: "(auto) resolve"
+examples: []

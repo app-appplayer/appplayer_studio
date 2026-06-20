@@ -1,0 +1,28 @@
+type: VbuTabStrip
+category: chrome
+source: custom
+description: |
+  Vbu atom — TabStrip. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  tabs:
+    type: "Object"
+    description: "(auto) resolve"
+  activeIndex:
+    type: "number"
+    description: "(auto) resolve"
+  height:
+    type: "number"
+    description: "(auto) resolve"
+  maxTabWidth:
+    type: "number"
+    description: "(auto) resolve"
+  trailing:
+    type: "Array<Widget>"
+    description: "(auto) children"
+  onSelect:
+    type: "Action<int>"
+    description: "(auto) valueCallback"
+  onClose:
+    type: "Action<int>"
+    description: "(auto) valueCallback"
+examples: []

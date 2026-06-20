@@ -1,0 +1,28 @@
+id: content_publish
+version: 1
+description: Publish a review-approved post via the admin UI (browser submit_form).
+inputSchema:
+  type: object
+  properties:
+    postId: { type: string }
+  required: [ postId ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: browser
+      id: publish
+      output: publish
+      operation: submit_form
+      inputs:
+        url: "https://makemind.dev/admin/posts/{{ in.postId }}/publish"
+        steps:
+          - { selector: "button[data-testid=publish]", action: click }
+          - { selector: "text=Confirm",                action: click, confirm: true }
+        capture_receipt: true
+    - kind: fact.save
+      category: published_post
+      inputs:
+        content: "postId={{ in.postId }} publishedAt={{ step.publish.publishedAt }}"
+tags: [ content, destructive ]
+budget:
+  timeMs: 60000

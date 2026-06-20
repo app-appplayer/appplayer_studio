@@ -1,0 +1,399 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifest": {
+    "id": "studio.docs",
+    "name": "Studio Docs",
+    "version": "0.1.0",
+    "description": "Studio host (studio.*) tool catalog + concepts. Knowledge-only bundle \u2014 no UI, no agents. Auto-loaded as seed at host boot, knowledge.sources fanned out as studio://knowledge/<src>/<doc> MCP resources.",
+    "schemaVersion": "1.0.0"
+  },
+  "requires": {
+    "schemaVersion": "1.0.0",
+    "builtinAtoms": []
+  },
+  "agents": {
+    "agents": [
+      {
+        "id": "manager",
+        "name": "Studio Manager",
+        "role": "manager",
+        "systemPrompt": "You are the AppPlayer Studio manager. Your sole job is to coordinate host inventory and delegate to specialist agents.\n\nThe \"Available tools\" section below your prompt lists the EXACT tools you have access to in this session. They are real and callable \u2014 invoke them directly to answer the user. Do not greet the user, do not echo the routing rules, do not ask for clarification on straightforward queries. Do the work.\n\nBuilt-in domains:\n  \u2022 app_builder   \u2014 author mcp_ui_dsl bundles (`app_builder.*` / `studio.builder.*`).\n  \u2022 scene_builder \u2014 record demo / tutorial scenarios (`studio.recorder.*` / `studio.scenario.*`).\n  \u2022 makemind_ops  \u2014 workspace operations (`makemind_ops.*`).\n\nRouting:\n  \u2022 Agent listing / id query \u2192 call `bk.agent.list` immediately and return the result.\n  \u2022 Agent metadata / single record \u2192 call `bk.agent.get`.\n  \u2022 Dispatch to a specialist agent \u2192 call `bk.agent.dispatch` with the target agent id.\n  \u2022 Bundle listing / install query \u2192 call the matching `host.*` / `<bundle>.*` tool from the catalog.\n  \u2022 Knowledge / fact query \u2192 call `bk.knowledge.query` / `bk.fact.query`.\n  \u2022 Ambiguous intent (only when truly ambiguous) \u2192 ask one short clarification question.\n\nNever guess identifiers \u2014 call the relevant `*.list` tool first when you need them. Answer in the user's language.",
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        },
+        "tools": [
+          "bk.agent.list",
+          "bk.agent.get",
+          "bk.agent.ask",
+          "bk.agent.dispatch",
+          "bk.agent.history",
+          "bk.fact.query",
+          "bk.fact.get",
+          "bk.fact.entity.get",
+          "bk.skill.list",
+          "bk.skill.get",
+          "bk.profile.list",
+          "bk.profile.get",
+          "bk.philosophy.list",
+          "bk.philosophy.get",
+          "bk.philosophy.get_active_id",
+          "bk.knowledge.query",
+          "bk.workflow.list",
+          "bk.workflow.get_run",
+          "bk.pipeline.get_run",
+          "bk.runbook.list",
+          "studio.bundle.list",
+          "studio.bundle.install",
+          "studio.bundle.activate",
+          "studio.bundle.uninstall",
+          "studio.search.*",
+          "studio.chrome.*"
+        ]
+      }
+    ]
+  },
+  "knowledge": {
+    "sources": [
+      {
+        "id": "studio_host_tools",
+        "title": "Studio host tools (studio.*) catalog",
+        "description": "Always-registered studio.* MCP tools \u2014 host-side surface every domain shares. Source = docs/06_OPS/reference/studio-tool-catalog.md.",
+        "documents": [
+          {
+            "id": "00_overview",
+            "title": "Overview \u2014 host vs domain surface",
+            "content": "Studio host registers studio.* tools at boot. They are available regardless of which domain is active. Domains (App Builder \u00b7 Scene Builder \u00b7 \u2026) layer their own tools on top via BuiltInApp.registerHostTools. The mcp connection at system URL (default :7831) multiplexes all domains. Per-domain narrow links (inheritFromSystem=false) get studio.* mirror + single domain only (see MOD-INFRA-010)."
+          },
+          {
+            "id": "agent",
+            "title": "studio.agent.* \u2014 agent runtime",
+            "content": "studio.agent.list / describe / dispatch / history / clear_history / set_model. Manages registered LLM agents (manifest.agents[] entries from active bundles). dispatch sends one turn to a specific agent and returns text + tool_use blocks. set_model swaps model id at runtime."
+          },
+          {
+            "id": "builder",
+            "title": "studio.builder.* \u2014 bundle mutator (Studio domain)",
+            "content": "Atomic mutators for the active Studio domain bundle (NOT App bundles). readManifest / readBundle / writeUI / patchManifest / addAgent / addTool / addSkill / addProfile / addPhilosophy / addSlashCommand / addDomainAction / addKnowledge* / addSettings* / writeScenario / ui.{addNode, setProp, moveNode, removeNode, reorderChildren, applyPatch, findNodes, readNode, readTree, diff, catalog.list, catalog.schema, catalog.diag} / lib.{create, delete, list, placeAsTemplate, placeInline, read, rename, render}. App bundles use App Builder's vibe_* tools (or app_builder.<family>.<verb> aliases) instead \u2014 see app_builder seed docs."
+          },
+          {
+            "id": "bundle",
+            "title": "studio.bundle.* \u2014 package lifecycle + resources",
+            "content": "install / uninstall / activate / list / list_files / read_file / list_assets / read_asset / dispatch_tool. install accepts .mcpb archive or .mbd/ dir, registers in bundle pool. activate makes a tab. list returns installed bundles. read_file/read_asset for arbitrary file access within bundle root. dispatch_tool invokes a bundle-declared tool."
+          },
+          {
+            "id": "chrome",
+            "title": "studio.chrome.* \u2014 shell wiring",
+            "content": "list_tabs / select_tab / close_tab / reload_tab / create_package / open_{settings, history, agents, onboarding, seed} / peek_tab_bar / set_tab_bar / toggle_left_panel / set_left_panel. Drives tab strip, left panel, header dialogs. select_tab takes key (path or 'home')."
+          },
+          {
+            "id": "project",
+            "title": "studio.project.* \u2014 active bundle's project lifecycle",
+            "content": "info / close / new / open / recents / create / export. Operates on the CURRENT TAB's project context \u2014 App Builder's currentProject, Scene Builder's scene project, etc. project.new scaffolds via the active bundle's newProjectInActive bridge slot. project.info returns {packageName, packagePath, projectPath, projectName} or {} on home tab."
+          },
+          {
+            "id": "fs",
+            "title": "studio.fs.* \u2014 workspace-gated file IO",
+            "content": "list / read / write / mkdir / delete / glob. Bounded to workspaceDir \u2014 paths outside throw. Use for project-bound file access. App bundle authoring should prefer vibe_file_* via active App Builder (project-root scoped) \u2014 studio.fs.* is broader workspace scope. `glob({pattern, path?, limit?})` walks recursive matching `**`/`*` (e.g. `**/manifest.json`, `ui/**/*.json`); returns `{count, matches:[absPath], truncated?}` capped at limit (default 500)."
+          },
+          {
+            "id": "knowledge",
+            "title": "studio.knowledge.* \u2014 RAG over registered knowledge sources",
+            "content": "query / test / validate. query({text, limit?}) returns top-N hits across all registered sources (seed bundles' knowledge.sources fanned out as resources). test validates query interpretation. validate runs lint on the active bundle's knowledge entries."
+          },
+          {
+            "id": "ui_control",
+            "title": "studio.ui.* \u2014 UI control",
+            "content": "Full pointer + keyboard + focus + dropdown automation via Flutter binding (no macOS accessibility). \u00b7 `studio.ui.set_center_mode` (UI/Bundle/Debug 3-way switch). \u00b7 `studio.ui.tap` ({elementId or x+y, mode?:tap|long|double}) \u2014 synthetic click; elementId resolves via layout-snapshot rect resolver (accepts bare `id` OR `<type>:<key>`). \u00b7 `studio.ui.type` ({text, elementId?, clear?, submit?}) \u2014 focused TextField TextEditingController direct set (bypasses IME / Korean+CJK garble); submit:true fires onSubmitted (Enter). \u00b7 `studio.ui.dismiss_dialog` \u2014 pop topmost route on root Navigator. \u00b7 `studio.ui.scroll` ({elementId or x+y, dx, dy}) \u2014 wheel scroll. \u00b7 `studio.ui.hover` \u2014 pointer hover only (no click) for tooltip/hover decoration capture. \u00b7 `studio.ui.right_click` \u2014 secondary-button tap (onSecondaryTap / context menu). \u00b7 `studio.ui.drag` ({from, to, steps?}) \u2014 splitter / drag-and-drop / canvas pan. \u00b7 `studio.ui.focus` \u2014 first EditableText.focusNode.requestFocus() without tap. \u00b7 `studio.ui.element_value` \u2014 read EditableText `{value, hasFocus, selection}` (inverse of `type`). \u00b7 `studio.ui.key` ({key:enter|escape|tab|arrow*|backspace|space, char?, modifiers:[shift|ctrl|alt|meta]}) \u2014 macOS keyevent platform channel. \u00b7 `studio.ui.popover_entries` \u2014 enumerate active PopupMenu/Dropdown items as `[{value, label, enabled, rect}]`."
+          },
+          {
+            "id": "debug",
+            "title": "studio.debug.* \u2014 diagnostic surface (~24 tools)",
+            "content": "studio.debug.* \u2014 28 tools. boot/notify/dispatch_log \u00b7 activation/bundles/tabs/chrome/runtimes/runtime_state/agents/chat/header_actions \u00b7 config/settings/overrides \u00b7 screenshot/layout_snapshot/snapshot_diff \u00b7 servers (DomainServerManager pool) \u00b7 history.{list,diff,restore} \u00b7 dispatch_tool \u00b7 set_state \u00b7 wait_for \u00b7 workspace_snapshot. NEW (2026-05-20): debug.overrides ({path?}) reads package_settings/*.json per-domain inherit/url overrides \u00b7 debug.workspace_snapshot lists workspaceDir mbds+projects+other entries."
+          },
+          {
+            "id": "renderer",
+            "title": "studio.renderer.* \u2014 domain UI activation",
+            "content": "activate / current_view / layout_snapshot / screenshot / screenshot_region / image_diff. Drives the active domain UI mount. `layout_snapshot` walks chrome captureRoot AND adds `WidgetsBinding.rootElement` walk so showDialog overlays surface too. `image_diff` ({a, b base64 PNGs, threshold?}) returns `{score, diffPixels, totalPixels, w, h}` for visual regression \u2014 both inputs must share dimensions."
+          },
+          {
+            "id": "overlay",
+            "title": "studio.overlay.* \u2014 in-frame markup",
+            "content": "push / list / remove / clear. Annotation/highlight markers on top of the renderer. Used by Scene Builder for scenario overlays."
+          },
+          {
+            "id": "recorder",
+            "title": "studio.recorder.* \u2014 frame capture + encoding",
+            "content": "start / stop / status / recordings.list / encode / mark / caption. Captures frames at fps, encodes to mp4. `status` returns `markers[]` + `captions[]` (timeline `{label or text, startMs/elapsedMs, durationMs}`). `mark({label})` drops a chapter marker, `caption({text, durationMs?})` logs a subtitle (pair with `studio.overlay.push` for burn-in). Used by Scene Builder for scenario recordings + tutorial videos."
+          },
+          {
+            "id": "scenario",
+            "title": "studio.scenario.* \u2014 scenario list/run/save",
+            "content": "list / read / preview / run / save. Scene Builder's scenario format. preview = dry-run, run = with side effects."
+          },
+          {
+            "id": "scene_project",
+            "title": "studio.scene.project.* \u2014 Scene Builder project lifecycle",
+            "content": "info / new / open. Sibling to studio.project.* but scene-specific (different storage layout)."
+          },
+          {
+            "id": "chat_send",
+            "title": "studio.chat.send \u2014 chat composer programmatic input",
+            "content": "Send a chat turn through the active tab's composer. Same path as user typing in chat panel."
+          },
+          {
+            "id": "settings_search_workspace",
+            "title": "studio.{settings, search, workspace, meta}",
+            "content": "settings.get({key, path?}) - read system or domain override (per-package). settings.set({key, value, path?}) - write system OR per-domain override; **domain set triggers DomainServerManager.detach+attach automatically (runtime re-attach, no restart needed)**. System settings include `themeMode` (system/light/dark) and `debugMode` (boolean). When `debugMode=true`, every DslWorkspaceView mounts its bundle through `MCPUIRuntime.withInspector(widgetWrapper:)` so every rendered widget is tagged with MetaData \u2014 required for `studio.renderer.layout_snapshot` to surface inner-bundle widgets and for `studio.ui.tap({elementId:...})` to address them by name. Off by default (production fast path); flip true for scripted UI tests / tutorial recordings / external-LLM debugging. Toggle is live (no restart) \u2014 DslWorkspaceView listens on `ChromeBridge.inspectorEnabled` and re-mounts when it flips. search.query - workspace-wide text search. workspace.adopt - bring external folder into workspace mode. meta.list_tools / describe_tool - runtime tool discovery."
+          }
+        ]
+      },
+      {
+        "id": "studio_host_concepts",
+        "title": "Studio host concepts",
+        "description": "Architectural concepts external LLM should know.",
+        "documents": [
+          {
+            "id": "host_vs_domain",
+            "title": "Host vs Domain \u2014 superset / subset",
+            "content": "Studio = AppPlayer superset. AppPlayer base = renderer + atom + MCP dispatch + standard wiring. Studio adds: studio.builder.* mutators + chrome lifecycle slot fire + integrated builder UI surface (3-way switch) + studio Vbu* atoms (chrome/inspector). Bundles declare capability via manifest.requires.builtinAtoms / builtinTools \u2014 Studio fills more than AppPlayer."
+          },
+          {
+            "id": "tab_vs_install",
+            "title": "Tab vs Install \u2014 workspace project vs installed bundle",
+            "content": "App Builder's currentProject (under workspace/) is NOT an installed bundle \u2014 it sits in the App Builder built-in tab as the project being authored. Once packed (vibe_build_pack_bundle \u2192 .mcpb) and installed (studio.bundle.install), it gains a SEPARATE tab and appears in Home's INSTALLED APPS section. Tabs.json persists open tabs across sessions including installed ones."
+          },
+          {
+            "id": "domain_inheritance",
+            "title": "Domain MCP server inheritance \u2014 system vs per-domain",
+            "content": "Each domain has inheritFromSystem (default true). ON = share the system MCP server at default URL. OFF = DomainServerManager.spawn allocates a separate URL/port for narrow connection. Per MOD-INFRA-010, the per-domain server mirrors host studio.* tools + that domain's tools + knowledge. Reduces noise for external clients that work with one domain at a time."
+          },
+          {
+            "id": "tool_alias_categorization",
+            "title": "Tool name aliases \u2014 flat vs categorized",
+            "content": "App Builder's inner vibe_* tools are exposed on host with BOTH names: original vibe_<family>_<verb> AND categorized alias app_builder.<family>.<verb>. Same handler. Use either \u2014 categorized version is easier to scan in tools/list."
+          },
+          {
+            "id": "knowledge_separation",
+            "title": "Knowledge separation \u2014 host vs domain",
+            "content": "Studio host (studio.* tool catalog \u00b7 architecture concepts) lives in seed studio_docs.mbd's knowledge.sources. Each domain's tool catalog lives in that domain's seed bundle (app_builder.mbd, scene_builder.mbd). resources/list shows the union. studio.knowledge.query searches across all. Cross-domain answers blend host + multiple domain docs."
+          }
+        ]
+      },
+      {
+        "id": "studio_host_builtins",
+        "name": "Built-in apps catalog",
+        "description": "The three built-in apps the host ships \u2014 id / label / purpose / tool surface / default agent. Manager reads this to route bundle requests.",
+        "documents": [
+          {
+            "id": "app_builder",
+            "title": "app_builder \u00b7 App Builder",
+            "content": "Built-in id: app_builder\nLabel: App Builder\nDefault chat agent: app_builder.manager (declared in seed manifest by `role: manager`).\nPurpose: author mcp_ui_dsl bundles. The user describes an app in chat; the manager dispatches to specialists (`ux_designer` \u2192 wireframes \u00b7 `tool_designer` \u2192 tool catalogs \u00b7 `knowledge_designer` \u2192 knowledge sources \u00b7 `ui_implementer` \u2192 mcp_ui_dsl JSON via `studio.builder.*` mutators \u00b7 `dart_converter` / `embed_converter` \u2192 export to .app or LVGL/Qt \u00b7 `debug_analyst` \u2192 diagnose).\nTool surface (high level): `studio.project.*` (new/open/save) \u00b7 `studio.builder.*` (44 mutators) \u00b7 `studio.knowledge.query` \u00b7 `studio.chrome.reload_tab` \u00b7 `studio.renderer.screenshot` \u00b7 `newAppProject` \u00b7 `convertToDart` \u00b7 `convertToEmbed`.\nKnowledge sources (consult before authoring): `app_builder_six_layers` (8 docs) \u00b7 `app_builder_wiring` \u00b7 `app_builder_pitfalls` \u00b7 `dart_conversion_patterns` \u00b7 `embed_conversion_patterns` \u00b7 `mcp_ui_dsl_widgets` \u00b7 `mcp_ui_dsl_state_actions` \u00b7 `mcp_ui_dsl_custom_widgets` \u00b7 `bundle_structure` \u00b7 `chat_surface` \u00b7 `ux_patterns` \u00b7 `ops_patterns` \u00b7 `knowledge_design_patterns` \u00b7 `common_pitfalls` \u00b7 `external_llm_app_builder`.\nTrigger from Home: user says 'new app' / 'edit bundle' / 'export to dart' \u2192 host manager invokes `bk.agent.dispatch` with target `app_builder.manager` after ensuring the App Builder tab is open (`studio.chrome.*`)."
+          },
+          {
+            "id": "scene_builder",
+            "title": "scene_builder \u00b7 Scene Builder",
+            "content": "Built-in id: scene_builder\nLabel: Scene Builder\nDefault chat agent: scene_builder.manager.\nPurpose: author tutorial / demo / scenario videos as scripted MCP-tool sequences. The user describes a click-through; the manager records each step with overlay + caption + screen capture and emits an MP4.\nTool surface: `studio.scenario.*` (5 \u2014 list / save / read / run / preview) \u00b7 `studio.recorder.*` (7 \u2014 start / stop / status / caption / mark / encode / recordings.list) \u00b7 `studio.overlay.*` (4 \u2014 push / list / remove / clear) \u00b7 `studio.scene.project.*` (3 \u2014 new / open / info) \u00b7 `studio.ui.*` (tap / drag / hover) \u00b7 `studio.renderer.*` (activate / current_view / layout_snapshot / screenshot).\nKnowledge: `scene_builder_tool_surface` (5 docs).\nTrigger from Home: user says 'record a demo' / 'capture this flow' / 'make a tutorial video' \u2192 host manager opens the Scene Builder tab and dispatches to `scene_builder.manager`."
+          },
+          {
+            "id": "makemind_ops",
+            "title": "makemind_ops \u00b7 Ops",
+            "content": "Built-in id: makemind_ops\nLabel: Ops\nDefault chat agent: ops.admin.\nPurpose: workspace operations \u2014 members / tasks / processes / philosophies / skills / agents / knowledge / bundles. A project-bound surface (per-project root); each project lives at `<workspaceDir>/<project>/` with marker `project.opsproj` + per-workspace `.mbd` directories.\nTool surface: `makemind_ops.*` family \u2014 workspace_create / workspace_list / member_* / task_* / process_* / skill_* / profile_* / philosophy_* / knowledge_* / bundle_* + 9 browser primitives (page_view / web_search / extract / crawl / monitor / submit_form / download / page_audit_role / page_compare_actors). Plus the kernel-standard `bk.*` surface.\nKnowledge: `ops_overview` (5 docs \u2014 overview \u00b7 capabilities \u00b7 workspace_structure \u00b7 tool_surface \u00b7 agents).\nTrigger from Home: user says 'manage workspace' / 'add member' / 'kick off process' \u2192 host manager opens the Ops tab and dispatches to `ops.admin`."
+          }
+        ]
+      },
+      {
+        "id": "studio_host_manual",
+        "name": "Host manager routing manual",
+        "description": "User-intent \u2192 host action playbook. The manager consults this when deciding whether to answer inline, dispatch to a built-in agent, or call a system tool.",
+        "documents": [
+          {
+            "id": "intent_to_route",
+            "title": "Intent \u2192 route",
+            "content": "INSTALL / LIST / ACTIVATE BUNDLES\n  user: 'what bundles do I have' / 'install <path>' / 'open <bundle>'\n  action: call `studio.bundle.list` (list) \u00b7 `studio.bundle.install` (install \u00b7 internal \u2014 see gate) \u00b7 `studio.bundle.activate` (open new tab) directly. Report the result inline.\n\nOPEN A BUILT-IN APP\n  user: 'open App Builder' / 'launch Scene Builder' / 'go to Ops'\n  action: `studio.chrome.open_seed` with the built-in id (`app_builder` / `scene_builder` / `makemind_ops`). Then dispatch to that builtin's manager via `bk.agent.dispatch` if the user's request needs in-domain work.\n\nAUTHORING / EDITING A BUNDLE\n  user: 'create a counter app' / 'add a settings page'\n  action: ensure App Builder tab is open, then `bk.agent.dispatch app_builder.manager` with the user's request as the input. The App Builder manager fans out to ux_designer / ui_implementer / etc.\n\nRECORD A DEMO / TUTORIAL VIDEO\n  user: 'record a demo of \u2026'\n  action: open Scene Builder, dispatch to `scene_builder.manager`.\n\nWORKSPACE OPERATIONS (members / tasks / processes / knowledge)\n  user: 'add a member' / 'create a task' / 'list our skills'\n  action: open Ops, dispatch to `ops.admin`.\n\nINTROSPECTION / DEBUG\n  user: 'what agents do we have' / 'which tools' / 'debug state'\n  action: call `bk.agent.list` \u00b7 `studio.meta.list_tools` \u00b7 `studio.debug.config` \u00b7 `studio.debug.tabs` \u00b7 `studio.debug.servers` directly and report.\n\nKNOWLEDGE QUERIES\n  user: 'how do I \u2026' / 'what does X mean'\n  action: `bk.knowledge.query` first (search the seed corpus), then synthesise. Don't guess when the answer requires schema or naming detail \u2014 surface the source you cited.\n\nAlways prefer calling a tool to inventing an answer; the catalog is rich and `bk.knowledge.query` covers nearly every concept question."
+          },
+          {
+            "id": "safety_rules",
+            "title": "Safety rules",
+            "content": "1. Never invent agent ids / tool names / bundle paths \u2014 call `bk.agent.list` / `studio.meta.list_tools` / `studio.bundle.list` first when uncertain.\n2. `studio.chrome.create_package` \u00b7 `studio.bundle.install` \u00b7 `studio.bundle.activate` \u00b7 `studio.bundle.uninstall` are internal \u2014 the host gates external callers. Surface the gate's reject message verbatim when you hit one.\n3. When dispatching with `bk.agent.dispatch`, pass the user's original intent (or a clear paraphrase) as the `input`; do not over-summarise.\n4. Tool errors surface as `[error] \u2026` in this chat \u2014 relay them to the user with the corrective action (e.g. 'set the API key in Settings \u2192 LLM') instead of pretending the call succeeded.\n5. When `bk.knowledge.query` returns no hits, say so and ask the user to clarify or point at a doc \u2014 don't extrapolate."
+          }
+        ]
+      },
+      {
+        "id": "studio_host_specs",
+        "name": "Spec excerpts (manifest \u00b7 mcp_ui_dsl \u00b7 bundle)",
+        "description": "High-level excerpts of the schemas that govern bundles, UI, and host wiring. Detailed source-of-truth lives in `specs/mcp_bundle/spec/1.0/` and `specs/mcp_ui_dsl/spec/1.3/`.",
+        "documents": [
+          {
+            "id": "mcp_bundle_manifest",
+            "title": "mcp_bundle manifest \u2014 top-level layout",
+            "content": "manifest.json top-level keys (canonical shape, mcp_bundle \u2265 0.3):\n  schemaVersion \u00b7 manifest{id,name,version,author,description,\u2026} \u00b7 requires{builtinAtoms[]} \u00b7\n  knowledge{sources[{id,name,description,documents[{id,title,content}]}]} \u00b7\n  agents{agents[{id,name,role,systemPrompt,model{provider,model},tools[]}]} \u00b7\n  facts{facts[]} \u00b7 skills{skills[]} \u00b7 profiles{profiles[]} \u00b7 philosophies{philosophies[]} \u00b7\n  workflows{workflows[]} \u00b7 pipelines{pipelines[]} \u00b7 runbooks{runbooks[]} \u00b7\n  tools{tools[{name,description,inputSchema,kind:'js',target{entry,fn}}]} \u00b7\n  wiring{lifecycle[{slot,tool}],domainActions[{type,\u2026}],settings[],slashCommands[],titlebar?,statusbar?} \u00b7\n  settings{sections[{label,fields[{key,label,type,\u2026}]}]} \u00b7\n  chat{slashCommands[]} \u00b7\n  ui (mcp_ui_dsl entry path \u2014 usually `ui/app.json`)\n\nBuilt-in seeds keep this shape minimal \u2014 typically `manifest + requires + schemaVersion + agents + knowledge` only. The code mounts UI / tools / wiring / settings / chat directly, so those five categories stay empty (seed-cleanliness rule, DDD apps.md \u00a70.2)."
+          },
+          {
+            "id": "agents_block",
+            "title": "agents block \u2014 manager role + tools",
+            "content": "agents{agents[{id, name, role, systemPrompt, model:{provider,model}, tools:[\u2026]}]}\n\n  \u00b7 id        \u2014 local id within the bundle (`manager`, `ux_designer`, \u2026). The host prefixes with the bundle's exposedShortId at registration (e.g. `app_builder.manager`). The HOST seed (studio.mbd) is the one exception \u2014 its agents register with the raw id (no prefix).\n  \u00b7 role      \u2014 `manager` / `worker` / `reviewer`. The chat panel routes to the `role: manager` entry by default (studio convention).\n  \u00b7 model     \u2014 { provider: 'anthropic'|'openai'|'gemini'|'claude_code', model: <catalog id> }. Settings \u2192 Domain \u2192 Agents writes here.\n  \u00b7 tools     \u2014 allow-list of tool names the agent may call. EMPTY list = wildcard (all system tools available). The host manager uses the wildcard.\n  \u00b7 systemPrompt \u2014 verbatim instruction the LLM receives every turn. Include routing rules + knowledge-source ids the agent should query."
+          },
+          {
+            "id": "tool_call_protocol",
+            "title": "Tool call protocol (chat dispatch)",
+            "content": "When the agent's LLM reply contains `toolCalls`, the host runs a tool-use loop:\n  1. host dispatches each `(name, arguments)` through `ServerBootstrap.callTool` (same path external MCP clients use).\n  2. The result is serialised as text \u2014 `[error] \u2026` when the tool reported `isError: true`, otherwise the joined text content \u2014 and fed back as the next `ask` input.\n  3. Loop continues until the model returns content with no toolCalls, or the iteration cap (8) is hit.\n\nImplication for the manager:\n  \u00b7 Do issue toolCalls when you need data or to dispatch \u2014 don't paraphrase a missing answer.\n  \u00b7 Treat tool results as authoritative; quote them rather than rewording.\n  \u00b7 `bk.agent.dispatch` invokes another agent end-to-end (their own tool-use loop runs inside) and returns the result \u2014 the manager only sees the final text, not the inner turns."
+          }
+        ]
+      },
+      {
+        "id": "studio_platform_layers",
+        "name": "Platform 3-layer structure and tool registration paths",
+        "description": "The 3-layer responsibilities (UI surface / bundle interface / kernel logic), coupling points, and the three tool registration paths. Advisory reference for authoring hosts and bundles. Source: specs/platform/01-layers.md, 02-bundle-interface.md, 06-tool-registry.md, 07-knowledge-access.md.",
+        "documents": [
+          {
+            "id": "three_layers",
+            "title": "3 layers \u2014 responsibilities and coupling points",
+            "content": "UI layer: user surface only (chrome, runtime, widgets, DSL rendering, input, transport). Does not call kernel facades directly \u2014 goes through dispatcher or endpoint. Free to be Flutter, web, embedded, voice, etc.\n\nBundle layer: the manifest contract. Categories: tools.tools[], agents, skills/profiles/philosophies/facts (4 axis), flows/pipelines/runbooks, ui, wiring, settings, chat. The bundle is self-contained \u2014 any host reads the same manifest interface.\n\nKernel layer: headless operations logic. Owns: 8 facades (facts/skills/profiles/philosophies/workflows/pipelines/runbooks/agents), 41 standardTools (bk.<facade>.<verb>), per-agent capability scoping, BundleSessionBridge (scopeId + alias), HostToolRegistry (general tool registry), KernelServerHost/KernelClientHost abstractions, LLM pool.\n\nCoupling: UI mounts manifest.ui and wires manifest.wiring slots. Bundle activation connects each manifest category to the kernel (BundleActivation.activate). Cross-bundle communication is indirect: fact_graph mediated, or explicit bk.<bundleId>.<rest> alias calls.\n\nReference: specs/platform/01-layers.md"
+          },
+          {
+            "id": "tool_registration_paths",
+            "title": "Tool registration \u2014 3 paths and when to use each",
+            "content": "Three registration paths determine how a tool is exposed:\n\n1. addStandardTools(app): host home context. Registers the 41 bk.* standard tools at the endpoint with canonical names (bk.<facade>.<verb>). Intended for the host's own in-process use (master session). Schema is a permissive placeholder \u2014 not for external strict dispatch.\n\n2. BundleSessionBridge.registerTool: knowledge tool domain wrapping. Name MUST start with 'bk.' (enforced by validator \u2014 ArgumentError otherwise). Registers in the bridge's dispatch layer AND automatically publishes bk.<bundleId>.<rest> alias on the external endpoint for each active non-master session. scopeId applied automatically. Use this when a bundle domain needs the standard 41 knowledge tools with isolation.\n\n3. HostToolRegistry.registerExposed: general tools. Covers host-side logic tools and bundle manifest.tools.tools[] entries. Automatically prefixes exposedName as <bundleId>.<rawName>. Registers on both dispatcher and endpoint simultaneously. Two bundles may declare the same raw name without conflict.\n\nSelection rule: host home bk.* in-process \u2192 path 1. Bundle knowledge tool with external alias \u2192 path 2. Domain logic tool or manifest tool \u2192 path 3.\n\nReference: specs/platform/06-tool-registry.md"
+          },
+          {
+            "id": "scope_id_isolation",
+            "title": "scopeId isolation \u2014 bundle namespace in knowledge access",
+            "content": "BundleSessionBridge applies scopeId automatically for non-master sessions. When a bundle script calls bk.fact.write({id: 'alice', ...}), the bridge prepends the bundleId: actual storage key becomes '<bundleId>.alice'. The script never sees the prefix \u2014 it uses bare ids within its own namespace.\n\nExternal callers use the alias bk.<bundleId>.fact.query \u2014 routed through the same bridge session, same scopeId context.\n\nCross-bundle access requires explicit prefix: kb://fact/other_bundle.alice or bk.other_bundle.fact.query. Bridge does not auto-prefix for explicit cross-bundle calls.\n\nmaster session (host home): scopeId is pass-through \u2014 ids stored as-is.\n\nReference: specs/platform/07-knowledge-access.md"
+          }
+        ]
+      },
+      {
+        "id": "studio_composition_patterns",
+        "name": "Framework composition patterns \u2014 5 standard patterns",
+        "description": "The 5 standard host composition patterns. Same framework layers + same manifest spec + different wiring = different products. Advisory for choosing the right pattern when authoring a host or domain. Source: specs/platform/05-composition-patterns.md.",
+        "documents": [
+          {
+            "id": "five_patterns",
+            "title": "5 composition patterns \u2014 overview and selection",
+            "content": "Composition varies across 5 dimensions: bundle source (local .mbd / remote MCP server / both), UI source (host chrome / manifest.ui / remote), tool source (host / manifest / external server / kernel standard), transport (in-process / server / client / both), bundle count (single / multi).\n\nPattern 1 \u2014 server-serve (thin client): server hosts KernelApp + bundle, serves UI resources and tools over MCP. Client is a thin player (renderer + tool-call forwarder). Example: AppPlayer connecting to an external MCP server.\n\nPattern 2 \u2014 client-only (local self-contained): single process, local .mbd, no external server. UI and tools all in-process. serverHostFactory null. Example: AppPlayer Standard default mode.\n\nPattern 3 \u2014 hybrid (local + remote): local bundle active, host runs its own server endpoint AND connects to external MCP servers for additional tools/knowledge. Example: vibe_studio \u2014 local bundles + self endpoint + external LLM MCP.\n\nPattern 4 \u2014 multi-bundle (cross-domain, one host): multiple bundle activations in one host. Each gets its own BundleSessionBridge session and scopeId. Cross-bundle communication via fact_graph mediation, not direct. Example: vibe_studio multi-tab.\n\nPattern 5 \u2014 multi-server (federation): host orchestrator connects to multiple external MCP servers (per department/domain), combines tool catalogs, LLM agent decides cross-server calls. Example: enterprise environment with per-department MCP servers.\n\nA single host may combine multiple patterns simultaneously (e.g., Pattern 3 + Pattern 4). Pattern changes require only host boot wiring changes \u2014 kernel and bundle spec unchanged.\n\nReference: specs/platform/05-composition-patterns.md"
+          },
+          {
+            "id": "pattern_tradeoffs",
+            "title": "Pattern selection \u2014 tradeoffs and cases",
+            "content": "When building a new product instance, choosing a pattern:\n\n\u00b7 Single user, local-only, no network: Pattern 2 (client-only). Simplest boot \u2014 serverHostFactory null, in-process dispatcher.\n\u00b7 App that needs to receive LLM/external tool calls: Pattern 3 (hybrid). Add server endpoint alongside local bundle.\n\u00b7 Multi-domain workspace (several independent domains active): Pattern 4 (multi-bundle). Each domain's bundle activates with its own BundleSessionBridge session; UI tabs map to sessions.\n\u00b7 Thin client that plays content from a remote provider: Pattern 1 (server-serve). Client only needs renderer + MCP client connection.\n\u00b7 Enterprise cross-system orchestration: Pattern 5 (multi-server). Host connects to N servers, agent catalog = union.\n\nSame manifest spec, any pattern \u2014 the bundle author does not need to know which pattern the host uses.\n\nReference: specs/platform/05-composition-patterns.md"
+          }
+        ]
+      },
+      {
+        "id": "studio_bundle_authoring",
+        "name": "Bundle authoring runbook \u2014 three app kinds and authoring flow",
+        "description": "Procedural guide for authoring manifests: the three app kinds, manifest category checklist, and wiring steps. Advisory tone \u2014 cases and procedure, not hard rules. Source: specs/platform/02-bundle-interface.md, 04-ui-host.md.",
+        "documents": [
+          {
+            "id": "three_app_kinds",
+            "title": "Three app kinds \u2014 studio app, server app, bundle app",
+            "content": "Studio app (built-in): registered as a BuiltInApp in host code. UI + tools + wiring all wired in code at boot. Seed manifests (studio.mbd, app_builder.mbd, etc.) declare only agents + knowledge \u2014 code handles the rest. Suitable for host-level capabilities that ship with the binary.\n\nServer app: a host that runs a KernelApp + bundle and exposes it over MCP (Pattern 1 or Pattern 3). The server serves manifest.json at bundle://manifest.json, UI at ui://, tools at tools/list, knowledge at kb://. Clients reconstruct and run the bundle identically to a local install. Suitable for multi-tenant or remotely-distributed bundles.\n\nBundle app (.mbd / .mcpb): a self-contained .mbd directory or packed .mcpb archive installed into a host (studio.bundle.install). The host activates it via BundleActivation. Suitable for user-authored apps, marketplace distribution, domain extensions.\n\nChoosing: if the capability is host-core (ships in binary, always on) \u2192 studio app (built-in). If the app must be distributed to remote clients as a running service \u2192 server app. For everything else \u2014 user apps, marketplace, domain knowledge bundles \u2192 bundle app.\n\nReference: specs/platform/00-overview.md, 04-ui-host.md"
+          },
+          {
+            "id": "manifest_authoring_checklist",
+            "title": "Manifest authoring \u2014 category checklist and procedure",
+            "content": "Manifest categories and their authoring steps:\n\n1. Identity (manifest.id/name/version/description): set first. id must be unique across the host's bundle pool.\n\n2. requires.builtinAtoms[]: list atom ids the UI uses (e.g. 'text@1.3', 'button@1.3'). Host validates compatibility before activation. Leave empty if no mcp_ui_dsl atoms used.\n\n3. tools.tools[]: domain logic tools. Each entry needs name (unique within bundle), description, inputSchema, kind ('js' for in-bundle JS), target.entry (path in tools/) and target.fn. Name must NOT start with 'bk.' \u2014 those are reserved for knowledge tools. Host will expose as <bundleId>.<rawName>.\n\n4. agents[]: one entry per agent. Assign id, name, role (manager/worker/reviewer), model, systemPrompt. Add tools allowlist only when narrowing from role default is needed (see studio_agent_scoping source). The manager agent's systemPrompt should include routing rules and which knowledge sources to query.\n\n5. 4 axis (skills/profiles/philosophies/facts): declare domain knowledge assets. BundleActivation registers them automatically. ids are scoped to the bundle namespace at activation.\n\n6. ui: path to the entry mcp_ui_dsl JSON (e.g. 'ui/app.json'). Omit if the bundle has no UI.\n\n7. wiring: connect chrome slots. lifecycle[] maps standard slot ids (project.new/open/save etc.) to tool names. domainActions[] declares row-2 icon buttons. titlebar/statusbar set text templates. settings[] lists settings entries.\n\n8. settings.sections: declare inline settings fields (type: secret/string/bool/select etc.). Host settings dialog renders these; changes autosave.\n\n9. knowledge.sources: advisory reference documents for LLM agents. Each source has id, name, description, documents[{id, title, content}].\n\nFor seed bundles (built-ins): only categories 4 and 9 are typically needed \u2014 tools/ui/wiring/settings are wired in code.\n\nReference: specs/platform/02-bundle-interface.md"
+          },
+          {
+            "id": "wiring_authoring",
+            "title": "Wiring authoring \u2014 chrome slot connection patterns",
+            "content": "wiring.lifecycle connects standard chrome button slots to bundle tool calls:\n  { \"slot\": \"project.new\", \"tool\": \"myCreateTool\" }\nStandard slots include: project.new, project.open, project.save, project.close, project.export, edit.undo, edit.redo, edit.history, edit.revert. Only declare slots the bundle actually handles.\n\nwiring.domainActions declares row-2 domain icon buttons in chrome. Each entry needs tool (raw name within bundle \u2014 host prefixes <bundleId>. automatically), icon, and tooltip.\n\nwiring.titlebar / wiring.statusbar: text with optional state binding {{key}} templates. Key values come from the bundle's runtime state.\n\nwiring.settings: entries shown in the domain settings panel, separate from settings.sections fields.\n\nchat.slashCommands: slash chips in the chat composer. { command: '/refresh', tool: 'refresh' } \u2014 host auto-prefixes the tool name with bundleId on invocation.\n\nReference: specs/platform/02-bundle-interface.md \u00a76"
+          }
+        ]
+      },
+      {
+        "id": "studio_mcp_serving",
+        "name": "MCP serving \u2014 bundle as MCP server",
+        "description": "How a bundle is served over MCP so a client runs it identically to a local install. Entry point, address map, equivalence guarantee, and partial-server compatibility. Source: specs/mcp_serving/spec/1.0/README.md.",
+        "documents": [
+          {
+            "id": "serving_overview",
+            "title": "MCP serving \u2014 entry point and address map",
+            "content": "A bundle served over MCP uses these canonical addresses:\n\n  bundle://manifest.json \u2014 the bundle document (top-level manifest.json). Reading this yields: manifest metadata, requires, settings, wiring, chat, tool declarations, ui config, and declared knowledge section names. This is the entry point for a fully-described bundle.\n\n  ui://app \u2014 the UI application definition (mcp_ui_dsl). ui://page/{name} for individual pages.\n\n  kb://<facade>/<id> \u2014 knowledge entries (facts, skills, profiles, etc.).\n\n  tools/list + tools/call \u2014 executable tools.\n\n  bundle://<path> \u2014 assets (icons, fonts, images).\n\nThe client reads bundle://manifest.json first, then fetches each declared payload at its own address. The result is reconstructed into an in-memory Bundle and run through the same activation path a locally-installed bundle uses.\n\nReference: specs/mcp_serving/spec/1.0/README.md"
+          },
+          {
+            "id": "serving_equivalence_partial",
+            "title": "Equivalence guarantee and partial server compatibility",
+            "content": "Equivalence: a served bundle MUST behave identically to running the same bundle locally (local path: install \u2192 kernel boot \u2192 knowledge + standard tools registered \u2192 settings store \u2192 UI built). Serving changes the source, not the execution.\n\nPartial server: any subset of the above addresses MAY be served. A client MUST ignore unknown parts without error. A server that predates mcp_serving 1.0 (a pure ui://app mcp_ui_dsl server, a tools-only server) is a valid partial bundle and runs unchanged \u2014 the client falls back to baseline mcp_ui_dsl init flow.\n\nSource-agnostic: the server MAY serve from a .mbd on disk or generate content in code. The client depends only on the addresses, never on the server's source.\n\nWhen authoring a server app: expose bundle://manifest.json if clients need full bundle metadata (settings, wiring, agents). Omit it if clients only need UI + tools (existing ui://app flow is sufficient).\n\nReference: specs/mcp_serving/spec/1.0/README.md"
+          }
+        ]
+      },
+      {
+        "id": "studio_agent_scoping",
+        "name": "Per-agent capability scoping",
+        "description": "How agent tool and knowledge access is scoped by role and manifest allowlist. The core value of having a kernel. Advisory for manifest authoring and agent design. Source: specs/platform/10-agent-scoping.md.",
+        "documents": [
+          {
+            "id": "scoping_rationale",
+            "title": "Why scoping matters \u2014 kernel value",
+            "content": "Without per-agent scoping, every agent sees the full tool catalog and full knowledge asset set \u2014 equivalent to one monolithic LLM handling everything. The value of multi-agent only materializes when each agent receives only the subset it needs.\n\nScoping provides: specialization (researcher gets knowledge tools only / coder gets edit tools only / manager gets delegation tools only), token efficiency (each call builds prompt from own assets only, not full catalog), LLM accuracy (5 tools vs 100 tools \u2014 correct selection rate goes up), context isolation (one agent's assets don't noise another agent's decisions), security (worker can't call host.* tools), multi-agent orchestration (manager forced to delegate because it only has delegation tools).\n\nReference: specs/platform/10-agent-scoping.md"
+          },
+          {
+            "id": "role_defaults",
+            "title": "Role defaults \u2014 manager, worker, reviewer",
+            "content": "Three roles with framework-default tool subsets:\n\nmanager: bk.agent.* delegation tools + bk.*.query/get/list read tools + workflow/pipeline/runbook status. Mutation tools excluded. Host-specific namespaces (studio.*, app.*, arbitrary) also excluded from default \u2014 kernel does not hard-code any host's prefix. To give the manager host tools, add them to manifest agents[i].tools allowlist explicitly.\n\nworker: own bundle's non-master session subset. bk.<bundleId>.* alias tools + <bundleId>.* domain tools. Non-master session means scopeId isolation automatically applied.\n\nreviewer: master session read subset (knowledge read + bk.agent.history). No delegation tools.\n\nmanager uses master session; worker and reviewer use non-master (bundle-scoped).\n\nFor a specialist agent narrower than worker default: declare tools allowlist explicitly in the manifest. No new role enum needed.\n\nReference: specs/platform/10-agent-scoping.md"
+          },
+          {
+            "id": "manifest_allowlist_and_4axis",
+            "title": "Manifest allowlist and 4-axis domain scope",
+            "content": "Manifest agents[i].tools allowlist: glob patterns that override the role default. Examples:\n  [\"bk.fact.*\", \"bk.skill.execute\", \"<bundleId>.editor.open\"]\n  [\"bk.agent.list\", \"bk.agent.dispatch\", \"studio.*\"]\n\nEmpty / omitted tools: role default applies (not wildcard-all). Explicit empty list is not the same as omitted \u2014 check host implementation.\n\n4 axis (skills / profiles / philosophies / facts) and knowledge resources (kb://) are also scoped by BundleActivation scopeId and session type. This is separate from the tools allowlist: 4-axis controls what knowledge assets an agent's LLM prompt is composed from, while the tools allowlist controls which executable tools the agent may call. A domain worker automatically receives only its own bundle's 4-axis assets in prompt synthesis \u2014 no allowlist needed for this dimension.\n\nAnti-patterns to avoid: giving manager the full catalog (monolithic LLM), giving all agents master session (defeats isolation), creating fallback catalogs when tools not declared (throw instead, so misconfiguration is visible).\n\nReference: specs/platform/10-agent-scoping.md"
+          }
+        ]
+      },
+      {
+        "id": "studio_bundle_spec",
+        "name": "Bundle manifest schema — authoring reference",
+        "description": "Key shapes, sections, ToolKind, folder layout, and authoring cases for mcp_bundle 1.0. Advisory reference — not a schema dump. Source: specs/mcp_bundle/spec/1.0/.",
+        "documents": [
+          {
+            "id": "top_level_keys",
+            "title": "Top-level keys — what lives where",
+            "content": "Every manifest.json is an McpBundle. Required: schemaVersion (always \"1.0.0\") + manifest.id/name/version. Everything else is optional.\n\nTop-level section keys and what they hold:\n  schemaVersion — \"1.0.0\" fixed for this spec version.\n  manifest — identity + wiring + chrome slots (id, name, version, description, provider, wiring, chat, type, entryPoint, tags, dependencies).\n  requires — portability contract: builtinAtoms[] + builtinTools[]. Strict gates — host refuses activation when unmet. Atoms: mcp, fs, ui, workspace, kb, agent, bus, bundle.\n  tools — tools.tools[] each entry: {name, kind, target, description, inputSchema, outputSchema, agentScope}. name must be unique within section and non-empty.\n  agents — agents.agents[]: {id, name, role, systemPrompt, model{provider,model}, tools[], profileIds, skillIds, philosophyIds, factSourceIds, behavior}.\n  knowledge — knowledge.sources[]: {id, name, description, documents[{id,title,content}]} + retriever + index config.\n  facts / workflows / pipelines / runbooks — 4 knowledge axis + flow types.\n  skills — skill modules with procedure graphs + rubrics.\n  profiles — system-prompt building blocks (ProfileDefinition.sections[]).\n  philosophy — guiding principles + examples/counter-examples.\n  ui — deprecated inline field; canonical UI lives in ui/ folder as ui/app.json.\n  wiring — chrome slot bindings (inside manifest.wiring, not top-level).\n  extensions — free-form host-specific data; round-trips verbatim.\n\nSeed bundles (built-ins) typically carry only manifest + requires + schemaVersion + agents + knowledge — tools/ui/wiring/settings are registered in host code.\n\nReference: specs/mcp_bundle/spec/1.0/01_Bundle_Schema.md, 02_Manifest.md"
+          },
+          {
+            "id": "section_folder_layout",
+            "title": "Section + folder layout — inline vs on-disk",
+            "content": "Most content sections can live EITHER inline in manifest.json OR as files in the matching reserved folder. Folder content takes precedence on id conflict.\n\nSection → reserved folder mapping:\n  ui            → ui/         (canonical; inline ui field is deprecated)\n  assets        → assets/\n  skills        → skills/\n  knowledge     → knowledge/\n  facts         → facts/\n  workflows     → workflows/\n  pipelines     → pipelines/\n  runbooks      → runbooks/\n  tools         → tools/       (also holds JS source files for kind:js tools)\n  profiles      → profiles/\n  philosophy    → philosophy/\n  agents        → agents/\n\nInline-only sections (no reserved folder in v1.0): requires, bindings, tests, policies, factGraphSchema, factGraphSection, compatibility, integrity, extensions.\n\nA minimal .mbd directory:\n  mybundle.mbd/\n    manifest.json       ← only required file\n    ui/app.json         ← mcp_ui_dsl 1.3 ApplicationDefinition\n    tools/export.js     ← JS tool implementation\n\n8 knowledge category folders: facts / skills / profiles / philosophy / workflows / pipelines / runbooks / knowledge (RAG sources). The +1 is sources/ (assets/fonts/images).\n\nReference: specs/mcp_bundle/spec/1.0/01_Bundle_Schema.md §1.5, 07_Resources.md"
+          },
+          {
+            "id": "tool_kind_enum",
+            "title": "ToolKind enum — dispatch discriminator",
+            "content": "tools.tools[].kind controls how the host dispatches the tool.\n\n  host   — host builtin (target: {}). The host already knows the dispatch path. Domain bundles rarely declare these — the host registers them itself. Use when documenting a wiring slot reference or for agentScope narrowing.\n  js     — bundled JavaScript in flutter_js (target: {entry: \"tools/foo.js\", fn: \"exportAll\"}). Most domain tools use this. Each bundle gets an isolated JS context. The global `host.<atom>.<verb>(args)` bridge provides access to mcp.callTool, fs, ui, kb, agent, workspace, bundle, bus.\n  mcp    — external MCP server (target: {transport: \"http\"|\"stdio\", url?, command?, args?}). For outbound connections to remote services.\n  cloud  — HTTPS endpoint (target: {url: \"https://...\"}). Thin wrapper over a POST call.\n  unknown — forward-compat round-trip slot; validator rejects this as input.\n\nNaming: tool name MUST be non-empty and unique within the section. Conventionally namespaced as <bundle>.<verb>. Names starting with 'bk.' are reserved for knowledge bridge tools — domain tools must not use that prefix.\n\nThe host exposes tools as <bundleId>.<rawName> on the MCP endpoint (via HostToolRegistry.registerExposed). JS tools access all MCP tools (own + host + other bundles) through host.mcp.callTool(name, args).\n\nReference: specs/mcp_bundle/spec/1.0/04_Tools.md"
+          },
+          {
+            "id": "authoring_cases",
+            "title": "Authoring cases — when to use which field",
+            "content": "Common authoring decisions and which fields they map to:\n\nNew UI-bearing app: set manifest.id/name/version + create ui/app.json (mcp_ui_dsl ApplicationDefinition). Add requires.builtinAtoms: [\"mcp\", \"ui\"] at minimum. Wiring slots (project.save etc.) go in manifest.wiring.lifecycle.\n\nDomain logic tools: add tools.tools[] entries with kind:js. JS file goes in tools/<name>.js. Declare the atoms the JS needs in requires.builtinAtoms. Use host.mcp.callTool for calling back into host or other bundles.\n\nLLM agents: add agents.agents[] with id, role (manager/worker/reviewer), model, systemPrompt, tools allowlist. The manager's tools array should include delegation tools (bk.agent.*) + any domain tools the manager coordinates. Workers get their own domain tool subset.\n\nKnowledge / advisory docs for LLM agents: add knowledge.sources[] with id, name, documents[]. Each document: id, title, content (plain text or markdown). Advisory tone — not hardcoded rules.\n\nChrome slot wiring: manifest.wiring.lifecycle maps standard slot ids (project.new / project.open / project.save / project.close / project.export / edit.undo / edit.redo) to tool names declared in tools[]. manifest.wiring.domainActions declares row-2 icon buttons: {tool, icon, tooltip}.\n\nSettings schema: manifest.settings.sections[].fields[]. Types include secret / string / bool / select. Host renders and autosaves. Also appears in manifest.wiring.settings for domain settings panel entries.\n\nSeed bundle (built-in): agents + knowledge only in manifest.json. Tools/UI/wiring registered in host Dart code. Keeps manifest minimal.\n\nFor additive patches: add new sections/entries without changing schemaVersion — the spec treats sections as independent and additive patches are safe.\n\nReference: specs/mcp_bundle/spec/1.0/02_Manifest.md, 03_Sections.md, 04_Tools.md, 06_Wiring.md"
+          }
+        ]
+      },
+      {
+        "id": "studio_ui_dsl",
+        "name": "mcp_ui_dsl 1.3 — authoring reference",
+        "description": "Widget catalog overview, canonical shapes, common mistakes, and layout basics for mcp_ui_dsl 1.3. Property ground truth is widgets/<cat>/<name>.yaml — prose md may lag. Source: specs/mcp_ui_dsl/spec/1.3/.",
+        "documents": [
+          {
+            "id": "definition_tree",
+            "title": "Definition tree — Application / Page / Widget",
+            "content": "Every mcp_ui_dsl program is one of three shapes:\n\n  ApplicationDefinition (type: \"application\") — top-level container. Required fields: type, routes (map of path → PageDefinition or \"ui://\" URI). App-scope state: state.initial.* (accessible as {{app.*}}). Navigation chrome: navigation.type (drawer/bottomBar/rail/tabs) + navigation.items.\n\n  PageDefinition (type: \"page\") — full-screen view. Required: type, content (root widget). Page-scope state: state.initial.* (accessible as {{page.*}} or bare identifier). Legacy alias: \"screen\" is accepted but emitters must use \"page\".\n\n  WidgetDefinition — any widget node. Required: type (the widget's canonical type name). Children via child (single) or children (array).\n\nCommon shapes:\n  state.initial block: {\"initial\": {\"count\": 0, \"items\": []}}\n  Binding: {{count}} / {{page.count}} / {{app.user.name}} / {{count > 0 ? \"yes\" : \"no\"}}\n  Frequently wrong: writing state: {\"count\": 0} instead of state: {\"initial\": {\"count\": 0}}.\n\nEntry file: ui/app.json inside the .mbd directory. The manifest.json does not inline UI — it lives in the folder.\n\nReference: specs/mcp_ui_dsl/spec/1.3/01_Core_Concepts.md"
+          },
+          {
+            "id": "widget_catalog",
+            "title": "Widget catalog — categories and representative widgets",
+            "content": "Widget categories in the Core Profile (property ground truth = widgets/<cat>/<name>.yaml):\n\n  layout: box, linear, stack, center, align, padding, margin, expanded, flexible, spacer, wrap, positioned, safeArea, sizedBox, aspectRatio, conditional, visibility, indexedStack.\n  display: text, richText, image, icon, card, divider, verticalDivider, badge, chip, avatar, tooltip, placeholder, progressBar, banner, decoration.\n  input: button, iconButton, textInput, toggle, select, checkbox, checkboxGroup, radio, radioGroup, slider, rangeSlider, numberField, form, rating, dateField, timeField, datePicker, timePicker, dateRangePicker, colorPicker, segmentedControl, stepper, numberStepper.\n  list: list, grid, listItem.\n  navigation: headerBar, bottomNavigation, tabBar, tabBarView, drawer, navigationRail, floatingActionButton, popupMenuButton.\n  scroll: scrollView, singleChildScrollView, scrollBar, pageView.\n  interaction: gestureDetector, inkWell, draggable, dragTarget.\n  dialog: alertDialog, simpleDialog, customDialog, snackBar, bottomSheet.\n  animation: animatedContainer, opacity (v1.3), transform (v1.3), lottieAnimation.\n  utility: lazy, fittedBox, clipOval, clipRRect.\n  template: use, template (see 09_Templates.md).\n\nAdvanced widgets (chart, canvas, codeEditor, terminal, etc.) are defined in 10_Advanced_Widgets.md — they require the Advanced Profile.\n\nCommon properties every widget accepts: type, child, children, visible, tooltip, click (universal tap wrapper), accessibility, key.\n\nReference: specs/mcp_ui_dsl/spec/1.3/02_Widgets.md, widgets/<cat>/<name>.yaml"
+          },
+          {
+            "id": "canonical_shapes",
+            "title": "Canonical shapes — frequently wrong patterns",
+            "content": "These are the shapes that LLM generators most often get wrong. Canonical form is the only valid form for emitters.\n\n1. text widget content field\n   Canonical field: text (NOT content, NOT label, NOT value).\n   content is a legacy alias — accepted on input but must not be emitted.\n   {\"type\": \"text\", \"text\": \"Hello {{user.name}}\"}\n\n2. text.variant — 15 M3 typography roles (camelCase)\n   displayLarge / displayMedium / displaySmall /\n   headlineLarge / headlineMedium / headlineSmall /\n   titleLarge / titleMedium / titleSmall /\n   bodyLarge / bodyMedium / bodySmall /\n   labelLarge / labelMedium / labelSmall\n   Wrong: \"display-large\" / \"Display Large\" / \"headline\" (no size suffix).\n   variant resolves through theme.typography.<variant>. style layered on top.\n\n3. button label field\n   Canonical field: label (NOT text). text is a legacy alias.\n   {\"type\": \"button\", \"label\": \"Submit\", \"onTap\": {\"type\": \"tool\", \"tool\": \"save\"}}\n\n4. state action shape\n   Canonical: {\"type\": \"state\", \"action\": \"set\", \"binding\": \"count\", \"value\": 1}\n   Sub-actions: set / increment / decrement / toggle / append / pop / remove / removeAt.\n   Wrong: {\"type\": \"setState\"} / {\"type\": \"state\", \"key\": \"count\"} / omitting \"action\" field.\n\n5. state.initial structure\n   Page/app state must be wrapped: state: {\"initial\": {\"count\": 0}}\n   Wrong: state: {\"count\": 0} — flattened initial values do not work.\n\n6. FormFactor (responsive) — 5+1 classes\n   compact (<600dp) / medium (600–839) / expanded (840–1199) / large (1200–1599) / extraLarge (≥1600) / embedded (host-pinned).\n   Used in responsive property values and mediaQuery widget. Class names are camelCase.\n\nReference: specs/mcp_ui_dsl/spec/1.3/widgets/display/text.yaml, widgets/input/button.yaml, 04_Actions.md §4.2, 01_Core_Concepts.md §1.3, 14_Responsive_Events.md §14.1"
+          },
+          {
+            "id": "layout_and_actions",
+            "title": "Layout basics and action types",
+            "content": "Layout basics:\n  linear — flex-direction column/row. children stack along the axis. Use expanded/flexible children for proportional sizing.\n  box — CSS box model: width, height, padding, margin, decoration (color, borderRadius, border, boxShadow). child = single child.\n  stack — overlay children. Use positioned children for absolute placement within the stack.\n  padding / margin — shorthand wrappers. Accept string M3 token (\"sm\", \"md\", \"lg\", etc.) or EdgeInsets object {all}, {horizontal,vertical}, {top,right,bottom,left}.\n\nAction types (type field):\n  tool — call an MCP tool. {\"type\": \"tool\", \"tool\": \"save\", \"params\": {\"id\": \"{{item.id}}\"}}\n  state — mutate state. {\"type\": \"state\", \"action\": \"set\", \"binding\": \"filter\", \"value\": \"active\"}\n  navigation — route change. {\"type\": \"navigation\", \"action\": \"push\", \"route\": \"/detail\"}\n  batch — run multiple actions. {\"type\": \"batch\", \"actions\": [...]}\n  notification — show snackbar/toast. {\"type\": \"notification\", \"message\": \"Saved\", \"severity\": \"success\"}\n  openApp / exitApp (v1.3) — dashboard-to-full-app transition / close signal.\n\nTool action auto-merge: on success, top-level keys of the tool's JSON response are merged into page state automatically. Suppress with bindResult field.\n\nLifecycle hooks: onInit (app) / onReady (page) / onDestroy run actions at the corresponding lifecycle point.\n\nReference: specs/mcp_ui_dsl/spec/1.3/04_Actions.md, 02_Widgets.md §2.4"
+          }
+        ]
+      }
+    ]
+  }
+}

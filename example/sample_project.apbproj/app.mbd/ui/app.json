@@ -1,0 +1,46 @@
+{
+  "type": "page",
+  "title": "Sample App",
+  "state": {
+    "counter": 0
+  },
+  "content": {
+    "type": "Column",
+    "padding": 24,
+    "mainAxisAlignment": "center",
+    "crossAxisAlignment": "center",
+    "children": [
+      {
+        "type": "Text",
+        "value": "Sample App",
+        "style": { "fontSize": 24, "fontWeight": "bold" }
+      },
+      { "type": "Text", "value": "Counter: {{counter}}" },
+      {
+        "type": "Row",
+        "mainAxisAlignment": "center",
+        "children": [
+          {
+            "type": "Button",
+            "label": "−",
+            "onTap": {
+              "action": "state",
+              "binding": "counter",
+              "value": "{{counter - 1}}"
+            }
+          },
+          { "type": "SizedBox", "width": 8 },
+          {
+            "type": "Button",
+            "label": "+",
+            "onTap": {
+              "action": "state",
+              "binding": "counter",
+              "value": "{{counter + 1}}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

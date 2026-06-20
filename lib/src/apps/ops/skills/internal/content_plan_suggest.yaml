@@ -1,0 +1,30 @@
+id: content_plan_suggest
+version: 1
+description: Suggest the next content topics based on past publishing patterns.
+inputSchema:
+  type: object
+  properties:
+    month:             { type: string }
+    excludePublished:  { type: boolean, default: true }
+  required: [ month ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: fact.query
+      id: published
+      output: published
+      inputs:
+        tags: [ published_post ]
+        limit: 50
+    - kind: llm
+      id: suggest
+      output: suggest
+      prompt: |
+        Month: {{ in.month }}
+        Recent publication history: {{ step.published.facts }}
+        Suggest 5 topics/categories not yet covered.
+        - Topic
+        - Category (Horizon|Build|Field|Signal)
+        - One-line rationale
+      maxTokens: 1500
+tags: [ content, readOnly, plan ]

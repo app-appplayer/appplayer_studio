@@ -1,0 +1,35 @@
+id: ad_review
+version: 1
+description: Review ads submitted to the admin UI ad queue.
+inputSchema:
+  type: object
+  properties:
+    adId: { type: string }
+  required: [ adId ]
+actionBody:
+  kind: composite
+  steps:
+    - kind: browser
+      id: open
+      output: open
+      operation: page_view
+      inputs:
+        url: "https://makemind.dev/admin/ads/{{ in.adId }}/review"
+        actor: ads_ops
+        capture: [ text, screenshot ]
+    - kind: llm
+      id: judge
+      output: judge
+      prompt: |
+        Output the ad review result as JSON:
+        {
+          "approve": true|false,
+          "reasons": [...]
+        }
+        Page text: {{ step.open.text }}
+      maxTokens: 1000
+    - kind: fact.save
+      category: ad_reviewed
+      inputs:
+        content: "adId={{ in.adId }} judge={{ step.judge.text }}"
+tags: [ ads, readOnly ]

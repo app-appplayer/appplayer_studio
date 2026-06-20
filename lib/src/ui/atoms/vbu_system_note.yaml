@@ -1,0 +1,16 @@
+type: VbuSystemNote
+category: atom
+source: custom
+description: |
+  Vbu atom — SystemNote. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  text:
+    type: "string"
+    description: "(auto) resolve"
+  error:
+    type: "boolean"
+    description: "(auto) resolve"
+  onDelete:
+    type: "Action"
+    description: "(auto) callback"
+examples: []

@@ -1,0 +1,25 @@
+type: VbuComposer
+category: chat
+source: custom
+description: |
+  Vbu atom — Composer. Schema auto-extracted from factory; refine description and examples in follow-up.
+properties:
+  value:
+    type: "unknown"
+    description: "(auto) raw"
+  onSubmit:
+    type: "unknown"
+    description: "(auto) raw"
+  hint:
+    type: "unknown"
+    description: "(auto) raw"
+  busy:
+    type: "unknown"
+    description: "(auto) raw"
+  minLines:
+    type: "unknown"
+    description: "(auto) raw"
+  maxLines:
+    type: "unknown"
+    description: "(auto) raw"
+examples: []

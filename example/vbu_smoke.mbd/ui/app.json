@@ -1,0 +1,63 @@
+{
+  "type": "page",
+  "title": "Vbu Smoke",
+  "state": {
+    "initial": {
+      "fieldValue": "",
+      "toggleValue": true
+    }
+  },
+  "content": {
+    "type": "box",
+    "padding": 16,
+    "child": {
+      "type": "linear",
+      "direction": "vertical",
+      "gap": 12,
+      "children": [
+        { "type": "VbuPaneHeader", "label": "VBU SMOKE — runtime registration" },
+        {
+          "type": "linear",
+          "direction": "horizontal",
+          "gap": 8,
+          "children": [
+            { "type": "VbuPill", "label": "pill A" },
+            { "type": "VbuPill", "label": "pill B", "background": "#1F2A3A", "foreground": "#7DD3FC" },
+            { "type": "VbuPill", "label": "pill C", "background": "#22C55E", "foreground": "#0B1220" }
+          ]
+        },
+        { "type": "VbuSystemNote", "text": "If you can read this in the Vbu styling, VbuSystemNote is wired." },
+        { "type": "VbuSystemNote", "text": "Error-styled note", "error": true },
+        {
+          "type": "VbuFormSection",
+          "label": "FORM SECTION",
+          "children": [
+            {
+              "type": "VbuLabelledField",
+              "label": "Name",
+              "hint": "type something",
+              "value": "{{fieldValue}}"
+            },
+            {
+              "type": "VbuLabelledToggle",
+              "label": "Enable",
+              "value": "{{toggleValue}}",
+              "hint": "demo toggle"
+            }
+          ]
+        },
+        { "type": "VbuBusyIndicator", "label": "busy demo" },
+        {
+          "type": "VbuStatusbar",
+          "height": 22,
+          "left": [
+            { "type": "text", "value": "vbu smoke" }
+          ],
+          "right": [
+            { "type": "text", "value": "ok" }
+          ]
+        }
+      ]
+    }
+  }
+}

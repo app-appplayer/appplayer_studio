@@ -1,0 +1,19 @@
+id: knowledge_save
+version: 1
+description: Save a natural-language description, short policy, or attribute as a Fact.
+inputSchema:
+  type: object
+  properties:
+    category:    { type: string }
+    key:         { type: string }
+    value:       {}
+    relatedIds:  { type: array, items: { type: string } }
+  required: [ category, key, value ]
+actionBody:
+  kind: fact.save
+  data:
+    category: "{{ in.category }}"
+    key: "{{ in.key }}"
+  inputs:
+    content: "{{ in.value }}"
+tags: [ knowledge, write ]

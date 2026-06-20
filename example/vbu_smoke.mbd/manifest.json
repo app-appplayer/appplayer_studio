@@ -1,0 +1,15 @@
+{
+  "manifest": {
+    "id": "com.makemind.examples.vbu_smoke",
+    "name": "Vbu Smoke",
+    "version": "0.1.0",
+    "description": "Smoke test for vibe_studio runtime's vbu_* custom widgets. Renders VbuPaneHeader, VbuPill, VbuSystemNote, VbuFormSection, VbuLabelledField, VbuLabelledToggle, VbuBusyIndicator and VbuStatusbar in a single page so a one-glance look at the activated tab confirms the runtime registration is live."
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  }
+}
