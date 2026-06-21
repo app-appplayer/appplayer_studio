@@ -705,6 +705,23 @@ class VibeStudioHostApp extends StudioApp {
         return reply.content;
       },
     );
+    // `io.*` — sandboxed OS process / shell execution (mcp_io + the
+    // mcp_io_process ProcessAdapter). One host-owned runtime shared like
+    // browser/form, so built-ins drive processes through it instead of each
+    // owning their own. Deny-by-default: dev-workflow exes only, no shell,
+    // manager/operator roles (worker auto-denied; spawn stays plan→commit).
+    // `allowedRoots` = boot config root; dynamic per-workspace roots are a
+    // follow-up (ProcessSandboxConfig is fixed at adapter construction).
+    final ioConfigRoot = _backboneCached?.configRoot;
+    registerIoCapability(
+      registry: hostTools,
+      executableAllowlist: const <String>['git', 'dart', 'flutter', 'pub'],
+      allowedRoots:
+          (ioConfigRoot == null || ioConfigRoot.isEmpty)
+              ? const <String>[]
+              : <String>[ioConfigRoot],
+      roles: const <String>['manager', 'operator'],
+    );
 
     // Chrome + renderer surface — 13 chrome.* + 3 renderer.* tools.
     // Bodies live in vibe_studio_base so every studio host gets the

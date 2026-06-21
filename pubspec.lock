@@ -501,6 +501,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.6.0"
+  http2:
+    dependency: transitive
+    description:
+      name: http2
+      sha256: "382d3aefc5bd6dc68c6b892d7664f29b5beb3251611ae946a98d35158a82bbfa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.1"
   http_parser:
     dependency: transitive
     description:
@@ -725,6 +733,54 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.1"
+  mcp_io:
+    dependency: "direct main"
+    description:
+      name: mcp_io
+      sha256: fa4df34ee051505d5d9265885cea454c650bd087523225154e37adbcbdc4084c
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
+  mcp_io_http:
+    dependency: "direct main"
+    description:
+      name: mcp_io_http
+      sha256: "2379af32bfde534c0ef07aa677ced72b078d9a800bf4096f8b364766efc87dd6"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
+  mcp_io_modbus:
+    dependency: "direct main"
+    description:
+      name: mcp_io_modbus
+      sha256: "29675b82387fdd442651a8678315af4cef54c139871cae40c3314c324d253cae"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
+  mcp_io_mqtt:
+    dependency: "direct main"
+    description:
+      name: mcp_io_mqtt
+      sha256: "48ba7c6c7a97caedb61fe4a8fb74b169451b1cee7742d0065a46f241efb6f70b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
+  mcp_io_process:
+    dependency: "direct main"
+    description:
+      name: mcp_io_process
+      sha256: "04dae82463b5d9a66aa516fc12a169d38a3b873c26f2f38e9f62b69b393bd359"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
+  mcp_io_scpi:
+    dependency: "direct main"
+    description:
+      name: mcp_io_scpi
+      sha256: "6f888358105d0ef08ae8d6bf9786fc34139055e7f90b5f69b20c8aafa11cccda"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   mcp_knowledge:
     dependency: "direct main"
     description:

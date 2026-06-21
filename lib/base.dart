@@ -67,6 +67,7 @@ export 'src/base/install/builtin_app.dart';
 export 'src/base/install/browser_capability.dart';
 export 'src/base/install/capability_tools.dart';
 export 'src/base/install/channel_capability.dart';
+export 'src/base/install/io_capability.dart';
 export 'src/base/install/llm_capability.dart';
 export 'src/base/install/bundle_install_tools.dart';
 export 'src/base/install/bundle_resource_tools.dart';
