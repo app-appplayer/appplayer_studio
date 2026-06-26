@@ -182,6 +182,26 @@ class KnowledgeRegistry {
     return [...fromGraph, ...fromKv].take(limit).toList();
   }
 
+  /// FactGraph facts owned by [wsId], optionally narrowed to one [category]
+  /// (`null` / `'*'` = every category). Unlike [query] this reads ONLY the
+  /// graph half scoped to [wsId] (no active-workspace KV merge), so it is
+  /// safe for cross-workspace reads — the formal share overlay
+  /// (`knowledge_fact_query`) uses it to surface another workspace's granted
+  /// scope without leaking the active workspace's own KV facts.
+  Future<List<bundle.FactRecord>> graphFactsForWorkspace(
+    String wsId, {
+    String? category,
+    int limit = 50,
+  }) async {
+    final facts = await knowledgeSystem.facts.queryFacts(
+      bundle.FactQuery(workspaceId: wsId, limit: limit),
+    );
+    if (category == null || category == '*') return facts;
+    return facts
+        .where((f) => f.content['category'] == category)
+        .toList(growable: false);
+  }
+
   /// List KV-stored facts (category/key/value from `saveFact`), optionally
   /// filtered by a case-insensitive substring in category / key / value.
   /// Used by the UI as a fallback when the fact-graph index is empty —

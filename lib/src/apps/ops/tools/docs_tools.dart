@@ -11,6 +11,9 @@ import 'package:appplayer_studio/builtin_api.dart'
         KernelTextContent;
 
 import '../init/knowledge_init.dart';
+import '../ops_builtin.dart' show OpsBuiltInApp;
+import '../registries/member_registry.dart' show Member;
+import '../registries/task_registry.dart' show Task;
 
 /// Exposes makemind-ops usage docs as MCP **Resources** and **Prompts** so any
 /// LLM connecting over MCP (internal or external) can discover:
@@ -23,9 +26,14 @@ import '../init/knowledge_init.dart';
 /// Any LLM should call the `getting_started` prompt first (or read
 /// `makemind-ops://guide`) before driving the app.
 class DocsTools {
-  DocsTools({required this.init});
+  DocsTools({required KnowledgeInit init}) : _bootInit = init;
 
-  final KnowledgeInit init;
+  // Mirror SystemTools: resolve through the live (re-bound) init after a
+  // project-open re-boot, falling back to the boot-time init. Without this the
+  // `makemind-ops://state` resource captured the stale unbound init (showing
+  // finw1 / internalLlm:false) while the real ops was already bound.
+  final KnowledgeInit _bootInit;
+  KnowledgeInit get init => OpsBuiltInApp.liveInit ?? _bootInit;
 
   /// Register Ops docs resources + prompts on the host endpoint via the
   /// [BuiltinToolRegistry] facade. After the introduction of `addPrompt` in
@@ -117,13 +125,19 @@ class DocsTools {
       handler: (uri, params) async {
         final wsId = init.registries.workspace.activeId;
         final wsList = await init.registries.workspace.list();
-        final members =
+        // Keep these statically typed (not `List<dynamic>`): `.name` on the
+        // `MemberKind` / `TaskKind` / `TaskState` enums is the `EnumName`
+        // extension getter, which resolves statically. A `List<dynamic>`
+        // fallback turns `m.kind.name` into a dynamic dispatch that throws
+        // `NoSuchMethodError: ... has no instance getter 'name'` once a
+        // workspace actually has members/tasks.
+        final List<Member> members =
             wsId == null
-                ? const <dynamic>[]
+                ? const <Member>[]
                 : await init.registries.member.listForWorkspace(wsId);
-        final tasks =
+        final List<Task> tasks =
             wsId == null
-                ? const <dynamic>[]
+                ? const <Task>[]
                 : await init.registries.task.list(wsId: wsId);
         final processes =
             wsId == null

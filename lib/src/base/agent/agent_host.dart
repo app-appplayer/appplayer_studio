@@ -20,11 +20,20 @@ class AgentHost {
     required this.fetchAllToolDefinitions,
     required List<VibeAgentProfile> profiles,
     String Function(String)? resolveId,
+    this.defaultAgentModel,
   }) : profiles = List<VibeAgentProfile>.from(profiles),
        resolveId = resolveId ?? _identity;
 
   final fb.KernelApp flowbrain;
   final String workspaceId;
+
+  /// Inherited default model (configured `settings.llmModel` resolved to a
+  /// catalog provider, else the first wired model — see
+  /// [StudioBackbone.defaultAgentModel]). Used when synthesising agents
+  /// that have no declared model (e.g. a bundle's fallback `<id>.manager`)
+  /// so they inherit the configured model instead of a hardcoded one.
+  /// Null only when no provider is wired at all.
+  final fb.ModelSpec? defaultAgentModel;
 
   /// Pulls the full tool catalog (every tool the host's dispatcher
   /// knows). Filtered by each profile's `toolNames` to project the

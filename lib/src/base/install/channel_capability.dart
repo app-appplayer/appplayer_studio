@@ -271,6 +271,9 @@ List<String> registerChannelCapability({
   exposed.add(
     registry.registerExposed(
       bundleId: channelCapabilityId,
+      // §6 destructive — sending a message to an external platform is an
+      // irreversible outward action; gated through the host confirm callback.
+      destructive: true,
       rawName: 'send',
       description:
           'Send a text message to a conversation on a channel (the in-app feed '

@@ -69,7 +69,8 @@ List<String> registerIoCapability({
     ),
   );
   Future<void>? ready;
-  Future<void> ensureReady() => ready ??= () async {
+  Future<void> ensureReady() =>
+      ready ??= () async {
         await runtime.initialize();
         for (final adapter in boot) {
           await runtime.registry.registerAdapter(adapter.manifest, adapter);
@@ -98,6 +99,11 @@ List<String> registerIoCapability({
       registry.registerExposed(
         bundleId: ioCapabilityId,
         rawName: verb,
+        // §6 destructive — device commands / committed plans actuate the
+        // physical or process world (incl. shell runs like git push) and
+        // can't be undone; gated through the host confirm callback. Reads /
+        // describes / job queries stay un-gated.
+        destructive: verb == 'execute' || verb == 'commit_execute',
         description: _descFor(name, ioTools),
         inputSchema: _schemaFor(name, ioTools),
         handler: (args) async {

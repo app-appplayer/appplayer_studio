@@ -17,16 +17,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/src/base/settings/settings_dialog.dart'
     show promptForNewProject;
+import 'package:appplayer_studio/src/base/settings/vibe_settings.dart'
+    show VibeSettings;
+import 'package:appplayer_studio/src/apps/ops/util/log.dart' show OpsLog;
 import 'package:appplayer_studio/src/apps/ops/debug/ui_debug_bridge.dart'
     show UiDebugAttacher, UiDebugBridge;
 import 'package:appplayer_studio/src/apps/ops/debug/ui_dialog_listener.dart'
     show UiDialogListener;
 import 'package:appplayer_studio/src/apps/ops/state/providers.dart';
 import 'ops_builtin.dart' show OpsBootResult, OpsBuiltInApp;
+import 'package:appplayer_studio/src/apps/ops/registries/member_registry.dart'
+    show AgentMember;
 import 'package:appplayer_studio/src/apps/ops/ui/about/about_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/audit/audit_placeholder_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/bundle/bundles_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/home/workspace_home_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/inbox/inbox_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/knowledge/knowledge_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/member/member_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/observability/activity_feed_page.dart';
@@ -100,6 +106,7 @@ enum OpsRoute {
     OpsGroup.knowledge,
   ),
   // Work — tasks & processes the experts collaborate on.
+  inbox('inbox', 'Inbox', Icons.inbox_outlined, OpsGroup.work),
   tasks('tasks', 'Tasks', Icons.task_outlined, OpsGroup.work),
   processes(
     'processes',
@@ -182,15 +189,17 @@ class _OpsShellState extends State<OpsShell> {
   // to a rebuild. `_scopedManagerId` is cached so tab re-activation re-applies
   // it without re-deriving from the volatile `activeChatAgentId`.
   StreamSubscription<void>? _wsChangesSub;
+  StreamSubscription<void>? _memberChangesSub;
   String? _scopedManagerId;
 
-  /// Ops's base chat manager id — the seed ships `ops.admin` as the Ops
-  /// project manager. Used as the clone base for per-workspace managers.
-  /// Referenced directly (not read from the volatile `activeChatAgentId`,
-  /// which is the host's deferred-synced display value and resolves to the
-  /// generic `manager` early in the lifecycle) so the scoped clone inherits
-  /// `ops.admin`'s persona / tool scope.
-  static const String _opsManagerId = 'ops.admin';
+  /// Ops's base chat manager id — the seed ships `ops.manager` as the Ops
+  /// project manager (standard `.manager` naming, parity with App Builder /
+  /// Scene Builder / Studio managers; was the non-standard `ops.admin`). Used
+  /// as the clone base for per-workspace managers. Referenced directly (not
+  /// read from the volatile `activeChatAgentId`, the host's deferred-synced
+  /// display value) so the scoped clone inherits `ops.manager`'s persona /
+  /// tool scope.
+  static const String _opsManagerId = 'ops.manager';
 
   // The chrome lifecycle slots (`newProjectInActive` /
   // `openProjectInActive` / `closeProjectInActive`) belong to whichever
@@ -227,8 +236,50 @@ class _OpsShellState extends State<OpsShell> {
     // start instead of falling back to the (potentially stale)
     // `bundleName` derived from the host tab's `currentProject`.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _publishLifecycleState();
+      if (mounted) {
+        _publishLifecycleState();
+        // Restore the bound project on (re)mount so closing a tab and
+        // reopening returns to the last project instead of the welcome panel.
+        _restoreLastProject();
+      }
     });
+  }
+
+  /// On (re)mount, restore the bound project — App Builder / Scene Builder
+  /// parity:
+  ///   1. `bundlePath` is itself an Ops project (host tab restore) → bind it.
+  ///   2. else reopen the sidecar `lastProjectPath` when it is still a valid
+  ///      Ops project on disk (manual tab close + reopen).
+  ///   3. else leave the welcome panel.
+  /// Without this, a freshly mounted [OpsShell] always starts unbound (Ops
+  /// only bound via the welcome buttons / MCP), so reopening a tab dropped the
+  /// previously open project. The sidecar `lastProjectPath` (toolId
+  /// `makemind_ops`, written in [_bindProject]) is Ops's own session state —
+  /// the host config is separate (`inheritedSettings`).
+  Future<void> _restoreLastProject() async {
+    if (!mounted || _currentProject != null) return;
+    if (isOpsProjectDir(widget.bundlePath)) {
+      _bindProject(widget.bundlePath);
+      return;
+    }
+    try {
+      final s = await VibeSettings.load(
+        VibeSettings.defaultPath('makemind_ops'),
+      );
+      final last = s.lastProjectPath;
+      // Re-check `_currentProject`: an MCP `project.open` / `project.new` may
+      // have bound a project while the async load was in flight.
+      if (mounted &&
+          _currentProject == null &&
+          last != null &&
+          last.isNotEmpty &&
+          isOpsProjectDir(last)) {
+        OpsLog.info('restore', 'reopening last project $last');
+        _bindProject(last);
+      }
+    } catch (e) {
+      OpsLog.warn('restore', 'failed: $e');
+    }
   }
 
   /// MOD-APPS-003 `domainSettingsProvider` — feeds the host Studio
@@ -363,6 +414,9 @@ class _OpsShellState extends State<OpsShell> {
       if (_scopedManagerId != null) {
         widget.chromeBridge.chatManagerOverride.value = _scopedManagerId;
       }
+      // Republish this tab's agent roster on re-activation (a sibling tab may
+      // have cleared it).
+      _publishChatRoster();
       // Push the lifecycle snapshot when this tab becomes active so the
       // chrome's ProjectHeader picks up the current `projectName` (or
       // "No project open") without waiting for a `_bindProject` /
@@ -389,6 +443,8 @@ class _OpsShellState extends State<OpsShell> {
     BuiltInAppRegistry.instance.unmount(widget.bundlePath);
     // ignore: unawaited_futures
     _wsChangesSub?.cancel();
+    // ignore: unawaited_futures
+    _memberChangesSub?.cancel();
     _releaseSlotsIfMine();
     super.dispose();
   }
@@ -431,6 +487,10 @@ class _OpsShellState extends State<OpsShell> {
         widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
       widget.chromeBridge.chatManagerOverride.value = null;
     }
+    // Drop the agent roster so a sibling tab's chat chip doesn't surface this
+    // Ops project's agents. The next active built-in republishes its own.
+    widget.chromeBridge.chatAgentRoster.value =
+        const <({String id, String displayName, String? modelId})>[];
   }
 
   Future<Map<String, dynamic>> _newProject({
@@ -514,6 +574,19 @@ class _OpsShellState extends State<OpsShell> {
       });
       _publishLifecycleState();
     }
+    // Remember this project in Ops's sidecar settings so a tab close + reopen
+    // restores it ([_restoreLastProject]). App Builder / Scene Builder parity.
+    // ignore: unawaited_futures
+    () async {
+      try {
+        final path = VibeSettings.defaultPath('makemind_ops');
+        final s = await VibeSettings.load(path);
+        s.lastProjectPath = dir;
+        await s.save(path);
+      } catch (_) {
+        /* best-effort persistence */
+      }
+    }();
     // Sync the host tab model + re-key the chat to this project (the host's
     // manifest-domain open flow does this for free; built-ins that own their
     // own bind must call it explicitly, else the previous project's chat
@@ -535,6 +608,16 @@ class _OpsShellState extends State<OpsShell> {
       _wsChangesSub?.cancel();
       _wsChangesSub = reg.changes.listen((_) {
         if (mounted) _applyOpsScopedManager(reg.activeId);
+      });
+      // Refresh the chat agent roster whenever this project's members change
+      // (agent create / update / delete) so a freshly created agent becomes
+      // chattable without a workspace re-switch. Same canonical bound registry
+      // rationale as `_wsChangesSub`.
+      final memberReg =
+          (OpsBuiltInApp.liveInit ?? result.init).registries.member;
+      _memberChangesSub?.cancel();
+      _memberChangesSub = memberReg.changes.listen((_) {
+        if (mounted) _publishChatRoster();
       });
       _applyOpsScopedManager(reg.activeId);
     });
@@ -582,10 +665,48 @@ class _OpsShellState extends State<OpsShell> {
           '${workspaceId.replaceAll('/', '_')}.mbd',
         );
         widget.chromeBridge.setActiveTabProject?.call(wsDir);
+        // Publish this workspace's agents so the chat chip can list + directly
+        // converse with them (manager stays the default selection).
+        _publishChatRoster();
       }
     } catch (_) {
       /* best-effort */
     }
+  }
+
+  /// Push the active workspace's operational agents to the chat panel roster
+  /// (`chromeBridge.chatAgentRoster`) so the chat chip lists them and the user
+  /// can converse directly — not only with the manager. Entry `id` =
+  /// `member.agentId` (project + workspace scoped) so the per-agent send routes
+  /// to the right agent and its conversation stays per-unit. Best-effort; only
+  /// writes while this is the active tab. Cleared on deactivate.
+  void _publishChatRoster() {
+    if (!_isActiveTab) return;
+    final init = OpsBuiltInApp.liveInit;
+    final wsId = init?.registries.workspace.activeId;
+    if (init == null || wsId == null || wsId.isEmpty) {
+      widget.chromeBridge.chatAgentRoster.value =
+          const <({String id, String displayName, String? modelId})>[];
+      return;
+    }
+    init.registries.member
+        .listForWorkspace(wsId)
+        .then((members) {
+          if (!mounted || !_isActiveTab) return;
+          widget
+              .chromeBridge
+              .chatAgentRoster
+              .value = <({String id, String displayName, String? modelId})>[
+            for (final m in members)
+              if (m is AgentMember)
+                (
+                  id: m.agentId,
+                  displayName: m.displayName,
+                  modelId: m.model?.model,
+                ),
+          ];
+        })
+        .catchError((_) {});
   }
 
   @override
@@ -678,6 +799,8 @@ class _OpsShellState extends State<OpsShell> {
         return 'philosophies';
       case OpsRoute.bundles:
         return 'bundles';
+      case OpsRoute.inbox:
+        return 'inbox';
       case OpsRoute.tasks:
         return 'tasks';
       case OpsRoute.processes:
@@ -812,6 +935,8 @@ class _OpsShellBody extends ConsumerWidget {
         return const PhilosophiesPage();
       case 'bundles':
         return const BundlesPage();
+      case 'inbox':
+        return const InboxPage();
       case 'tasks':
         return const TaskPage();
       case 'processes':

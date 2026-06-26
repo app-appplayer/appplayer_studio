@@ -475,11 +475,18 @@ class HostBundleActivationContext implements BundleActivationContext {
     final provider = agent.model?.provider;
     final modelId = agent.model?.model;
     final toolNames = agent.tools ?? const <String>[];
+    // Bundle agents that declare no model inherit the configured default
+    // (settings.llmModel resolved → catalog provider, else first wired;
+    // threaded via AgentHost.defaultAgentModel) instead of a hardcoded id.
+    final inherited = host.defaultAgentModel;
     final profile = VibeAgentProfile(
       id: exposedId,
       displayName: displayName,
-      provider: (provider == null || provider.isEmpty) ? 'anthropic' : provider,
-      modelId: modelId ?? 'claude-haiku-4-5-20251001',
+      provider:
+          (provider == null || provider.isEmpty)
+              ? (inherited?.provider ?? 'anthropic')
+              : provider,
+      modelId: modelId ?? inherited?.model ?? 'claude-haiku-4-5-20251001',
       role: _agentRoleFromString(agent.role),
       systemPrompt:
           agent.systemPrompt ??

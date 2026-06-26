@@ -2,7 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:appplayer_studio/builtin_api.dart'
-    show AgentAxis, AgentForkSource, ForkSource, ModelSpec, PoolForkSource;
+    show
+        AgentAxis,
+        AgentForkSource,
+        ForkSource,
+        ModelSpec,
+        PoolForkSource,
+        Procedure,
+        SkillBundle,
+        SkillManifest;
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart' show BuiltinToolRegistry;
@@ -13,6 +21,8 @@ import 'package:yaml/yaml.dart';
 import '../config/ops_config.dart';
 import '../infra/project_seed.dart' show applyOpsWorkspaceSeed;
 import '../infra/ws_paths.dart';
+import '../../../base/agent/agent_invoke_queue.dart';
+import '../core/inbox_query.dart';
 import '../init/knowledge_init.dart';
 import '../ops_builtin.dart' show OpsBuiltInApp;
 import '../observability/diagnostic_export.dart';
@@ -405,6 +415,141 @@ class SystemTools {
         };
       },
     );
+    _register(
+      server,
+      'workspace_share',
+      'Formally grant another workspace READ-ONLY access to this workspace\'s '
+          'facts under `scope` (a fact category, or `*` for all). Owner '
+          'defaults to the active workspace. A workspace is a sandbox by '
+          'default; this is the explicit cross-team contract — the target '
+          'reads the granted scope on top of its own via `knowledge_fact_query`, '
+          'the owner\'s other categories stay private. Pass `revoke:true` to '
+          'remove the grant. (FR-OPS-014, formal inter-workspace share.)',
+      const {
+        'type': 'object',
+        'properties': {
+          'to': {'type': 'string'},
+          'scope': {'type': 'string'},
+          'ownerId': {'type': 'string'},
+          'revoke': {'type': 'boolean'},
+        },
+        'required': ['to'],
+      },
+      (args) async {
+        final owner =
+            (args['ownerId'] as String?) ?? init.registries.workspace.activeId;
+        if (owner == null || owner.isEmpty) {
+          return {'error': 'no active workspace'};
+        }
+        final to = args['to'] as String;
+        final scope = (args['scope'] as String?) ?? '*';
+        if (args['revoke'] == true) {
+          final ws = await init.registries.workspace.revokeShare(
+            owner,
+            to,
+            scope: args['scope'] as String?,
+          );
+          return {
+            'owner': ws.id,
+            'revoked': {'to': to, 'scope': args['scope'] ?? '*'},
+            'shares': [for (final g in ws.shares) g.toMap()],
+          };
+        }
+        final ws = await init.registries.workspace.grantShare(
+          owner,
+          to,
+          scope: scope,
+        );
+        return {
+          'owner': ws.id,
+          'granted': {'to': to, 'scope': scope, 'mode': 'read'},
+          'shares': [for (final g in ws.shares) g.toMap()],
+        };
+      },
+    );
+    _register(
+      server,
+      'workspace_shares',
+      'List share grants for a workspace: `out` = scopes this workspace '
+          'exposes to others, `in` = scopes other workspaces expose to it. '
+          'Defaults to the active workspace.',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+        },
+      },
+      (args) async {
+        final id =
+            (args['id'] as String?) ?? init.registries.workspace.activeId;
+        if (id == null || id.isEmpty) return {'error': 'no active workspace'};
+        final ws = await init.registries.workspace.get(id);
+        final incoming = await init.registries.workspace.incomingShares(id);
+        return {
+          'workspace': id,
+          'out': [for (final g in (ws?.shares ?? const [])) g.toMap()],
+          'in': [
+            for (final s in incoming)
+              {'from': s.fromWorkspaceId, 'scope': s.scope},
+          ],
+        };
+      },
+    );
+    _register(
+      server,
+      'workspace_set_parent',
+      'Set (or clear) a workspace\'s organization parent — the workspace it '
+          'reports to. Builds the org hierarchy axis (e.g. a team workspace '
+          'reports to a division workspace). Pass empty/omit `parentId` to '
+          'detach. Rejects a missing parent or a cycle. The ancestor chain is '
+          'the approval escalation path. (FR-OPS-014, org hierarchy.)',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'parentId': {'type': 'string'},
+        },
+        'required': ['id'],
+      },
+      (args) async {
+        try {
+          final ws = await init.registries.workspace.setParent(
+            args['id'] as String,
+            args['parentId'] as String?,
+          );
+          return {'id': ws.id, 'parentId': ws.parentId};
+        } on StateError catch (e) {
+          return {'error': e.message};
+        }
+      },
+    );
+    _register(
+      server,
+      'workspace_tree',
+      'Organization view for a workspace: `ancestors` (escalation chain, '
+          'nearest parent first) and `children` (direct reports). Defaults to '
+          'the active workspace.',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+        },
+      },
+      (args) async {
+        final id =
+            (args['id'] as String?) ?? init.registries.workspace.activeId;
+        if (id == null || id.isEmpty) return {'error': 'no active workspace'};
+        final ws = await init.registries.workspace.get(id);
+        final ancestors = await init.registries.workspace.ancestors(id);
+        final children = await init.registries.workspace.children(id);
+        return {
+          'workspace': id,
+          'parentId': ws?.parentId,
+          'ancestors': ancestors,
+          'children': children,
+        };
+      },
+    );
 
     // --- Members ---
 
@@ -517,6 +662,10 @@ class SystemTools {
                 : null;
         final agent = await init.registries.member.createAgent(
           id: args['id'] as String,
+          // Project + workspace scoped kernel id (member.id stays bare for
+          // display) so the adopted host KnowledgeSystem isolates this
+          // project's agent + owned forks from other projects.
+          agentId: _scopedAgentId(init, wsId, args['id'] as String),
           displayName: args['displayName'] as String,
           profileRef: (args['profileRef'] as String?) ?? 'profiles/default',
           skillIds: (args['skillIds'] as List?)?.cast<String>() ?? const [],
@@ -592,9 +741,15 @@ class SystemTools {
         if (!init.system.isAgentSubsystemActivated) {
           return {'error': 'Agent Subsystem not activated'};
         }
-        final reply = await init.system.agents.ask(
+        final resolvedId = await _resolveAgentId(
+          init,
           args['agentId'] as String,
-          args['message'] as String,
+        );
+        // Serialize per agent — concurrent requests to the same agent queue
+        // and run one at a time (worker model + conversation race-free).
+        final reply = await serializePerAgent(
+          resolvedId,
+          () => init.system.agents.ask(resolvedId, args['message'] as String),
         );
         return {
           'agentId': reply.agentId,
@@ -706,7 +861,44 @@ class SystemTools {
                 'and `fromForkedRef` (transfer from another agent).',
           };
         }
-        final ok = await init.system.agents.tryAssignSkill(agentId, source);
+        // Resolve the caller id (bare local id from MCP, or the stored
+        // kernel id from the UI) to the member + its scoped kernel agentId so
+        // the fork lands on this project's agent, not a same-named agent in
+        // another project (the shared host system keys forks by agentId).
+        final assignMember = await init.registries.member.get(agentId);
+        final kernelAgentId =
+            assignMember is AgentMember ? assignMember.agentId : agentId;
+        final ok = await init.system.agents.tryAssignSkill(
+          kernelAgentId,
+          source,
+        );
+        // Mirror a successful pool assignment onto the member record so the
+        // Members list skill count reflects it. The owned fork lives in the
+        // Agent Subsystem (AgentDetailView shows it with lineage);
+        // `member.skillIds` is the declarative list the Members card reads —
+        // `createAgent` seeds both the same way (skillIds + tryAssign sweep),
+        // so the post-creation `agent_assign_skill` path must keep them in
+        // sync too. Pool source only (a transfer's forkedRef is an evolved
+        // instance, not a bare pool id). Best-effort: a missing member (the
+        // agent isn't an Ops member) or registry error must not undo the
+        // already-succeeded fork.
+        if (ok && skillId != null && skillId.isNotEmpty) {
+          try {
+            final wsId = init.registries.workspace.activeId;
+            final m = assignMember;
+            if (wsId != null &&
+                m is AgentMember &&
+                !m.skillIds.contains(skillId)) {
+              await init.registries.member.update(
+                memberId: m.id,
+                workspaceId: wsId,
+                skillIds: <String>[...m.skillIds, skillId],
+              );
+            }
+          } catch (_) {
+            // Best-effort — the card count is cosmetic; the fork succeeded.
+          }
+        }
         return {'assigned': ok, 'source': source.encode()};
       },
     );
@@ -728,7 +920,7 @@ class SystemTools {
           return {'error': 'Agent Subsystem not activated'};
         }
         final history = await init.system.agents.getHistory(
-          args['agentId'] as String,
+          await _resolveAgentId(init, args['agentId'] as String),
           limit: args['limit'] as int?,
         );
         return {
@@ -764,7 +956,10 @@ class SystemTools {
         if (!init.system.isAgentSubsystemActivated) {
           return {'error': 'Agent Subsystem not activated'};
         }
-        final agentId = (args['agentId'] as String?) ?? '_ops_admin';
+        final agentId = await _resolveAgentId(
+          init,
+          (args['agentId'] as String?) ?? '_ops_admin',
+        );
         final updated = await init.system.agents.updateAgent(
           agentId,
           model: ModelSpec(
@@ -1482,11 +1677,22 @@ class SystemTools {
             };
           }
         }
-        final run = await init.registries.process.approve(
-          runId,
-          approverId: approverId,
-        );
-        return {'state': run.state.name, 'approverId': approverId};
+        try {
+          final run = await init.registries.process.approve(
+            runId,
+            approverId: approverId,
+          );
+          return {'state': run.state.name, 'approverId': approverId};
+        } on ApproverMismatch catch (e) {
+          // G3 — only the gate's designated approver may advance it.
+          return {
+            'authorized': false,
+            'error': e.toString(),
+            'requiredApprover': e.requiredApprover,
+            'attemptedBy': e.attemptedBy,
+            'afterStep': e.afterStep,
+          };
+        }
       },
     );
 
@@ -1504,6 +1710,79 @@ class SystemTools {
       (args) async {
         await init.registries.process.cancel(args['runId'] as String);
         return {'cancelled': true};
+      },
+    );
+    _register(
+      server,
+      'approvals_pending',
+      'The approval inbox — process runs across the project currently waiting '
+          'for human (or org-unit) approval. A person is a team member / lead '
+          'whose pending approvals only hold their own work; other processes '
+          'keep running. With `approverId` set, returns only the runs that '
+          'principal may act on: the gate\'s designated approver, plus (org '
+          'escalation) any gate whose approver is below them in the workspace '
+          'tree. Omit `approverId` to list every pending approval.',
+      const {
+        'type': 'object',
+        'properties': {
+          'approverId': {'type': 'string'},
+        },
+      },
+      (args) async {
+        final pending = await pendingApprovals(
+          init,
+          approverId: args['approverId'] as String?,
+        );
+        return {'pending': pending, 'count': pending.length};
+      },
+    );
+    _register(
+      server,
+      'step_submit',
+      'Mark a human-assigned process step done and continue the run. A step '
+          'authored with `skillId: human` (or `manual`) is work a person — a '
+          'team member — performs; the run waits at it until that person '
+          'submits here. `result` records what they produced, `by` who did it. '
+          'Only this run advances; other processes keep running.',
+      const {
+        'type': 'object',
+        'properties': {
+          'runId': {'type': 'string'},
+          'stepId': {'type': 'string'},
+          'by': {'type': 'string'},
+          'result': {},
+        },
+        'required': ['runId', 'stepId'],
+      },
+      (args) async {
+        final run = await init.registries.process.submitStep(
+          args['runId'] as String,
+          args['stepId'] as String,
+          by: args['by'] as String?,
+          result: args['result'],
+        );
+        return {'state': run.state.name, 'currentStep': run.currentStep};
+      },
+    );
+    _register(
+      server,
+      'tasks_pending',
+      'The task inbox — human-assigned process steps across the project that '
+          'are waiting for their assignee to do the work and `step_submit`. '
+          'With `assigneeId` set, returns only that person\'s tasks. A person '
+          'sees their own queue; other work keeps running independently.',
+      const {
+        'type': 'object',
+        'properties': {
+          'assigneeId': {'type': 'string'},
+        },
+      },
+      (args) async {
+        final tasks = await pendingTasks(
+          init,
+          assigneeId: args['assigneeId'] as String?,
+        );
+        return {'tasks': tasks, 'count': tasks.length};
       },
     );
 
@@ -1971,6 +2250,53 @@ class SystemTools {
           } catch (_) {
             // Best-effort — see note above.
           }
+          // Live-register into the running `SkillRuntime` pool under the
+          // `BundleActivation`-qualified id (`<sharedPoolBundleId>.<id>`) so
+          // the skill is forkable via `agent_assign_skill` immediately —
+          // without waiting for the next boot's BundleActivation to seed it
+          // from `project.mbd`. The `addSkill` mirror above only persists to
+          // the manifest (disk); the in-memory pool the assign handler reads
+          // (`init.system.skillRuntime`) is otherwise stale until reboot (the
+          // live-register gap). Mirrors `BundleActivation.registerSkill`;
+          // metadata-only wrapper (execution stays on AppSkillRegistry +
+          // SkillExecutor). Same qualified id the assign handler resolves.
+          final poolBundle = init.sharedPoolBundleId;
+          final runtime = init.system.skillRuntime;
+          if (poolBundle != null && runtime != null) {
+            try {
+              await runtime.registry.registerSkill(
+                SkillBundle(
+                  schemaVersion: '0.1.0',
+                  manifest: SkillManifest(
+                    id: '$poolBundle.${def.id}',
+                    name: def.id,
+                    version: '${def.version}',
+                    provider: 'makemind-ops',
+                    description:
+                        def.description.isEmpty ? null : def.description,
+                  ),
+                  procedures: [
+                    Procedure(
+                      id: '${def.id}-default',
+                      name: def.id,
+                      description:
+                          def.description.isEmpty ? null : def.description,
+                      steps: const [],
+                    ),
+                  ],
+                  extensions: <String, dynamic>{
+                    if (def.tags.isNotEmpty) 'ops:tags': def.tags,
+                    if (def.inputSchema.isNotEmpty)
+                      'ops:inputSchema': def.inputSchema,
+                    if (def.outputSchema.isNotEmpty)
+                      'ops:outputSchema': def.outputSchema,
+                  },
+                ),
+              );
+            } catch (_) {
+              // Best-effort — assign falls back to next-boot activation.
+            }
+          }
         }
         return {'saved': true, 'id': def.id, 'scope': scope, 'path': path};
       },
@@ -2182,25 +2508,59 @@ class SystemTools {
         'required': ['question'],
       },
       (args) async {
+        final limit = (args['limit'] as int?) ?? 10;
         final facts = await init.registries.knowledge.query(
           args['question'] as String,
           typeFilter: args['typeFilter'] as String?,
           workspaceId: args['workspaceId'] as String?,
           entityId: args['entityId'] as String?,
-          limit: (args['limit'] as int?) ?? 10,
+          limit: limit,
         );
-        return {
-          'facts': [
-            for (final f in facts)
-              {
+        final out = <Map<String, dynamic>>[
+          for (final f in facts)
+            {
+              'id': f.id,
+              'type': f.type,
+              'workspaceId': f.workspaceId,
+              if (f.entityId != null) 'entityId': f.entityId,
+              'content': f.content,
+            },
+        ];
+        // Formal share overlay (FR-OPS-014): surface facts that other
+        // workspaces have granted to this one, read-only, narrowed to the
+        // granted scope. The owner's other categories stay private — a
+        // workspace is a sandbox; cross-team reads are an explicit contract.
+        final target =
+            (args['typeFilter'] == null && args['entityId'] == null)
+                ? (args['workspaceId'] as String?) ??
+                    init.registries.workspace.activeId
+                : null;
+        if (target != null && target.isNotEmpty) {
+          final incoming = await init.registries.workspace.incomingShares(
+            target,
+          );
+          for (final grant in incoming) {
+            final shared = await init.registries.knowledge
+                .graphFactsForWorkspace(
+                  grant.fromWorkspaceId,
+                  category: grant.scope,
+                  limit: limit,
+                );
+            for (final f in shared) {
+              out.add({
                 'id': f.id,
                 'type': f.type,
                 'workspaceId': f.workspaceId,
                 if (f.entityId != null) 'entityId': f.entityId,
                 'content': f.content,
-              },
-          ],
-        };
+                'sharedFrom': grant.fromWorkspaceId,
+                'shareScope': grant.scope,
+                'readOnly': true,
+              });
+            }
+          }
+        }
+        return {'facts': out};
       },
     );
 
@@ -2760,18 +3120,106 @@ class SystemTools {
     final steps = <Map<String, dynamic>>[];
     String? prev;
     for (final s in p.steps) {
-      steps.add(<String, dynamic>{
-        'id': s.stepId,
-        'do': <String, dynamic>{
-          'skill': s.skillId,
-          'inputs': <String, dynamic>{
-            ...s.inputs,
-            if (s.assigneeId.isNotEmpty) 'actor': s.assigneeId,
+      // A step whose skill is the `agent_ask` / `delegate` sentinel delegates
+      // the work to its assignee AGENT through the host `agent_ask` tool. The
+      // assignee may live in another workspace — kernel `agents.ask` resolves
+      // an agent globally by id (Ops scopes ids `project.ws.local` so they are
+      // unique), so a cross-workspace process step runs in the assignee's own
+      // agent context. Built-in = wiring: route to the existing host agent
+      // tool, no execution logic here (same shape as the philosophy gate's
+      // `tool` action below).
+      // A step assigned to a PERSON (a team member doing the work, not an
+      // agent) is authored with `skillId: human` (or `manual`). It carries no
+      // action — instead it suspends the run until that person submits via
+      // `step_submit` (which sets `done_<stepId>`), the human-task counterpart
+      // to an approval gate. Only this run waits; other work keeps running.
+      final isHuman = s.skillId == 'human' || s.skillId == 'manual';
+      if (isHuman) {
+        steps.add(<String, dynamic>{
+          'id': s.stepId,
+          'when': 'done_${s.stepId} == true',
+          'then': <String, String>{'false': 'wait'},
+          if (prev != null) 'dependsOn': <String>[prev],
+        });
+      } else if (s.skillId == 'io.execute' || s.skillId == 'run') {
+        // Real work — run an allowlisted dev command (git/dart/flutter/pub)
+        // through the host `io.execute` capability (sandboxed: exe allowlist +
+        // allowedRoots + operator role). The step authors `inputs.exe` + a
+        // string list `inputs.argv`. Built-in = wiring: route to the host io
+        // tool, the io capability owns the sandbox/policy.
+        steps.add(<String, dynamic>{
+          'id': s.stepId,
+          'do': <String, dynamic>{
+            'tool': 'io.execute',
+            'args': <String, dynamic>{
+              'target': 'process',
+              'action': 'process.run',
+              'args': <String, dynamic>{
+                'exe': s.inputs['exe'],
+                'argv': s.inputs['argv'] ?? const <String>[],
+              },
+              'actorId': s.assigneeId,
+              'role': 'operator',
+            },
           },
-        },
-        if (prev != null) 'dependsOn': <String>[prev],
-      });
+          if (prev != null) 'dependsOn': <String>[prev],
+        });
+      } else {
+        final isDelegate = s.skillId == 'agent_ask' || s.skillId == 'delegate';
+        final Map<String, dynamic> action =
+            isDelegate
+                ? <String, dynamic>{
+                  'tool': 'agent_ask',
+                  'args': <String, dynamic>{
+                    'agentId': s.assigneeId,
+                    'message':
+                        (s.inputs['task'] ??
+                                s.inputs['message'] ??
+                                s.inputs['prompt'] ??
+                                p.title)
+                            .toString(),
+                  },
+                }
+                : <String, dynamic>{
+                  'skill': s.skillId,
+                  'inputs': <String, dynamic>{
+                    ...s.inputs,
+                    if (s.assigneeId.isNotEmpty) 'actor': s.assigneeId,
+                  },
+                };
+        steps.add(<String, dynamic>{
+          'id': s.stepId,
+          'do': action,
+          if (prev != null) 'dependsOn': <String>[prev],
+        });
+      }
       var dep = s.stepId;
+      // G5 handoff — when a step routes to a channel thread, post a formal
+      // handoff notification to it so the next team receives the deliverable
+      // signal (cross-team exchange, FR-OPS-014). Routes to the host
+      // `channel.send` tool (built-in = wiring). Behavior action args are
+      // static (the engine does not template them from state), so the message
+      // carries the step + assignee + task; the produced artefact itself flows
+      // through process state / knowledge, and the thread is the formal trail.
+      if (s.channelThreadId != null && s.channelThreadId!.isNotEmpty) {
+        final hid = '${s.stepId}_handoff';
+        final task =
+            (s.inputs['task'] ?? s.inputs['message'] ?? s.stepId).toString();
+        steps.add(<String, dynamic>{
+          'id': hid,
+          'do': <String, dynamic>{
+            'tool': 'channel.send',
+            'args': <String, dynamic>{
+              'channelId': 'in_app',
+              'conversationId': s.channelThreadId,
+              'text': '[handoff] ${s.stepId} done by ${s.assigneeId}: $task',
+              'replyTo': '${p.id}/${s.stepId}',
+            },
+          },
+          'dependsOn': <String>[dep],
+        });
+        dep = hid;
+      }
       for (final g in gatesByStep[s.stepId] ?? const <ProcessGate>[]) {
         switch (g.kind) {
           case GateKind.approval:
@@ -2845,6 +3293,35 @@ class SystemTools {
     // freshly bound project (`/skills` read-only bug); `init` here is the
     // live getter so `projectRoot` is the open project's root.
     return wsContentRoot(init.projectRoot, wsId);
+  }
+
+  /// Kernel agent id for a freshly created Ops member — project + workspace
+  /// scoped. In studio (hosted) mode Ops adopts the host's process-global
+  /// `KnowledgeSystem`, whose Agent Subsystem keys agents and their owned
+  /// forks by *bare* agentId. Without a scope the same local id (e.g.
+  /// `editor`) reused across projects/workspaces collides — one agent's
+  /// owned forks bleed into another's. The kernel stays generic (it stores
+  /// whatever id it is handed); this is host-side wiring providing the
+  /// per-unit scope, mirroring the per-unit chat agent scoping. Falls back
+  /// to the bare id when no project is bound (welcome) or the id is already
+  /// qualified. `member.id` stays the bare local id for display.
+  String _scopedAgentId(KnowledgeInit init, String wsId, String localId) {
+    final root = init.projectRoot;
+    if (root.isEmpty || localId.contains('.')) return localId;
+    return '${p.basename(root)}.${wsId.replaceAll('/', '_')}.$localId';
+  }
+
+  /// Resolve a caller-supplied agent id to the kernel agentId. MCP callers
+  /// pass the bare local id (`editor`); the Members UI passes the stored
+  /// `member.agentId` already. Looking the member up returns its stored
+  /// `agentId` (the scoped kernel id for agents created after scoping
+  /// landed); an unknown id (already-scoped, or a host agent like
+  /// `_ops_admin`) passes through unchanged. Existing pre-scoping members
+  /// keep their bare stored agentId, so nothing breaks.
+  Future<String> _resolveAgentId(KnowledgeInit init, String idOrScoped) async {
+    final m = await init.registries.member.get(idOrScoped);
+    if (m is AgentMember) return m.agentId;
+    return idOrScoped;
   }
 
   Future<String> _resolveScope(

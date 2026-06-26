@@ -88,6 +88,13 @@ class StudioMain {
     } catch (_) {
       /* hosts without the hint accept their baseline */
     }
+    // Configured model hint — seed / host agents that declare no model
+    // inherit `settings.llmModel` instead of a hardcoded id.
+    try {
+      (app as dynamic).defaultModelHint = settings.llmModel;
+    } catch (_) {
+      /* hosts without the hint accept their baseline */
+    }
 
     // Port resolution: CLI `--port` > Studio Settings `mcpServerUrl`
     // (parse port from URL) > host's hard-coded
@@ -118,6 +125,9 @@ class StudioMain {
       seedBundles: app.seedBundles(),
       workspaceId: app.toolId,
       resolveAgentId: app.resolveAgentId,
+      // Configured model (Settings → LLM) — agents created without an
+      // explicit ModelSpec inherit this instead of the stub port.
+      defaultModelId: settings.llmModel,
     );
 
     final bundles = BundleInstallSurface(

@@ -1,3 +1,30 @@
+## [0.1.2] - 2026-06-25
+
+### Added
+- Capability coverage — `fs.*` / `db.*` (datastore: a config-root-jailed
+  filesystem source plus a sqlite source), `canvas.*` (CDL 2D/3D), `kv.*`, and
+  `analysis.*` exposed on the shared host registry, alongside the existing
+  `io.*` / `channel.*` / `browser.*` / `form.*` / `ingest.*` packs. Wiring is the
+  vendored `capability_tools` recipe (`lib/src/base/install/capability_recipes/`,
+  a committed in-tree copy for a hosted-clean clone); the engines and policy live
+  in the published `mcp_*` packages. Datastore writes are role-gated
+  (manager/operator) and destructive ops (`fs.remove`) require an explicit
+  commit. Registration is the single `registerCoverageCapabilities` wiring point
+  (`lib/src/base/install/coverage_capabilities.dart`), unit-tested in
+  `test/base/install/coverage_capabilities_test.dart`.
+- Agent seed knowledge — the built-in apps' seed bundles
+  (`seed/{studio,makemind_ops,app_builder}.mbd`) now document the full host
+  capability surface (a shared `studio_host_tools/capabilities` catalog plus
+  `studio_capability_recipes` usage patterns) and are reconciled with the current
+  Ops operating model and the `mcp_bundle` 1.0 spec, so agents author bundles and
+  design operations from accurate knowledge.
+
+### Changed
+- Dependencies: `mcp_bundle` ^0.4.4 → ^0.4.5 (the datastore port contract moved
+  into `mcp_bundle`), `mcp_io` ^0.2.2, `mcp_io_process` ^0.1.1; added
+  `mcp_canvas` ^0.1.0, `mcp_analysis` ^0.1.1, `mcp_datastore` ^0.1.0,
+  `mcp_datastore_sqlite` ^0.1.0. All resolved from pub.dev (no overrides).
+
 ## [0.1.1] - 2026-06-22
 
 ### Added

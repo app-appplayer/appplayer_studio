@@ -204,9 +204,15 @@ class _PhilosophyComparePageState extends ConsumerState<PhilosophyComparePage> {
       // MemberRegistry (no AgentMember yaml, no UI noise).
       final agents = init.system.agents;
       final source0 = source;
+      // The comparison clone must run the SAME model as the source agent
+      // (only the philosophy axis differs). When the source has no explicit
+      // model, inherit the configured default (settings.llmModel, threaded
+      // via MemberRegistry.defaultModel) rather than hardcoding one; stub is
+      // the last resort only in a fully unwired boot.
       final model =
           source0.model ??
-          const ModelSpec(provider: 'claude', model: 'claude-sonnet-4-6');
+          init.registries.member.defaultModel ??
+          const ModelSpec(provider: 'stub', model: 'stub-1');
       await agents.createAgent(
         id: tempId,
         displayName: '${source0.displayName} · no-philosophy clone',

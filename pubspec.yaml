@@ -3,7 +3,7 @@ description: >
   AppPlayer Studio — universal desktop host that loads any installed domain
   bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
   DSL UI; the host is a universal launcher.
-version: 0.1.1
+version: 0.1.2
 homepage: https://appplayer.app
 repository: https://github.com/app-appplayer/appplayer_studio
 publish_to: none
@@ -22,7 +22,7 @@ dependencies:
   file_picker: ^8.0.0
   flutter_markdown: ^0.7.0
   path: ^1.9.0
-  mcp_bundle: ^0.4.0
+  mcp_bundle: ^0.4.5
   google_fonts: ^6.2.1
   video_player: ^2.9.1
   meta: ^1.15.0
@@ -32,27 +32,34 @@ dependencies:
   shelf: ^1.4.0
   mcp_server: ^2.0.0
   mcp_client: ^2.0.0
-  mcp_llm: ^2.1.0
-  flutter_mcp_ui_runtime: ^0.5.0
-  flutter_mcp_ui_core: ^0.4.0
+  mcp_llm: ^2.1.1
+  flutter_mcp_ui_runtime: ^0.5.1
+  flutter_mcp_ui_core: ^0.4.1
   json_schema: ^5.1.1
   flutter_js: ^0.8.7
   ffmpeg_kit_flutter_new: ^3.0.0
   file_selector: ^1.0.3
-  flowbrain_core: ^0.1.1
+  flowbrain_core: ^0.1.6
   flutter_riverpod: ^2.5.1
   mcp_browser: ^0.1.2
-  mcp_channel: ^0.2.0
-  mcp_form: ^0.1.0
-  mcp_ingest: ^0.1.0
-  mcp_io: ^0.2.1
-  mcp_io_process: ^0.1.0
+  mcp_channel: ^0.2.1
+  mcp_form: ^0.1.1
+  mcp_ingest: ^0.1.1
+  mcp_io: ^0.2.2
+  mcp_io_process: ^0.1.1
   mcp_io_modbus: ^0.2.1
   mcp_io_mqtt: ^0.2.1
   mcp_io_http: ^0.2.1
   mcp_io_scpi: ^0.2.1
-  flutter_mcp_ui_generator: ^0.4.0
-  mcp_knowledge: ^0.2.4
+  # Capability packages adopted via the vendored capability_tools recipe
+  # (canvas / analysis / datastore fs+db). All published (datastore contract
+  # lives in mcp_bundle ^0.4.5); resolves hosted-clean, no override.
+  mcp_canvas: ^0.1.0
+  mcp_analysis: ^0.1.1
+  mcp_datastore: ^0.1.0
+  mcp_datastore_sqlite: ^0.1.0
+  flutter_mcp_ui_generator: ^0.4.1
+  mcp_knowledge: ^0.2.5
   mcp_fact_graph: ^0.2.2
   uuid: ^4.0.0
   yaml: ^3.1.2
@@ -61,7 +68,7 @@ dependencies:
   appplayer_ui_view: ^0.1.0
   appplayer_claude_code_provider: ^0.1.0
   appplayer_secure: ^0.1.0
-  brain_kernel: ^0.1.2
+  brain_kernel: ^0.1.4
   # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
   # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the
   # studio host builds these transports and injects them via the kernel

@@ -6,6 +6,28 @@ import 'package:yaml/yaml.dart';
 
 import '../util/atomic_write.dart';
 
+/// A directed, scoped, read-only knowledge-share grant from a workspace to
+/// another. The owner workspace declares `shares: [{to, scope}]`; the target
+/// then reads the owner's facts under `scope` (a fact category, or `*` for
+/// all) on top of its own — a **formal** exchange, not the within-workspace
+/// "everything is shared" default. This keeps each workspace a sandbox and
+/// makes cross-team data flow an explicit contract (`FR-OPS-014`).
+class ShareGrant {
+  ShareGrant({required this.toWorkspaceId, this.scope = '*'});
+
+  final String toWorkspaceId;
+
+  /// Fact category exposed to [toWorkspaceId]. `'*'` shares every category.
+  final String scope;
+
+  Map<String, dynamic> toMap() => {'to': toWorkspaceId, 'scope': scope};
+
+  static ShareGrant fromMap(Map m) => ShareGrant(
+    toWorkspaceId: (m['to'] ?? '').toString(),
+    scope: (m['scope'] as String?) ?? '*',
+  );
+}
+
 /// See `SRS §2.10 FR-OPS-014` for the design specification.
 class Workspace {
   Workspace({
@@ -17,6 +39,8 @@ class Workspace {
     required this.createdAt,
     this.members = const [],
     this.sharedWith = const [],
+    this.shares = const [],
+    this.parentId,
     this.tags = const {},
   });
 
@@ -27,7 +51,20 @@ class Workspace {
   final String timezone;
   final DateTime createdAt;
   final List<String> members;
+
+  /// Legacy coarse edge (whole-workspace share, no scope). Kept for
+  /// back-compat; scoped grants live in [shares].
   final List<String> sharedWith;
+
+  /// Directed, scoped, read-only knowledge grants this workspace exposes.
+  final List<ShareGrant> shares;
+
+  /// Organization hierarchy: the parent workspace this one reports to
+  /// (`null` = top of its tree). Builds the org axis of the matrix — e.g.
+  /// `개발본부` ← `프론트팀` ← a member's workspace. The ancestor chain is
+  /// the approval escalation path (G2/G3). Distinct from the workspace
+  /// type/slug (a flat id) — hierarchy is overlay metadata, not nesting.
+  final String? parentId;
   final Map<String, String> tags;
 
   Map<String, dynamic> toYamlMap() => {
@@ -39,6 +76,8 @@ class Workspace {
     'createdAt': createdAt.toIso8601String(),
     'members': members.map((m) => {'id': m}).toList(),
     'sharedWith': sharedWith,
+    'shares': shares.map((s) => s.toMap()).toList(),
+    if (parentId != null) 'parentId': parentId,
     'tags': tags,
   };
 
@@ -67,6 +106,11 @@ class Workspace {
           DateTime.tryParse(y['createdAt'] as String? ?? '') ?? DateTime.now(),
       members: members,
       sharedWith: (y['sharedWith'] as List?)?.cast<String>() ?? const [],
+      shares: [
+        for (final s in (y['shares'] as List? ?? const []))
+          if (s is Map) ShareGrant.fromMap(s),
+      ],
+      parentId: (y['parentId'] as String?),
       tags:
           (y['tags'] as Map?)?.map(
             (k, v) => MapEntry(k.toString(), v.toString()),
@@ -251,6 +295,8 @@ class WorkspaceRegistry {
       createdAt: existing.createdAt,
       members: existing.members,
       sharedWith: existing.sharedWith,
+      shares: existing.shares,
+      parentId: existing.parentId,
       tags: existing.tags,
     );
     await _writeYaml('${newDir.path}/config.yaml', updated.toYamlMap());
@@ -297,6 +343,8 @@ class WorkspaceRegistry {
       createdAt: cur.createdAt,
       members: cur.members,
       sharedWith: cur.sharedWith,
+      shares: cur.shares,
+      parentId: cur.parentId,
       tags: tags ?? cur.tags,
     );
     await _writeYaml('$rootDir/$id/config.yaml', updated.toYamlMap());
@@ -318,12 +366,162 @@ class WorkspaceRegistry {
       createdAt: ws.createdAt,
       members: ws.members,
       sharedWith: [...ws.sharedWith, toId],
+      shares: ws.shares,
+      parentId: ws.parentId,
       tags: ws.tags,
     );
     await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
     _cache[updated.id] = updated;
     _notify();
   }
+
+  /// Grant [toWorkspaceId] read-only access to this [ownerId] workspace's
+  /// facts under [scope] (a fact category, or `'*'` for all). Upserts by
+  /// `(to, scope)` so re-granting is idempotent. The target sees these on
+  /// top of its own facts via `knowledge_fact_query`; the owner's other
+  /// categories stay private (sandbox + formal exchange).
+  Future<Workspace> grantShare(
+    String ownerId,
+    String toWorkspaceId, {
+    String scope = '*',
+  }) async {
+    final ws = await get(ownerId);
+    if (ws == null) throw StateError('workspace not found: $ownerId');
+    final exists = ws.shares.any(
+      (g) => g.toWorkspaceId == toWorkspaceId && g.scope == scope,
+    );
+    final shares =
+        exists
+            ? ws.shares
+            : [
+              ...ws.shares,
+              ShareGrant(toWorkspaceId: toWorkspaceId, scope: scope),
+            ];
+    final updated = _copyWith(ws, shares: shares);
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
+  /// Revoke a previously granted scope (or all grants to [toWorkspaceId]
+  /// when [scope] is null).
+  Future<Workspace> revokeShare(
+    String ownerId,
+    String toWorkspaceId, {
+    String? scope,
+  }) async {
+    final ws = await get(ownerId);
+    if (ws == null) throw StateError('workspace not found: $ownerId');
+    final shares =
+        ws.shares
+            .where(
+              (g) =>
+                  g.toWorkspaceId != toWorkspaceId ||
+                  (scope != null && g.scope != scope),
+            )
+            .toList();
+    final updated = _copyWith(ws, shares: shares);
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
+  /// Workspaces (besides [targetWsId] itself) that have granted [targetWsId]
+  /// a read-only scope — i.e. the incoming shares the target may read.
+  Future<List<({String fromWorkspaceId, String scope})>> incomingShares(
+    String targetWsId,
+  ) async {
+    await _ensureLoaded();
+    final out = <({String fromWorkspaceId, String scope})>[];
+    for (final ws in _cache.values) {
+      if (ws.id == targetWsId) continue;
+      for (final g in ws.shares) {
+        if (g.toWorkspaceId == targetWsId) {
+          out.add((fromWorkspaceId: ws.id, scope: g.scope));
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Set (or clear, when [parentId] is null/empty) this workspace's
+  /// organization parent. Rejects a parent that doesn't exist or would
+  /// introduce a cycle (a workspace cannot report to its own descendant).
+  Future<Workspace> setParent(String id, String? parentId) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    final parent = (parentId == null || parentId.isEmpty) ? null : parentId;
+    if (parent != null) {
+      if (parent == id)
+        throw StateError('a workspace cannot be its own parent');
+      if (_cache[parent] == null) {
+        throw StateError('parent workspace not found: $parent');
+      }
+      // Cycle guard — walk up from the proposed parent; hitting [id] means
+      // [id] is already an ancestor of [parent].
+      var cursor = _cache[parent];
+      while (cursor != null) {
+        if (cursor.id == id) {
+          throw StateError('cycle: $parent is a descendant of $id');
+        }
+        cursor = cursor.parentId == null ? null : _cache[cursor.parentId];
+      }
+    }
+    final updated = _copyWith(
+      ws,
+      parentId: parent,
+      clearParent: parent == null,
+    );
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
+  /// Ancestor chain (nearest parent first) — the organization escalation
+  /// path. `개발본부 ← 프론트팀 ← ws` returns `[프론트팀, 개발본부]` for `ws`.
+  Future<List<String>> ancestors(String id) async {
+    await _ensureLoaded();
+    final out = <String>[];
+    final seen = <String>{id};
+    var cur = _cache[id]?.parentId;
+    while (cur != null && cur.isNotEmpty && seen.add(cur)) {
+      out.add(cur);
+      cur = _cache[cur]?.parentId;
+    }
+    return out;
+  }
+
+  /// Direct child workspaces (those whose `parentId` is [id]).
+  Future<List<String>> children(String id) async {
+    await _ensureLoaded();
+    return [
+      for (final ws in _cache.values)
+        if (ws.parentId == id) ws.id,
+    ]..sort();
+  }
+
+  Workspace _copyWith(
+    Workspace ws, {
+    List<ShareGrant>? shares,
+    String? parentId,
+    bool clearParent = false,
+  }) => Workspace(
+    id: ws.id,
+    type: ws.type,
+    title: ws.title,
+    locale: ws.locale,
+    timezone: ws.timezone,
+    createdAt: ws.createdAt,
+    members: ws.members,
+    sharedWith: ws.sharedWith,
+    shares: shares ?? ws.shares,
+    parentId: clearParent ? null : (parentId ?? ws.parentId),
+    tags: ws.tags,
+  );
 
   // --- internals ---
 

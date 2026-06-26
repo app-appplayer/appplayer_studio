@@ -1812,11 +1812,26 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         final n = (seen[base] ?? 0) + 1;
         seen[base] = n;
         final label = n == 1 ? base : '$base #$n';
-        final tab = StudioTab.pkg(
-          path,
-          label,
-          currentProject: e['currentProject'] as String?,
-        );
+        // Validate the persisted project still exists. A project folder
+        // can be deleted/renamed between sessions; restoring a dead
+        // `currentProject` leaves the tab claiming an open project (and
+        // loading its stale chat thread keyed `<pkg>::<project>`) while the
+        // built-in backend has nothing bound — the user sees a chat with
+        // "no project". Drop the dead reference so the tab restores clean.
+        final savedProject = e['currentProject'] as String?;
+        final liveProject =
+            (savedProject != null &&
+                    savedProject.isNotEmpty &&
+                    FileSystemEntity.typeSync(savedProject) !=
+                        FileSystemEntityType.notFound)
+                ? savedProject
+                : null;
+        if (savedProject != null && liveProject == null) {
+          widget.chromeBridge.recordBootEvent(
+            'tab "${e['name'] ?? path}" dropped stale project: $savedProject',
+          );
+        }
+        final tab = StudioTab.pkg(path, label, currentProject: liveProject);
         final persistedMode = (e['editorMode'] as String?) ?? 'ui';
         // Legacy 5th-mode 'settings' coerced to 'tools' — settings is now
         // a sub-surface inside Tools mode, not a top-level mode.
@@ -2270,10 +2285,21 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
             "and the bundle's own tools (under prefix '$exposedShortId.') "
             'to execute. Ask the user for clarification when intent is '
             'ambiguous.',
-        model: const mb.AgentModelConfig(
-          provider: 'anthropic',
-          model: 'claude-opus-4-7',
-        ),
+        // Inherit the configured default model (settings.llmModel resolved
+        // → catalog provider, else first wired) instead of hardcoding one,
+        // so the synthesised manager rides the same model as every other
+        // agent. Falls back to the catalog's anthropic flagship only when
+        // no provider is wired at all (degenerate — no LLM configured).
+        model:
+            host.defaultAgentModel != null
+                ? mb.AgentModelConfig(
+                  provider: host.defaultAgentModel!.provider,
+                  model: host.defaultAgentModel!.model,
+                )
+                : const mb.AgentModelConfig(
+                  provider: 'anthropic',
+                  model: 'claude-opus-4-7',
+                ),
         tools: const <String>[
           'bk.knowledge.query',
           'bk.agent.list',

@@ -702,33 +702,107 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   // the active domain's agents
                                                   // through the controller — no
                                                   // override needed here.
-                                                  return ChatPanel(
-                                                    controller: ctrl,
-                                                    modelOptions:
-                                                        widget.modelOptions,
-                                                    currentModelId:
-                                                        currentModel,
-                                                    effectiveModelId: effective,
-                                                    onModelChange:
-                                                        (id) =>
-                                                            _onAgentModelChange(
-                                                              chatAgentId,
-                                                              id,
-                                                            ),
-                                                    layerColorBuilder:
-                                                        widget
-                                                            .layerColorBuilder ??
-                                                        ((_) => c.textTertiary),
-                                                    layerLabelBuilder:
-                                                        widget
-                                                            .layerLabelBuilder ??
-                                                        ((_) => null),
-                                                    slashHints: hints,
-                                                    onSlashCommand:
-                                                        bridge
-                                                            .runSlashCommandInActive,
-                                                    currentAgentIdOverride:
-                                                        chatAgentId,
+                                                  // A built-in that owns
+                                                  // runtime agents (Ops
+                                                  // project agents) publishes
+                                                  // its active unit's roster
+                                                  // to `chatAgentRoster`; when
+                                                  // non-empty it overrides the
+                                                  // manifest-derived
+                                                  // `controller.agents` so the
+                                                  // chip lists + can converse
+                                                  // with the live project
+                                                  // agents (manager stays the
+                                                  // default selection).
+                                                  return ValueListenableBuilder<
+                                                    List<
+                                                      ({
+                                                        String id,
+                                                        String displayName,
+                                                        String? modelId,
+                                                      })
+                                                    >
+                                                  >(
+                                                    valueListenable:
+                                                        bridge.chatAgentRoster,
+                                                    builder: (_, roster, __) {
+                                                      // Prepend the manager so
+                                                      // the user can always
+                                                      // switch back to it from
+                                                      // an agent conversation
+                                                      // (the roster carries
+                                                      // only the project's
+                                                      // worker agents).
+                                                      final override =
+                                                          roster.isEmpty
+                                                              ? null
+                                                              : <
+                                                                VibeChatAgentEntry
+                                                              >[
+                                                                if (chatAgentId
+                                                                    .isNotEmpty)
+                                                                  VibeChatAgentEntry(
+                                                                    id:
+                                                                        chatAgentId,
+                                                                    displayName:
+                                                                        'Manager',
+                                                                    modelId:
+                                                                        currentModel,
+                                                                  ),
+                                                                for (final a
+                                                                    in roster)
+                                                                  VibeChatAgentEntry(
+                                                                    id: a.id,
+                                                                    displayName:
+                                                                        a.displayName,
+                                                                    modelId:
+                                                                        a.modelId,
+                                                                  ),
+                                                              ];
+                                                      return ChatPanel(
+                                                        controller: ctrl,
+                                                        agentsOverride:
+                                                            override,
+                                                        modelOptions:
+                                                            widget.modelOptions,
+                                                        currentModelId:
+                                                            currentModel,
+                                                        effectiveModelId:
+                                                            effective,
+                                                        onModelChange:
+                                                            (id) =>
+                                                                _onAgentModelChange(
+                                                                  chatAgentId,
+                                                                  id,
+                                                                ),
+                                                        layerColorBuilder:
+                                                            widget
+                                                                .layerColorBuilder ??
+                                                            ((_) =>
+                                                                c.textTertiary),
+                                                        layerLabelBuilder:
+                                                            widget
+                                                                .layerLabelBuilder ??
+                                                            ((_) => null),
+                                                        slashHints: hints,
+                                                        onSlashCommand:
+                                                            bridge
+                                                                .runSlashCommandInActive,
+                                                        // Reflect the active
+                                                        // conversation's agent
+                                                        // (manager by default;
+                                                        // the picked roster
+                                                        // agent after a switch)
+                                                        // so the chip updates
+                                                        // when the user opens a
+                                                        // different agent's chat.
+                                                        currentAgentIdOverride:
+                                                            ctrl.selectedAgentId,
+                                                        onAgentSwitch:
+                                                            bridge
+                                                                .switchChatAgent,
+                                                      );
+                                                    },
                                                   );
                                                 },
                                               ),

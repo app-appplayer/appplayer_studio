@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:yaml/yaml.dart';
 
+import '../infra/ws_paths.dart' show systemWorkspaceSlot;
 import 'ops_error.dart';
 
 /// Root configuration for makemind Ops.
@@ -138,8 +139,13 @@ class OpsConfig {
       // first-run state; skip deep validation
       return;
     }
-    if (!activeWorkspace.contains('/')) {
-      errors.add('activeWorkspace must be "<type>/<slug>"');
+    // The reserved `_system` slot (ws_paths.systemWorkspaceSlot) is the
+    // runtime default active workspace when no project workspace is bound;
+    // it is a first-class workspace identifier (free-form runtime dir, not a
+    // bundle) so it must be accepted at rest alongside `<type>/<slug>` ids.
+    if (activeWorkspace != systemWorkspaceSlot &&
+        !activeWorkspace.contains('/')) {
+      errors.add('activeWorkspace must be "<type>/<slug>" or "_system"');
     }
     // LLM provider is optional — external MCP-only deployments have no
     // internal provider, and the app still works for tool-call routing.

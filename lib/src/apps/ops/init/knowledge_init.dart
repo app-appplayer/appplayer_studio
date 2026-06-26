@@ -164,6 +164,7 @@ class KnowledgeInit {
     OpsConfig config, {
     ObservabilityModule? observability,
     KnowledgeSystem? hostSystem,
+    ModelSpec? defaultAgentModel,
   }) async {
     OpsLog.boot(
       'init',
@@ -377,6 +378,7 @@ class KnowledgeInit {
         system: system,
         agentSettings: config.systemAgent,
         llmSettings: config.llm,
+        defaultModel: defaultAgentModel,
       );
     }
 
@@ -387,6 +389,7 @@ class KnowledgeInit {
         kv: kv,
         knowledgeSystem: system,
         rootDir: config.workspacesRoot,
+        defaultModel: defaultAgentModel,
       ),
       task: TaskRegistry(
         kv: kv,
@@ -411,6 +414,11 @@ class KnowledgeInit {
         appSkills: appSkills,
       ),
     );
+    // Approval escalation (G2+G3): let the process registry resolve a gate
+    // approver's org-ancestor chain so a higher org unit can approve on a
+    // lower unit's behalf. Wired here where the workspace registry is in
+    // scope; null-safe (strict exact-match if left unwired).
+    registries.process.ancestorsOf = workspaceRegistry.ancestors;
 
     OpsLog.boot('init', 'system built');
     // 11. Build the app-level skill executor and attach capabilities.
@@ -471,6 +479,15 @@ class KnowledgeInit {
         final activation = mk.BundleActivation(
           system: system,
           bundleId: bundle.manifest.id,
+          // Inject the host tool surface so behavior `do: {tool: ...}` steps
+          // (cross-workspace `agent_ask` delegation + the philosophy gate)
+          // dispatch. The host endpoint is a `BuiltinToolRegistry` — no raw
+          // `KernelServerHost` leaks into builtin code — so `boot` stays null;
+          // the skill executor's `callHostTool` is bound to `server.callTool`
+          // after boot, and this tear-off resolves it at behavior-run time
+          // (which always happens after the bind). See
+          // `BundleActivation.callTool` (brain_kernel).
+          callTool: skillExecutor.callHostTool,
         );
         final result = await activation.activate(bundle);
         activations.add((activation: activation, bundle: bundle));
@@ -499,6 +516,7 @@ class KnowledgeInit {
         appSkills: appSkills,
         executor: skillExecutor,
         ethosStore: ethosStore,
+        defaultModel: defaultAgentModel,
       ).loadActive();
       OpsLog.boot('init', 'wsload done — skills=${appSkills.length}');
       // 12b retired — boot used to seed 5 `workspace_insight` sample
@@ -632,27 +650,45 @@ Future<void> _ensureSystemAgent({
   required KnowledgeSystem system,
   required SystemAgentSettings agentSettings,
   required LlmSettings llmSettings,
+  ModelSpec? defaultModel,
 }) async {
   final existing = await system.agents.getAgent(agentSettings.id);
   if (existing != null) return;
 
-  // Resolve provider + model — explicit override wins, otherwise fall back
-  // to the LlmSettings default. When neither is wired, fall back to a
-  // stub model so the agent can still answer with deterministic content.
-  final providerName =
-      agentSettings.providerOverride ??
-      (llmSettings.defaultProvider.isEmpty
-          ? 'stub'
-          : llmSettings.defaultProvider);
-  final providerCfg = llmSettings.providers[providerName];
-  final modelName =
-      agentSettings.modelOverride ?? (providerCfg?.model ?? 'stub-1');
-  final maxTokens = providerCfg?.maxTokens;
-  final model = ModelSpec(
-    provider: providerName,
-    model: modelName,
-    maxTokens: maxTokens,
-  );
+  // Resolve provider + model:
+  //   1. explicit per-agent override (provider/model)
+  //   2. host-injected inherited default (configured `settings.llmModel`)
+  //   3. Ops yaml LlmSettings default
+  //   4. stub — last resort only (fully unwired standalone / test boot)
+  final ModelSpec model;
+  final overrideProvider = agentSettings.providerOverride;
+  final overrideModel = agentSettings.modelOverride;
+  if (overrideProvider != null && overrideModel != null) {
+    final providerCfg = llmSettings.providers[overrideProvider];
+    model = ModelSpec(
+      provider: overrideProvider,
+      model: overrideModel,
+      maxTokens: providerCfg?.maxTokens,
+    );
+  } else if (defaultModel != null) {
+    model = ModelSpec(
+      provider: agentSettings.providerOverride ?? defaultModel.provider,
+      model: agentSettings.modelOverride ?? defaultModel.model,
+      maxTokens: defaultModel.maxTokens,
+    );
+  } else {
+    final providerName =
+        agentSettings.providerOverride ??
+        (llmSettings.defaultProvider.isEmpty
+            ? 'stub'
+            : llmSettings.defaultProvider);
+    final providerCfg = llmSettings.providers[providerName];
+    model = ModelSpec(
+      provider: providerName,
+      model: agentSettings.modelOverride ?? (providerCfg?.model ?? 'stub-1'),
+      maxTokens: providerCfg?.maxTokens,
+    );
+  }
 
   await system.agents.createAgent(
     id: agentSettings.id,

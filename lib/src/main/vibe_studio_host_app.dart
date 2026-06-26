@@ -24,6 +24,8 @@ import 'package:appplayer_studio/base.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:brain_kernel/mcp_host.dart' as mh;
 import 'package:appplayer_studio/workspace.dart';
+import 'package:appplayer_studio/src/base/agent/agent_invoke_queue.dart';
+import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
 
 /// Collaborators handed to a host extension so it can register tools and
 /// surfaces without `standard` (the open base) knowing what the extension
@@ -200,6 +202,40 @@ class VibeStudioHostApp extends StudioApp {
   /// the currently-active tab. Initialised in `buildChatController`.
   late final ValueNotifier<VibeChatController> _activeChat;
 
+  /// Unit base key of the active chat (`home` / `<pkg>` / `<pkg>::<project>`).
+  /// A per-agent chat switch derives its conversation key from this.
+  String _activeChatBaseKey = 'home';
+
+  /// Switch the active chat to [agentId]'s own conversation. A roster agent
+  /// gets a dedicated conversation keyed `<baseKey>::agent::<agentId>` (its
+  /// turns load from disk, the chip reflects it, the next message routes to
+  /// it). Selecting the active tab's manager returns to the base conversation.
+  /// Keeps the kernel generic — the host re-keys the panel; FlowBrain already
+  /// isolates `conv/<agentId>/turns`.
+  void _switchChatAgent(String agentId) {
+    final base = _activeChatBaseKey;
+    final mgrOverride = _chromeBridge.chatManagerOverride.value;
+    final mgrBase = _chromeBridge.activeChatAgentId.value;
+    // The manager roster entry is surfaced with the base id (`mgrBase`); the
+    // actual routed manager may be the per-unit scoped clone (`mgrOverride`).
+    // Either selecting it returns to the base (manager) conversation.
+    final isManager =
+        agentId.isEmpty || agentId == mgrBase || agentId == mgrOverride;
+    final key = isManager ? base : '$base::agent::$agentId';
+    final ctrl = _chatFor(key);
+    // `_chatFor` seeds `selectedAgentId` with the roster manager; for an agent
+    // conversation route to the picked agent instead (the send path uses
+    // `selectedAgentId != 'manager'` → `sendForAgent`). For the manager use the
+    // *base* id (clean label like `admin`, not the per-unit scoped clone's
+    // hash) — `sendForAgent` upgrades the base manager to the scoped override
+    // at send time, so routing stays per-unit isolated.
+    ctrl.selectedAgentId =
+        isManager
+            ? (mgrBase.isNotEmpty ? mgrBase : (mgrOverride ?? ''))
+            : agentId;
+    _activeChat.value = ctrl;
+  }
+
   /// Backbone cached for lazy chat-controller creation when the user
   /// opens a new tab after launch. Stashed in `buildShell` (the only
   /// caller already has a backbone in scope at that point).
@@ -215,6 +251,13 @@ class VibeStudioHostApp extends StudioApp {
   /// path even though `_backboneCached` only lands after `buildServer`.
   /// Null when the host runs without `studio_main` (tests, fixtures).
   String? configRootHint;
+
+  /// Configured default model id (`settings.llmModel`) injected by
+  /// `studio_main` before the first [agentProfiles] read. Used as the
+  /// modelId fallback for seed / host agents that declare no model, so
+  /// they inherit the configured model instead of a hardcoded id. Null
+  /// when the host runs without `studio_main` (tests / fixtures).
+  String? defaultModelHint;
 
   /// Notifier the buildShell binding listens to for the Settings
   /// dialog's Domain panel. Path null = home (no domain panel); non-null
@@ -348,6 +391,7 @@ class VibeStudioHostApp extends StudioApp {
         seedPath: entry.mbdPath,
         baseline: profiles,
         exposedShortId: entry.namespace,
+        defaultModelId: defaultModelHint,
       );
     }
     return profiles;
@@ -449,10 +493,14 @@ class VibeStudioHostApp extends StudioApp {
           modelId =
               (modelEntry['model'] as String?) ??
               (a['modelId'] as String?) ??
+              defaultModelHint ??
               'claude-opus-4-7';
           provider = (modelEntry['provider'] as String?) ?? 'anthropic';
         } else {
-          modelId = (a['modelId'] as String?) ?? 'claude-opus-4-7';
+          modelId =
+              (a['modelId'] as String?) ??
+              defaultModelHint ??
+              'claude-opus-4-7';
           provider = 'anthropic';
         }
         final tools =
@@ -612,6 +660,62 @@ class VibeStudioHostApp extends StudioApp {
       endpoint: boot,
       attachToDispatcher: (_, __) {},
       detachFromDispatcher: (_) {},
+      // §6 destructive-action gate (spec 12 / cherry FlowBrain runtime
+      // handoff). Tools registered `destructive: true` (irreversible —
+      // git push · external send · settlement · publish) require human
+      // confirmation before running. Surfaced through the host's standard
+      // yes/no dialog; deny-by-default when no UI is mounted (returns false).
+      confirmDestructive: (toolName, args) async {
+        // A post to the internal `in_app` feed (e.g. a process handoff to a
+        // workspace thread) is not the irreversible *external* send this gate
+        // guards — it is an internal, reversible append. Auto-allow so an
+        // autonomous process flows unattended. Human sign-off is a *separate*
+        // mechanism: an approval gate assigned to a person (team member /
+        // lead), which suspends only that one process while everything else
+        // keeps running — not this global blocking dialog.
+        if (toolName == 'channel.send' && args['channelId'] == 'in_app') {
+          return true;
+        }
+        // Sandboxed process execution (io.execute) is already constrained by
+        // the io capability's own policy — an exe allowlist (git/dart/flutter/
+        // pub), allowedRoots sandbox, operator role, no shell. Read-only dev
+        // commands (analyze / test / version / status / log / get / --dry-run)
+        // carry no irreversible effect, so an autonomous process runs them
+        // without this modal. Mutating commands (publish / push / commit / …)
+        // still fall through to confirmation — model human sign-off on those
+        // as the process's own approval gate before the step.
+        if (toolName == 'io.execute' || toolName == 'io.commit_execute') {
+          final inner = args['args'];
+          final argv = inner is Map ? inner['argv'] : null;
+          final sub =
+              (argv is List && argv.isNotEmpty) ? argv.first.toString() : '';
+          const readOnly = <String>{
+            '--version',
+            'version',
+            'analyze',
+            'test',
+            'status',
+            'log',
+            'diff',
+            'get',
+            'show',
+            'doctor',
+            'list',
+            'outdated',
+          };
+          final dryRun =
+              argv is List && argv.any((a) => a.toString() == '--dry-run');
+          if (readOnly.contains(sub) || dryRun) return true;
+        }
+        final ask = _chromeBridge.dialog;
+        if (ask == null) return false;
+        return ask(
+          title: 'Confirm irreversible action',
+          body:
+              'An agent wants to run "$toolName" — this action cannot be '
+              'undone.\n\nArguments:\n${jsonEncode(args)}\n\nAllow it?',
+        );
+      },
     );
     // `mcp.*` — connect · call_tool · read_resource · list_tools ·
     // list_resources · disconnect, so apps drive external MCP servers
@@ -697,10 +801,14 @@ class VibeStudioHostApp extends StudioApp {
       askAgent: (agentId, message) async {
         // Mirror `bk.agent.ask` exactly: scope the local id to the registered
         // agent id, then ask through the shared KnowledgeSystem facade.
+        // Serialize per agent so an inbound channel request queues behind any
+        // in-flight work for the same agent (same queue the `agent_ask` tool
+        // uses) — a member processes its requests one at a time.
         final app = backbone.app;
-        final reply = await app.system.agents.ask(
-          app.scopeIdFor(agentId),
-          message,
+        final scoped = app.scopeIdFor(agentId);
+        final reply = await serializePerAgent(
+          scoped,
+          () => app.system.agents.ask(scoped, message),
         );
         return reply.content;
       },
@@ -722,6 +830,24 @@ class VibeStudioHostApp extends StudioApp {
               : <String>[ioConfigRoot],
       roles: const <String>['manager', 'operator'],
     );
+
+    // Capability coverage — canvas / kv / analysis / datastore(fs+db), adopted
+    // through the vendored capability_tools recipe (the integrated reference:
+    // `registerCapabilityTools` + each example's tool list). Built-ins / bundle
+    // apps drive these via `<id>.*`. canvas = pure value type, kv = simple
+    // adapter, analysis = the recipe's one-line `standardAnalysisPort()` (full
+    // engine assembled in the recipe), datastore = an fs source jailed to the
+    // config root + a sqlite source (db file under the same root).
+    final capRoot = _backboneCached?.configRoot ?? configRootHint;
+    if (capRoot != null && capRoot.isNotEmpty) {
+      // open() inside is async; the registry serves db.* once it completes
+      // (fs.* is ready immediately), so the open future is fire-and-forget.
+      final coverage = registerCoverageCapabilities(
+        hostTools,
+        capRoot: capRoot,
+      );
+      unawaited(coverage.ready);
+    }
 
     // Chrome + renderer surface — 13 chrome.* + 3 renderer.* tools.
     // Bodies live in vibe_studio_base so every studio host gets the
@@ -1295,6 +1421,9 @@ class VibeStudioHostApp extends StudioApp {
     // Effective-LLM resolver — chat panel reads this to surface the
     // adapter the kernel actually routes through (fallback-aware).
     _chromeBridge.effectiveModelIdResolver = _effectiveModelIdFor;
+    // Chat agent switch — the chat chip calls this to open a conversation
+    // with the picked roster agent (or back to the manager).
+    _chromeBridge.switchChatAgent = _switchChatAgent;
 
     // Chat agent = the `role: manager` entry in the seed manifest. Same
     // convention everywhere (host / built-in / user bundles). Built-in
@@ -1376,7 +1505,18 @@ class VibeStudioHostApp extends StudioApp {
           'handler=${handler != null}',
         );
         if (handler == null) return false;
-        final BuildContext rootCtx = WidgetsBinding.instance.rootElement!;
+        // Hand the lifecycle handler a context BELOW the MaterialApp so
+        // `promptForNewProject` / `showDialog` / file pickers resolve
+        // MaterialLocalizations + Navigator + Overlay. `rootElement` sits
+        // ABOVE the MaterialApp — passing it made every dialog-showing
+        // handler throw "No MaterialLocalizations found", which silently
+        // killed the chrome toolbar "+" New-project / Open buttons (they
+        // dispatch through this slot, unlike the welcome panel which calls
+        // the handler with its own in-tree context). `captureRootKey` is the
+        // shell root key the host already uses for its own dialogs.
+        final BuildContext rootCtx =
+            _chromeBridge.captureRootKey?.currentContext ??
+            WidgetsBinding.instance.rootElement!;
         try {
           await handler(rootCtx);
         } catch (e, st) {
@@ -2171,6 +2311,10 @@ class VibeStudioHostApp extends StudioApp {
         pkgPath == null
             ? 'home'
             : (projectPath == null ? pkgPath : '$pkgPath::$projectPath');
+    // Remember the unit base key so a per-agent chat switch can derive its
+    // conversation key relative to it (`<baseKey>::agent::<agentId>`) and
+    // restore the manager conversation (`<baseKey>`) when deselected.
+    _activeChatBaseKey = key;
     _activeChat.value = _chatFor(key);
     lastActivatedBundle = pkgPath;
     _activePackageNotifier.value = pkgPath;

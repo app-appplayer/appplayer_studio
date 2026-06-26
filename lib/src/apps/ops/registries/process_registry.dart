@@ -49,6 +49,7 @@ class Process {
     required this.steps,
     required this.gates,
     required this.trigger,
+    this.triggerSource,
     this.runs = const [],
   });
 
@@ -58,6 +59,12 @@ class Process {
   final List<ProcessStep> steps;
   final List<ProcessGate> gates;
   final ProcessTrigger trigger;
+
+  /// Event chaining (G-event): the id of the process whose completion
+  /// auto-starts this one (set when `trigger: event`). A → B without manual
+  /// re-start, so the org runs unattended. Cross-process; the step
+  /// `dependsOn` chains within one process, this chains between processes.
+  final String? triggerSource;
   final List<ProcessRun> runs;
 }
 
@@ -156,6 +163,24 @@ class PendingApproval {
   );
 }
 
+/// Raised when a principal other than the gate's designated approver tries
+/// to approve (G3 hierarchical approval authorization).
+class ApproverMismatch implements Exception {
+  ApproverMismatch({
+    required this.afterStep,
+    required this.requiredApprover,
+    required this.attemptedBy,
+  });
+  final String afterStep;
+  final String requiredApprover;
+  final String attemptedBy;
+
+  @override
+  String toString() =>
+      'Not authorized: approval gate after "$afterStep" requires approver '
+      '"$requiredApprover", but "$attemptedBy" attempted it.';
+}
+
 typedef SkillDispatch =
     Future<Map<String, dynamic>> Function(
       String skillId,
@@ -173,6 +198,13 @@ class ProcessRegistry {
   final KnowledgeSystem knowledgeSystem;
   final String rootDir;
   SkillDispatch? dispatch;
+
+  /// Resolves a workspace's org-ancestor chain (nearest parent first) for
+  /// approval escalation. Host-wired to `WorkspaceRegistry.ancestors`. When
+  /// the gate's designated approver is a workspace/org-unit id, any ancestor
+  /// of it may approve on their behalf (escalation up the org tree). Null
+  /// (unwired) ⇒ strict exact-match approval only.
+  Future<List<String>> Function(String workspaceId)? ancestorsOf;
 
   final Map<String, Map<String, Process>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -325,10 +357,16 @@ class ProcessRegistry {
     await _saveCheckpoint(run.copyWith(state: ProcessRunState.cancelled));
   }
 
-  /// Approve a pending approval gate and continue via the behavior engine.
-  /// Every approval gate is flagged `approved_<afterStep> = true`; the engine
-  /// only advances the one it is currently suspended on, so the extra flags
-  /// are inert.
+  /// Approve the gate the run is currently suspended on and continue via the
+  /// behavior engine.
+  ///
+  /// Hierarchical approval (G3): the pending gate records its **designated
+  /// approver** (`pendingApproval.approverId`, from the YAML gate's
+  /// `params.approverId`). Only that principal may advance it — a different
+  /// [approverId] is rejected with [ApproverMismatch]. An empty configured
+  /// approver means an open gate (any approver proceeds). Only the currently
+  /// pending gate is flagged, so a later gate suspends again and must be
+  /// approved by its own designated approver (per-gate authorization).
   Future<ProcessRun> approve(String runId, {required String approverId}) async {
     final run = await _loadRun(runId);
     if (run == null) throw StateError('No checkpoint: $runId');
@@ -339,16 +377,71 @@ class ProcessRegistry {
     if (p == null) {
       throw StateError('Process definition missing: ${run.processId}');
     }
+    final pending = run.pendingApproval;
+    final requiredApprover = pending?.approverId ?? '';
+    if (requiredApprover.isNotEmpty && approverId != requiredApprover) {
+      // Escalation (G2+G3): a higher org unit — an ancestor of the designated
+      // approver in the org tree — may approve on their behalf. If the
+      // approver is a plain (non-workspace) id, its chain is empty and only
+      // an exact match passes.
+      final chain =
+          ancestorsOf == null
+              ? const <String>[]
+              : await ancestorsOf!(requiredApprover);
+      if (!chain.contains(approverId)) {
+        throw ApproverMismatch(
+          afterStep: pending?.afterStep ?? '',
+          requiredApprover: requiredApprover,
+          attemptedBy: approverId,
+        );
+      }
+      // else: approved via escalation by an ancestor org unit.
+    }
     final patch = <String, dynamic>{};
-    for (final g in p.gates) {
-      if (g.kind == GateKind.approval) {
-        patch['approved_${g.afterStep}'] = true;
+    if (pending != null) {
+      patch['approved_${pending.afterStep}'] = true;
+    } else {
+      // No recorded pending gate — legacy fallback: flag every approval gate.
+      for (final g in p.gates) {
+        if (g.kind == GateKind.approval) {
+          patch['approved_${g.afterStep}'] = true;
+        }
       }
     }
     final res = await knowledgeSystem.ops.resumeBehavior(
       _behaviorIdFor(p),
       runId,
       statePatch: patch,
+    );
+    return _runFromResult(p, runId, res);
+  }
+
+  /// Mark a human-assigned step done and continue. A step authored with
+  /// `skillId: human` (or `manual`) suspends the run until its assigned
+  /// person submits their work here — the human-task counterpart to an
+  /// approval gate. Only this run advances; other processes keep running.
+  /// [result] is recorded under `<stepId>_result` and [by] under
+  /// `<stepId>_by` so later steps / guards can read who did it and what.
+  Future<ProcessRun> submitStep(
+    String runId,
+    String stepId, {
+    String? by,
+    Object? result,
+  }) async {
+    final run = await _loadRun(runId);
+    if (run == null) throw StateError('No checkpoint: $runId');
+    final p = await get(run.processId);
+    if (p == null) {
+      throw StateError('Process definition missing: ${run.processId}');
+    }
+    final res = await knowledgeSystem.ops.resumeBehavior(
+      _behaviorIdFor(p),
+      runId,
+      statePatch: <String, dynamic>{
+        'done_$stepId': true,
+        if (by != null) '${stepId}_by': by,
+        if (result != null) '${stepId}_result': result,
+      },
     );
     return _runFromResult(p, runId, res);
   }
@@ -379,16 +472,73 @@ class ProcessRegistry {
     Map<String, dynamic> res,
   ) async {
     final status = (res['status'] ?? res['state'] ?? 'running').toString();
+    final state = _stateFromBehavior(status);
+    // The behavior engine reports the suspended node as `waitingStepId`; use
+    // it as the current step so approval-gate matching and the human-task /
+    // approval inboxes can resolve exactly which node a run is parked on.
+    final cur = (res['waitingStepId'] ?? res['currentStep'] ?? '').toString();
+    // Record which approval gate is pending so `process_approve` can default
+    // its approverId from the run record (the gate's configured approver)
+    // instead of failing with "no pendingApproval". Match the suspended gate
+    // node (`gate_approval_<afterStep>`) when the engine reports it, else the
+    // first approval gate (single-gate common case).
+    PendingApproval? pending;
+    if (state == ProcessRunState.waitingApproval) {
+      final approvalGates =
+          p.gates.where((g) => g.kind == GateKind.approval).toList();
+      if (approvalGates.isNotEmpty) {
+        final g = approvalGates.firstWhere(
+          (g) => cur == 'gate_approval_${g.afterStep}' || cur == g.afterStep,
+          orElse: () => approvalGates.first,
+        );
+        pending = PendingApproval(
+          afterStep: g.afterStep,
+          approverId: (g.params['approverId'] as String?) ?? '',
+          requestedAt: DateTime.now(),
+        );
+      }
+    }
     final run = ProcessRun(
       runId: runId,
       processId: p.id,
       workspaceId: p.workspaceId,
       startedAt: DateTime.now(),
-      currentStep: (res['currentStep'] ?? '').toString(),
-      state: _stateFromBehavior(status),
+      currentStep: cur,
+      state: state,
+      pendingApproval: pending,
     );
     await _saveCheckpoint(run);
+    if (state == ProcessRunState.completed) {
+      // G-event: this run reached the end — auto-start any process whose
+      // `triggerSource` names it, so A → B chains without a manual re-start.
+      unawaited(_fireCompletionChain(p.id, p.workspaceId));
+    }
     return run;
+  }
+
+  /// Start every process whose `triggerSource` is [completedProcessId]
+  /// (event chaining). Fire-and-forget + best-effort — a failing chained
+  /// start must not fail the completing run, and one bad target must not
+  /// block the others. Cycles (A → B → A) are author error and are not
+  /// guarded here.
+  Future<void> _fireCompletionChain(
+    String completedProcessId,
+    String workspaceId,
+  ) async {
+    try {
+      final procs = await list(wsId: workspaceId);
+      for (final next in procs) {
+        if (next.id == completedProcessId) continue;
+        if (next.triggerSource != completedProcessId) continue;
+        try {
+          await start(next.id);
+        } catch (_) {
+          // Skip this target; keep chaining the rest.
+        }
+      }
+    } catch (_) {
+      // Chain resolution failed — the completing run still succeeds.
+    }
   }
 
   Future<ProcessRun?> _loadRun(String runId) async {
@@ -417,6 +567,9 @@ class ProcessRegistry {
     buf.writeln('id: ${p.id}');
     buf.writeln('title: ${p.title}');
     buf.writeln('trigger: ${p.trigger.name}');
+    if (p.triggerSource != null && p.triggerSource!.isNotEmpty) {
+      buf.writeln('triggerSource: ${p.triggerSource}');
+    }
     buf.writeln('steps:');
     for (final s in p.steps) {
       buf.writeln('  - stepId: ${s.stepId}');
@@ -455,6 +608,10 @@ class ProcessRegistry {
       'ws/${kv.workspaceId!}/process_runs/${run.runId}',
       run.toJson(),
     );
+    // A run's state changed (started / suspended / approved / submitted /
+    // completed) — fire the changes stream so live views (the Inbox, the
+    // Processes page) refresh without a manual reload.
+    _notify();
   }
 
   Future<void> _ensureLoaded(String wsId) async {
@@ -481,6 +638,12 @@ class ProcessRegistry {
 
   Process _fromYaml(Map<String, dynamic> y, String wsId) {
     final steps = <ProcessStep>[];
+    // Approval gates expressed inline on a step (`approverId` / `approver`)
+    // rather than in the separate `gates:` list — both forms must produce a
+    // real approval gate so the behavior engine suspends. Without this, an
+    // inline `approverId` was silently dropped and the run auto-completed
+    // (no gate step → no `when: approved_*` wait).
+    final inlineGates = <ProcessGate>[];
     final rawSteps = y['steps'];
     if (rawSteps is List) {
       for (final s in rawSteps) {
@@ -509,10 +672,43 @@ class ProcessRegistry {
               channelThreadId: s['channelThreadId'] as String?,
             ),
           );
+          // Accept the common inline-approval shapes an author (incl. the
+          // chat manager) uses: top-level `approverId`/`approver`, or a
+          // nested `approval:` block (`approval.approverId`, `approval: <id>`,
+          // or `approval: true`). Any of them creates a real approval gate.
+          String? inlineApprover;
+          var inlineApproval = false;
+          final topAv = s['approverId'] ?? s['approver'];
+          if (topAv is String && topAv.isNotEmpty) {
+            inlineApprover = topAv;
+            inlineApproval = true;
+          }
+          final ap = s['approval'];
+          if (ap is Map) {
+            inlineApproval = true;
+            final nested = ap['approverId'] ?? ap['approver'];
+            if (nested is String && nested.isNotEmpty) inlineApprover = nested;
+          } else if (ap is String && ap.isNotEmpty) {
+            inlineApproval = true;
+            inlineApprover = ap;
+          } else if (ap == true) {
+            inlineApproval = true;
+          }
+          if (inlineApproval) {
+            inlineGates.add(
+              ProcessGate(
+                afterStep: stepId,
+                kind: GateKind.approval,
+                params: <String, dynamic>{
+                  if (inlineApprover != null) 'approverId': inlineApprover,
+                },
+              ),
+            );
+          }
         }
       }
     }
-    final gates = <ProcessGate>[];
+    final gates = <ProcessGate>[...inlineGates];
     final rawGates = y['gates'];
     if (rawGates is List) {
       for (final g in rawGates) {
@@ -537,6 +733,7 @@ class ProcessRegistry {
       title: (y['title'] as String?) ?? y['id'] as String,
       steps: steps,
       gates: gates,
+      triggerSource: (y['triggerSource'] as String?),
       trigger: ProcessTrigger.values.firstWhere(
         (t) => t.name == (y['trigger'] as String? ?? 'manual'),
         orElse: () => ProcessTrigger.manual,

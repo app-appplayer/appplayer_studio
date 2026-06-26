@@ -44,10 +44,42 @@ class WorkspaceListPane extends ConsumerWidget {
                 itemCount: list.length,
                 itemBuilder: (context, i) {
                   final ws = list[i];
+                  final hasMeta =
+                      (ws.parentId?.isNotEmpty ?? false) ||
+                      ws.shares.isNotEmpty;
                   return ListTile(
                     leading: Icon(_iconFor(ws.type)),
                     title: Text(ws.title),
-                    subtitle: Text(ws.id, style: const TextStyle(fontSize: 11)),
+                    isThreeLine: hasMeta,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(ws.id, style: const TextStyle(fontSize: 11)),
+                        if (hasMeta)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 3,
+                              children: [
+                                // Org hierarchy (G2): the parent this reports to.
+                                if (ws.parentId?.isNotEmpty ?? false)
+                                  _MetaChip(
+                                    icon: Icons.arrow_upward,
+                                    label: ws.parentId!,
+                                  ),
+                                // Formal shares (G4): scopes exposed to others.
+                                for (final s in ws.shares)
+                                  _MetaChip(
+                                    icon: Icons.ios_share,
+                                    label: '${s.toWorkspaceId}:${s.scope}',
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                     selected: ws.id == activeId,
                     onTap: () async {
                       await ref
@@ -431,6 +463,35 @@ class WorkspaceListPane extends ConsumerWidget {
                   ],
                 ),
           ),
+    );
+  }
+}
+
+/// Compact metadata badge for a workspace tile — org parent (↑) and formal
+/// share grants (→). Read straight off the `Workspace` (G2 `parentId` / G4
+/// `shares`); no async, no logic.
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: c.primary),
+          const SizedBox(width: 3),
+          Text(label, style: const TextStyle(fontSize: 10)),
+        ],
+      ),
     );
   }
 }

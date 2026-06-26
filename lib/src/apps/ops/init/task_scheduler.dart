@@ -16,15 +16,29 @@ class TaskScheduler {
     required this.tasks,
     required this.workspaces,
     this.tickInterval = const Duration(minutes: 1),
+    this.maxConcurrent = 4,
+    this.maxRetries = 2,
+    this.retryBackoff = const Duration(seconds: 2),
   });
 
   final TaskRegistry tasks;
   final WorkspaceRegistry workspaces;
   final Duration tickInterval;
 
+  /// Governance — keeps the unattended scheduler from stampeding the LLM /
+  /// tool surface under bursty cron fires:
+  ///   * [maxConcurrent] caps in-flight task runs (back-pressure; excess fires
+  ///     defer to the next tick).
+  ///   * [maxRetries] retries a failed run with linear [retryBackoff] before
+  ///     leaving it blocked (its TaskRunRef already records the error).
+  final int maxConcurrent;
+  final int maxRetries;
+  final Duration retryBackoff;
+
   Timer? _timer;
   DateTime? _lastTick;
   final Set<String> _firedThisMinute = {};
+  final Set<String> _inFlight = {};
 
   void start() {
     _timer ??= Timer.periodic(tickInterval, (_) => _tick());
@@ -48,21 +62,57 @@ class TaskScheduler {
       if (t.schedule == null) continue;
       if (t.state == TaskState.cancelled) continue;
       if (_firedThisMinute.contains(t.id)) continue;
+      if (_inFlight.contains(t.id)) continue; // a slow run still in progress
       if (!_cronMatches(t.schedule!.cron, now)) continue;
+      // Back-pressure — at capacity, defer remaining fires to the next tick.
+      if (_inFlight.length >= maxConcurrent) break;
 
       _firedThisMinute.add(t.id);
-      // Fire and forget — failures are recorded as TaskRunRef with endState=blocked.
-      unawaited(_safeRun(t.id));
+      unawaited(_runGoverned(t.id, () => tasks.run(t.id)));
     }
   }
 
-  Future<void> _safeRun(String id) async {
+  /// Run [id] with in-flight tracking (back-pressure) + bounded retry. Never
+  /// throws — an exhausted run stays blocked (its TaskRunRef records the error).
+  Future<void> _runGoverned(String id, Future<Object?> Function() run) async {
+    _inFlight.add(id);
     try {
-      await tasks.run(id);
-    } catch (_) {
-      // Error is captured in TaskRunRef.errorCode already.
+      await _attemptWithRetry(run);
+    } finally {
+      _inFlight.remove(id);
     }
   }
+
+  /// Runs [run], retrying on failure up to [maxRetries] times with linear
+  /// backoff. Returns the number of attempts made (1 = first-try success,
+  /// `maxRetries + 1` = exhausted).
+  Future<int> _attemptWithRetry(Future<Object?> Function() run) async {
+    var attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        await run();
+        return attempt;
+      } catch (_) {
+        if (attempt > maxRetries) return attempt;
+        await Future<void>.delayed(retryBackoff * attempt);
+      }
+    }
+  }
+
+  @visibleForTesting
+  int get inFlightCount => _inFlight.length;
+
+  @visibleForTesting
+  bool get atCapacity => _inFlight.length >= maxConcurrent;
+
+  @visibleForTesting
+  Future<int> attemptWithRetryForTest(Future<Object?> Function() run) =>
+      _attemptWithRetry(run);
+
+  @visibleForTesting
+  Future<void> runGovernedForTest(String id, Future<Object?> Function() run) =>
+      _runGoverned(id, run);
 
   static bool _cronMatches(String expr, DateTime now) =>
       testCronMatches(expr, now);

@@ -492,6 +492,28 @@ class ChromeBridge {
     null,
   );
 
+  /// Per-operational-unit chat agent roster. A built-in that owns runtime
+  /// agents (Ops project agents) publishes its *active* unit's agents here so
+  /// the chat panel chip lists them and the user can converse directly — not
+  /// only with the manager. Each entry's `id` is the kernel agentId (scoped
+  /// per project + workspace, so the per-agent send routes to the right agent
+  /// and its conversation stays per-unit). Empty (cleared on tab deactivate)
+  /// → the panel falls back to the manifest-derived `controller.agents`. The
+  /// host converts these records to `VibeChatAgentEntry` for `agentsOverride`.
+  final ValueNotifier<List<({String id, String displayName, String? modelId})>>
+  chatAgentRoster =
+      ValueNotifier<List<({String id, String displayName, String? modelId})>>(
+        const <({String id, String displayName, String? modelId})>[],
+      );
+
+  /// Switch the active chat to a conversation with [agentId]. The host
+  /// re-keys the chat panel to that agent's own conversation (its turns load
+  /// from disk, the chip reflects it, and the next message routes to it) —
+  /// the standard "pick an agent → talk to that agent" behaviour. Passing the
+  /// active tab's manager id returns to the manager conversation. Wired by the
+  /// host; the chat chip calls it on selection.
+  void Function(String agentId)? switchChatAgent;
+
   /// Tab-key → bundleId map. Filled by `HostBundleActivationContext`
   /// at mount time and read by the host's `_setActiveContext` hook to
   /// resolve the active bundle for `DispatchContext`. Independent of

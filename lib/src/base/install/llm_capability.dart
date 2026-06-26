@@ -17,6 +17,8 @@
 /// depends on a built-in's observability module.
 library;
 
+import 'package:appplayer_claude_code_provider/appplayer_claude_code_provider.dart'
+    show ClaudeCodeInteractiveProvider, ProcessClaudeRunner;
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 import 'package:mcp_llm/mcp_llm.dart';
 
@@ -85,6 +87,15 @@ LlmComposition composeLlm({
           model: spec.model,
           config: config,
         );
+      case 'claude_code':
+        // Subscription path (no API key) — the same provider studio_boot
+        // wires for the agent stack, surfaced here so ops' `hasInternalLlm`
+        // recognizes claude_code as a real provider instead of reporting
+        // "no LLM provider" while chat actually responds through it.
+        return ClaudeCodeInteractiveProvider(
+          name: spec.model,
+          runner: ProcessClaudeRunner(executable: 'claude'),
+        );
       default:
         throw StateError('Unsupported LLM provider: ${spec.name}');
     }
@@ -92,7 +103,8 @@ LlmComposition composeLlm({
 
   final pool = <String, bundle.LlmPort>{};
   for (final spec in specs) {
-    if (spec.apiKey.isEmpty) continue;
+    // claude_code needs no API key (subprocess); every other provider does.
+    if (spec.apiKey.isEmpty && spec.name != 'claude_code') continue;
     pool[spec.name] = LlmPortAdapterFactory.full(buildProvider(spec));
   }
 
@@ -100,7 +112,8 @@ LlmComposition composeLlm({
   var hasInternal = false;
   if (defaultProvider.isNotEmpty) {
     for (final spec in specs) {
-      if (spec.name != defaultProvider || spec.apiKey.isEmpty) continue;
+      if (spec.name != defaultProvider) continue;
+      if (spec.apiKey.isEmpty && spec.name != 'claude_code') continue;
       defaultPort = LlmPortAdapterFactory.full(buildProvider(spec));
       hasInternal = true;
       break;

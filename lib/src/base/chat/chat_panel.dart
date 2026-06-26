@@ -242,8 +242,16 @@ class ChatPanel extends StatefulWidget {
     this.onDirectDispatch,
     this.agentsOverride,
     this.currentAgentIdOverride,
+    this.onAgentSwitch,
     this.effectiveModelId,
   });
+
+  /// Switch the active conversation to the picked roster agent. When supplied,
+  /// selecting an agent in the chip routes here (the host re-keys the panel to
+  /// that agent's conversation) instead of only flipping the local
+  /// `controller.selectedAgentId` (next-message routing). Null = legacy
+  /// behaviour.
+  final void Function(String agentId)? onAgentSwitch;
 
   /// Effective LLM model id — the adapter currently wired into the
   /// kernel pool (`settings.llmModel`). When this differs from
@@ -367,7 +375,12 @@ class _ChatPanelState extends State<ChatPanel> {
                       widget.currentAgentIdOverride ??
                       widget.controller.selectedAgentId,
                   agents: widget.agentsOverride ?? widget.controller.agents,
-                  onAgentChange: (id) => widget.controller.selectedAgentId = id,
+                  // Picking an agent opens a conversation with it (host re-keys
+                  // the panel to that agent's chat). Falls back to flipping the
+                  // local routing target when no host switch is wired.
+                  onAgentChange:
+                      widget.onAgentSwitch ??
+                      (id) => widget.controller.selectedAgentId = id,
                 ),
                 _HealthBar(snapshot: widget.health),
                 _QuickFixBar(

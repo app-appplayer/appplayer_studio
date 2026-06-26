@@ -45,7 +45,18 @@ class StudioBackbone {
     required this.seedLoader,
     this.claudeCodeModelId,
     this.claudeCodeExecutable,
+    this.defaultAgentModel,
   });
+
+  /// Inherited default model for agents created without an explicit
+  /// ModelSpec (e.g. a worker the manager spawns via `member_create_agent`).
+  /// Resolved at boot from the configured model (Settings → LLM /
+  /// `settings.llmModel`) mapped to its catalog provider, falling through
+  /// to the first wired catalog model — the same de-facto default system
+  /// agents ride. The Ops builtin reads this and wires it into its member
+  /// registry so created agents inherit a REAL model instead of the
+  /// stub port. Null only when no provider is wired at all.
+  final fb.ModelSpec? defaultAgentModel;
 
   /// Catalog model id stamped on the `claude_code` adapter (e.g.
   /// `'claude-code'`). Used by [upgradeClaudeCodeForKernel] to swap the

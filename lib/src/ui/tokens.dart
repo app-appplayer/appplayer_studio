@@ -121,8 +121,10 @@ abstract class VbuPalette {
   Color get textTertiary;
   Color get textMuted;
 
-  // Accents — brand colors, identical across light/dark.
-  Color get mint => const Color(0xFF7DD3C0);
+  // Accents — brand colors. `mint` is the primary accent and is
+  // brightness-specific (deeper on light backgrounds for contrast), so each
+  // palette sets it. The rest are identical across light/dark.
+  Color get mint;
   Color get mintDim => const Color(0xFF4A8478);
   Color get amber => const Color(0xFFE9B873);
   Color get violet => const Color(0xFF9B87F5);
@@ -172,6 +174,10 @@ class _DarkColors extends VbuPalette {
   Color get textTertiary => const Color(0xFF5F6877);
   @override
   Color get textMuted => const Color(0xFF424B5C);
+
+  // Brand mint — bright, tuned for dark surfaces (the original accent).
+  @override
+  Color get mint => const Color(0xFF7DD3C0);
 }
 
 /// Light palette — inverted surface ramp with the same accent palette.
@@ -205,6 +211,11 @@ class _LightColors extends VbuPalette {
   Color get textTertiary => const Color(0xFF5F6877);
   @override
   Color get textMuted => const Color(0xFF9AA3B2);
+
+  // Brand mint — deepened for light backgrounds; the base bright mint
+  // (0xFF7DD3C0) washes out on white.
+  @override
+  Color get mint => const Color(0xFF2A9D8F);
 }
 
 /// 8-layer palette accessors — same hex values exposed through

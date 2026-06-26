@@ -4,7 +4,7 @@
     "id": "com.makemind.ops",
     "name": "Ops",
     "version": "0.1.0",
-    "description": "Makemind Ops — per-project operations console for tasks, processes, knowledge, members, skills, profiles, philosophies, and bundles. vibe_studio built-in app: each Ops tab binds a single project directory (standard newProjectInActive / openProjectInActive wiring); members, tasks, skills, processes, philosophies, profiles, and knowledge live inside the project. The seed ships only the shared `ops.admin` agent and operations-manual knowledge that every project reuses.",
+    "description": "Makemind Ops \u2014 per-project operations console for tasks, processes, knowledge, members, skills, profiles, philosophies, and bundles. vibe_studio built-in app: each Ops tab binds a single project directory (standard newProjectInActive / openProjectInActive wiring); members, tasks, skills, processes, philosophies, profiles, and knowledge live inside the project. The seed ships only the shared `ops.manager` agent and operations-manual knowledge that every project reuses.",
     "schemaVersion": "1.0.0",
     "type": "application",
     "icon": "dashboard"
@@ -18,168 +18,174 @@
     "sources": [
       {
         "id": "ops_overview",
-        "title": "Ops — identity, project layout, surfaces",
+        "title": "Ops \u2014 identity, project layout, surfaces",
         "description": "Makemind Ops identity, project structure, sidebar, agent / lifecycle wiring. Entry point for both external LLM clients and the host chat manager.",
         "documents": [
           {
             "id": "overview",
-            "title": "Ops overview — purpose + positioning",
+            "title": "Ops overview \u2014 purpose + positioning",
             "format": "markdown",
-            "content": "# Ops overview\n\nMakemind Ops is a per-project operations console (vibe_studio built-in app `makemind_ops`).\n\n## Identity\n- One Ops tab = one project directory (same standard wiring as App Builder / Scene Builder).\n- On first entry the wizard forces a New / Open selection.\n- Operations data (members · tasks · skills · processes · profiles · philosophies · knowledge) all live inside the bound project.\n- Seed assets = shared `ops.admin` agent + operations-manual knowledge only. No operations data.\n\n## 13-route sidebar\nHome · Workspaces · Members · Tasks · Processes · Knowledge · Skills · Profiles · Philosophies · Bundles · Activity · Audit · About.\n(Chat and Settings are owned by the host chrome — `chromeBridge.activeChatAgentId` + domain panel in the host Settings dialog.)\n\n## 5 facades + 8 capabilities\n- Knowledge facade × 5 — Facts · Skills · Profiles · Philosophies · Knowledge\n- Capability stack × 8 — LLM · Channel · Browser · Ingest · Form · LocalKV · ToolDispatcher · Knowledge\n\nRuns in hybrid mode on top of the vibe_studio backbone (`KernelApp.system`). When the project changes, ensureBoot rebinds to the new root."
+            "content": "# Ops overview\n\nMakemind Ops is a per-project operations console (vibe_studio built-in app `makemind_ops`) \u2014 a company-like operating environment where agents and people run work across workspaces.\n\n## Identity\n- One Ops tab = one project directory (standard host wiring, like App Builder / Scene Builder). First entry forces New / Open.\n- Operations data (members \u00b7 tasks \u00b7 processes \u00b7 skills \u00b7 profiles \u00b7 philosophies \u00b7 knowledge) live inside the bound project. Seed = shared `ops.manager` agent + this operations manual; no operations data.\n\n## Sidebar (14 routes, grouped)\n- Overview: Home \u00b7 Activity (observability)\n- Experts: Experts (members)\n- Knowledge: Knowledge \u00b7 Skills \u00b7 Profiles \u00b7 Philosophies\n- Work: **Inbox** (human approval + task queue) \u00b7 Tasks \u00b7 Processes \u00b7 Workspaces\n- System: Bundles \u00b7 Audit \u00b7 About\n(Chat and Settings are host chrome \u2014 `chromeBridge.activeChatAgentId` + the domain panel in the host Settings dialog.)\n\n## Operating model \u2014 the 3-axis matrix\nWorkspace (unit work-space, free granularity + formal sharing) \u00d7 Org (hierarchy, approval + escalation) \u00d7 Process (cross-workspace work unit; agents and people; gates, human steps, auto-chaining). People are approvers + doers via the Inbox. See the ops_concepts `matrix_model` doc.\n\n## 5 facades + 9 host capabilities\n- Knowledge facades \u00d7 5 \u2014 Facts \u00b7 Skills \u00b7 Profiles \u00b7 Philosophies \u00b7 Knowledge files.\n- Host capability packs (shared `<id>.*`) \u2014 io \u00b7 channel \u00b7 browser \u00b7 fs \u00b7 db \u00b7 canvas \u00b7 kv \u00b7 analysis \u00b7 form \u00b7 ingest (catalog: `studio://knowledge/studio_host_tools/capabilities`).\n\nRuns in hybrid mode on the vibe_studio backbone (`KernelApp.system`); ensureBoot rebinds on project change."
           },
           {
             "id": "workspace_structure",
-            "title": "Ops project layout — one bound project per Ops tab",
+            "title": "Ops project layout \u2014 one bound project per Ops tab",
             "format": "markdown",
-            "content": "# Project layout\n\nOps uses standard vibe_studio built-in wiring — one Ops tab = one project.\n\n## Forced entry\n- Empty tab = wizard (`New project` / `Open project` two buttons).\n- User selection → `chromeBridge.newProjectInActive` / `openProjectInActive` → `_bindProject` → KnowledgeInit boot.\n- The seed contains only the policy layer (shared `ops.admin` + operations manual). No data (organizations · projects · members · tasks · etc.).\n\n## Project folder layout\n```\n<currentProject>/                — Ops project root (selected by user via New / Open)\n  project.opsproj               — marker (checked by `isOpsProjectDir`)\n  _system/                      — reserved (home workspace for `ops.admin`)\n  members/                      — agent · person (member.yaml)\n  philosophies/                 — editorial principles etc. (yaml)\n  processes/                    — multi-step workflow definitions + execution history\n  profiles/                     — agent persona definitions (yaml)\n  skills/                       — MCP tool definitions + action bodies (yaml)\n  tasks/                        — single-shot task queue\n  knowledge/                    — Fact · Pattern · Summary · files\n  auth/                         — external channel credentials (Keychain · encrypted)\n```\n\n## Shared vs per-project\n- **Shared (seed)** — `ops.admin` agent + operations manual (`studio://knowledge/ops_*`).\n- **Per-project** — assets in the folders above. All operations data added by the user.\n\n## Project switching\n- Project Header `Open` or wizard `Open project` — select a different directory.\n- `_bindProject` re-invoked → KnowledgeInit rebinds to the new root."
+            "content": "# Project layout\n\nOps uses standard vibe_studio built-in wiring \u2014 one Ops tab = one project.\n\n## Forced entry\n- Empty tab = wizard (`New project` / `Open project` two buttons).\n- User selection \u2192 `chromeBridge.newProjectInActive` / `openProjectInActive` \u2192 `_bindProject` \u2192 KnowledgeInit boot.\n- The seed contains only the policy layer (shared `ops.manager` + operations manual). No data (organizations \u00b7 projects \u00b7 members \u00b7 tasks \u00b7 etc.).\n\n## Project folder layout\n```\n<currentProject>/                \u2014 Ops project root (selected by user via New / Open)\n  project.opsproj               \u2014 marker (checked by `isOpsProjectDir`)\n  _system/                      \u2014 reserved (home workspace for `ops.manager`)\n  members/                      \u2014 agent \u00b7 person (member.yaml)\n  philosophies/                 \u2014 editorial principles etc. (yaml)\n  processes/                    \u2014 multi-step workflow definitions + execution history\n  profiles/                     \u2014 agent persona definitions (yaml)\n  skills/                       \u2014 MCP tool definitions + action bodies (yaml)\n  tasks/                        \u2014 single-shot task queue\n  knowledge/                    \u2014 Fact \u00b7 Pattern \u00b7 Summary \u00b7 files\n  auth/                         \u2014 external channel credentials (Keychain \u00b7 encrypted)\n```\n\n## Shared vs per-project\n- **Shared (seed)** \u2014 `ops.manager` agent + operations manual (`studio://knowledge/ops_*`).\n- **Per-project** \u2014 assets in the folders above. All operations data added by the user.\n\n## Project switching\n- Project Header `Open` or wizard `Open project` \u2014 select a different directory.\n- `_bindProject` re-invoked \u2192 KnowledgeInit rebinds to the new root."
           },
           {
             "id": "lifecycle_wiring",
-            "title": "Ops lifecycle wiring — chrome bridge contract",
+            "title": "Ops lifecycle wiring \u2014 chrome bridge contract",
             "format": "markdown",
-            "content": "# Lifecycle wiring\n\nThe Ops shell follows only the standard host chrome wiring (same contract as App Builder / Scene Builder).\n\n## chrome bridge slots\n- `chromeBridge.newProjectInActive` — `_newProject({name, parent})` — creates directory + `applyOpsProjectSeed` + `_bindProject`.\n- `chromeBridge.openProjectInActive` — `_openProject(path)` — validates with `isOpsProjectDir`, then `_bindProject`.\n- `chromeBridge.closeProjectInActive` — `_closeProject()` — `_currentProject = null` + `resetBootCache`.\n- `chromeBridge.lifecycleState` — pushes `DomainLifecycleState(hasProject, projectName)` (\"No project open\" on Home, `basename(dir)` when bound).\n\n## Active-tab gate\nIndexedStack eagerly mounts all tab bodies, so the chrome bridge is a process-wide singleton. If two Ops tabs are mounted simultaneously, the later one can capture the slot — all chrome bridge writes must pass the `_isActiveTab` check (`BuiltInAppRegistry.instance.activeContext?.bundlePath == widget.bundlePath`) before executing.\n\n## Boot cache\n`OpsBuiltInApp.ensureBoot({backbone, currentProject})` — process-wide cache.\n- When `currentProject` changes, a new boot is triggered and the previous boot's facade is disposed.\n- Same project + same backbone = cached instance returned.\n- `resetBootCache` (closeProject path) registers dispose → the next ensureBoot creates a fresh KnowledgeInit."
+            "content": "# Lifecycle wiring\n\nThe Ops shell follows only the standard host chrome wiring (same contract as App Builder / Scene Builder).\n\n## chrome bridge slots\n- `chromeBridge.newProjectInActive` \u2014 `_newProject({name, parent})` \u2014 creates directory + `applyOpsProjectSeed` + `_bindProject`.\n- `chromeBridge.openProjectInActive` \u2014 `_openProject(path)` \u2014 validates with `isOpsProjectDir`, then `_bindProject`.\n- `chromeBridge.closeProjectInActive` \u2014 `_closeProject()` \u2014 `_currentProject = null` + `resetBootCache`.\n- `chromeBridge.lifecycleState` \u2014 pushes `DomainLifecycleState(hasProject, projectName)` (\"No project open\" on Home, `basename(dir)` when bound).\n\n## Active-tab gate\nIndexedStack eagerly mounts all tab bodies, so the chrome bridge is a process-wide singleton. If two Ops tabs are mounted simultaneously, the later one can capture the slot \u2014 all chrome bridge writes must pass the `_isActiveTab` check (`BuiltInAppRegistry.instance.activeContext?.bundlePath == widget.bundlePath`) before executing.\n\n## Boot cache\n`OpsBuiltInApp.ensureBoot({backbone, currentProject})` \u2014 process-wide cache.\n- When `currentProject` changes, a new boot is triggered and the previous boot's facade is disposed.\n- Same project + same backbone = cached instance returned.\n- `resetBootCache` (closeProject path) registers dispose \u2192 the next ensureBoot creates a fresh KnowledgeInit."
           },
           {
             "id": "agents",
-            "title": "Ops agents — shared `ops.admin` (seed) + per-project members",
+            "title": "Ops agents \u2014 shared `ops.manager` (seed) + per-project members",
             "format": "markdown",
-            "content": "# Agents\n\n## `ops.admin` (shared, seed)\n- ID: `ops.admin` — registered in the seed's `manifest.agents[]`, shared across all Ops projects.\n- Display: \"Ops Admin\"\n- Role: `manager` — vibe_studio's chat routing convention routes chat entry via `role: manager`.\n- Tool allowlist = empty list (wildcard). Can call all tools exposed on the host endpoint.\n- Host chat = automatically routed to `ops.admin` via `chromeBridge.activeChatAgentId = 'ops.admin'` when the Ops tab is active.\n- Auxiliary home workspace = the bound project's `_system/` directory (ensured at boot).\n\n## Project members (per project)\n- Defined in `members/*.yaml` within the bound project.\n- type = `agent` (LLM) or `person` (external user).\n- Agent members have their own LLM model, skill allowlist, and persona (profile).\n- Separate from the seed's `ops.admin` — project members participate only in that project's operations flow (publish · review · ads · etc.).\n\n## Delegation calls\n- Single-turn member agent call = `agent_ask({agentId:'<member_id>', message})`.\n- Batch work for a member agent = `task_create({title, skill, args, assigneeId:'<member_id>'})` or `process_start`."
+            "content": "# Agents\n\n## `ops.manager` (shared, seed)\n- ID: `ops.manager` \u2014 registered in the seed's `manifest.agents[]`, shared across all Ops projects.\n- Display: \"Ops Manager\"\n- Role: `manager` \u2014 vibe_studio's chat routing convention routes chat entry via `role: manager`.\n- Tool allowlist = empty list (wildcard). Can call all tools exposed on the host endpoint.\n- Host chat = automatically routed to `ops.manager` via `chromeBridge.activeChatAgentId = 'ops.manager'` when the Ops tab is active.\n- Auxiliary home workspace = the bound project's `_system/` directory (ensured at boot).\n\n## Project members (per project)\n- Defined in `members/*.yaml` within the bound project.\n- type = `agent` (LLM) or `person` (external user).\n- Agent members have their own LLM model, skill allowlist, and persona (profile).\n- Separate from the seed's `ops.manager` \u2014 project members participate only in that project's operations flow (publish \u00b7 review \u00b7 ads \u00b7 etc.).\n\n## Delegation calls\n- Single-turn member agent call = `agent_ask({agentId:'<member_id>', message})`.\n- Batch work for a member agent = `task_create({title, skill, args, assigneeId:'<member_id>'})` or `process_start`."
           }
         ]
       },
       {
         "id": "ops_delegation",
-        "title": "Ops delegation patterns — manager → member / skill / process / task",
-        "description": "Decision tree for how the manager (ops.admin) delegates or executes when it receives an operations request.",
+        "title": "Ops delegation patterns \u2014 manager \u2192 member / skill / process / task",
+        "description": "Decision tree for how the manager (ops.manager) delegates or executes when it receives an operations request.",
         "documents": [
           {
             "id": "decision_tree",
-            "title": "Decision tree — user request → call flow",
+            "title": "Decision tree \u2014 user request \u2192 call flow",
             "format": "markdown",
-            "content": "# Delegation decision tree\n\n## 1. Data retrieval / status check\n- Single fact query → `knowledge_fact_query`.\n- Free-text query → `knowledge_query`.\n- File read → `knowledge_file_read` (when path is known) / `knowledge_file_list` (for exploration).\n- List members / skills / processes / bundles → `member_list` / `skill_list` / `process_list` / `bundle_installed`.\n- Config value → `config_get`.\n\n## 2. One-shot execution\n- Run a specific skill once = `task_create({skill:'<id>', args:{...}, title})` → `task_run`.\n- Check result = `task_get({id})` / `task_list({state:'completed'})`.\n\n## 3. Multi-step workflow\n- When a defined process exists = `process_start({id})` (preferred).\n- When no definition exists, define with `process_save` then `process_start`.\n- Pause for human approval = `process_approve` / `process_resume`.\n- Check progress = `process_get({id})` / `process_runs({id})`.\n\n## 4. Direct member agent call\n- One-shot query to a specific member = `agent_ask({agentId:'<member_id>', message, ...})`.\n- Conversation history = `agent_get_history({agentId})`.\n- Routing recommendation = `agent_route({intent})`.\n\n## Priority order\nWhen multiple tools could produce the same result: **process > task > direct tool call > agent_ask**.\n- Using a process automatically provides human approval, re-execution, and audit log.\n- A 1:1 skill tool only performs the actions defined by that skill — new flows should be wrapped in a process.\n- `agent_ask` is reserved for cases that require reasoning delegation. Simple tool calls should be made directly by the manager."
+            "content": "# Delegation decision tree\n\n## 1. Data retrieval / status check\n- Single fact \u2192 `knowledge_fact_query`. File read/list \u2192 `knowledge_file_read` / `knowledge_file_list`.\n- List members / skills / processes / bundles \u2192 `member_list` / `skill_list` / `process_list` / `bundle_installed`. Config \u2192 `config_get`.\n\n## 2. One-shot execution\n- Run a skill once = `task_create({skill:'<id>', args, title})` \u2192 `task_run`. Result = `task_get({id})`.\n- Run a real command / file / db op = a host capability (`io.execute`, `fs.*`, `db.*`) \u2014 directly or inside a process step.\n\n## 3. Multi-step workflow\n- Defined process exists = `process_start({id})`. Else define with `process_save({yaml})` then start.\n- Progress = `process_get({id})` / `process_runs({id})`.\n\n## 4. Human in the loop (matrix)\n- A gate awaiting approval \u2192 `approvals_pending({approverId?})`; approve = `process_approve({id, approverId})` (designated approver or org-ancestor).\n- A human work-step \u2192 `tasks_pending({assigneeId?})`; the person completes via `step_submit`.\n- Each affects only its own run \u2014 everything else keeps running.\n\n## 5. Direct member call\n- One-shot to a member = `agent_ask({agentId, message})`. History = `agent_get_history`. Routing = `agent_route({intent})`.\n\n## Priority order\n**process > task > direct tool/capability call > agent_ask**. A process provides approval gates, human steps, auto-chaining, and audit. `agent_ask` is for reasoning delegation; simple tool/capability calls the manager makes directly."
           },
           {
             "id": "membership_flow",
             "title": "Member creation / attachment flow",
             "format": "markdown",
-            "content": "# Member flow\n\n## New agent member\n```\nmember_create_agent({\n  id: 'editor.junior',\n  displayName: 'Junior Editor',\n  profile: '<profile_id>',\n  model: { provider: 'anthropic', model: 'claude-sonnet-4-6' },\n  skills: ['content_review', 'ad_publish']\n})\n```\n\n## Person member\n`member_add_person({id, displayName, contact})` — for channel notifications / approvals.\n\n## Workspace attach / detach\n- Pull from global pool = `member_attach({memberId})`.\n- Remove = `member_detach({memberId})`.\n- Global list = `member_global_list`.\n\n## Channel credentials\n`member_capture_auth({memberId, channel:'slack'|'discord'|...})` — stores token in Keychain."
+            "content": "# Member flow\n\n## New agent member\n```\nmember_create_agent({\n  id: 'editor.junior',\n  displayName: 'Junior Editor',\n  profileRef: '<profile_id>',\n  philosophyRef: '<philosophy_id>',\n  skillIds: ['content_review', 'ad_publish'],\n  model: { provider: 'anthropic', model: 'claude-sonnet-4-6' }\n})\n```\n(Param names are `profileRef` \u00b7 `philosophyRef` \u00b7 `skillIds` \u2014 not `profile`/`skills`.)\n\n## Person member\n`member_add_person({id, displayName, contact})` \u2014 a human teammate; can be a process step's approver (`gates.approverId`) or doer (`assigneeId` + `skillId: human`).\n\n## Workspace attach / detach\n- Pull from global pool = `member_attach({memberId})` \u00b7 Remove = `member_detach({memberId})` \u00b7 Global list = `member_global_list`.\n\n## Channel credentials\n`member_capture_auth({memberId, channel:'slack'|'discord'|...})` \u2014 stores token in Keychain."
           },
           {
             "id": "skill_lifecycle",
             "title": "Skill definition flow",
             "format": "markdown",
-            "content": "# Skill flow\n\n## New skill\n`skill_save({id, scope:'workspace'|'agent', body:{description, inputSchema, action}})`.\n\n## Auto-generate\n`skill_generate({goal:'...natural language goal...'})` — generates skill definition candidates via LLM. User confirms, then `skill_save`.\n\n## 3-level scope\n- **template** — provided by seed / bundle.\n- **workspace** — project's `skills/*.yaml`. `skill_save({scope:'workspace'})`.\n- **agent** — per-member overlay. `skill_save({scope:'agent', agentId})`.\n\n## Invocation\n1:1 skill tool — each skill id is used directly as the tool name. `skill_list` shows the currently available ids.\n\n## Deletion\n`skill_delete({id, scope})`. Clean up agent overlays first, then delete the workspace definition."
+            "content": "# Skill flow\n\n## New skill\n`skill_save({id, scope:'workspace'|'agent', body:{description, inputSchema, action}})`.\n\n## Auto-generate\n`skill_generate({goal:'...natural language goal...'})` \u2014 generates skill definition candidates via LLM. User confirms, then `skill_save`.\n\n## 3-level scope\n- **template** \u2014 provided by seed / bundle.\n- **workspace** \u2014 project's `skills/*.yaml`. `skill_save({scope:'workspace'})`.\n- **agent** \u2014 per-member overlay. `skill_save({scope:'agent', agentId})`.\n\n## Invocation\n1:1 skill tool \u2014 each skill id is used directly as the tool name. `skill_list` shows the currently available ids.\n\n## Deletion\n`skill_delete({id, scope})`. Clean up agent overlays first, then delete the workspace definition."
           },
           {
             "id": "process_lifecycle",
             "title": "Process (workflow) flow",
             "format": "markdown",
-            "content": "# Process flow\n\n## Definition\n`process_save({id, name, steps:[{name, skill, args, requiresApproval}], goals})` — multi-step workflow.\n\n## Execution\n`process_start({id, args})` → returns run id.\n- Approval step = advance with `process_approve({runId})`.\n- Cancel = `process_cancel({runId})`.\n- Resume = `process_resume({runId})`.\n\n## Retrieval\n- Definition list = `process_list`.\n- Run history = `process_runs({id})`.\n- Single run = `process_get({runId})`.\n\n## Patterns\n- Recurring operations (weekly publish · daily report) → wrap in a process and schedule (task_create + recurring).\n- Human approval branch → set `requiresApproval: true` on the relevant step.\n- LLM reasoning step → the step's skill calls `agent_ask` internally."
+            "content": "# Process flow\n\n## Definition (YAML)\n`process_save({yaml, workspaceId?})` \u2014 the process is a YAML string:\n```yaml\nid: weekly_publish\ntitle: Weekly Publish\nsteps:\n  - stepId: draft\n    assigneeId: editor.junior     # an agent member; OR a person + skillId: human (waits for step_submit)\n    skillId: content_review\n    inputs: {}\n    channelThreadId: deploy        # optional handoff \u2014 posts to this in-app thread after the step\ngates:\n  - approverId: ops.manager        # suspends the run until this approver (or an org-ancestor) approves\ntriggerSource: upstream_proc_id    # optional \u2014 auto-start when that process completes (event chaining)\n```\n\n## Execution\n`process_start({id, inputs?})` \u2192 `{runId, state, currentStep}`. `state: waitingApproval` = paused at a gate; `waitingTask` = paused at a human step.\n- Approve a gate = `process_approve({id, approverId})` \u2014 must be the designated approver or an org-ancestor (escalation).\n- Resume / cancel = `process_resume` / `process_cancel`. History = `process_runs({id})` \u00b7 single run = `process_get({id})`.\n\n## Patterns (matrix model)\n- Cross-workspace: a step's `assigneeId` may be an agent in another workspace \u2014 the process spans workspaces.\n- Human approval = a `gate` (designated `approverId`; suspends only this run; escalates up the org tree). Human work = a `human` step (queued in `tasks_pending`, completed via `step_submit`).\n- Auto-chaining = `triggerSource` (A completes \u2192 B starts unattended). Recurring = schedule/cron."
           }
         ]
       },
       {
         "id": "ops_concepts",
-        "title": "Ops 5 facades — knowledge / skill / profile / philosophy / fact",
-        "description": "The meaning and storage layout of each of Ops's 5 knowledge facades. The basis for semantic distinction when ops.admin composes delegation / retrieval flows.",
+        "title": "Ops 5 facades \u2014 knowledge / skill / profile / philosophy / fact",
+        "description": "The meaning and storage layout of each of Ops's 5 knowledge facades. The basis for semantic distinction when ops.manager composes delegation / retrieval flows.",
         "documents": [
           {
             "id": "facade_knowledge",
-            "title": "Knowledge facade — fact graph + file store",
+            "title": "Knowledge facade \u2014 fact graph + file store",
             "format": "markdown",
-            "content": "# Knowledge facade\n\nFree-form knowledge for a project. Two kinds:\n\n## 1. Fact (graph node)\n- Based on mcp_fact_graph.\n- `knowledge_fact_save({subject, predicate, object, source})` — stores a triple.\n- `knowledge_fact_query({subject?, predicate?, object?})` — matches triples.\n- Used for LLM reasoning, indexing, and summarization.\n\n## 2. File\n- Arbitrary files in the project's `knowledge/` folder.\n- `knowledge_file_write({path, content})` / `knowledge_file_read({path})` / `knowledge_file_list({prefix})` / `knowledge_file_delete({path})`.\n- `knowledge_ingest_file({path})` — ingests an external file into this facade.\n- `knowledge_query({q})` — free-text search (over the index)."
+            "content": "# Knowledge facade\n\nFree-form knowledge for a project. Two kinds:\n\n## 1. Fact (graph triple)\n- Based on mcp_fact_graph. `knowledge_fact_save({subject, predicate, object, source})` \u00b7 `knowledge_fact_query({subject?, predicate?, object?})`.\n- Cross-workspace reads honor formal `workspace_share` grants (a shared scope is merged read-only, tagged with its origin).\n\n## 2. File\n- Files under the project's `knowledge/` folder. `knowledge_file_write` / `knowledge_file_read` / `knowledge_file_list({prefix})` / `knowledge_file_delete`.\n- `knowledge_ingest_file({path})` \u2014 ingest an external file (chunking via the host `ingest.*` capability) into facts.\n(No `knowledge_query` tool \u2014 retrieval is fact-query + file-list.)"
           },
           {
             "id": "facade_skill",
-            "title": "Skill facade — MCP tools + action bodies",
+            "title": "Skill facade \u2014 MCP tools + action bodies",
             "format": "markdown",
-            "content": "# Skill facade\n\nMCP tools that the project or its members can invoke. YAML definition + action body (script · prompt · tool chain).\n\n- `skill_list` / `skill_get` / `skill_save` / `skill_delete` / `skill_generate` / `skill_global_list`.\n- Scope = template / workspace / agent (see skill_lifecycle in ops_delegation).\n- Invocation = skill id is the tool name as-is. Use `skill_list` output to confirm available ids."
+            "content": "# Skill facade\n\nMCP tools that the project or its members can invoke. YAML definition + action body (script \u00b7 prompt \u00b7 tool chain).\n\n- `skill_list` / `skill_get` / `skill_save` / `skill_delete` / `skill_generate` / `skill_global_list`.\n- Scope = template / workspace / agent (see skill_lifecycle in ops_delegation).\n- Invocation = skill id is the tool name as-is. Use `skill_list` output to confirm available ids."
           },
           {
             "id": "facade_profile",
-            "title": "Profile facade — agent persona",
+            "title": "Profile facade \u2014 agent persona",
             "format": "markdown",
-            "content": "# Profile facade\n\nPersona definition for agent members (voice tone · values · operational context).\n\n- Location = project `profiles/<id>.yaml`.\n- Assigned via `profile: '<id>'` when calling `member_create_agent`.\n- Multiple agents can share the same profile.\n- Merged as part of the LLM system prompt."
+            "content": "# Profile facade\n\nPersona definition for agent members (voice tone \u00b7 values \u00b7 operational context).\n\n- Location = project `profiles/<id>.yaml`.\n- Assigned via `profile: '<id>'` when calling `member_create_agent`.\n- Multiple agents can share the same profile.\n- Merged as part of the LLM system prompt."
           },
           {
             "id": "facade_philosophy",
-            "title": "Philosophy facade — editorial / operational principles",
+            "title": "Philosophy facade \u2014 editorial / operational principles",
             "format": "markdown",
-            "content": "# Philosophy facade\n\nEditorial principles / operational values for the project — the axis an agent should follow when making decisions.\n\n- Location = project `philosophies/<id>.yaml`.\n- 4-axis structure (axis name · scale · principles · examples).\n- A profile can reference a philosophy → becomes the agent's decision basis.\n- Host comparison tool = `philosophy_compare` (Ops UI); agent receives it merged into systemPrompt."
+            "content": "# Philosophy facade\n\nEditorial principles / operational values for the project \u2014 the axis an agent should follow when making decisions.\n\n- Location = project `philosophies/<id>.yaml`.\n- 4-axis structure (axis name \u00b7 scale \u00b7 principles \u00b7 examples).\n- A profile can reference a philosophy \u2192 becomes the agent's decision basis.\n- Host comparison tool = `philosophy_compare` (Ops UI); agent receives it merged into systemPrompt."
           },
           {
             "id": "facade_fact_index",
             "title": "Unified index of the 5 facades",
             "format": "markdown",
-            "content": "# Unified index\n\nKnowledgeInit.boot attaches all 5 facades.\n- Free-text search = `knowledge_query` (merges indexes across all 5 facades).\n- Single fact retrieval = `knowledge_fact_query`.\n- Per-domain list = `*_list` tool for each facade.\n- External LLM = accesses seed manual via `studio://knowledge/ops_*` resource (host fan-out)."
+            "content": "# Unified index\n\n`KnowledgeInit.boot` attaches all 5 facades (Facts \u00b7 Skills \u00b7 Profiles \u00b7 Philosophies \u00b7 Knowledge files).\n- Per-facade retrieval = that facade's query/list tool (`knowledge_fact_query` \u00b7 `skill_list` \u00b7 `member_list` \u00b7 \u2026).\n- A workspace sees its own facets + any scopes granted to it via `workspace_share` (sandbox + explicit grant).\n- External LLM = reads the seed manual via `studio://knowledge/ops_*` resources (host fan-out); shared host-capability catalog via `studio://knowledge/studio_host_tools/*`."
+          },
+          {
+            "id": "matrix_model",
+            "title": "Operating model \u2014 the 3-axis matrix",
+            "format": "markdown",
+            "content": "Ops runs a company-like operating model on three orthogonal axes; a real operation is a point in their matrix.\n\n## 1. Workspace (unit shared work-space)\n`workspace_create({type:'org'|'personal'|'project', ...})`. Granularity is free (a team, a whole company, one project). Sharing between workspaces is **formal**: a private sandbox by default, with explicit `workspace_share` grants (read-only scope) \u2014 not transitive full access.\n\n## 2. Org (hierarchy \u2014 approval + collaboration)\nWorkspaces nest into an org tree (`workspace_set_parent` / `workspace_tree`, parent/ancestors). A process approval gate names a `approverId`; if the caller isn't the designated approver, an **org-ancestor** can still approve (escalation).\n\n## 3. Process (work / operation unit)\nA `process_save` YAML spans steps across workspaces. Steps are agents or **people** (`skillId: human`). Gates suspend a run for human approval; human steps queue in `tasks_pending`. Processes auto-chain via `triggerSource`. Concurrent same-agent requests are serialized through a per-agent queue (no lost turns).\n\n## People\nA member can be an agent or a person; a person is an **approver** (`approvals_pending`) and/or a **doer** (`tasks_pending` \u2192 `step_submit`). A human action affects only its own run \u2014 everything else keeps running."
           }
         ]
       },
       {
         "id": "ops_browser_recipes",
         "title": "Ops browser primitive recipes (9 ops)",
-        "description": "Usage patterns for the 9 host browser tools (browser.page_view · browser.web_search · browser.extract · browser.crawl · browser.monitor · browser.submit_form · browser.download · browser.page_audit_role · browser.page_compare_actors).",
+        "description": "Usage patterns for the 9 host browser tools (browser.page_view \u00b7 browser.web_search \u00b7 browser.extract \u00b7 browser.crawl \u00b7 browser.monitor \u00b7 browser.submit_form \u00b7 browser.download \u00b7 browser.page_audit_role \u00b7 browser.page_compare_actors).",
         "documents": [
           {
             "id": "primitives",
             "title": "Meaning of the 9 primitives",
             "format": "markdown",
-            "content": "# 9 browser primitives\n\n| name | purpose |\n|---|---|\n| `browser.page_view` | Render a URL page + capture DOM (commonly the first step in a skill). |\n| `browser.web_search` | Search engine query. |\n| `browser.extract` | Page + selector → structured data. |\n| `browser.crawl` | Page + depth → URL tree. |\n| `browser.monitor` | URL diff watcher. |\n| `browser.submit_form` | Form input / submission (auth · CRUD). |\n| `browser.download` | File / media download. |\n| `browser.page_audit_role` | Compare a page from a role perspective (UX QA). |\n| `browser.page_compare_actors` | Diff the same page across two actors (permission / persona QA). |\n\nAll run on the host's shared `browser.*` capability (one mcp_browser engine, owned by the host — built-ins use it, never their own)."
+            "content": "# 9 browser primitives\n\n| name | purpose |\n|---|---|\n| `browser.page_view` | Render a URL page + capture DOM (commonly the first step in a skill). |\n| `browser.web_search` | Search engine query. |\n| `browser.extract` | Page + selector \u2192 structured data. |\n| `browser.crawl` | Page + depth \u2192 URL tree. |\n| `browser.monitor` | URL diff watcher. |\n| `browser.submit_form` | Form input / submission (auth \u00b7 CRUD). |\n| `browser.download` | File / media download. |\n| `browser.page_audit_role` | Compare a page from a role perspective (UX QA). |\n| `browser.page_compare_actors` | Diff the same page across two actors (permission / persona QA). |\n\nAll run on the host's shared `browser.*` capability (one mcp_browser engine, owned by the host \u2014 built-ins use it, never their own)."
           },
           {
             "id": "research_flow",
             "title": "Research + reporting pattern",
             "format": "markdown",
-            "content": "# Research flow\n\n```\nbrowser.web_search({query})   // collect candidate URLs\n  ↓\nbrowser.page_view({url})      // capture page body\n  ↓\nbrowser.extract({url, selector})  // structure the data\n  ↓\nknowledge_save({...}) /\nknowledge_fact_save({...})    // persist to facade\n  ↓\nskill 'research_and_report'   // generate report (recommended inside a process)\n```"
+            "content": "# Research flow\n\n```\nbrowser.web_search({query})   // collect candidate URLs\n  \u2193\nbrowser.page_view({url})      // capture page body\n  \u2193\nbrowser.extract({url, selector})  // structure the data\n  \u2193\nknowledge_save({...}) /\nknowledge_fact_save / knowledge_file_write    // persist to facade\n  \u2193\nskill 'research_and_report'   // generate report (recommended inside a process)\n```"
           },
           {
             "id": "publish_flow",
             "title": "Publish / channel flow",
             "format": "markdown",
-            "content": "# Publish flow\n\n```\nbrowser.submit_form({url, fields})  // CMS login or post creation\n  ↓\nbrowser.download({url, savePath})   // retrieve attachments or assets\n  ↓\nchannel_notify({channelId, payload})  // Slack / Discord notification\n```\n\nThe skill `ad_publish` wraps this flow. When defined as a multi-step process, a human approval step can be inserted."
+            "content": "# Publish flow\n\n```\nbrowser.submit_form({url, fields})  // CMS login or post creation\n  \u2193\nbrowser.download({url, savePath})   // retrieve attachments or assets\n  \u2193\nchannel_notify({channelId, payload})  // Slack / Discord notification\n```\n\nThe skill `ad_publish` wraps this flow. When defined as a multi-step process, a human approval step can be inserted."
           }
         ]
       },
       {
         "id": "ops_tool_catalog",
-        "title": "Ops tool catalog — actual tool surface on the host endpoint",
-        "description": "The tool surface visible to ops.admin and external LLM clients — tools registered by McpInbound.registerToolsOn plus 1:1 skill tools.",
+        "title": "Ops tool catalog \u2014 actual tool surface on the host endpoint",
+        "description": "The tool surface visible to ops.manager and external LLM clients \u2014 tools registered by McpInbound.registerToolsOn plus 1:1 skill tools.",
         "documents": [
           {
             "id": "config",
             "title": "config_*",
             "format": "markdown",
-            "content": "- `config_get` — full OpsConfig JSON (workspacesRoot · activeWorkspace · llm · mcp · ...).\n- `config_reload` — re-reads `~/.makemind-ops/config.yaml`.\n- `config_set_llm_provider` · `config_set_mcp_outbound` · `config_set_storage` · `config_set_chromium` — partial updates.\n- `system_agent_set_model` — swaps `config.systemAgent.model` only (runtime)."
+            "content": "- `config_get` \u2014 full OpsConfig JSON (workspacesRoot \u00b7 activeWorkspace \u00b7 llm \u00b7 mcp \u00b7 ...).\n- `config_reload` \u2014 re-reads `~/.makemind-ops/config.yaml`.\n- `config_set_llm_provider` \u00b7 `config_set_mcp_outbound` \u00b7 `config_set_storage` \u00b7 `config_set_chromium` \u2014 partial updates.\n- `system_agent_set_model` \u2014 swaps `config.systemAgent.model` only (runtime)."
           },
           {
             "id": "workspace",
             "title": "workspace_*",
             "format": "markdown",
-            "content": "- `workspace_list` — sub-workspaces in the current project (slugs under `workspacesRoot`).\n- `workspace_create({name, owner})` · `workspace_update` · `workspace_rename` · `workspace_delete` · `workspace_switch({slug})`."
+            "content": "- `workspace_list` \u2014 workspaces in the current project.\n- `workspace_create({type:'org'|'personal'|'project', slug, title?, projectRoot?})` \u00b7 `workspace_update` \u00b7 `workspace_rename` \u00b7 `workspace_delete` \u00b7 `workspace_switch({slug})`.\n- org hierarchy (matrix axis 2): `workspace_set_parent({slug, parentId})` \u00b7 `workspace_tree` \u2014 nest workspaces into an org tree (parent / ancestors); a process approval gate can escalate up this tree.\n- formal sharing (matrix \u2014 sandbox + explicit grant): `workspace_share({fromWorkspaceId, toWorkspaceId, scope})` \u00b7 `workspace_shares` \u2014 grant a read-only knowledge scope from one workspace to another. No grant = no cross-workspace read."
           },
           {
             "id": "member",
             "title": "member_*",
             "format": "markdown",
-            "content": "- `member_list` — members of the current workspace.\n- `member_global_list` — global pool across all projects.\n- `member_get({id})` · `member_create_agent({...})` · `member_add_person({...})` · `member_update` · `member_delete`.\n- `member_attach({memberId})` · `member_detach({memberId})`.\n- `member_capture_auth({memberId, channel})`."
+            "content": "- `member_list` \u2014 members of the current workspace.\n- `member_global_list` \u2014 global pool across all projects.\n- `member_get({id})` \u00b7 `member_create_agent({...})` \u00b7 `member_add_person({...})` \u00b7 `member_update` \u00b7 `member_delete`.\n- `member_attach({memberId})` \u00b7 `member_detach({memberId})`.\n- `member_capture_auth({memberId, channel})`."
           },
           {
             "id": "task_process",
             "title": "task_* + process_*",
             "format": "markdown",
-            "content": "- task: `task_list({state?})` · `task_get({id})` · `task_create({title, skill, args, assigneeId?})` · `task_update` · `task_run({id})` · `task_cancel` · `task_delete` · `task_runs`.\n- process: `process_list` · `process_get({id})` · `process_save({...})` · `process_start({id, args?})` · `process_approve` · `process_resume` · `process_cancel` · `process_delete` · `process_runs({id})`."
+            "content": "- task: `task_list({state?})` \u00b7 `task_get({id})` \u00b7 `task_create({title, skill, args, assigneeId?})` \u00b7 `task_update` \u00b7 `task_run({id})` \u00b7 `task_cancel` \u00b7 `task_delete` \u00b7 `task_runs`.\n- process: `process_list` \u00b7 `process_get({id})` \u00b7 `process_save({yaml, workspaceId?})` (YAML definition \u2014 shape in ops_delegation) \u00b7 `process_start({id, inputs?})` \u00b7 `process_approve({id, approverId})` \u00b7 `process_resume` \u00b7 `process_cancel` \u00b7 `process_delete` \u00b7 `process_runs({id})`.\n- human inbox (matrix \u2014 people as approver + doer): `approvals_pending({approverId?})` (gates awaiting a designated approver, incl. org-ancestor escalation) \u00b7 `tasks_pending({assigneeId?})` (human work-steps awaiting a person) \u00b7 `step_submit({processId, stepId, result})` (a person completes their step, resuming the run)."
           },
           {
             "id": "knowledge_skill_bundle",
             "title": "knowledge_* + skill_* + bundle_*",
             "format": "markdown",
-            "content": "- knowledge: `knowledge_query` · `knowledge_save` · `knowledge_fact_save` · `knowledge_fact_query` · `knowledge_file_write` · `knowledge_file_read` · `knowledge_file_list` · `knowledge_file_delete` · `knowledge_ingest_file`.\n- skill: `skill_list` · `skill_get` · `skill_global_list` · `skill_save` · `skill_delete` · `skill_generate`. Plus 1:1 tools named after each registered skill id.\n- bundle: `bundle_list` · `bundle_installed` · `bundle_install` · `bundle_uninstall`.\n- opspack: `opspack_export` · `opspack_import` — Ops package import/export.\n- recipe: `recipe_list` · `recipe_seed` — seed recipes.\n- form: host `form.*` (`form.create_document` · `form.render` · `form.list_templates` · …) — document generation from templates, on the host endpoint.\n- channel: `channel_notify` — Slack / Discord / Web push.\n- status: `status_snapshot` — operations snapshot JSON.\n- diagnostic: `diagnostic_export` — diagnostic export.\n- html_report: `html_report_export` — HTML report export."
+            "content": "- knowledge: `knowledge_fact_save` \u00b7 `knowledge_fact_query` \u00b7 `knowledge_file_write` \u00b7 `knowledge_file_read` \u00b7 `knowledge_file_list` \u00b7 `knowledge_file_delete` \u00b7 `knowledge_ingest_file`. (There is no `knowledge_query`/`knowledge_save` tool \u2014 use the fact / file tools.)\n- skill: `skill_list` \u00b7 `skill_get` \u00b7 `skill_global_list` \u00b7 `skill_save` \u00b7 `skill_delete` \u00b7 `skill_generate`. Plus 1:1 tools named after each registered skill id.\n- bundle: `bundle_list` \u00b7 `bundle_installed` \u00b7 `bundle_install` \u00b7 `bundle_uninstall`. opspack: `opspack_export` \u00b7 `opspack_import`.\n- reporting: `status_snapshot` \u00b7 `diagnostic_export` \u00b7 `html_report_export`. channel: `channel_notify` (routes through the host `channel.*` capability).\n- host capability packs (shared `<id>.*`, not Ops-registered \u2014 full catalog at `studio://knowledge/studio_host_tools/capabilities`): `io.*` (sandboxed git/dart/flutter/pub exec) \u00b7 `channel.*` \u00b7 `browser.*` \u00b7 `fs.*`/`db.*` (datastore) \u00b7 `canvas.*` \u00b7 `kv.*` \u00b7 `analysis.*` \u00b7 `form.*` \u00b7 `ingest.*`. Process steps drive real work (run commands, read/write files, query a db) through these."
           },
           {
             "id": "agent_browser",
             "title": "agent_* + 9 browser primitives",
             "format": "markdown",
-            "content": "- agent: `agent_ask({agentId, message})` · `agent_assign_skill` · `agent_get_history` · `agent_route({intent})`.\n- browser (9, host capability): `browser.page_view` · `browser.page_audit_role` · `browser.web_search` · `browser.extract` · `browser.crawl` · `browser.monitor` · `browser.submit_form` · `browser.download` · `browser.page_compare_actors`.\n\nAdditional: ui_* (debug surface), makemind-ops:// resources (external MCP guide / concepts / workflows / tool-catalog / live-state) and prompts (getting_started · drive_workspace · author_skill · evolve_agent · compose_process)."
+            "content": "- agent: `agent_ask({agentId, message})` \u00b7 `agent_assign_skill` \u00b7 `agent_get_history` \u00b7 `agent_route({intent})`.\n- browser (9, host capability): `browser.page_view` \u00b7 `browser.page_audit_role` \u00b7 `browser.web_search` \u00b7 `browser.extract` \u00b7 `browser.crawl` \u00b7 `browser.monitor` \u00b7 `browser.submit_form` \u00b7 `browser.download` \u00b7 `browser.page_compare_actors`.\n\nAdditional: ui_* (debug surface), makemind-ops:// resources (external MCP guide / concepts / workflows / tool-catalog / live-state) and prompts (getting_started \u00b7 drive_workspace \u00b7 author_skill \u00b7 evolve_agent \u00b7 compose_process)."
           }
         ]
       }
@@ -189,10 +195,10 @@
     "schemaVersion": "1.0.0",
     "agents": [
       {
-        "id": "ops.admin",
-        "name": "Ops Admin",
+        "id": "ops.manager",
+        "name": "Ops Manager",
         "role": "manager",
-        "systemPrompt": "You are the manager for Makemind Ops — a vibe_studio built-in app for project operations. The user talks to you whenever the Ops tab is active. You speak the user's language (Korean if they write in Korean).\n\nIdentity:\n  • One Ops tab = one project directory. All operational data (members / tasks / skills / processes / profiles / philosophies / knowledge) lives inside that project.\n  • Seed assets = you (`ops.admin`) + the operations manual (`studio://knowledge/ops_overview/*` · `ops_delegation/*` · `ops_concepts/*` · `ops_browser_recipes/*` · `ops_tool_catalog/*`).\n  • Project members (per-project agents) are separate from you — each has its own LLM, skill whitelist, and persona.\n\nWhen a project is NOT bound:\n  • Guide the user to the wizard's `New project` / `Open project`. The Ops wizard routes through the host chrome bridge slot.\n  • Do not try to create a directory yourself — the host chrome's standard wiring handles it.\n\nWhen a project IS bound — routing rules:\n  1. Assess state first — the first action is `config_get` plus the needed `member_list` / `skill_list` / `process_list` / `bundle_installed`.\n  2. Simple query / change → call the tool directly (you have authority over the entire Ops tool surface).\n  3. Multi-step operations → if a defined process exists, prefer `process_start`. Otherwise define it with `process_save`, then `process_start`.\n  4. One-off skill execution → `task_create({skill, args})` → `task_run`.\n  5. Delegate reasoning / review to a member → `agent_ask({agentId:'<member_id>', message})`. For free-form intent → recommend candidates with `agent_route`.\n  6. Web research → 9 host browser primitives (`browser.page_view` · `browser.web_search` · `browser.extract` · ...) → save with `knowledge_save` when needed.\n  7. Do not guess identifiers — confirm any unknown `id` with a list tool first.\n\nCross-builtin:\n  • Other tools on the vibe_studio host endpoint (`studio.*` · `app_builder.*` · `scene.*` · `bk.*`) are exposed on the same surface. Call them only when truly needed, and prioritize your own domain (Ops).\n  • The host manager (`studio.manager`) is responsible for routing other built-ins. When the user makes a request like \"I want to build an app\", guide them to the host manager / app_builder.\n\nWriting:\n  • Answer in markdown. For tool results, attach a one-line summary the user can act on plus only the raw output that's needed.\n  • If ambiguous, ask once and proceed (especially for destructive actions: delete · cancel · uninstall).",
+        "systemPrompt": "You are the manager for Makemind Ops \u2014 a vibe_studio built-in app for project operations. The user talks to you whenever the Ops tab is active. You speak the user's language (Korean if they write in Korean).\n\nIdentity:\n  \u2022 One Ops tab = one project directory. All operational data (members / tasks / skills / processes / profiles / philosophies / knowledge) lives inside that project.\n  \u2022 Seed assets = you (`ops.manager`) + the operations manual (`studio://knowledge/ops_overview/*` \u00b7 `ops_delegation/*` \u00b7 `ops_concepts/*` \u00b7 `ops_browser_recipes/*` \u00b7 `ops_tool_catalog/*`).\n  \u2022 Project members (per-project agents) are separate from you \u2014 each has its own LLM, skill whitelist, and persona.\n\nWhen a project is NOT bound:\n  \u2022 Guide the user to the wizard's `New project` / `Open project`. The Ops wizard routes through the host chrome bridge slot.\n  \u2022 Do not try to create a directory yourself \u2014 the host chrome's standard wiring handles it.\n\nWhen a project IS bound \u2014 routing rules:\n  1. Assess state first \u2014 the first action is `config_get` plus the needed `member_list` / `skill_list` / `process_list` / `bundle_installed`.\n  2. Simple query / change \u2192 call the tool directly (you have authority over the entire Ops tool surface).\n  3. Multi-step operations \u2192 if a defined process exists, prefer `process_start`. Otherwise define it with `process_save`, then `process_start`.\n  4. One-off skill execution \u2192 `task_create({skill, args})` \u2192 `task_run`.\n  5. Delegate reasoning / review to a member \u2192 `agent_ask({agentId:'<member_id>', message})`. For free-form intent \u2192 recommend candidates with `agent_route`.\n  6. Web research \u2192 9 host browser primitives (`browser.page_view` \u00b7 `browser.web_search` \u00b7 `browser.extract` \u00b7 ...) \u2192 save with `knowledge_save` when needed.\n  7. Do not guess identifiers \u2014 confirm any unknown `id` with a list tool first.\n\nCross-builtin:\n  \u2022 Other tools on the vibe_studio host endpoint (`studio.*` \u00b7 `app_builder.*` \u00b7 `scene.*` \u00b7 `bk.*`) are exposed on the same surface. Call them only when truly needed, and prioritize your own domain (Ops).\n  \u2022 The host manager (`studio.manager`) is responsible for routing other built-ins. When the user makes a request like \"I want to build an app\", guide them to the host manager / app_builder.\n\nWriting:\n  \u2022 Answer in markdown. For tool results, attach a one-line summary the user can act on plus only the raw output that's needed.\n  \u2022 If ambiguous, ask once and proceed (especially for destructive actions: delete \u00b7 cancel \u00b7 uninstall).",
         "model": {
           "provider": "anthropic",
           "model": "claude-opus-4-7"
@@ -207,36 +213,70 @@
           "bk.fact.get",
           "bk.skill.list",
           "bk.knowledge.query",
+          "browser.web_search",
+          "browser.page_view",
+          "browser.extract",
           "config_get",
           "config_reload",
+          "config_set_llm_provider",
+          "config_set_storage",
+          "config_set_chromium",
+          "config_set_mcp_outbound",
           "workspace_list",
           "workspace_create",
           "workspace_switch",
+          "workspace_update",
+          "workspace_rename",
+          "workspace_delete",
           "member_list",
           "member_global_list",
+          "member_get",
+          "member_add_person",
           "member_create_agent",
+          "member_update",
           "member_attach",
+          "member_detach",
+          "member_delete",
+          "member_capture_auth",
+          "agent_ask",
+          "agent_route",
+          "agent_get_history",
+          "agent_assign_skill",
+          "skill_list",
+          "skill_global_list",
+          "skill_get",
+          "skill_save",
+          "skill_generate",
+          "skill_delete",
           "task_list",
           "task_get",
           "task_create",
+          "task_update",
           "task_run",
+          "task_runs",
+          "task_cancel",
+          "task_delete",
           "process_list",
           "process_get",
+          "process_save",
           "process_start",
+          "process_resume",
           "process_approve",
+          "process_cancel",
+          "process_runs",
+          "process_delete",
           "knowledge_query",
           "knowledge_fact_query",
           "knowledge_fact_save",
           "knowledge_file_list",
           "knowledge_file_read",
           "knowledge_file_write",
-          "skill_list",
-          "skill_get",
+          "knowledge_file_delete",
+          "knowledge_ingest_file",
           "bundle_list",
           "bundle_installed",
-          "browser.web_search",
-          "browser.page_view",
-          "browser.extract"
+          "bundle_install",
+          "bundle_uninstall"
         ]
       }
     ]

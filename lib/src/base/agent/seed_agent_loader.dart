@@ -30,8 +30,13 @@ List<VibeAgentProfile> loadSeedAgentProfiles({
   required String? seedPath,
   required List<VibeAgentProfile> baseline,
   String? exposedShortId,
+  String? defaultModelId,
 }) {
-  final fromSeed = _readSeedAgents(seedPath, exposedShortId: exposedShortId);
+  final fromSeed = _readSeedAgents(
+    seedPath,
+    exposedShortId: exposedShortId,
+    defaultModelId: defaultModelId,
+  );
   if (fromSeed.isEmpty) return baseline;
   final seedIds = <String>{for (final a in fromSeed) a.id};
   return <VibeAgentProfile>[
@@ -44,6 +49,7 @@ List<VibeAgentProfile> loadSeedAgentProfiles({
 List<VibeAgentProfile> _readSeedAgents(
   String? seedPath, {
   String? exposedShortId,
+  String? defaultModelId,
 }) {
   if (seedPath == null) return const <VibeAgentProfile>[];
   final manifestFile = File(p.join(seedPath, 'manifest.json'));
@@ -87,10 +93,12 @@ List<VibeAgentProfile> _readSeedAgents(
         modelId =
             (modelEntry['model'] as String?) ??
             (a['modelId'] as String?) ??
+            defaultModelId ??
             'claude-opus-4-7';
         provider = (modelEntry['provider'] as String?) ?? 'anthropic';
       } else {
-        modelId = (a['modelId'] as String?) ?? 'claude-opus-4-7';
+        modelId =
+            (a['modelId'] as String?) ?? defaultModelId ?? 'claude-opus-4-7';
         provider = 'anthropic';
       }
       final tools =

@@ -21,6 +21,7 @@ class WorkspaceLoader {
     required this.appSkills,
     required this.executor,
     required this.ethosStore,
+    this.defaultModel,
   });
 
   final OpsConfig config;
@@ -29,6 +30,12 @@ class WorkspaceLoader {
   final AppSkillRegistry appSkills;
   final SkillExecutor executor;
   final EthosStorePort ethosStore;
+
+  /// Host-injected inherited default model (from `settings.llmModel` via
+  /// [StudioBackbone.defaultAgentModel]). Used as the mirror fallback for
+  /// yaml-loaded agents that carry no per-agent ModelSpec, so reloaded
+  /// agents ride a REAL provider instead of the stub port. See FR-OPS-001.
+  final ModelSpec? defaultModel;
 
   Future<void> loadActive() async {
     OpsLog.boot(
@@ -67,13 +74,21 @@ class WorkspaceLoader {
   /// that already exist in the flowbrain registry.
   Future<void> _mirrorAgentMembers(String wsId, List<dynamic> members) async {
     if (!system.isAgentSubsystemActivated) return;
+    // Fallback model for yaml agents without a per-agent ModelSpec:
+    //   1. host-injected inherited default (configured `settings.llmModel`)
+    //   2. explicit Ops yaml provider (`~/.makemind-ops/config.yaml` llm)
+    //   3. stub — last resort only (fully unwired standalone / test boot)
     final defaultProvider = config.llm.defaultProvider;
     final providerCfg = config.llm.providers[defaultProvider];
-    final fallbackModel = ModelSpec(
-      provider: providerCfg != null ? defaultProvider : 'stub',
-      model: providerCfg?.model ?? 'stub-1',
-      maxTokens: providerCfg?.maxTokens,
-    );
+    final fallbackModel =
+        defaultModel ??
+        (providerCfg != null
+            ? ModelSpec(
+              provider: defaultProvider,
+              model: providerCfg.model,
+              maxTokens: providerCfg.maxTokens,
+            )
+            : const ModelSpec(provider: 'stub', model: 'stub-1'));
     var mirrored = 0;
     var forks = 0;
     for (final m in members) {

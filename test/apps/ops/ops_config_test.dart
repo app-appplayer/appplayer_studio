@@ -209,6 +209,17 @@ activeWorkspace: "badvalue"
       },
     );
 
+    // --- c7b ---
+    test('c7b validation accepts reserved `_system` slot (no slash)', () async {
+      // `_system` (ws_paths.systemWorkspaceSlot) is the runtime default
+      // active workspace when no project workspace is bound; persisting it
+      // must NOT trip the `<type>/<slug>` rule (regression: ops boot E1002
+      // crash when config.yaml held `_system`).
+      final path = await writeTmp('activeWorkspace: "_system"\n');
+      final cfg = await OpsConfig.load(path: path);
+      expect(cfg.activeWorkspace, '_system');
+    });
+
     // --- c8 ---
     test(
       'c8 validation fails when defaultProvider not in providers map',

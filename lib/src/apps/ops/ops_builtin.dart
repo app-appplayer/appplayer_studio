@@ -120,6 +120,24 @@ class OpsBuiltInApp extends BuiltInApp {
     if (_bootFuture != null && _bootedProject == currentProject) {
       return _bootFuture!;
     }
+    // An unbound (project-less) ensureBoot — fired by `mount` /
+    // `registerHostTools` on every tab activation / rebuild — must NEVER
+    // tear down an already-bound project boot. Without this guard the
+    // unbound call overwrites `_bootedProject` (→ null) and `_bootFuture`,
+    // which defeats the `_doBoot` publish guard (it checks
+    // `_bootedProject == currentProject`): the in-flight bound boot then
+    // fails to publish `_liveInit`, so `workspace_*` / `member_*` resolve
+    // the unbound init and report "workspacesRoot not bound" right after a
+    // successful MCP `project.new` / `project.open`. Reuse the live bound
+    // boot instead. An explicit close routes through `resetBootCache`
+    // (which nulls `_bootFuture` / `_bootedProject`), so the welcome-state
+    // unbound boot is still reachable after the user closes a project.
+    final unbound = currentProject == null || currentProject.isEmpty;
+    if (unbound &&
+        _bootFuture != null &&
+        (_bootedProject?.isNotEmpty ?? false)) {
+      return _bootFuture!;
+    }
     final pending = _disposeFuture;
     if (pending != null) {
       try {
@@ -186,6 +204,10 @@ class OpsBuiltInApp extends BuiltInApp {
       hostSystem:
           backbone?.isFlowBrainBooted == true ? backbone!.app.system : null,
       observability: observability,
+      // Inherited default model — agents created without an explicit
+      // ModelSpec ride the configured `settings.llmModel` (resolved at
+      // boot) instead of the stub port. host wiring, not builtin logic.
+      defaultAgentModel: backbone?.defaultAgentModel,
     );
     // Phase A.3 — merge Ops's LlmPort provider pool (multi-provider
     // mcp_llm — Anthropic / OpenAI / Gemini) into the KernelApp's
@@ -290,8 +312,12 @@ class OpsBuiltInApp extends BuiltInApp {
     return OpsConfig(
       version: src.version,
       appName: src.appName,
-      activeWorkspace:
-          src.activeWorkspace.isEmpty ? '_system' : src.activeWorkspace,
+      // Always reset to the reserved `_system` slot on project switch.
+      // Carrying `src.activeWorkspace` (a host-global) over made a freshly
+      // opened project inherit the PREVIOUS project's workspace id, so
+      // `wsContentRoot(projectRoot, <stale wsId>)` pointed at a `<wsId>.mbd`
+      // that doesn't exist in the new project → its content failed to load.
+      activeWorkspace: '_system',
       workspacesRoot: projectRoot,
       llm: src.llm,
       mcp: src.mcp,

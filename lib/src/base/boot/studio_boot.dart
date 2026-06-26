@@ -14,7 +14,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart'
-    show KernelApp, KvStoragePortAdapter, LlmPortAdapter;
+    show KernelApp, KvStoragePortAdapter, LlmPortAdapter, ModelSpec;
 import 'package:brain_kernel/mcp_host.dart'
     show McpClientKernelHost, ServerBootstrap;
 import 'package:appplayer_claude_code_provider/appplayer_claude_code_provider.dart'
@@ -54,11 +54,20 @@ class StudioBoot {
     List<SeedBundleEntry> seedBundles = const <SeedBundleEntry>[],
     String? workspaceId,
     String Function(String)? resolveAgentId,
+    String? defaultModelId,
   }) async {
     final wsId = workspaceId ?? toolId;
     final llmProviders = <String, LlmPortAdapter>{};
     String? claudeCodeModelId;
     String? claudeCodeExecutable;
+    // First catalog model that actually wires an adapter — the de-facto
+    // default every agent rides through `_defaultLlm` when its own
+    // ModelSpec.provider isn't in the pool. Captured so member/worker
+    // agents inherit a REAL model instead of the stub port (FR-OPS-001
+    // fix: created agents must default to the configured model, never
+    // `stub/stub-1`). `(id, provider)` pair feeds [defaultAgentModel].
+    String? firstWiredModelId;
+    String? firstWiredProvider;
     for (final m in models) {
       // Provider null = legacy single-key catalog → assume Anthropic
       // (matches the original `LlmPortAdapter` default ctor that
@@ -104,6 +113,8 @@ class StudioBoot {
       // Settings → LLM tomorrow).
       llmProviders[m.id] = adapter;
       llmProviders[providerId] = adapter;
+      firstWiredModelId ??= m.id;
+      firstWiredProvider ??= providerId;
       // Remember claude_code identity so we can swap the adapter for
       // the `forKernel(app, ...)` variant after `KernelApp.boot`
       // returns + the host MCP endpoint's transport has started.
@@ -114,6 +125,34 @@ class StudioBoot {
         claudeCodeModelId = m.id;
         claudeCodeExecutable = llmEndpoint;
       }
+    }
+
+    // Inherited default agent model — the configured model (Settings →
+    // LLM, `settings.llmModel` arrives as [defaultModelId]) mapped to its
+    // catalog provider; when unset or not in the catalog, fall through to
+    // the first WIRED catalog model (the same de-facto default system
+    // agents ride). Never the stub port. Member/worker agents created
+    // without an explicit ModelSpec inherit this instead of `stub/stub-1`,
+    // so a worker the manager spawns can actually answer. Null only when
+    // NO provider wired at all (no API keys + no claude_code) — a
+    // degenerate state where even the manager has no LLM.
+    ModelSpec? defaultAgentModel;
+    if (defaultModelId != null && defaultModelId.isNotEmpty) {
+      for (final m in models) {
+        if (m.id == defaultModelId) {
+          defaultAgentModel = ModelSpec(
+            provider: m.provider ?? 'anthropic',
+            model: defaultModelId,
+          );
+          break;
+        }
+      }
+    }
+    if (defaultAgentModel == null && firstWiredModelId != null) {
+      defaultAgentModel = ModelSpec(
+        provider: firstWiredProvider ?? 'anthropic',
+        model: firstWiredModelId,
+      );
     }
 
     // Typed handle to the booted client host so the extension-transport
@@ -238,6 +277,7 @@ class StudioBoot {
         fetchAllToolDefinitions: fetchAllToolDefinitions,
         profiles: agentProfiles,
         resolveId: resolveAgentId,
+        defaultAgentModel: defaultAgentModel,
       );
       await agentHost.registerAgents();
       stderr.writeln(
@@ -265,6 +305,7 @@ class StudioBoot {
       seedLoader: seedLoader,
       claudeCodeModelId: claudeCodeModelId,
       claudeCodeExecutable: claudeCodeExecutable,
+      defaultAgentModel: defaultAgentModel,
     );
   }
 

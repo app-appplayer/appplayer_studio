@@ -91,11 +91,21 @@ class MemberRegistry {
     required this.kv,
     required this.knowledgeSystem,
     this.rootDir = './workspaces',
+    this.defaultModel,
   });
 
   final KvStoragePortAdapter kv;
   final KnowledgeSystem knowledgeSystem;
   final String rootDir;
+
+  /// Host-injected default ModelSpec for agents created without an explicit
+  /// model — the inherited configured model (resolved from the host's
+  /// `settings.llmModel` / first wired catalog model, threaded down via
+  /// `StudioBackbone.defaultAgentModel`). When wired, created agents ride a
+  /// REAL provider (so a worker the manager spawns can answer); the
+  /// [defaultModelSpec] stub is only reached in a fully unwired standalone /
+  /// test boot. See FR-OPS-001.
+  final ModelSpec? defaultModel;
 
   final Map<String, Map<String, Member>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -151,7 +161,9 @@ class MemberRegistry {
           id: resolvedAgentId,
           displayName: displayName,
           role: AgentRole.worker,
-          model: model ?? defaultModelSpec,
+          // Explicit per-call model → host-injected inherited default →
+          // stub only as the last resort (unwired standalone / test boot).
+          model: model ?? defaultModel ?? defaultModelSpec,
           workspaceId: workspaceId,
           systemPrompt: systemPrompt,
           tags: tags,
@@ -196,9 +208,12 @@ class MemberRegistry {
     return agent;
   }
 
-  /// Default ModelSpec for agent creation when the caller omits one. Hosts
-  /// override by wrapping the registry; the built-in fallback uses a `stub`
-  /// provider so tests / dry-runs do not require a wired LLM provider pool.
+  /// Last-resort ModelSpec when neither a per-call model NOR a host-injected
+  /// [defaultModel] is present — i.e. a fully unwired standalone / test boot
+  /// with no LLM provider pool. The hosted studio always injects
+  /// [defaultModel] (the inherited configured model), so real agents never
+  /// land here; this `stub` provider only keeps tests / dry-runs from
+  /// requiring a wired pool. NOT a default for created agents.
   static const ModelSpec defaultModelSpec = ModelSpec(
     provider: 'stub',
     model: 'stub-1',
