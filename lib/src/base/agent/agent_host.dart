@@ -188,7 +188,7 @@ class AgentHost {
   ///
   /// Bundle ownership = `BundleActivationRegistry.findOwnerOfAgent` so
   /// worker agents land scoped to their activation's exposed namespace.
-  /// Host-owned agents (studio.manager / ops.admin / host seed manager)
+  /// Host-owned agents (studio.manager / ops.manager / host seed manager)
   /// have no activation owner — passed bundleId stays null and the
   /// helper either returns master (manager role) or empty (worker role
   /// without bundle, which never matches a host-owned agent in practice).
@@ -220,7 +220,7 @@ class AgentHost {
     // Scope tool calls made during this ask to the agent's owning
     // bundle (if any). LLM tool_use payloads dispatched mid-turn
     // see `DispatchContext` and prefix local ids accordingly.
-    // Host-default agents (studio.manager / ops.admin / etc., not
+    // Host-default agents (studio.manager / ops.manager / etc., not
     // owned by any BundleActivation) fall back to master so they
     // can read across the union catalog.
     final owner = fb.BundleActivationRegistry.instance.findOwnerOfAgent(

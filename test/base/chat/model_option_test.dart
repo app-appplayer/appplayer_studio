@@ -73,7 +73,7 @@ void main() {
     });
 
     test('mo — catalog first entry is the preferred model (claude-opus)', () {
-      expect(kVibeModelCatalog.first.id, 'claude-opus-4-7');
+      expect(kVibeModelCatalog.first.id, 'claude-opus-4-8');
     });
   });
 }

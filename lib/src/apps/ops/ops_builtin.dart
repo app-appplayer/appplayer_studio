@@ -215,7 +215,7 @@ class OpsBuiltInApp extends BuiltInApp {
     // 2026-05-24). The backbone's pool is empty by default
     // (vibe_studio doesn't supply an llmApiKey), so without this
     // merge `kStudioAgentProfiles` agents (studio.manager,
-    // builder.manager, scene.manager, ops.admin, ...) throw "No
+    // builder.manager, scene.manager, ops.manager, ...) throw "No
     // LlmPort wired for provider" when chat dispatches to them.
     // `AgentLlmSessions.providers` is unmodifiable; the `addAll`
     // helper is the supported mutation path.
@@ -322,7 +322,16 @@ class OpsBuiltInApp extends BuiltInApp {
       llm: src.llm,
       mcp: src.mcp,
       browser: src.browser,
-      storage: src.storage,
+      // Root the KV store inside the project (next to chat.jsonl and
+      // .factgraph/) so per-project knowledge lives WITH the project —
+      // isolated per project, portable with the folder, isolated across
+      // instances. An empty/global localKvPath made every project share one
+      // store and accumulate. Mirrors the chat.jsonl per-project precedent.
+      storage: StorageSettings(
+        localKvPath: '$projectRoot/.kv',
+        backupIntervalHours: src.storage.backupIntervalHours,
+        retentionDays: src.storage.retentionDays,
+      ),
       channel: src.channel,
       security: src.security,
       systemAgent: src.systemAgent,

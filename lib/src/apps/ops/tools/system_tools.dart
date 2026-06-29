@@ -11,6 +11,14 @@ import 'package:appplayer_studio/builtin_api.dart'
         Procedure,
         SkillBundle,
         SkillManifest;
+import 'package:http/http.dart' as http;
+import 'package:appplayer_secure/appplayer_secure.dart'
+    show SecureStorage, FlutterSecureStorageBackend;
+
+import '../../../base/install/capability_recipes/capability_recipes.dart'
+    show CredentialMigrator;
+import '../../../base/install/knowledge_persistence/knowledge_persistence.dart'
+    show exportProject, importProject, purgeProject;
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart' show BuiltinToolRegistry;
@@ -333,7 +341,7 @@ class SystemTools {
         await init.switchWorkspace(id);
         // Persist the active workspace to config so it survives a re-boot
         // (boot restores from `config.activeWorkspace`) and config readers
-        // (config_get / the ops.admin agent / `makemind-ops://state`) see the
+        // (config_get / the ops.manager agent / `makemind-ops://state`) see the
         // same active workspace as the in-memory registry. Without this the
         // switch is in-memory only and is lost on the next ensureBoot.
         final cfg = await OpsConfig.load();
@@ -2461,6 +2469,199 @@ class SystemTools {
       },
     );
 
+    // --- Asset operation (ops-asset-management P3) ---
+
+    _register(
+      server,
+      'asset_open',
+      'Operate an asset registered in this workspace (a `category:"asset"` '
+          'fact) through its capability — `fs.read` / `db.query` / '
+          '`browser.page_view`, or an authenticated HTTP GET for an '
+          'api/homepage asset. The `credentialRef` is resolved from the OS '
+          'keychain INTERNALLY and used by the operation; the secret is never '
+          'returned — only the result and a `credentialUsed` flag.',
+      const {
+        'type': 'object',
+        'properties': {
+          'assetId': {'type': 'string'},
+        },
+        'required': ['assetId'],
+      },
+      (args) async {
+        final id = (args['assetId'] as String?) ?? '';
+        final facts = await init.registries.knowledge.listKvFacts();
+        final hit = facts.where((f) => f.category == 'asset' && f.key == id);
+        if (hit.isEmpty) {
+          return <String, dynamic>{'ok': false, 'error': 'asset not found: $id'};
+        }
+        final m = hit.first.metadata;
+        final capability = (m['capability'] ?? '').toString();
+        final locator = (m['locator'] ?? '').toString();
+        final credentialRef = (m['credentialRef'] ?? '').toString();
+        // Resolve the credential internally — never returned to the caller.
+        String? secret;
+        if (credentialRef.isNotEmpty) {
+          final SecureStorage store = FlutterSecureStorageBackend();
+          secret = await store.read(
+            credentialRef,
+            namespace: 'appplayer.credentials',
+          );
+        }
+        final credentialUsed = secret != null && secret.isNotEmpty;
+
+        Future<Map<String, dynamic>> hostJson(
+          String tool,
+          Map<String, dynamic> a,
+        ) async {
+          final r = await server.callTool(tool, a);
+          final t = r.content
+              .whereType<KernelTextContent>()
+              .map((c) => c.text)
+              .join();
+          try {
+            final d = jsonDecode(t);
+            return d is Map
+                ? d.cast<String, dynamic>()
+                : <String, dynamic>{'value': d};
+          } catch (_) {
+            return <String, dynamic>{'text': t};
+          }
+        }
+
+        String clip(String s) => s.length > 400 ? '${s.substring(0, 400)}…' : s;
+
+        Map<String, dynamic> result;
+        switch (capability) {
+          case 'fs':
+            final r = await hostJson('fs.read', {'path': locator});
+            result = {'preview': clip((r['text'] ?? '').toString())};
+            break;
+          case 'db':
+            result = await hostJson('db.query', {
+              'statement':
+                  "SELECT name FROM sqlite_master WHERE type='table' LIMIT 20",
+            });
+            break;
+          case 'browser':
+            result = await hostJson('browser.page_view', {'url': locator});
+            break;
+          default:
+            if (locator.startsWith('http')) {
+              final headers = <String, String>{};
+              if (credentialUsed) headers['Authorization'] = 'Bearer $secret';
+              final res = await http.get(Uri.parse(locator), headers: headers);
+              result = {
+                'status': res.statusCode,
+                'bodyPreview': clip(res.body),
+              };
+            } else {
+              result = {
+                'note': 'no operation wired for capability "$capability"',
+              };
+            }
+        }
+        return <String, dynamic>{
+          'ok': true,
+          'assetId': id,
+          'capability': capability,
+          'locator': locator,
+          'credentialUsed': credentialUsed,
+          'result': result,
+        };
+      },
+    );
+
+    // --- Credential migration (ops-asset-management P4) ---
+    // Seal this workspace's asset credentials under a passphrase so they can be
+    // carried to another computer. The OS-keychain key never leaves the machine;
+    // only the passphrase (held by the operator) and the opaque sealed blob do.
+    _register(
+      server,
+      'credentials_export',
+      'Seal the asset credentials of this workspace under a passphrase, '
+          'returning a portable opaque blob (PBKDF2 + AEAD via the platform '
+          'PassphraseSealer). Collects every `credentialRef` declared by a '
+          '`category:"asset"` fact, reads each secret from the OS keychain, and '
+          'seals the `{ref: secret}` map. Secrets are NEVER returned in '
+          'plaintext — only the encrypted blob and the list of refs included. '
+          'Restore on the target machine with `credentials_import`.',
+      const {
+        'type': 'object',
+        'properties': {
+          'passphrase': {'type': 'string'},
+        },
+        'required': ['passphrase'],
+      },
+      (args) async {
+        final passphrase = (args['passphrase'] as String?) ?? '';
+        if (passphrase.isEmpty) {
+          return <String, dynamic>{'ok': false, 'error': 'passphrase required'};
+        }
+        final refs = await _assetCredentialRefs(init);
+        if (refs.isEmpty) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'no asset credentials declared in this workspace',
+          };
+        }
+        // Seal via the vendored recipe's CredentialMigrator (vault read + seal);
+        // the host only decides which refs (from asset facts).
+        final sealed = await _migrator().seal(refs, passphrase);
+        if (sealed.blob == null) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'no stored credentials to export',
+            'refsDeclared': refs.toList()..sort(),
+          };
+        }
+        return <String, dynamic>{
+          'ok': true,
+          'count': sealed.count,
+          'refsDeclared': refs.toList()..sort(),
+          'sealed': sealed.blob,
+        };
+      },
+    );
+
+    _register(
+      server,
+      'credentials_import',
+      'Unseal a blob produced by `credentials_export` with its passphrase and '
+          'restore each credential into the OS keychain. Returns the refs '
+          'restored — secret values are never echoed. A wrong passphrase or a '
+          'tampered blob fails authentication and writes nothing.',
+      const {
+        'type': 'object',
+        'properties': {
+          'passphrase': {'type': 'string'},
+          'sealed': {'type': 'string'},
+        },
+        'required': ['passphrase', 'sealed'],
+      },
+      (args) async {
+        final passphrase = (args['passphrase'] as String?) ?? '';
+        final sealed = (args['sealed'] as String?) ?? '';
+        if (passphrase.isEmpty || sealed.isEmpty) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'passphrase and sealed are required',
+          };
+        }
+        List<String> restored;
+        try {
+          // Unseal + restore to keychain via the recipe's CredentialMigrator.
+          restored = await _migrator().restore(sealed, passphrase);
+        } catch (_) {
+          // Wrong passphrase / tampered blob / malformed — nothing written.
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'unseal failed (wrong passphrase or corrupt blob)',
+          };
+        }
+        return <String, dynamic>{'ok': true, 'restored': restored};
+      },
+    );
+
     // --- Knowledge editing ---
 
     _register(
@@ -2561,6 +2762,129 @@ class SystemTools {
           }
         }
         return {'facts': out};
+      },
+    );
+
+    // --- Per-project FactGraph portability (vendored knowledge_persistence
+    // recipe). The bound project's graph lives on disk at
+    // `<projectRoot>/.factgraph`; these tools back up, restore, and delete
+    // that store. Disk-level operations take effect when the project is next
+    // (re)opened — the live in-memory runtime is rebuilt at boot, so callers
+    // get `reopenRequired: true` to signal a reopen is needed to observe the
+    // change in the current session.
+    _register(
+      server,
+      'knowledge_fact_export',
+      'Export the bound project\'s FactGraph as a portable map keyed by '
+          'collection name (backup / transfer). Reads the on-disk graph at '
+          '`<projectRoot>/.factgraph`. Fails when no project is bound '
+          '(welcome state uses an in-memory graph with nothing on disk).',
+      const {'type': 'object', 'properties': {}},
+      (args) async {
+        final dir = init.factGraphDir;
+        if (dir == null) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'no project bound — open a project to export its graph',
+          };
+        }
+        final data = await exportProject(dir);
+        final counts = <String, int>{
+          for (final e in data.entries) e.key: e.value.length,
+        };
+        return <String, dynamic>{'ok': true, 'counts': counts, 'data': data};
+      },
+    );
+
+    _register(
+      server,
+      'knowledge_fact_import',
+      'Import a previously exported FactGraph map into the bound project\'s '
+          'on-disk graph (`<projectRoot>/.factgraph`), replacing the named '
+          'collections. Reopen the project to load the imported graph into '
+          'the live runtime.',
+      const {
+        'type': 'object',
+        'properties': {
+          'data': {
+            'type': 'object',
+            'description':
+                'Map of collection-name -> list of records, as produced by '
+                'knowledge_fact_export.',
+          },
+        },
+        'required': ['data'],
+      },
+      (args) async {
+        final dir = init.factGraphDir;
+        if (dir == null) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'no project bound — open a project to import a graph',
+          };
+        }
+        final raw = args['data'];
+        if (raw is! Map) {
+          return <String, dynamic>{'ok': false, 'error': 'data must be a map'};
+        }
+        final data = <String, List<Map<String, dynamic>>>{};
+        for (final e in raw.entries) {
+          final list = e.value;
+          if (list is List) {
+            data[e.key as String] = <Map<String, dynamic>>[
+              for (final item in list)
+                if (item is Map) item.cast<String, dynamic>(),
+            ];
+          }
+        }
+        await importProject(dir, data);
+        return <String, dynamic>{
+          'ok': true,
+          'imported': <String, int>{
+            for (final e in data.entries) e.key: e.value.length,
+          },
+          'reopenRequired': true,
+        };
+      },
+    );
+
+    _register(
+      server,
+      'knowledge_purge',
+      'Delete the bound project\'s entire on-disk FactGraph '
+          '(`<projectRoot>/.factgraph`). This is the complete purge for the '
+          'per-project model — the project\'s facts live only here. Requires '
+          '`confirm: true`. Reopen the project to rebuild an empty graph.',
+      const {
+        'type': 'object',
+        'properties': {
+          'confirm': {
+            'type': 'boolean',
+            'description': 'Must be true — purge is irreversible.',
+          },
+        },
+        'required': ['confirm'],
+      },
+      (args) async {
+        if (args['confirm'] != true) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'confirm must be true to purge',
+          };
+        }
+        final dir = init.factGraphDir;
+        if (dir == null) {
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'no project bound — nothing on disk to purge',
+          };
+        }
+        await purgeProject(dir);
+        return <String, dynamic>{
+          'ok': true,
+          'purged': dir,
+          'reopenRequired': true,
+        };
       },
     );
 
@@ -2828,7 +3152,11 @@ class SystemTools {
     _register(
       server,
       'opspack_export',
-      'Export a workspace as a `.opspack` archive. Returns the file path on disk.',
+      'Export a workspace as a `.opspack` archive. Returns the file path on disk. '
+          'With `includeSecrets:true` + a `passphrase`, the active workspace\'s '
+          'asset credentials are passphrase-sealed and embedded so the pack '
+          'carries them to another machine (the secrets stay encrypted — opspack '
+          'never sees plaintext).',
       const {
         'type': 'object',
         'properties': {
@@ -2842,6 +3170,17 @@ class SystemTools {
             'description':
                 'When true, the workspace FactGraph is included in the archive.',
           },
+          'includeSecrets': {
+            'type': 'boolean',
+            'description':
+                'When true, seal the active workspace\'s asset credentials '
+                'into the pack. Requires `passphrase` and `workspaceId` to be '
+                'the active workspace.',
+          },
+          'passphrase': {
+            'type': 'string',
+            'description': 'Required when `includeSecrets` is true.',
+          },
         },
         'required': ['workspaceId', 'outputPath'],
       },
@@ -2852,7 +3191,9 @@ class SystemTools {
       server,
       'opspack_import',
       'Import a `.opspack` file into the configured workspaces root. '
-          'Returns the resolved workspace id.',
+          'Returns the resolved workspace id. If the pack carries sealed '
+          'credentials and a `passphrase` is supplied, the asset credentials '
+          'are unsealed and restored into this machine\'s keychain.',
       const {
         'type': 'object',
         'properties': {
@@ -2861,6 +3202,12 @@ class SystemTools {
             'type': 'string',
             'description':
                 'rename (default) · skip · overwrite. Controls behavior on duplicate workspace id.',
+          },
+          'passphrase': {
+            'type': 'string',
+            'description':
+                'When the pack carries sealed credentials, the passphrase to '
+                'unseal and restore them into the OS keychain.',
           },
         },
         'required': ['packPath'],
@@ -2923,14 +3270,49 @@ class SystemTools {
     final wsId = args['workspaceId'] as String;
     final outPath = args['outputPath'] as String;
     final includeFacts = args['includeFacts'] == true;
+    final includeSecrets = args['includeSecrets'] == true;
+    final passphrase = (args['passphrase'] as String?) ?? '';
+
+    // Seal the active workspace's asset credentials when asked. Scoped to the
+    // active workspace (the credential collector reads active-workspace facts),
+    // so the export target must be active.
+    String? sealedCredentials;
+    int sealedCount = 0;
+    if (includeSecrets) {
+      if (passphrase.isEmpty) {
+        return {'error': 'includeSecrets requires a passphrase'};
+      }
+      final active = init.registries.workspace.activeId;
+      if (wsId != active) {
+        return {
+          'error':
+              'includeSecrets seals the ACTIVE workspace ($active); switch to '
+              '$wsId before exporting its secrets.',
+        };
+      }
+      final sealed = await _sealActiveCredentials(init, passphrase);
+      sealedCredentials = sealed.blob;
+      sealedCount = sealed.count;
+    }
+
     // Use the live project-bound root (same source as `_wsRoot` / member_* /
     // skill_*). `OpsConfig.load().workspacesRoot` is empty for a freshly bound
     // project (it isn't persisted), which produced "Workspace dir not found:".
     final dir = Directory(wsContentRoot(init.projectRoot, wsId));
+    // When facts are requested, carry the project-level disk FactGraph
+    // (`<projectRoot>/.factgraph`) — it lives above the workspace subtree, so
+    // we serialize it via the recipe and hand the snapshot to opspack.
+    Map<String, List<Map<String, dynamic>>>? factGraph;
+    final graphDir = init.factGraphDir;
+    if (includeFacts && graphDir != null) {
+      factGraph = await exportProject(graphDir);
+    }
     final pack = await Opspack.exportWorkspace(
       workspaceDir: dir,
       workspaceId: wsId,
       includeFacts: includeFacts,
+      sealedCredentials: sealedCredentials,
+      factGraph: factGraph,
     );
     await File(outPath).writeAsBytes(pack.bytes);
     return {
@@ -2939,6 +3321,8 @@ class SystemTools {
       'fileCount': pack.manifest.contents.length,
       'bytes': pack.bytes.length,
       'includeFacts': includeFacts,
+      'includeSecrets': pack.manifest.includeSecrets,
+      'sealedCredentialCount': sealedCount,
     };
   }
 
@@ -2947,15 +3331,80 @@ class SystemTools {
     Map<String, dynamic> args,
   ) async {
     final policy = args['conflictPolicy'] as String? ?? Opspack.conflictRename;
+    final passphrase = (args['passphrase'] as String?) ?? '';
+    final packFile = File(args['packPath'] as String);
     // Live project-bound root — `OpsConfig.load().workspacesRoot` is empty for
     // a freshly bound project (same fix as _exportOpspack / _wsRoot).
     final id = await Opspack.importWorkspace(
-      packFile: File(args['packPath'] as String),
+      packFile: packFile,
       workspacesRoot: Directory(init.projectRoot),
       conflictPolicy: policy,
     );
-    return {'workspaceId': id, 'conflictPolicy': policy};
+
+    // Restore sealed credentials into the keychain when the pack carries them
+    // and a passphrase is supplied. Never echoes plaintext.
+    final result = <String, Object?>{'workspaceId': id, 'conflictPolicy': policy};
+    final packBytes = await packFile.readAsBytes();
+
+    // Rehydrate the project FactGraph snapshot, if the pack carries one, into
+    // this project's disk graph (`<projectRoot>/.factgraph`). The live runtime
+    // is rebuilt at boot, so a reopen is needed to observe it this session.
+    final graphDir = init.factGraphDir;
+    final packedGraph = Opspack.extractFactGraph(packBytes);
+    if (packedGraph != null && graphDir != null) {
+      await importProject(graphDir, packedGraph);
+      result['factGraphImported'] = <String, int>{
+        for (final e in packedGraph.entries) e.key: e.value.length,
+      };
+      result['reopenRequired'] = true;
+    }
+
+    final sealed = Opspack.extractSealedCredentials(packBytes);
+    if (sealed != null) {
+      if (passphrase.isEmpty) {
+        result['credentials'] = 'present but not restored (no passphrase)';
+      } else {
+        try {
+          final restored = await _restoreSealedCredentials(sealed, passphrase);
+          result['credentialsRestored'] = restored;
+        } catch (_) {
+          result['credentials'] = 'restore failed (wrong passphrase or corrupt)';
+        }
+      }
+    }
+    return result;
   }
+
+  /// Credential refs declared by the active workspace's `asset` facts. Deciding
+  /// which refs to migrate is the host's job; the crypto + vault I/O is the
+  /// vendored recipe's [CredentialMigrator].
+  Future<Set<String>> _assetCredentialRefs(KnowledgeInit init) async {
+    final facts = await init.registries.knowledge.listKvFacts();
+    return <String>{
+      for (final f in facts)
+        if (f.category == 'asset')
+          (f.metadata['credentialRef'] ?? '').toString(),
+    }..removeWhere((r) => r.isEmpty);
+  }
+
+  /// Recipe migrator over the OS keychain (default `appplayer.credentials` ns).
+  CredentialMigrator _migrator() =>
+      CredentialMigrator(FlutterSecureStorageBackend());
+
+  /// Seal the active workspace's asset credentials under [passphrase].
+  /// Null blob when none are stored.
+  Future<({String? blob, int count})> _sealActiveCredentials(
+    KnowledgeInit init,
+    String passphrase,
+  ) async =>
+      _migrator().seal(await _assetCredentialRefs(init), passphrase);
+
+  /// Unseal [sealed] and write each credential back into the OS keychain.
+  Future<List<String>> _restoreSealedCredentials(
+    String sealed,
+    String passphrase,
+  ) =>
+      _migrator().restore(sealed, passphrase);
 
   Future<Map<String, Object?>> _exportDiagnostic(
     KnowledgeInit init,

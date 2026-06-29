@@ -10,6 +10,12 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart' show readBundleAt;
 
+// Vendored knowledge_persistence recipe (brain_kernel/recipes) — disk-backed
+// per-project FactGraph rooted in the project folder. Generated copy; never
+// hand-edited (see debug/tool/sync_knowledge_persistence_fork.sh).
+import '../../../base/install/knowledge_persistence/knowledge_persistence.dart'
+    show assemblePersistentFactGraph, factGraphDirFor;
+
 import '../adapters/llm_adapter.dart';
 import '../config/ops_config.dart';
 import '../observability/observability_module.dart';
@@ -83,6 +89,19 @@ class KnowledgeInit {
   /// project-name source for resolving manifest bundle ids (each
   /// `<wsId>.mbd` registers under `<projectRoot.basename>.<wsId>`).
   final String projectRoot;
+
+  /// On-disk graph directory when this boot is project-bound — the
+  /// persistent per-project FactGraph lives at `<projectRoot>/.factgraph`
+  /// (vendored knowledge_persistence recipe). Null when unbound (welcome
+  /// state, in-memory graph): there is nothing on disk to export/import/
+  /// purge. Mirrors the `projectBound` gate in [boot]. Consumed by the Ops
+  /// `knowledge_fact_export` / `_import` / `knowledge_purge` tools and by
+  /// opspack fact serialization.
+  String? get factGraphDir {
+    final root = projectRoot;
+    if (root.isEmpty || root == './workspaces') return null;
+    return factGraphDirFor(root);
+  }
 
   /// Active `BundleActivation` instances paired with the `McpBundle`
   /// they activated. The bundle is kept so [dispose] can tear down
@@ -198,11 +217,23 @@ class KnowledgeInit {
     // SkillExecutor.ingestFileToFacts — no ops ingest engine. Form likewise
     // = host `form.*`.
 
-    // 6. L0 FactGraph (in-memory; persistence via kv port).
-    final factGraph = FactGraphRuntime.inMemory(
-      defaultWorkspaceId:
-          config.activeWorkspace.isEmpty ? 'default' : config.activeWorkspace,
-    );
+    // 6. L0 FactGraph. When a project is bound, the graph is DISK-BACKED and
+    // rooted at `<projectRoot>/.factgraph` (vendored knowledge_persistence
+    // recipe) so facts survive restarts, isolate per project, and travel with
+    // the folder — mirroring the `<project>/chat.jsonl` precedent. A single
+    // global in-memory graph made every project share + accumulate one store.
+    // Unbound (welcome state, no project) falls back to in-memory.
+    final factWorkspaceId =
+        config.activeWorkspace.isEmpty ? 'default' : config.activeWorkspace;
+    final bool projectBound =
+        config.workspacesRoot.isNotEmpty &&
+        config.workspacesRoot != './workspaces';
+    final factGraph = projectBound
+        ? await assemblePersistentFactGraph(
+            rootDir: factGraphDirFor(config.workspacesRoot),
+            defaultWorkspaceId: factWorkspaceId,
+          )
+        : FactGraphRuntime.inMemory(defaultWorkspaceId: factWorkspaceId);
 
     // 7. L1 SkillRuntime — flowbrain-native runtime for Bridge events.
     //    YAML-defined skills live in the app-level [AppSkillRegistry]; the
@@ -256,12 +287,19 @@ class KnowledgeInit {
     //    dispatch + Ops registries share one source.
     final KnowledgeSystem system;
     final KnowledgeEventBus eventBus;
-    if (hostSystem != null) {
+    // A BOUND project always builds its OWN system around the disk-backed
+    // per-project [factGraph] above, so Ops fact storage (registries / skill /
+    // bundle activation / the knowledge_* tools) is isolated per project and
+    // lives in the project folder. Chat/agent dispatch is unaffected — it runs
+    // through the global `AgentHost` (FlowBrain keys conversations by a
+    // project-scoped agent id), not through this system. Only the UNBOUND
+    // welcome state reuses the host's in-memory system.
+    if (hostSystem != null && !projectBound) {
       system = hostSystem;
       eventBus = hostSystem.eventBus;
       OpsLog.boot(
         'init',
-        'adopted host KnowledgeSystem (workspaceId='
+        'adopted host KnowledgeSystem — unbound (workspaceId='
             '${hostSystem.config.workspaceId})',
       );
     } else {
@@ -368,9 +406,9 @@ class KnowledgeInit {
     // Created idempotently: skipped when already present so reboots stay
     // cheap. Disabled when OpsConfig.systemAgent.enabled = false.
     // When [hostSystem] is provided, the host has already registered
-    // its own `ops.admin` agent through `kStudioAgentProfiles`
+    // its own `ops.manager` agent through `kStudioAgentProfiles`
     // (Phase E.2) — re-registering would collide on id. The legacy
-    // `_ops_admin` (snake_case, distinct from the dotted `ops.admin`)
+    // `_ops_admin` (snake_case, distinct from the dotted `ops.manager`)
     // stays the contract for standalone Ops main / CLI; hosted mode
     // routes chat through the host-registered agent.
     if (hostSystem == null && config.systemAgent.enabled) {
@@ -526,7 +564,7 @@ class KnowledgeInit {
       // shared agent + operations-manual knowledge only, project data
       // is user-owned), operational data must not be planted by boot.
       // Home page now reads live registries and shows empty / "No
-      // knowledge entries yet" until the user (or `ops.admin` / member
+      // knowledge entries yet" until the user (or `ops.manager` / member
       // agents) writes real facts through the `knowledge_*` tools.
     } else {
       OpsLog.boot('init', 'no active workspace — skipped loader');

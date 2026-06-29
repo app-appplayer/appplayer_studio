@@ -35,9 +35,14 @@ class VibeModelOption {
 /// default; same order as the dropdown menu).
 const List<VibeModelOption> kVibeModelCatalog = <VibeModelOption>[
   VibeModelOption(
+    id: 'claude-opus-4-8',
+    label: 'Opus 4.8',
+    note: 'most capable · default',
+  ),
+  VibeModelOption(
     id: 'claude-opus-4-7',
     label: 'Opus 4.7',
-    note: 'most capable · highest cost',
+    note: 'previous flagship',
   ),
   VibeModelOption(
     id: 'claude-sonnet-4-6',

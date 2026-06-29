@@ -15,6 +15,7 @@ import '../observability/observability_module.dart';
 import '../observability/telemetry_store.dart';
 import '../registries/bundle_installer.dart';
 import '../registries/bundle_registry.dart';
+import '../registries/knowledge_registry.dart' show KvFactEntry;
 import '../registries/member_registry.dart';
 import '../registries/process_registry.dart';
 import '../registries/task_registry.dart';
@@ -479,3 +480,35 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
     processChangesProvider,
   ],
 );
+
+/// Operational assets of the active workspace — the `category:"asset"` facts
+/// (ops-asset-management track P1). One asset = one knowledge fact —
+/// `knowledge_fact_save` at `category:"asset"` with `metadata` carrying
+/// `kind / location / locator / capability / credentialRef`, so there is no
+/// new registry or bundle-spec change. Read-only here; writes go through the
+/// `knowledge_fact_save` tool (built-in parity rule). `invalidate` to refresh
+/// after a save (the knowledge registry has no change stream).
+final assetsProvider = FutureProvider<List<KvFactEntry>>((ref) async {
+  ref.watch(activeWorkspaceIdProvider); // re-fetch on workspace switch
+  final init = ref.watch(knowledgeInitProvider);
+  final facts = await init.registries.knowledge.listKvFacts();
+  return facts.where((f) => f.category == 'asset').toList();
+}, dependencies: [knowledgeInitProvider, activeWorkspaceIdProvider]);
+
+/// Whether a secret is stored under [credentialRef] (host vault `secret.exists`).
+/// Drives the Resources card lock icon. `invalidate` after a set / remove.
+/// ops-asset-management track P2.
+final credentialExistsProvider = FutureProvider.family<bool, String>((
+  ref,
+  credentialRef,
+) async {
+  final server = ref.read(opsToolServerProvider);
+  final result = await server.callTool('secret.exists', {'ref': credentialRef});
+  final text = result.content
+      .whereType<KernelTextContent>()
+      .map((c) => c.text)
+      .join();
+  if (text.isEmpty) return false;
+  final decoded = jsonDecode(text);
+  return decoded is Map && decoded['exists'] == true;
+}, dependencies: [opsToolServerProvider]);

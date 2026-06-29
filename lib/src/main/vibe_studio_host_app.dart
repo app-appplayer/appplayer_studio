@@ -26,6 +26,9 @@ import 'package:brain_kernel/mcp_host.dart' as mh;
 import 'package:appplayer_studio/workspace.dart';
 import 'package:appplayer_studio/src/base/agent/agent_invoke_queue.dart';
 import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
+import 'package:appplayer_studio/src/base/install/plugin_install.dart';
+import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
+import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
 
 /// Collaborators handed to a host extension so it can register tools and
 /// surfaces without `standard` (the open base) knowing what the extension
@@ -80,9 +83,15 @@ class StudioExtensionContext {
 /// stay vibe-flavour-free; future builders pick their own catalogue.
 const List<VibeModelOption> kStudioModelCatalog = <VibeModelOption>[
   VibeModelOption(
+    id: 'claude-opus-4-8',
+    label: 'Opus 4.8',
+    note: 'most capable · default',
+    provider: 'anthropic',
+  ),
+  VibeModelOption(
     id: 'claude-opus-4-7',
     label: 'Opus 4.7',
-    note: 'most capable · highest cost',
+    note: 'previous flagship',
     provider: 'anthropic',
   ),
   VibeModelOption(
@@ -98,21 +107,27 @@ const List<VibeModelOption> kStudioModelCatalog = <VibeModelOption>[
     provider: 'anthropic',
   ),
   VibeModelOption(
-    id: 'gpt-5',
-    label: 'GPT-5',
+    id: 'gpt-5.5',
+    label: 'GPT-5.5',
     note: 'OpenAI flagship',
     provider: 'openai',
   ),
   VibeModelOption(
-    id: 'gpt-5-mini',
-    label: 'GPT-5 mini',
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4 mini',
     note: 'fast · cheap',
     provider: 'openai',
   ),
   VibeModelOption(
-    id: 'gemini-2.5-pro',
-    label: 'Gemini 2.5 Pro',
-    note: 'Google flagship',
+    id: 'gemini-3.1-pro-preview',
+    label: 'Gemini 3.1 Pro',
+    note: 'Google flagship · reasoning',
+    provider: 'gemini',
+  ),
+  VibeModelOption(
+    id: 'gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    note: 'fast · agentic',
     provider: 'gemini',
   ),
   // Claude Code subprocess — runs on the user's existing Claude
@@ -145,6 +160,11 @@ class VibeStudioHostApp extends StudioApp {
   /// its own DispatchSession.
   BundleSessionBridge? _bridge;
 
+  /// Plugin-mode bundle activations (`plugin.register kind:bundle`), kept so
+  /// `plugin.unregister` can tear each fully down via `unregisterAll`.
+  final Map<String, HostBundleActivationContext> _pluginBundleCtxs =
+      <String, HostBundleActivationContext>{};
+
   /// Per-domain key-value storage. Each activated bundle gets a
   /// namespace (== `manifest.id`) and stores its state (recents /
   /// pins / preferences / caches) under it. Lifecycle is process-long
@@ -176,6 +196,11 @@ class VibeStudioHostApp extends StudioApp {
   }) => _extensionHomeEntries.add(
     HomeExtensionEntry(label: label, icon: icon, onTap: onTap),
   );
+
+  /// Toggles the host-level Plugins surface (overlay). Opened from the
+  /// Plugins Home entry — plugins are host-level (shared catalog), reached
+  /// from Home like apps, not owned by any built-in app.
+  final PluginsController _pluginsController = PluginsController();
 
   /// Extension seam — overridden by a consumer host (e.g. the pro tier)
   /// to register extra tools / surfaces against [ctx]. The base
@@ -732,6 +757,45 @@ class VibeStudioHostApp extends StudioApp {
       // the board by id afterward (cherry `embedded-mcp-serving-base`).
       registerExtensionConnectTool(hostTools, backbone);
     }
+    // `plugin.*` — register a plugin (server / hub / bundle) so its tools enter
+    // the catalog as `<id>.<tool>` for any app/agent; persists (shared on-disk)
+    // and re-connects / re-activates on boot. Vendored `plugin_host` recipe.
+    // Unconditional: server/hub use `clientHost` (may be null → those error
+    // gracefully); bundle uses the host's plugin-mode activation closures.
+    registerPluginTools(
+      hostTools,
+      clientHost: clientHost,
+      activateBundle: (source) async {
+        // Plugin mode = activate the bundle's tools with no UI tab (tabKey:'').
+        final bundle =
+            await mk.McpBundleLoader.loadDirectory(source.endpoint ?? '');
+        final ctx = HostBundleActivationContext(
+          boot: boot,
+          tabKey: '',
+          bundle: bundle,
+          exposedShortId: source.id,
+          chromeBridge: _chromeBridge,
+          backbone: _backboneCached,
+          sessionBridge: _bridge,
+        );
+        _pluginBundleCtxs[source.id] = ctx;
+        final names = <String>[];
+        for (final t in bundle.tools?.tools ?? const []) {
+          final r = await ctx.registerTool(t);
+          if (r.ok) {
+            names.add(t.name);
+          } else {
+            stderr.writeln(
+              'plugin "${source.id}" tool "${t.name}" failed: ${r.error}',
+            );
+          }
+        }
+        return names;
+      },
+      deactivateBundle: (id) async {
+        await _pluginBundleCtxs.remove(id)?.unregisterAll();
+      },
+    );
     // Extension seam — a consumer host (pro tier) registers extra
     // tools / surfaces here. Standard registers nothing, so the open
     // base build carries no extension (e.g. marketplace) code. The
@@ -748,6 +812,18 @@ class VibeStudioHostApp extends StudioApp {
         addOverlay: _addExtensionOverlay,
         addHomeEntry: _addExtensionHomeEntry,
       ),
+    );
+    // `plugin.*` host surface — a Home entry (right of the BUILT-IN APPS
+    // title) opening an overlay to manage installed plugins, the same seam
+    // the pro tier uses for Marketplace. Plugins are host-level (shared
+    // `<id>.<tool>` catalog), reached from Home like apps — not an app.
+    _addExtensionHomeEntry(
+      label: 'Plugins',
+      icon: Icons.extension_outlined,
+      onTap: _pluginsController.open,
+    );
+    _addExtensionOverlay(
+      PluginsOverlayHost(controller: _pluginsController, bridge: _chromeBridge),
     );
     // `browser.*` — 9 mcp_browser ops on one shared engine, booted
     // lazily from the host's `chromiumPath` (settings, hot-swappable).
@@ -848,6 +924,10 @@ class VibeStudioHostApp extends StudioApp {
       );
       unawaited(coverage.ready);
     }
+    // Credential vault — `secret.*` over the OS keychain (vendored
+    // secure_capability recipe). Independent of capRoot; set / exists /
+    // remove / list, no plaintext get.
+    registerSecretVault(hostTools);
 
     // Chrome + renderer surface — 13 chrome.* + 3 renderer.* tools.
     // Bodies live in vibe_studio_base so every studio host gets the

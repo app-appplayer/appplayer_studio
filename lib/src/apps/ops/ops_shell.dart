@@ -39,6 +39,8 @@ import 'package:appplayer_studio/src/apps/ops/ui/observability/activity_feed_pag
 import 'package:appplayer_studio/src/apps/ops/ui/philosophy/philosophies_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/process/process_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/profile/profiles_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/files/files_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/resources/resources_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/settings/settings_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/skill/skills_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/task/task_page.dart';
@@ -122,11 +124,13 @@ enum OpsRoute {
     OpsGroup.system,
   ),
   bundles('bundles', 'Bundles', Icons.inventory_2_outlined, OpsGroup.system),
+  resources('resources', 'Resources', Icons.lan_outlined, OpsGroup.system),
+  files('files', 'Files', Icons.folder_open_outlined, OpsGroup.system),
   audit('audit', 'Audit', Icons.fact_check_outlined, OpsGroup.system),
   about('about', 'About', Icons.info_outline, OpsGroup.system);
   // Chat / Settings retired — host chrome owns both surfaces:
   //   - Chat: host chat panel routed via `chromeBridge.activeChatAgentId`
-  //     (Ops's defaultChatAgentId = 'ops.admin').
+  //     (Ops's defaultChatAgentId = 'ops.manager').
   //   - Settings: host Studio Settings dialog reads
   //     `BuiltInAppContext.domainSettingsProvider` and renders Ops's
   //     section alongside the host sections.
@@ -179,9 +183,9 @@ class _OpsShellState extends State<OpsShell> {
 
   // Per-workspace chat-context isolation — Ops's operational unit is the
   // workspace, so each one gets a scope-qualified manager clone
-  // (`ops.admin.<workspaceId>`) and the chat is routed to it via
+  // (`ops.manager.<workspaceId>`) and the chat is routed to it via
   // `chatManagerOverride`, exactly like App Builder / Scene per project.
-  // Without this, all workspaces shared the single `ops.admin` conversation
+  // Without this, all workspaces shared the single `ops.manager` conversation
   // (FlowBrain keys conv by agentId) and chat leaked across workspaces.
   // The active workspace changes through the workspace registry (driven by
   // the `workspace_switch` / `workspace_create` MCP tools, decoupled from
@@ -194,7 +198,7 @@ class _OpsShellState extends State<OpsShell> {
 
   /// Ops's base chat manager id — the seed ships `ops.manager` as the Ops
   /// project manager (standard `.manager` naming, parity with App Builder /
-  /// Scene Builder / Studio managers; was the non-standard `ops.admin`). Used
+  /// Scene Builder / Studio managers; was the non-standard `ops.manager`). Used
   /// as the clone base for per-workspace managers. Referenced directly (not
   /// read from the volatile `activeChatAgentId`, the host's deferred-synced
   /// display value) so the scoped clone inherits `ops.manager`'s persona /
@@ -629,7 +633,7 @@ class _OpsShellState extends State<OpsShell> {
   }
 
   /// Ensure a workspace-scoped manager clone
-  /// (`ops.admin.<opsProject>.<workspaceId>`) exists and route the chat to it
+  /// (`ops.manager.<opsProject>.<workspaceId>`) exists and route the chat to it
   /// via `chatManagerOverride` — Ops's per-unit chat isolation. The unit is
   /// (ops project ⊃ workspace): the same workspace slug under different ops
   /// projects is a DIFFERENT unit, so the scope must encode BOTH levels —
@@ -799,6 +803,10 @@ class _OpsShellState extends State<OpsShell> {
         return 'philosophies';
       case OpsRoute.bundles:
         return 'bundles';
+      case OpsRoute.resources:
+        return 'resources';
+      case OpsRoute.files:
+        return 'files';
       case OpsRoute.inbox:
         return 'inbox';
       case OpsRoute.tasks:
@@ -935,6 +943,10 @@ class _OpsShellBody extends ConsumerWidget {
         return const PhilosophiesPage();
       case 'bundles':
         return const BundlesPage();
+      case 'resources':
+        return const ResourcesPage();
+      case 'files':
+        return const FilesPage();
       case 'inbox':
         return const InboxPage();
       case 'tasks':

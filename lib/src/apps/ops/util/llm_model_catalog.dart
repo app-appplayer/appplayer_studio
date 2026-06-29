@@ -54,9 +54,14 @@ const List<LlmProviderOption> kLlmProviderCatalog = <LlmProviderOption>[
     label: 'Claude (Anthropic)',
     models: <LlmModelOption>[
       LlmModelOption(
+        id: 'claude-opus-4-8',
+        label: 'Opus 4.8',
+        note: 'most capable · default',
+      ),
+      LlmModelOption(
         id: 'claude-opus-4-7',
         label: 'Opus 4.7',
-        note: 'most capable · highest cost',
+        note: 'previous flagship',
       ),
       LlmModelOption(
         id: 'claude-sonnet-4-6',
@@ -74,17 +79,27 @@ const List<LlmProviderOption> kLlmProviderCatalog = <LlmProviderOption>[
     id: 'openai',
     label: 'OpenAI',
     models: <LlmModelOption>[
-      LlmModelOption(id: 'gpt-4o', label: 'GPT-4o', note: 'balanced flagship'),
+      LlmModelOption(id: 'gpt-5.5', label: 'GPT-5.5', note: 'flagship'),
       LlmModelOption(
-        id: 'gpt-4o-mini',
-        label: 'GPT-4o mini',
+        id: 'gpt-5.4-mini',
+        label: 'GPT-5.4 mini',
         note: 'fast · cheap',
       ),
-      LlmModelOption(id: 'o1', label: 'o1', note: 'reasoning · slow'),
+    ],
+  ),
+  LlmProviderOption(
+    id: 'gemini',
+    label: 'Gemini (Google)',
+    models: <LlmModelOption>[
       LlmModelOption(
-        id: 'o1-mini',
-        label: 'o1-mini',
-        note: 'reasoning · faster',
+        id: 'gemini-3.1-pro-preview',
+        label: 'Gemini 3.1 Pro',
+        note: 'flagship · reasoning',
+      ),
+      LlmModelOption(
+        id: 'gemini-3.5-flash',
+        label: 'Gemini 3.5 Flash',
+        note: 'fast · agentic',
       ),
     ],
   ),

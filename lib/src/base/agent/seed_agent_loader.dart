@@ -75,7 +75,7 @@ List<VibeAgentProfile> _readSeedAgents(
       // When [exposedShortId] is given, prefix the manifest id so the
       // baseline-merged catalog mirrors `_activateBundle`'s namespace
       // (`<shortId>.<localId>`). Manifest entries that already carry a
-      // dotted prefix (e.g. `ops.admin`) are kept verbatim.
+      // dotted prefix (e.g. `ops.manager`) are kept verbatim.
       final id =
           (exposedShortId == null || exposedShortId.isEmpty)
               ? rawId

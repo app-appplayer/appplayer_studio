@@ -394,4 +394,113 @@ void main() {
       },
     );
   });
+
+  // ===========================================================================
+  // Project FactGraph carrier — opspack embeds/extracts the serialized graph
+  // snapshot (produced by the knowledge_persistence recipe's exportProject),
+  // keeping opspack itself decoupled from the recipe. See system_tools
+  // _exportOpspack / _importOpspack for the real wiring.
+  // ===========================================================================
+  group('FactGraph carrier', () {
+    // A snapshot shaped exactly like the recipe's exportProject output:
+    // a map of collection-name -> list of records.
+    Map<String, List<Map<String, dynamic>>> sampleGraph() => {
+          'facts': [
+            {
+              'id': 'f1',
+              'workspaceId': 'proj1',
+              'type': 'note',
+              'content': {'text': 'alpha'},
+            },
+          ],
+          'entities': [
+            {'id': 'e1', 'workspaceId': 'proj1', 'name': 'Acme'},
+          ],
+        };
+
+    // op17
+    test('op17 includeFacts + factGraph embeds factgraph/graph.json', () async {
+      final wsDir = Directory('${tmp.path}/ws_op17');
+      await wsDir.create(recursive: true);
+      await _writeFile(wsDir.path, 'workspace.yaml', 'id: proj1');
+
+      final bundle = await Opspack.exportWorkspace(
+        workspaceDir: wsDir,
+        workspaceId: 'proj1',
+        includeFacts: true,
+        factGraph: sampleGraph(),
+      );
+      final archive = ZipDecoder().decodeBytes(bundle.bytes);
+      expect(archive.findFile('factgraph/graph.json'), isNotNull);
+      expect(bundle.manifest.contents, contains('factgraph/graph.json'));
+    });
+
+    // op18
+    test('op18 extractFactGraph round-trips the snapshot', () async {
+      final wsDir = Directory('${tmp.path}/ws_op18');
+      await wsDir.create(recursive: true);
+      await _writeFile(wsDir.path, 'workspace.yaml', 'id: proj1');
+
+      final bundle = await Opspack.exportWorkspace(
+        workspaceDir: wsDir,
+        workspaceId: 'proj1',
+        includeFacts: true,
+        factGraph: sampleGraph(),
+      );
+      final got = Opspack.extractFactGraph(bundle.bytes);
+      expect(got, isNotNull);
+      expect(got!['facts']!.single['id'], 'f1');
+      expect((got['facts']!.single['content'] as Map)['text'], 'alpha');
+      expect(got['entities']!.single['name'], 'Acme');
+    });
+
+    // op19
+    test('op19 no factgraph entry when includeFacts is false', () async {
+      final wsDir = Directory('${tmp.path}/ws_op19');
+      await wsDir.create(recursive: true);
+      await _writeFile(wsDir.path, 'workspace.yaml', 'id: proj1');
+
+      final bundle = await Opspack.exportWorkspace(
+        workspaceDir: wsDir,
+        workspaceId: 'proj1',
+        includeFacts: false,
+        factGraph: sampleGraph(),
+      );
+      expect(
+        ZipDecoder()
+            .decodeBytes(bundle.bytes)
+            .findFile('factgraph/graph.json'),
+        isNull,
+      );
+      expect(Opspack.extractFactGraph(bundle.bytes), isNull);
+    });
+
+    // op20
+    test('op20 extractFactGraph returns null for a graphless pack', () async {
+      final wsDir = Directory('${tmp.path}/ws_op20');
+      await wsDir.create(recursive: true);
+      await _writeFile(wsDir.path, 'workspace.yaml', 'id: proj1');
+
+      final bundle = await Opspack.exportWorkspace(
+        workspaceDir: wsDir,
+        workspaceId: 'proj1',
+      );
+      expect(Opspack.extractFactGraph(bundle.bytes), isNull);
+    });
+
+    // op21 — empty graph carries nothing even when includeFacts is on.
+    test('op21 empty factGraph map embeds no entry', () async {
+      final wsDir = Directory('${tmp.path}/ws_op21');
+      await wsDir.create(recursive: true);
+      await _writeFile(wsDir.path, 'workspace.yaml', 'id: proj1');
+
+      final bundle = await Opspack.exportWorkspace(
+        workspaceDir: wsDir,
+        workspaceId: 'proj1',
+        includeFacts: true,
+        factGraph: const {},
+      );
+      expect(Opspack.extractFactGraph(bundle.bytes), isNull);
+    });
+  });
 }

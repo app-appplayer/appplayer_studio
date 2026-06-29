@@ -15,9 +15,9 @@ import 'package:path/path.dart' as p;
 /// — no Ops-specific envelope.
 ///
 /// `_system/` is reserved for system information / runtime caches
-/// (config · auth · `ops.admin` agent KV) — a free-form directory the
+/// (config · auth · `ops.manager` agent KV) — a free-form directory the
 /// registries write into on first use. It is intentionally NOT a
-/// bundle: the shared `ops.admin` agent already ships from the seed
+/// bundle: the shared `ops.manager` agent already ships from the seed
 /// `makemind_ops.mbd` so every project reuses it without a
 /// per-project bundle duplicate.
 const String _assetPrefix = 'lib/src/apps/ops/seed/project';

@@ -3,7 +3,7 @@ description: >
   AppPlayer Studio — universal desktop host that loads any installed domain
   bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
   DSL UI; the host is a universal launcher.
-version: 0.1.2
+version: 0.1.3
 homepage: https://appplayer.app
 repository: https://github.com/app-appplayer/appplayer_studio
 publish_to: none
@@ -67,7 +67,7 @@ dependencies:
   # Claude Code provider, and signature/secure helpers.
   appplayer_ui_view: ^0.1.0
   appplayer_claude_code_provider: ^0.1.0
-  appplayer_secure: ^0.1.0
+  appplayer_secure: ^0.1.1
   brain_kernel: ^0.1.4
   # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
   # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the

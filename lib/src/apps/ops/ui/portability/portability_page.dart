@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 
 import '../../portability/html_report.dart';
 import '../../portability/opspack.dart';
@@ -24,6 +23,14 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
   String? _statusOk;
   String? _statusErr;
   bool _includeFacts = false;
+  bool _includeSecrets = false;
+  final _passphrase = TextEditingController();
+
+  @override
+  void dispose() {
+    _passphrase.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +66,30 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
                 onChanged:
                     (v) => setState(() => _includeFacts = v ?? _includeFacts),
               ),
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Include asset credentials (encrypted)'),
+                subtitle: const Text(
+                  'Off by default. When on, this workspace\'s asset secrets '
+                  'are passphrase-sealed into the pack so they move with it.',
+                ),
+                value: _includeSecrets,
+                onChanged: (v) =>
+                    setState(() => _includeSecrets = v ?? _includeSecrets),
+              ),
+              if (_includeSecrets) ...[
+                const SizedBox(height: 4),
+                TextField(
+                  controller: _passphrase,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Passphrase (needed again to restore)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               FilledButton.icon(
                 icon: const Icon(Icons.archive_outlined, size: 16),
@@ -153,26 +184,40 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
       _statusOk = null;
       _statusErr = null;
     });
+    if (_includeSecrets && _passphrase.text.isEmpty) {
+      setState(() => _statusErr = 'Enter a passphrase to include credentials.');
+      return;
+    }
     try {
-      final dir = Directory(p.join(workspacesRoot, wsId));
-      final pack = await Opspack.exportWorkspace(
-        workspaceDir: dir,
-        workspaceId: wsId,
-        includeFacts: _includeFacts,
-      );
       final saveLocation = await getSaveLocation(
-        suggestedName: '$wsId.opspack',
+        suggestedName: '${wsId.replaceAll("/", "_")}.opspack',
         acceptedTypeGroups: const [
           XTypeGroup(label: 'opspack', extensions: ['opspack', 'zip']),
         ],
       );
       if (saveLocation == null) return;
-      await File(saveLocation.path).writeAsBytes(pack.bytes);
+      // Route through the host tool so the credential sealing stays in the
+      // host (built-in rule — no business logic in the UI layer).
+      final r = await opsCallTool(ref, 'opspack_export', {
+        'workspaceId': wsId,
+        'outputPath': saveLocation.path,
+        'includeFacts': _includeFacts,
+        if (_includeSecrets) 'includeSecrets': true,
+        if (_includeSecrets) 'passphrase': _passphrase.text,
+      });
       if (!mounted) return;
+      if (r['error'] != null) {
+        setState(() => _statusErr = 'Export failed: ${r['error']}');
+        return;
+      }
+      final sealedCount = r['sealedCredentialCount'] ?? 0;
+      final secretsNote = (r['includeSecrets'] == true)
+          ? ' · $sealedCount credential(s) sealed'
+          : '';
       setState(
-        () =>
-            _statusOk =
-                'Exported $wsId · ${pack.manifest.contents.length} files → ${saveLocation.path}',
+        () => _statusOk =
+            'Exported $wsId · ${r['fileCount']} files → ${saveLocation.path}'
+            '$secretsNote',
       );
     } catch (e) {
       setState(() => _statusErr = 'Export failed: $e');
@@ -227,6 +272,8 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
       if (picked == null) return;
       final preview = await Opspack.previewFile(File(picked.path));
       if (!context.mounted) return;
+      final hasSecrets = preview.manifest.includeSecrets;
+      final importPass = TextEditingController();
       final policy = await showDialog<String>(
         context: context,
         builder:
@@ -244,6 +291,19 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
                   Text(
                     'Includes FactGraph: ${preview.manifest.includeFacts ? "yes" : "no"}',
                   ),
+                  Text('Includes credentials: ${hasSecrets ? "yes (encrypted)" : "no"}'),
+                  if (hasSecrets) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: importPass,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Passphrase to restore credentials (optional)',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Text(
                     'If a workspace named "${preview.manifest.sourceWorkspaceId}" already exists, choose a strategy:',
@@ -271,17 +331,29 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
               ],
             ),
       );
+      final pass = importPass.text;
+      importPass.dispose();
       if (policy == null) return;
-      final id = await Opspack.importWorkspace(
-        packFile: File(picked.path),
-        workspacesRoot: Directory(workspacesRoot),
-        conflictPolicy: policy,
-      );
+      // Route through the host tool so credential restore stays in the host.
+      final r = await opsCallTool(ref, 'opspack_import', {
+        'packPath': picked.path,
+        'conflictPolicy': policy,
+        if (pass.isNotEmpty) 'passphrase': pass,
+      });
       if (!mounted) return;
+      if (r['error'] != null) {
+        setState(() => _statusErr = 'Import failed: ${r['error']}');
+        return;
+      }
+      final id = r['workspaceId'];
+      final restored = (r['credentialsRestored'] as List?)?.length;
+      final credNote = restored != null
+          ? ' · $restored credential(s) restored'
+          : (r['credentials'] != null ? ' · credentials: ${r['credentials']}' : '');
       setState(
-        () =>
-            _statusOk =
-                'Imported as "$id" — restart the app or switch workspace to load it.',
+        () => _statusOk =
+            'Imported as "$id" — restart the app or switch workspace to load it.'
+            '$credNote',
       );
     } catch (e) {
       setState(() => _statusErr = 'Import failed: $e');
