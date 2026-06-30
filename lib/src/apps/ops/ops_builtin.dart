@@ -30,6 +30,7 @@ import 'package:appplayer_studio/builtin_api.dart'
 // Phase 4 interface signature swap). Receives only the host-side
 // `BuiltinToolRegistry`.
 
+import 'infra/ws_paths.dart' show systemWorkspaceSlot, wsContentRoot;
 import 'observability/observability_module.dart';
 import 'ops_shell.dart';
 import 'tools/tool_dispatcher.dart';
@@ -322,12 +323,24 @@ class OpsBuiltInApp extends BuiltInApp {
     return OpsConfig(
       version: src.version,
       appName: src.appName,
-      // Always reset to the reserved `_system` slot on project switch.
-      // Carrying `src.activeWorkspace` (a host-global) over made a freshly
-      // opened project inherit the PREVIOUS project's workspace id, so
-      // `wsContentRoot(projectRoot, <stale wsId>)` pointed at a `<wsId>.mbd`
-      // that doesn't exist in the new project → its content failed to load.
-      activeWorkspace: '_system',
+      // Restore the saved workspace IF it still exists in THIS project,
+      // else fall back to the reserved `_system` slot. The old behavior
+      // (always force `_system`) discarded the user's selected workspace
+      // on every reopen, so a bound project always opened on the empty
+      // `_system` view instead of the workspace that holds their members /
+      // agents / data — making created data look gone. The original hazard
+      // was carrying a STALE id from a DIFFERENT project (whose `<wsId>.mbd`
+      // is absent here → content load failure); guard against that by
+      // confirming the workspace's bundle dir exists under THIS project root
+      // (`_system` is always valid — reserved, no bundle dir).
+      activeWorkspace:
+          (src.activeWorkspace == systemWorkspaceSlot ||
+                  (src.activeWorkspace.isNotEmpty &&
+                      Directory(
+                        wsContentRoot(projectRoot, src.activeWorkspace),
+                      ).existsSync()))
+              ? src.activeWorkspace
+              : systemWorkspaceSlot,
       workspacesRoot: projectRoot,
       llm: src.llm,
       mcp: src.mcp,

@@ -1,6 +1,15 @@
 ## [0.1.4] - 2026-06-30
 
 ### Fixed
+- Bound project now restores the last active workspace on open instead of
+  always falling back to the reserved `_system` slot. A reopened project landed
+  on the empty `_system` workspace, so its members / agents / created data were
+  not visible (the data was intact under the user's workspace, e.g. `org/devmag`
+  — just not the active one). `_withProjectRoot` now keeps the saved
+  `activeWorkspace` when its bundle dir exists under the project root, falling
+  back to `_system` only for a stale id from a different project (the original
+  hazard the unconditional reset was guarding against). Verified end-to-end: a
+  reopen now binds the saved workspace and its members list immediately.
 - Per-project agent LLM resolution — a bound project builds its own per-project
   agent subsystem (agents isolate per project, like its facts / knowledge / chat),
   but that subsystem resolved an agent's model only from the project's configured
