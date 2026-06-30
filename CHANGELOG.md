@@ -1,3 +1,43 @@
+## [0.1.4] - 2026-06-30
+
+### Fixed
+- Per-project agent LLM resolution — a bound project builds its own per-project
+  agent subsystem (agents isolate per project, like its facts / knowledge / chat),
+  but that subsystem resolved an agent's model only from the project's configured
+  key pool, so on a keyless setup a worker tagged `claude` returned empty content.
+  The host's global agent LLM session pool (carrying the claude-code fallback) is
+  now merged in as a base layer — project-configured keys still win — so a
+  per-project agent resolves its model while staying per-project.
+- `process_start` in a bound project — the per-project KnowledgeSystem is now
+  assembled with an `OpsRuntime` (stub consumed ports + the project-rooted KV, via
+  the published `OpsRuntime.fromConsumedPorts`), so gate / handoff process runs no
+  longer throw "OpsRuntime not configured".
+- `system_agent_set_model` — bound projects now seed their own `_ops_admin` system
+  agent (the seed gate widened to any self-built system, not just standalone), and
+  the tool falls back to the shared host registry when the target is a
+  workspace-scoped chat manager (`ops.manager.<unit>`), so setting a model no
+  longer throws AgentNotFound for the default or a scoped manager.
+- Resources route refreshes live on a knowledge mutation — `KnowledgeRegistry`
+  now emits a change stream (fact save / knowledge file write / delete) that the
+  assets list watches, so a `knowledge_fact_save` appears without a manual tab
+  reload.
+- `studio.fs.list` lists the workspaceDir root when `path` is empty / omitted
+  (read / write / delete still require a concrete path).
+- `knowledge_ingest_file` notes when it produced 0 fragments (no embedding
+  provider configured → not RAG-searchable) instead of silently implying success.
+
+### Changed
+- `brain_kernel` ^0.1.4 → ^0.1.5 — picks up the `KvStoragePortAdapter.keys(prefix:)`
+  string-prefix contract fix, so `bk.philosophy.list` (and any flat colon-keyed
+  listing) returns its entries instead of an empty array. Resolved from pub.dev.
+- `studio.fs.write` description clarifies it writes under the configured
+  workspaceDir (not the bound project / per-workspace bundle) and points
+  per-workspace content / assets at `knowledge_file_*`.
+- Agent knowledge seeds synced to the tool surface — the Ops tool catalog's
+  `system_agent_set_model` entry and the shared `studio.mbd` `studio.fs.*` doc now
+  describe the per-project / scoped-manager routing and the workspace write
+  surface.
+
 ## [0.1.3] - 2026-06-30
 
 ### Added

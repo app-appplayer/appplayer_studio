@@ -179,11 +179,27 @@ class KnowledgeInit {
   /// / `ingest.*`) — built-ins wire them; those ops adapter forks were removed.
   /// LLM / channel still Ops-owned pending cherry's capability decision
   /// (llm → host service + kernel inject; channel → host `channel.*`).
+  /// [sharedLlmProviders] — the host's global agent LLM session pool
+  /// (`KernelApp.agentLlmSessions.providers`). When a project is bound,
+  /// this boot builds a PER-PROJECT KnowledgeSystem with its OWN agent
+  /// subsystem (so agents isolate per project — the same separation
+  /// facts / knowledge / chat already have). That per-project subsystem
+  /// resolves an agent's model through `infraPorts.llmProviders`, which is
+  /// otherwise seeded only from the project's configured key pool
+  /// (`LlmAdapter.providerPool`) — empty on a keyless setup, so a worker
+  /// tagged `claude` never reaches the claude-code fallback that lives
+  /// ONLY in the global `agentLlmSessions` (registered by
+  /// `upgradeClaudeCodeForKernel` at host boot). Merging the global pool
+  /// in as a BASE layer (project-configured keys overlaid on top so a real
+  /// key always wins) gives per-project agents the same fallback the
+  /// global chat / AgentHost path enjoys — keeping agents per-project AND
+  /// functional. Null in standalone / CLI / test boots (no host).
   static Future<KnowledgeInit> boot(
     OpsConfig config, {
     ObservabilityModule? observability,
     KnowledgeSystem? hostSystem,
     ModelSpec? defaultAgentModel,
+    Map<String, mb.LlmPort>? sharedLlmProviders,
   }) async {
     OpsLog.boot(
       'init',
@@ -326,7 +342,20 @@ class KnowledgeInit {
         ),
         // Forward every wired provider so per-agent ModelSpec routing
         // (`infraPorts.llmProviders[<provider>]`) works out of the box.
-        llmProviders: llm.providerPool.isEmpty ? null : llm.providerPool,
+        // The host's global agent LLM session pool is the BASE layer — it
+        // carries the claude-code keyless fallback (`claude` / `anthropic`
+        // / `claude_code` / `claude-code`) that the project key pool lacks
+        // on a keyless setup. The project's configured providers overlay on
+        // top so a real configured key always shadows the fallback. This is
+        // what makes per-project agents (own subsystem, own registry)
+        // resolve their model instead of returning empty content.
+        llmProviders: () {
+          final merged = <String, mb.LlmPort>{
+            if (sharedLlmProviders != null) ...sharedLlmProviders,
+            ...llm.providerPool,
+          };
+          return merged.isEmpty ? null : merged;
+        }(),
       );
 
       // 8a. Agent Subsystem wire — registry / conversation store / fork
@@ -343,6 +372,31 @@ class KnowledgeInit {
         config: knowledgeConfig.agent,
       );
 
+      // 8b. Ops process executor — assemble a default OpsRuntime so
+      //     `process_start` (gate / handoff workflows) runs in a bound
+      //     project. Mirrors flowbrain_wiring's default exactly: stub
+      //     consumed ports + the real project-rooted KV. `OpsRuntime`'s
+      //     `fromConsumedPorts` factory (mcp_knowledge_ops, published) hides
+      //     the 14-arg ctor, so this is host wiring — not kernel-logic
+      //     duplication. Without it the per-project system has
+      //     `opsRuntime == null` and bundle activation throws "OpsRuntime not
+      //     configured" on process_start (task_run / the scheduler are
+      //     unaffected — they don't route through the process executor).
+      final opsRuntime = OpsRuntime.fromConsumedPorts(
+        ConsumedOpsPorts(
+          facts: mb.StubFactsPort(),
+          claims: mb.StubClaimsPort(),
+          skillRuntime: mb.StubSkillRuntimePort(),
+          appraisal: mb.StubAppraisalPort(),
+          decision: mb.StubDecisionPort(),
+          metrics: mb.StubMetricsPort(),
+          mcp: const mb.StubMcpPort(),
+          llm: mb.StubLlmPort(),
+          philosophy: mb.StubPhilosophyPort(),
+          kvStorage: kv,
+        ),
+      );
+
       builtSystem = KnowledgeSystem(
         config: knowledgeConfig,
         infraPorts: infraPorts,
@@ -352,6 +406,7 @@ class KnowledgeInit {
         philosophyEngine: philosophyEngine,
         agentRegistry: agentSubsystem.registry,
         agentRuntime: agentSubsystem.runtime,
+        opsRuntime: opsRuntime,
         eventBus: eventBus,
       );
       system = builtSystem;
@@ -402,16 +457,25 @@ class KnowledgeInit {
       await workspaceRegistry.ensureSystemWorkspace();
     }
 
-    // 8c. System administrator agent — chat pane runs through this agent.
-    // Created idempotently: skipped when already present so reboots stay
-    // cheap. Disabled when OpsConfig.systemAgent.enabled = false.
-    // When [hostSystem] is provided, the host has already registered
-    // its own `ops.manager` agent through `kStudioAgentProfiles`
-    // (Phase E.2) — re-registering would collide on id. The legacy
-    // `_ops_admin` (snake_case, distinct from the dotted `ops.manager`)
-    // stays the contract for standalone Ops main / CLI; hosted mode
-    // routes chat through the host-registered agent.
-    if (hostSystem == null && config.systemAgent.enabled) {
+    // 8c. System administrator agent — created idempotently (skipped when
+    // already present so reboots stay cheap). Disabled when
+    // OpsConfig.systemAgent.enabled = false.
+    //
+    // Seed it whenever THIS boot built its OWN system — i.e. the adoption
+    // gate above did NOT reuse `hostSystem`. That is exactly
+    // `hostSystem == null || projectBound`:
+    //   * standalone (hostSystem == null) — the original case;
+    //   * bound project (projectBound) — builds a per-project system around
+    //     the disk-backed factGraph, so the host's `ops.manager` (registered
+    //     via `kStudioAgentProfiles` in a DIFFERENT system) is absent here;
+    //     without seeding, per-project agent ops (`system_agent_set_model`'s
+    //     default `_ops_admin`, agent management) hit AgentNotFound.
+    // No collision risk: `_ops_admin` (snake_case) is distinct from the
+    // dotted `ops.manager`, and lands in this per-project system instance,
+    // not the host's. Only the UNBOUND welcome state adopts the host system
+    // and skips seeding (host already holds `ops.manager`).
+    final builtOwnSystem = hostSystem == null || projectBound;
+    if (builtOwnSystem && config.systemAgent.enabled) {
       await _ensureSystemAgent(
         system: system,
         agentSettings: config.systemAgent,

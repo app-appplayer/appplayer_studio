@@ -198,7 +198,7 @@
             "id": "config",
             "title": "config_*",
             "format": "markdown",
-            "content": "- `config_get` \u2014 full OpsConfig JSON (workspacesRoot \u00b7 activeWorkspace \u00b7 llm \u00b7 mcp \u00b7 ...).\n- `config_reload` \u2014 re-reads `~/.makemind-ops/config.yaml`.\n- `config_set_llm_provider` \u00b7 `config_set_mcp_outbound` \u00b7 `config_set_storage` \u00b7 `config_set_chromium` \u2014 partial updates.\n- `system_agent_set_model` \u2014 swaps `config.systemAgent.model` only (runtime)."
+            "content": "- `config_get` \u2014 full OpsConfig JSON (workspacesRoot \u00b7 activeWorkspace \u00b7 llm \u00b7 mcp \u00b7 ...).\n- `config_reload` \u2014 re-reads `~/.makemind-ops/config.yaml`.\n- `config_set_llm_provider` \u00b7 `config_set_mcp_outbound` \u00b7 `config_set_storage` \u00b7 `config_set_chromium` \u2014 partial updates.\n- `system_agent_set_model` \u2014 routes a ModelSpec to whichever registry owns the target agent (default `_ops_admin`, a custom per-project system agent, or a workspace-scoped chat manager `ops.manager.<unit>` on the shared host)."
           },
           {
             "id": "workspace",

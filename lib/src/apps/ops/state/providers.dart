@@ -184,6 +184,10 @@ final skillChangesProvider = StreamProvider<void>((ref) {
   return ref.watch(knowledgeInitProvider).skills.changes;
 }, dependencies: [knowledgeInitProvider]);
 
+final knowledgeChangesProvider = StreamProvider<void>((ref) {
+  return ref.watch(knowledgeInitProvider).registries.knowledge.changes;
+}, dependencies: [knowledgeInitProvider]);
+
 final activeWorkspaceIdProvider = StateProvider<String?>((ref) {
   ref.watch(workspaceChangesProvider);
   return ref.watch(knowledgeInitProvider).registries.workspace.activeId;
@@ -486,14 +490,21 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
 /// `knowledge_fact_save` at `category:"asset"` with `metadata` carrying
 /// `kind / location / locator / capability / credentialRef`, so there is no
 /// new registry or bundle-spec change. Read-only here; writes go through the
-/// `knowledge_fact_save` tool (built-in parity rule). `invalidate` to refresh
-/// after a save (the knowledge registry has no change stream).
+/// `knowledge_fact_save` tool (built-in parity rule). Watches
+/// [knowledgeChangesProvider] so a save — whether from the UI or an MCP
+/// `knowledge_fact_save` call — auto-refreshes the list without a manual tab
+/// reload. The toolbar `invalidate` stays as a force-refresh affordance.
 final assetsProvider = FutureProvider<List<KvFactEntry>>((ref) async {
   ref.watch(activeWorkspaceIdProvider); // re-fetch on workspace switch
+  ref.watch(knowledgeChangesProvider); // re-fetch on any knowledge mutation
   final init = ref.watch(knowledgeInitProvider);
   final facts = await init.registries.knowledge.listKvFacts();
   return facts.where((f) => f.category == 'asset').toList();
-}, dependencies: [knowledgeInitProvider, activeWorkspaceIdProvider]);
+}, dependencies: [
+  knowledgeInitProvider,
+  activeWorkspaceIdProvider,
+  knowledgeChangesProvider,
+]);
 
 /// Whether a secret is stored under [credentialRef] (host vault `secret.exists`).
 /// Drives the Resources card lock icon. `invalidate` after a set / remove.

@@ -273,6 +273,23 @@ void main() {
       // Should not throw.
       await reg.deleteFile('project/test_ws', 'knowledge/ghost.md');
     });
+
+    // --- k22: changes stream fires on knowledge mutations (P2-8) ---
+    // The Resources page watches this tick (via `knowledgeChangesProvider`)
+    // so an asset/file save auto-refreshes instead of needing a manual tab
+    // reload. saveFact rides the same `_notify()` (verified by code) but
+    // needs a live system; writeFile / deleteFile exercise the stream here.
+    test('k22 changes stream emits on writeFile and deleteFile', () async {
+      final events = <void>[];
+      final sub = reg.changes.listen(events.add);
+      addTearDown(sub.cancel);
+
+      await reg.writeFile('project/test_ws', 'knowledge/notes/a.md', 'hello');
+      await reg.deleteFile('project/test_ws', 'knowledge/notes/a.md');
+      await Future<void>.delayed(Duration.zero); // drain broadcast microtasks
+
+      expect(events.length, 2);
+    });
   });
 
   group('KnowledgeRegistry — full round-trip', () {

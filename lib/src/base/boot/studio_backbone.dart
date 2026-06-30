@@ -219,8 +219,23 @@ class StudioBackbone {
       'claude_code': adapter,
       'anthropic': adapter,
     });
+    // The studio's catalog provider id for Anthropic models is `'claude'`
+    // (`config_set_llm_provider` enum), so worker agents are created tagged
+    // `claude` — which the three keys above miss, leaving `agent_ask`
+    // returning empty content when no API key is wired (only the
+    // `anthropic`-tagged manager got the fallback). Mirror `'claude'` too,
+    // but ONLY when no real `claude` provider is already registered: boot
+    // seeds `llmProviders['claude']` from a configured key BEFORE this
+    // upgrade and the pool is last-write-wins, so an unconditional mirror
+    // would shadow a real key. Conditional keeps a configured key intact
+    // while giving keyless setups the claude-code fallback.
+    final mirroredClaude = !app.agentLlmSessions.contains('claude');
+    if (mirroredClaude) {
+      app.agentLlmSessions.register('claude', adapter);
+    }
     stderr.writeln(
-      'upgradeClaudeCodeForKernel: swap done · keys=[$modelId, claude_code, anthropic]',
+      'upgradeClaudeCodeForKernel: swap done · keys=[$modelId, claude_code, '
+      'anthropic${mirroredClaude ? ', claude' : ''}]',
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:appplayer_studio/builtin_api.dart';
@@ -32,6 +33,15 @@ class KnowledgeRegistry {
   final KvStoragePortAdapter kv;
   final KnowledgeSystem knowledgeSystem;
   final String rootDir;
+
+  // Broadcast of knowledge mutations (facts saved, knowledge files written /
+  // deleted) so reactive UI — the Resources page reads assets as
+  // `category:"asset"` facts — re-fetches on a save instead of needing a
+  // manual tab reload. Mirrors the workspace / member / task registry change
+  // streams that the matching Riverpod `*ChangesProvider` ticks watch.
+  final _changes = StreamController<void>.broadcast();
+  Stream<void> get changes => _changes.stream;
+  void _notify() => _changes.add(null);
 
   /// List files under `<ws>/knowledge/<subPath>` (recursive). Paths returned
   /// are workspace-relative (e.g. `knowledge/notes/foo.md`).
@@ -76,12 +86,14 @@ class KnowledgeRegistry {
     _assertKnowledgePath(relativePath);
     final f = File('${wsContentRoot(rootDir, wsId)}/$relativePath');
     await writeStringAtomic(f, content);
+    _notify();
   }
 
   Future<void> deleteFile(String wsId, String relativePath) async {
     _assertKnowledgePath(relativePath);
     final f = File('${wsContentRoot(rootDir, wsId)}/$relativePath');
     if (await f.exists()) await f.delete();
+    _notify();
   }
 
   void _assertKnowledgePath(String relativePath) {
@@ -132,6 +144,7 @@ class KnowledgeRegistry {
       if (metadata != null) 'metadata': metadata,
       'savedAt': DateTime.now().toIso8601String(),
     });
+    _notify();
   }
 
   /// Workspace-scoped fact query. Combines two sources:

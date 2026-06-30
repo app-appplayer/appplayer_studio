@@ -99,7 +99,7 @@
           {
             "id": "fs",
             "title": "studio.fs.* — workspace-gated file IO",
-            "content": "list / read / write / mkdir / delete / glob. Bounded to workspaceDir — paths outside throw. Use for project-bound file access. App bundle authoring should prefer vibe_file_* via active App Builder (project-root scoped) — studio.fs.* is broader workspace scope. `glob({pattern, path?, limit?})` walks recursive matching `**`/`*` (e.g. `**/manifest.json`, `ui/**/*.json`); returns `{count, matches:[absPath], truncated?}` capped at limit (default 500)."
+            "content": "list / read / write / mkdir / delete / glob. Bounded to workspaceDir — paths outside throw. Use for project-bound file access. App bundle authoring should prefer vibe_file_* via active App Builder (project-root scoped) — studio.fs.* is broader workspace scope. Per-workspace content/assets (the bound project's `knowledge/`) go through `knowledge_file_*` / `knowledge_fact_save`, not the config-jailed `fs.*` (which writes under the host config root, not the workspace). `glob({pattern, path?, limit?})` walks recursive matching `**`/`*` (e.g. `**/manifest.json`, `ui/**/*.json`); returns `{count, matches:[absPath], truncated?}` capped at limit (default 500)."
           },
           {
             "id": "knowledge",

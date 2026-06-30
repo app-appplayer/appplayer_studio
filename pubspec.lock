@@ -85,10 +85,10 @@ packages:
     dependency: "direct main"
     description:
       name: brain_kernel
-      sha256: "229cd19c524b2c4f535ff145f8327422c554c4a3f49e4820abfdc83c22946121"
+      sha256: "4655ad952b01df163621806444d9e4ebe4610f5ba369f8707ef77dc8effa00a3"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.4"
+    version: "0.1.5"
   characters:
     dependency: transitive
     description:

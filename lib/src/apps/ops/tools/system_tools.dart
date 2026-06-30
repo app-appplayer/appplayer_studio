@@ -29,6 +29,7 @@ import 'package:yaml/yaml.dart';
 import '../config/ops_config.dart';
 import '../infra/project_seed.dart' show applyOpsWorkspaceSeed;
 import '../infra/ws_paths.dart';
+import '../../../base/agent/agent_host.dart' show AgentHost;
 import '../../../base/agent/agent_invoke_queue.dart';
 import '../core/inbox_query.dart';
 import '../init/knowledge_init.dart';
@@ -948,9 +949,9 @@ class SystemTools {
     _register(
       server,
       'system_agent_set_model',
-      'Update the model used by the system administrator (chat) agent. '
-          'Defaults to id="_ops_admin" — pass `agentId` to target a custom '
-          'system agent.',
+      'Update the model used by a chat / system agent. Defaults to '
+          'id="_ops_admin"; pass `agentId` to target a custom system agent or '
+          'a workspace-scoped chat manager (e.g. "ops.manager.<unit>").',
       const {
         'type': 'object',
         'properties': {
@@ -961,23 +962,46 @@ class SystemTools {
         'required': ['provider', 'model'],
       },
       (args) async {
-        if (!init.system.isAgentSubsystemActivated) {
-          return {'error': 'Agent Subsystem not activated'};
-        }
         final agentId = await _resolveAgentId(
           init,
           (args['agentId'] as String?) ?? '_ops_admin',
         );
-        final updated = await init.system.agents.updateAgent(
-          agentId,
-          model: ModelSpec(
-            provider: args['provider'] as String,
-            model: args['model'] as String,
-          ),
+        final spec = ModelSpec(
+          provider: args['provider'] as String,
+          model: args['model'] as String,
         );
+        // Route to the registry that actually owns the agent. Worker /
+        // system agents created through the per-project member path live in
+        // `init.system`; workspace-scoped chat managers
+        // (`ops.manager.<unit>`) are created by `AgentHost.ensureScopedManager`
+        // in the GLOBAL host system (chat dispatch runs through that shared
+        // host). Try per-project first, then fall back to the shared host so
+        // set_model reaches either without the caller knowing the topology.
+        if (init.system.isAgentSubsystemActivated &&
+            await init.system.agents.getAgent(agentId) != null) {
+          final updated = await init.system.agents.updateAgent(
+            agentId,
+            model: spec,
+          );
+          return {
+            'id': updated.id,
+            'model': '${updated.model.provider}/${updated.model.model}',
+            'scope': 'project',
+          };
+        }
+        final hostAgents = AgentHost.shared?.flowbrain.system.agents;
+        if (hostAgents != null && await hostAgents.getAgent(agentId) != null) {
+          final updated = await hostAgents.updateAgent(agentId, model: spec);
+          return {
+            'id': updated.id,
+            'model': '${updated.model.provider}/${updated.model.model}',
+            'scope': 'host',
+          };
+        }
         return {
-          'id': updated.id,
-          'model': '${updated.model.provider}/${updated.model.model}',
+          'error':
+              'agent not found: $agentId (neither the per-project system nor '
+              'the host scoped-manager registry holds it)',
         };
       },
     );
@@ -2038,6 +2062,17 @@ class SystemTools {
           'fragmentsEmitted': fragments,
           if (wsId != null) 'workspaceId': wsId,
           'path': path,
+          // Signal the silent no-op: a 0-fragment ingest means the file was
+          // read but nothing was chunked/extracted into searchable facts
+          // (no embedding/extraction provider wired). Without this note the
+          // caller mistakes the empty result for a successful RAG ingest.
+          if (fragments == 0)
+            'note':
+                'No fragments emitted — nothing was chunked into searchable '
+                'facts (no ingest/embedding provider is configured), so this '
+                'file will NOT appear in fact/RAG queries. Use '
+                'knowledge_file_write/read for verbatim storage, or wire an '
+                'ingest provider to enable RAG.',
         };
       },
     );

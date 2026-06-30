@@ -60,10 +60,15 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
 
   Future<Map<String, Object?>> guard(
     Map<String, dynamic> args,
-    Future<Map<String, Object?>> Function(String absPath, String workspace) op,
-  ) async {
+    Future<Map<String, Object?>> Function(String absPath, String workspace) op, {
+    // When true, an empty/missing `path` targets the workspace root itself
+    // (used by `studio.fs.list` so a bare call lists the top level). Read /
+    // write / delete keep `allowRoot: false` — they need a concrete file.
+    bool allowRoot = false,
+  }) async {
     final raw = args['path'];
-    if (raw is! String || raw.isEmpty) {
+    final bool emptyPath = raw is! String || raw.isEmpty;
+    if (emptyPath && !allowRoot) {
       return <String, Object?>{'ok': false, 'error': 'path required'};
     }
     final workspace = await resolveWorkspace();
@@ -73,10 +78,13 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
         'error': 'workspaceDir not configured — set it in Studio Settings',
       };
     }
-    final reject = rejectIfOutsideWorkspace(raw, workspace);
+    // Empty + allowRoot → the workspace dir itself (which trivially passes
+    // the inside-workspace check, since it equals the root).
+    final effective = emptyPath ? workspace : raw;
+    final reject = rejectIfOutsideWorkspace(effective, workspace);
     if (reject != null) return reject;
     try {
-      return await op(p.normalize(p.absolute(raw)), workspace);
+      return await op(p.normalize(p.absolute(effective)), workspace);
     } catch (e) {
       return <String, Object?>{'ok': false, 'error': '$e'};
     }
@@ -128,8 +136,13 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
   boot.addTool(
     name: 'studio.fs.write',
     description:
-        'Write a UTF-8 text file under the studio\'s workspaceDir. '
-        'Creates parent directories as needed. Returns `{ok, bytes}`.',
+        'Write a UTF-8 text file under the studio\'s configured workspaceDir '
+        '(Studio Settings), NOT the bound project / per-workspace bundle. '
+        'For per-workspace content or assets (the `<wsId>.mbd` bundle), use '
+        '`knowledge_file_*` (workspace `knowledge/`) instead — the bare '
+        '`fs.*` capability is jailed to the host config dir and is not '
+        'workspace-scoped. Creates parent directories as needed. Returns '
+        '`{ok, bytes}`.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
@@ -189,16 +202,20 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
     description:
         'List immediate entries under a directory in workspaceDir. '
         'Returns `{ok, entries: [{name, type, size?}]}` where type is '
-        '`file` or `directory`.',
+        '`file` or `directory`. Omit `path` (or pass `""`) to list the '
+        'workspaceDir root.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
-        'path': <String, dynamic>{'type': 'string'},
+        'path': <String, dynamic>{
+          'type': 'string',
+          'description': 'Absolute path inside workspaceDir. Empty/omitted '
+              'lists the workspaceDir root.',
+        },
       },
-      'required': <String>['path'],
     },
     handler: (args) async {
-      final r = await guard(args, (abs, ws) async {
+      final r = await guard(args, allowRoot: true, (abs, ws) async {
         final dir = Directory(abs);
         if (!await dir.exists()) {
           return <String, Object?>{

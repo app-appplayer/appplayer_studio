@@ -208,6 +208,16 @@ class OpsBuiltInApp extends BuiltInApp {
       // ModelSpec ride the configured `settings.llmModel` (resolved at
       // boot) instead of the stub port. host wiring, not builtin logic.
       defaultAgentModel: backbone?.defaultAgentModel,
+      // Global agent LLM session pool — base layer for the per-project
+      // system's `infraPorts.llmProviders`. Carries the claude-code keyless
+      // fallback (registered by `upgradeClaudeCodeForKernel` at host boot,
+      // which runs BEFORE this project-bind boot) so a bound project's OWN
+      // agent subsystem can resolve a worker's model. Without it,
+      // per-project `agent_ask` returns empty content on a keyless setup
+      // (the project key pool has no `claude` provider).
+      sharedLlmProviders: backbone?.isFlowBrainBooted == true
+          ? backbone!.app.agentLlmSessions.providers
+          : null,
     );
     // Phase A.3 — merge Ops's LlmPort provider pool (multi-provider
     // mcp_llm — Anthropic / OpenAI / Gemini) into the KernelApp's
