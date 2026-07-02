@@ -100,7 +100,10 @@ class WorkspaceLoader {
           await system.agents.createAgent(
             id: m.agentId,
             displayName: m.displayName,
-            role: AgentRole.worker,
+            // Seed from the yaml-persisted role (not a hardcoded worker) so
+            // a re-role survives a `.kv` rebuild — the member yaml is the
+            // durable record, the kernel Agent the runtime one.
+            role: m.role,
             model: modelSpec,
             workspaceId: wsId,
             tags: m.tags,
@@ -157,6 +160,7 @@ class WorkspaceLoader {
       return;
     }
     OpsLog.boot('wsload', 'skill scan: $dirPath');
+    final wsId = registries.workspace.activeId;
     await for (final entity in dir.list()) {
       if (entity is! File) continue;
       if (!entity.path.endsWith('.yaml') && !entity.path.endsWith('.yml')) {
@@ -167,7 +171,9 @@ class WorkspaceLoader {
         final yaml = loadYaml(raw);
         if (yaml is YamlMap) {
           final def = SkillDefinition.fromYaml(_recursivelyToMap(yaml));
-          appSkills.register(def);
+          // Tag with the owning workspace so the resolver scopes visibility —
+          // these are workspace-authored, not globally-visible templates.
+          appSkills.register(def, workspaceId: wsId);
           await _mirrorSkillToFlowbrain(def);
         }
       } catch (e) {

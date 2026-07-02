@@ -134,15 +134,25 @@ class _Header extends ConsumerWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const OpsCrumb('Workspace'),
-            const SizedBox(height: 4),
-            Text('Home', style: Theme.of(context).textTheme.displayMedium),
-          ],
+        // Expanded (not a fixed Column + Spacer) so the title yields space to
+        // the action buttons on a narrow header instead of overflowing; the
+        // title ellipsizes rather than pushing the buttons off-edge.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const OpsCrumb('Workspace'),
+              const SizedBox(height: 4),
+              Text(
+                'Home',
+                style: Theme.of(context).textTheme.displayMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         Builder(
           builder:
               (btnCtx) => OutlinedButton.icon(
@@ -163,6 +173,22 @@ class _Header extends ConsumerWidget {
   }
 }
 
+/// How many KPI columns fit across [width] at [minTile] px each (with [gap]
+/// between), clamped to `[1, tiles]`. Drives the Home KPI [Wrap] so it degrades
+/// 4-wide → 2 → 1 instead of squeezing tiles until their labels wrap. Pure /
+/// testable. [minTile] keeps the longest label ("Running processes") on one
+/// line: 4-across needs ≥ `4*168 + 3*gap` px.
+int kpiColumnsFor(
+  double width, {
+  int tiles = 4,
+  double gap = 12,
+  double minTile = 168,
+}) {
+  if (width <= 0) return 1;
+  final n = ((width + gap) / (minTile + gap)).floor();
+  return n.clamp(1, tiles);
+}
+
 class _KpiRow extends StatelessWidget {
   const _KpiRow({
     required this.tasks,
@@ -177,18 +203,29 @@ class _KpiRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: OpsKpiTile(label: 'Open tasks', value: '$tasks')),
-        const SizedBox(width: 12),
-        Expanded(
-          child: OpsKpiTile(label: 'Running processes', value: '$processes'),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: OpsKpiTile(label: 'Members online', value: '$members')),
-        const SizedBox(width: 12),
-        Expanded(child: OpsKpiTile(label: 'Facts captured', value: '$facts')),
-      ],
+    final tiles = <Widget>[
+      OpsKpiTile(label: 'Open tasks', value: '$tasks'),
+      OpsKpiTile(label: 'Running processes', value: '$processes'),
+      OpsKpiTile(label: 'Members online', value: '$members'),
+      OpsKpiTile(label: 'Facts captured', value: '$facts'),
+    ];
+    const gap = 12.0;
+    // Wrap the tiles into as many even columns as fit (4 wide → 2 → 1) so a
+    // narrow content area flows to extra rows instead of squeezing each tile
+    // until its label wraps character-by-character.
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final perRow = kpiColumnsFor(w, tiles: tiles.length, gap: gap);
+        final tileW = (w - gap * (perRow - 1)) / perRow;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final t in tiles) SizedBox(width: tileW, child: t),
+          ],
+        );
+      },
     );
   }
 }

@@ -313,6 +313,51 @@ gates:
       expect(await file.exists(), isTrue);
     });
 
+    test(
+      'p9d saveFromYaml round-trips dependsOn + triggerSource '
+      '(process_get echo regression)',
+      () async {
+        const yaml = '''
+id: dag_proc
+title: DAG Process
+trigger: event
+triggerSource: upstream_proc
+steps:
+  - stepId: build
+    assigneeId: agent_x
+    skillId: skill.build
+  - stepId: shoot
+    assigneeId: agent_y
+    skillId: skill.shoot
+    dependsOn: [build]
+  - stepId: design
+    assigneeId: agent_z
+    skillId: skill.design
+    dependsOn: [build]
+''';
+        final proc = await reg.saveFromYaml(yaml, 'project/ws1');
+        // Model carries the topology (what process_get serialises from).
+        expect(proc.triggerSource, 'upstream_proc');
+        expect(proc.steps[0].dependsOn, isEmpty);
+        expect(proc.steps[1].dependsOn, ['build']);
+        expect(proc.steps[2].dependsOn, ['build']);
+
+        // Fresh registry over the same rootDir (disk round-trip) — the
+        // re-read model keeps the topology, so the tool echo has it too.
+        final reg2 = ProcessRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv2')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+        final back = (await reg2.list(
+          wsId: 'project/ws1',
+        )).firstWhere((x) => x.id == 'dag_proc');
+        expect(back.triggerSource, 'upstream_proc');
+        expect(back.steps[1].dependsOn, ['build']);
+        expect(back.steps[2].dependsOn, ['build']);
+      },
+    );
+
     test('p9b saveFromYaml throws on non-map YAML', () {
       expect(
         () => reg.saveFromYaml('- a\n- b\n', 'project/ws1'),
@@ -407,6 +452,50 @@ steps:
       expect(proc.gates.first.kind, GateKind.philosophy);
       expect(proc.gates.first.params['ref'], 'ethics');
       expect(proc.trigger, ProcessTrigger.task);
+    });
+
+    // --- p13b: step dependsOn (DAG) round-trips through YAML ---
+    test('p13b step dependsOn persists + reloads (parallel branches)', () async {
+      // build → {shoot, design} both dependsOn [build] = parallel branches.
+      final proc = Process(
+        id: 'dag_proc',
+        workspaceId: 'project/ws1',
+        title: 'DAG',
+        steps: [
+          ProcessStep(stepId: 'build', assigneeId: 'b', skillId: 'sk'),
+          ProcessStep(
+            stepId: 'shoot',
+            assigneeId: 's',
+            skillId: 'sk',
+            dependsOn: const ['build'],
+          ),
+          ProcessStep(
+            stepId: 'design',
+            assigneeId: 'd',
+            skillId: 'sk',
+            dependsOn: const ['build'],
+          ),
+        ],
+        gates: const [],
+        trigger: ProcessTrigger.manual,
+      );
+      await reg.create(proc);
+
+      // Fresh registry reloads from disk via _fromYaml.
+      final kv2 = KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv_dag'));
+      final reg2 = ProcessRegistry(
+        kv: kv2,
+        knowledgeSystem: KnowledgeSystem.stub(),
+        rootDir: tmp.path,
+      );
+      final loaded = await reg2.list(wsId: 'project/ws1');
+      final reloaded = loaded.firstWhere((x) => x.id == 'dag_proc');
+      expect(reloaded.steps.firstWhere((s) => s.stepId == 'build').dependsOn,
+          isEmpty);
+      expect(reloaded.steps.firstWhere((s) => s.stepId == 'shoot').dependsOn,
+          equals(['build']));
+      expect(reloaded.steps.firstWhere((s) => s.stepId == 'design').dependsOn,
+          equals(['build']));
     });
 
     // --- p14: delete workspace scoping ---

@@ -36,6 +36,8 @@ import 'package:appplayer_studio/src/apps/ops/ui/inbox/inbox_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/knowledge/knowledge_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/member/member_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/observability/activity_feed_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/organization/org_chart_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/channels/channels_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/philosophy/philosophies_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/process/process_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/profile/profiles_page.dart';
@@ -63,6 +65,7 @@ import 'package:appplayer_studio/base.dart'
         WorkspaceTabActiveScope,
         inspectTag;
 import 'infra/project_seed.dart' show applyOpsProjectSeed, isOpsProjectDir;
+import 'infra/ws_paths.dart' show wsBundleDir;
 import 'package:appplayer_studio/ui.dart' as ui;
 
 /// Sidebar route — mirrors the order of `apps/Ops/dart/lib/widgets/
@@ -88,6 +91,13 @@ enum OpsRoute {
     'observability',
     'Activity',
     Icons.timeline_outlined,
+    OpsGroup.overview,
+  ),
+  // Organization — workspaces + their agents/knowledge as a graphical chart.
+  organization(
+    'organization',
+    'Organization',
+    Icons.hub_outlined,
     OpsGroup.overview,
   ),
   // Experts — agents as growing specialists (4-axis owned + transfer).
@@ -125,6 +135,9 @@ enum OpsRoute {
   ),
   bundles('bundles', 'Bundles', Icons.inventory_2_outlined, OpsGroup.system),
   resources('resources', 'Resources', Icons.lan_outlined, OpsGroup.system),
+  // Channels — external messaging accounts (KakaoTalk / email / Slack / …) the
+  // workspace uses to notify + receive; credentials in the secure vault.
+  channels('channels', 'Channels', Icons.forum_outlined, OpsGroup.system),
   files('files', 'Files', Icons.folder_open_outlined, OpsGroup.system),
   audit('audit', 'Audit', Icons.fact_check_outlined, OpsGroup.system),
   about('about', 'About', Icons.info_outline, OpsGroup.system);
@@ -257,9 +270,19 @@ class _OpsShellState extends State<OpsShell> {
   ///   3. else leave the welcome panel.
   /// Without this, a freshly mounted [OpsShell] always starts unbound (Ops
   /// only bound via the welcome buttons / MCP), so reopening a tab dropped the
-  /// previously open project. The sidecar `lastProjectPath` (toolId
-  /// `makemind_ops`, written in [_bindProject]) is Ops's own session state —
-  /// the host config is separate (`inheritedSettings`).
+  /// previously open project. Ops's last-project pointer is stored in the
+  /// per-host host config store as a value (see [_hostSettingsPath] +
+  /// `VibeSettings.domainLastProject`), so debug and release never share a
+  /// binding and nothing is hardcoded to a `makemind_ops` folder.
+  /// The **per-host host config store** (`~/.config/<hostToolId>/settings.json`).
+  /// Ops's last-opened project is kept HERE as a VALUE — not in a hardcoded
+  /// `makemind_ops` folder. The host config dir is already separated per host
+  /// (`vibe_studio_debug` vs `vibe_studio`), so the two instances keep
+  /// independent project bindings; the project path is configurable data in
+  /// the store, keyed by the built-in's own id ([VibeSettings.domainLastProject]).
+  String get _hostSettingsPath =>
+      VibeSettings.defaultPath(widget.backbone.toolId);
+
   Future<void> _restoreLastProject() async {
     if (!mounted || _currentProject != null) return;
     if (isOpsProjectDir(widget.bundlePath)) {
@@ -267,10 +290,16 @@ class _OpsShellState extends State<OpsShell> {
       return;
     }
     try {
-      final s = await VibeSettings.load(
-        VibeSettings.defaultPath('makemind_ops'),
-      );
-      final last = s.lastProjectPath;
+      final s = await VibeSettings.load(_hostSettingsPath);
+      final last = s.domainLastProject[widget.app.id];
+      // Deliberately NO fallback to the pre-per-host shared config
+      // (`~/.config/<appId>/settings.json` → `lastProjectPath`): that file is
+      // host-agnostic and, for `makemind_ops`, points at the LIVE ops project.
+      // Reading it here would let the DEBUG host reopen live — the exact
+      // cross-host contamination the per-host `domainLastProject` store exists
+      // to prevent. Upgrading hosts re-open their project once (which writes
+      // the per-host key via [_bindProject]); we never auto-inherit the shared
+      // legacy binding.
       // Re-check `_currentProject`: an MCP `project.open` / `project.new` may
       // have bound a project while the async load was in flight.
       if (mounted &&
@@ -583,9 +612,9 @@ class _OpsShellState extends State<OpsShell> {
     // ignore: unawaited_futures
     () async {
       try {
-        final path = VibeSettings.defaultPath('makemind_ops');
+        final path = _hostSettingsPath;
         final s = await VibeSettings.load(path);
-        s.lastProjectPath = dir;
+        s.domainLastProject[widget.app.id] = dir;
         await s.save(path);
       } catch (_) {
         /* best-effort persistence */
@@ -664,10 +693,10 @@ class _OpsShellState extends State<OpsShell> {
         // is the per-workspace unit path carried via `t.currentProject`. The
         // Ops header stays the ops project (it reads `lifecycleState`, driven
         // by Ops's own `_currentProject`, not `t.currentProject`).
-        final wsDir = p.join(
-          opsProject,
-          '${workspaceId.replaceAll('/', '_')}.mbd',
-        );
+        // Same anchor the host `fs.*` capability resolves project-relative
+        // links against (see [wsBundleDir]) — keep this single-sourced so
+        // asset-locator save/resolve stay consistent.
+        final wsDir = wsBundleDir(opsProject, workspaceId);
         widget.chromeBridge.setActiveTabProject?.call(wsDir);
         // Publish this workspace's agents so the chat chip can list + directly
         // converse with them (manager stays the default selection).
@@ -817,6 +846,10 @@ class _OpsShellState extends State<OpsShell> {
         return 'knowledge';
       case OpsRoute.observability:
         return 'observability';
+      case OpsRoute.organization:
+        return 'organization';
+      case OpsRoute.channels:
+        return 'channels';
       case OpsRoute.audit:
         return 'audit';
     }
@@ -957,6 +990,10 @@ class _OpsShellBody extends ConsumerWidget {
         return const KnowledgePage();
       case 'observability':
         return const ActivityFeedPage();
+      case 'organization':
+        return const OrgChartPage();
+      case 'channels':
+        return const ChannelsPage();
       case 'audit':
         return const AuditPlaceholderPage();
       case 'home':

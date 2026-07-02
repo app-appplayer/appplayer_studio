@@ -236,6 +236,9 @@ class _MemberTile extends ConsumerWidget {
                       _showAgentForm(context, ref, workspaceId, agent);
                     }
                     break;
+                  case 'contact':
+                    await _showContactChannelDialog(context, ref, member);
+                    break;
                   case 'detach':
                     await opsCallTool(ref, 'member_detach', <String, dynamic>{
                       'id': member.id,
@@ -261,6 +264,11 @@ class _MemberTile extends ConsumerWidget {
                       ),
                     const PopupMenuItem(
                       height: 32,
+                      value: 'contact',
+                      child: Text('Contact channel'),
+                    ),
+                    const PopupMenuItem(
+                      height: 32,
                       value: 'detach',
                       child: Text('Remove from workspace'),
                     ),
@@ -269,6 +277,219 @@ class _MemberTile extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// --- Contact channel (per-member) --------------------------------------
+
+/// Register a member's contact channel directly from the member menu: bind a
+/// conversation to this member so inbound from it routes to them (and they can
+/// be reached there). Reuses the host `channel.bind` / `channel.bindings` —
+/// connect the account itself first in System → Channels.
+Future<void> _showContactChannelDialog(
+  BuildContext context,
+  WidgetRef ref,
+  Member member,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _ContactChannelDialog(member: member),
+  );
+}
+
+class _ContactChannelDialog extends ConsumerStatefulWidget {
+  const _ContactChannelDialog({required this.member});
+  final Member member;
+
+  @override
+  ConsumerState<_ContactChannelDialog> createState() =>
+      _ContactChannelDialogState();
+}
+
+class _ContactChannelDialogState extends ConsumerState<_ContactChannelDialog> {
+  final _convCtrl = TextEditingController();
+  List<String> _channels = const []; // connected channel ids (context)
+  List<String> _bound = const []; // conversationIds bound to this member
+  String? _channel;
+  bool _busy = true;
+  String? _msg;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _convCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _busy = true;
+      _msg = null;
+    });
+    try {
+      final list = await opsCallTool(ref, 'channel.list', const {});
+      final binds = await opsCallTool(ref, 'channel.bindings', const {});
+      final chans = ((list['channels'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => '${e['channelId']}')
+          .where((id) => id != 'in_app')
+          .toList();
+      final mine = ((binds['bindings'] as List?) ?? const [])
+          .whereType<Map>()
+          .where((b) => '${b['agentId']}' == widget.member.id)
+          .map((b) => '${b['conversationId']}')
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _channels = chans;
+        _channel = chans.isNotEmpty ? chans.first : null;
+        _bound = mine;
+        _busy = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _msg = '$e';
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _bind() async {
+    final conv = _convCtrl.text.trim();
+    if (conv.isEmpty) {
+      setState(() => _msg = 'conversation id required');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _msg = null;
+    });
+    try {
+      await opsCallTool(ref, 'channel.bind', {
+        'conversationId': conv,
+        'agentId': widget.member.id,
+      });
+      _convCtrl.clear();
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _msg = '$e';
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _unbind(String conv) async {
+    setState(() => _busy = true);
+    try {
+      await opsCallTool(ref, 'channel.unbind', {'conversationId': conv});
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _msg = '$e';
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Contact channel — ${widget.member.displayName}'),
+      content: SizedBox(
+        width: 420,
+        child: _busy
+            ? const SizedBox(
+                height: 80,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Route messages from a conversation to this member (and '
+                    'reach them there). Connect the account first in '
+                    'System → Channels.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_channels.isEmpty)
+                    const Text(
+                      'No external channel connected yet (System → Channels).',
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      initialValue: _channel,
+                      decoration: const InputDecoration(labelText: 'On channel'),
+                      items: [
+                        for (final c in _channels)
+                          DropdownMenuItem(value: c, child: Text(c)),
+                      ],
+                      onChanged: (v) => setState(() => _channel = v),
+                    ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _convCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Their conversation id / address',
+                      helperText: 'e.g. a kakao room id, an email address',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: _bind,
+                      child: const Text('Bind'),
+                    ),
+                  ),
+                  if (_bound.isNotEmpty) ...[
+                    const Divider(),
+                    Text('Bound conversations',
+                        style: Theme.of(context).textTheme.labelMedium),
+                    for (final c in _bound)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(c,
+                            style:
+                                const TextStyle(fontFamily: OpsType.mono, fontSize: 11)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.link_off, size: 16),
+                          tooltip: 'Unbind',
+                          onPressed: () => _unbind(c),
+                        ),
+                      ),
+                  ],
+                  if (_msg != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(_msg!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                    ),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

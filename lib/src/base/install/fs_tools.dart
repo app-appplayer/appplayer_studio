@@ -22,12 +22,27 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
+import '../infra/project_paths.dart';
 import '../settings/vibe_settings.dart';
 
-/// Add the 5 `studio.fs.*` primitives to [boot]. [toolId] identifies the
+/// Add the `studio.fs.*` primitives to [boot]. [toolId] identifies the
 /// host so `VibeSettings.defaultPath(toolId)` resolves to the right
 /// `~/.config/<toolId>/settings.json` for workspaceDir lookup.
-void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
+///
+/// [activeProjectRoot] (optional) returns the CURRENTLY-open project root
+/// (the active tab's `currentProject`). When wired, `fs.*` becomes
+/// project-portable: a **project-relative** `path` is resolved against the
+/// active project root, and reads/writes inside that root are permitted in
+/// addition to the shared workspaceDir. This is what lets Ops / Scene Builder
+/// / bundle apps store project-relative file links that survive a folder
+/// rename / copy / move — the resolution lives here (host lifecycle level),
+/// not in each built-in. Both boundaries are host-controlled; `..` escapes are
+/// still rejected (normalise + is-within), so the jail is preserved.
+void registerFsTools(
+  mk.KernelServerHost boot, {
+  required String toolId,
+  String? Function()? activeProjectRoot,
+}) {
   Future<String?> resolveWorkspace() async {
     try {
       final s = await VibeSettings.load(VibeSettings.defaultPath(toolId));
@@ -37,33 +52,28 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
     }
   }
 
-  /// Returns null on success; otherwise an error payload describing
-  /// why the path was rejected.
-  Map<String, Object?>? rejectIfOutsideWorkspace(
-    String path,
-    String workspace,
-  ) {
-    final normalised = p.normalize(p.absolute(path));
-    final normalisedWorkspace = p.normalize(p.absolute(workspace));
-    final inside =
-        normalised == normalisedWorkspace ||
-        normalised.startsWith('$normalisedWorkspace${p.separator}');
-    if (!inside) {
-      return <String, Object?>{
-        'ok': false,
-        'error':
-            'path outside workspaceDir (configured `$normalisedWorkspace`)',
-      };
+  String? resolveProjectRoot() {
+    try {
+      final r = activeProjectRoot?.call();
+      return (r != null && r.isNotEmpty) ? r : null;
+    } catch (_) {
+      return null;
     }
-    return null;
+  }
+
+  bool within(String abs, String? boundary) {
+    if (boundary == null || boundary.isEmpty) return false;
+    final b = p.normalize(p.absolute(boundary));
+    return abs == b || p.isWithin(b, abs);
   }
 
   Future<Map<String, Object?>> guard(
     Map<String, dynamic> args,
-    Future<Map<String, Object?>> Function(String absPath, String workspace) op, {
-    // When true, an empty/missing `path` targets the workspace root itself
-    // (used by `studio.fs.list` so a bare call lists the top level). Read /
-    // write / delete keep `allowRoot: false` — they need a concrete file.
+    Future<Map<String, Object?>> Function(String absPath, String base) op, {
+    // When true, an empty/missing `path` targets the resolution-base root
+    // itself (used by `studio.fs.list` so a bare call lists the top level).
+    // Read / write / delete keep `allowRoot: false` — they need a concrete
+    // file.
     bool allowRoot = false,
   }) async {
     final raw = args['path'];
@@ -72,19 +82,36 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
       return <String, Object?>{'ok': false, 'error': 'path required'};
     }
     final workspace = await resolveWorkspace();
-    if (workspace == null || workspace.isEmpty) {
+    final projectRoot = resolveProjectRoot();
+    if ((workspace == null || workspace.isEmpty) && projectRoot == null) {
       return <String, Object?>{
         'ok': false,
-        'error': 'workspaceDir not configured — set it in Studio Settings',
+        'error': 'no workspaceDir or active project — set workspaceDir in '
+            'Studio Settings or open a project',
       };
     }
-    // Empty + allowRoot → the workspace dir itself (which trivially passes
-    // the inside-workspace check, since it equals the root).
-    final effective = emptyPath ? workspace : raw;
-    final reject = rejectIfOutsideWorkspace(effective, workspace);
-    if (reject != null) return reject;
+    // Base for resolving a RELATIVE ref: prefer the active project (portable
+    // project-relative links), else the shared workspaceDir.
+    final base = projectRoot ?? workspace!;
+    final String effective;
+    if (emptyPath) {
+      effective = base;
+    } else {
+      final s = raw;
+      effective = (ProjectPaths.isExternalRef(s) || p.isAbsolute(s))
+          ? s
+          : ProjectPaths.resolve(base, s);
+    }
+    final abs = p.normalize(p.absolute(effective));
+    // Permit when inside the active project root OR the shared workspaceDir.
+    if (!within(abs, projectRoot) && !within(abs, workspace)) {
+      return <String, Object?>{
+        'ok': false,
+        'error': 'path outside the active project and workspaceDir',
+      };
+    }
     try {
-      return await op(p.normalize(p.absolute(effective)), workspace);
+      return await op(abs, base);
     } catch (e) {
       return <String, Object?>{'ok': false, 'error': '$e'};
     }
@@ -333,14 +360,16 @@ void registerFsTools(mk.KernelServerHost boot, {required String toolId}) {
         if (probe['ok'] != true) return okResult(probe);
         root = probe['abs'] as String;
       } else {
-        final ws = await resolveWorkspace();
-        if (ws == null || ws.isEmpty) {
+        // Default walk root: the active project (portable), else workspaceDir.
+        final base = resolveProjectRoot() ?? await resolveWorkspace();
+        if (base == null || base.isEmpty) {
           return okResult(<String, Object?>{
             'ok': false,
-            'error': 'workspaceDir not configured — set it in Studio Settings',
+            'error': 'no workspaceDir or active project — set workspaceDir in '
+                'Studio Settings or open a project',
           });
         }
-        root = ws;
+        root = base;
       }
       final regex = _globToRegex(pattern);
       final matches = <String>[];

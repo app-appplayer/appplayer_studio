@@ -33,12 +33,22 @@ class ProcessStep {
     required this.skillId,
     this.inputs = const {},
     this.channelThreadId,
+    this.dependsOn = const [],
   });
   final String stepId;
   final String assigneeId;
   final String skillId;
   final Map<String, dynamic> inputs;
   final String? channelThreadId;
+
+  /// Step ids this step depends on. Empty ⇒ the step depends on the
+  /// textually-previous step (the default linear chain). Non-empty ⇒ an
+  /// explicit DAG: steps that depend on the *same* predecessor (or on
+  /// nothing / the same set) run in parallel — the behavior engine schedules
+  /// by topological level, so independent branches execute concurrently. This
+  /// is how a single process expresses parallel work (e.g. shoot / design /
+  /// produce all `dependsOn: [build]`) rather than a forced sequence.
+  final List<String> dependsOn;
 }
 
 class Process {
@@ -95,6 +105,7 @@ class ProcessRun {
     Map<String, dynamic>? outcomes,
     ProcessRunState? state,
     PendingApproval? pendingApproval,
+    bool clearPendingApproval = false,
   }) => ProcessRun(
     runId: runId,
     processId: processId,
@@ -104,7 +115,9 @@ class ProcessRun {
     outcomes: outcomes ?? this.outcomes,
     state: state ?? this.state,
     checkpointRef: checkpointRef,
-    pendingApproval: pendingApproval ?? this.pendingApproval,
+    pendingApproval: clearPendingApproval
+        ? null
+        : (pendingApproval ?? this.pendingApproval),
   );
 
   Map<String, dynamic> toJson() => {
@@ -354,7 +367,16 @@ class ProcessRegistry {
   Future<void> cancel(String runId) async {
     final run = await _loadRun(runId);
     if (run == null) return;
-    await _saveCheckpoint(run.copyWith(state: ProcessRunState.cancelled));
+    // Clear any parked pendingApproval — a cancelled run must not linger in
+    // the Inbox as a waiting gate. (The Inbox already filters on
+    // `state == waitingApproval`, but stale pendingApproval on a cancelled
+    // checkpoint is misleading and re-cancel must converge it to clean.)
+    await _saveCheckpoint(
+      run.copyWith(
+        state: ProcessRunState.cancelled,
+        clearPendingApproval: true,
+      ),
+    );
   }
 
   /// Approve the gate the run is currently suspended on and continue via the
@@ -575,6 +597,9 @@ class ProcessRegistry {
       buf.writeln('  - stepId: ${s.stepId}');
       buf.writeln('    assigneeId: ${s.assigneeId}');
       buf.writeln('    skillId: ${s.skillId}');
+      if (s.dependsOn.isNotEmpty) {
+        buf.writeln('    dependsOn: [${s.dependsOn.join(', ')}]');
+      }
       if (s.inputs.isNotEmpty) {
         buf.writeln('    inputs:');
         s.inputs.forEach((k, v) => buf.writeln('      $k: ${_scalar(v)}'));
@@ -662,6 +687,16 @@ class ProcessRegistry {
               ' — got ${s.keys.toList()}',
             );
           }
+          // dependsOn: accept a YAML list, a single string, or absent (⇒ []).
+          final rawDep = s['dependsOn'];
+          final dependsOn = <String>[];
+          if (rawDep is List) {
+            for (final d in rawDep) {
+              if (d != null) dependsOn.add(d.toString());
+            }
+          } else if (rawDep is String && rawDep.isNotEmpty) {
+            dependsOn.add(rawDep);
+          }
           steps.add(
             ProcessStep(
               stepId: stepId,
@@ -670,6 +705,7 @@ class ProcessRegistry {
               inputs:
                   (s['inputs'] as Map?)?.cast<String, dynamic>() ?? const {},
               channelThreadId: s['channelThreadId'] as String?,
+              dependsOn: dependsOn,
             ),
           );
           // Accept the common inline-approval shapes an author (incl. the

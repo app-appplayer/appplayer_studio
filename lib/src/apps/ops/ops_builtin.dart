@@ -13,6 +13,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/src/apps/ops/config/ops_config.dart';
 import 'package:appplayer_studio/src/apps/ops/init/knowledge_init.dart';
+import 'package:appplayer_studio/src/apps/ops/registries/member_registry.dart'
+    show AgentMember;
 import 'package:appplayer_studio/src/apps/ops/server/mcp_inbound.dart';
 import 'package:appplayer_studio/src/apps/ops/tools/ui_debug_tools.dart';
 import 'package:path/path.dart' as p;
@@ -258,6 +260,24 @@ class OpsBuiltInApp extends BuiltInApp {
     final skillDispatch = _skillDispatchFor(init);
     init.registries.process.dispatch ??= skillDispatch;
     init.registries.task.dispatch ??= skillDispatch;
+    // Assignee auto-run: when a task is assigned to an agent member, drive
+    // that agent to actually perform it (assign + produce) instead of a
+    // headless skill dispatch that left the assignee un-run. Resolves the bare
+    // member id to its scoped kernel agent (AgentMember.agentId), the way
+    // agent_ask does; returns null for persons / unknown ids / off subsystem so
+    // TaskRegistry.run falls back to skill dispatch. Wired once here so both
+    // manual `task_run` and the recurring scheduler wake the assignee.
+    init.registries.task.agentRun ??= (assigneeId, request) async {
+      if (!init.system.isAgentSubsystemActivated) return null;
+      final m = await init.registries.member.get(assigneeId);
+      if (m is! AgentMember) return null;
+      try {
+        final reply = await init.system.agents.ask(m.agentId, request);
+        return reply.content;
+      } catch (_) {
+        return null; // not a runnable agent → skill-dispatch fallback
+      }
+    };
     // Bind this init's skillExecutor to the host endpoint so the runner
     // dispatch resolves skill ids through it. On a re-boot `registerToolsOn`
     // does NOT re-run, so without this the new init's skillExecutor stays
@@ -320,26 +340,38 @@ class OpsBuiltInApp extends BuiltInApp {
   /// from the loaded `~/.makemind-ops/config.yaml` so the user's host
   /// config stays the single source of truth.
   static OpsConfig _withProjectRoot(OpsConfig src, String projectRoot) {
+    // Prefer the PER-PROJECT active workspace (`<projectRoot>/.makemind-ops-active`,
+    // written by `workspace_switch`) over the global config's `activeWorkspace`.
+    // The global `~/.makemind-ops/config.yaml` is shared across every host and
+    // project, so another host/project switching workspaces overwrites its
+    // single `activeWorkspace` field with a FOREIGN id — which is absent here,
+    // falls back to `_system`, and hides this project's data (empty Home). The
+    // per-project file is the project's own memory and never cross-contaminates.
+    var wanted = src.activeWorkspace;
+    try {
+      final f = File(p.join(projectRoot, '.makemind-ops-active'));
+      if (f.existsSync()) {
+        final saved = f.readAsStringSync().trim();
+        if (saved.isNotEmpty) wanted = saved;
+      }
+    } catch (_) {
+      /* best-effort — fall back to the global value */
+    }
     return OpsConfig(
       version: src.version,
       appName: src.appName,
-      // Restore the saved workspace IF it still exists in THIS project,
-      // else fall back to the reserved `_system` slot. The old behavior
-      // (always force `_system`) discarded the user's selected workspace
-      // on every reopen, so a bound project always opened on the empty
-      // `_system` view instead of the workspace that holds their members /
-      // agents / data — making created data look gone. The original hazard
-      // was carrying a STALE id from a DIFFERENT project (whose `<wsId>.mbd`
-      // is absent here → content load failure); guard against that by
+      // Restore the wanted workspace IF it still exists in THIS project, else
+      // fall back to the reserved `_system` slot. Guards against a STALE id
+      // from a DIFFERENT project (whose `<wsId>.mbd` is absent here) by
       // confirming the workspace's bundle dir exists under THIS project root
       // (`_system` is always valid — reserved, no bundle dir).
       activeWorkspace:
-          (src.activeWorkspace == systemWorkspaceSlot ||
-                  (src.activeWorkspace.isNotEmpty &&
+          (wanted == systemWorkspaceSlot ||
+                  (wanted.isNotEmpty &&
                       Directory(
-                        wsContentRoot(projectRoot, src.activeWorkspace),
+                        wsContentRoot(projectRoot, wanted),
                       ).existsSync()))
-              ? src.activeWorkspace
+              ? wanted
               : systemWorkspaceSlot,
       workspacesRoot: projectRoot,
       llm: src.llm,

@@ -20,6 +20,8 @@ import '../registries/member_registry.dart';
 import '../registries/process_registry.dart';
 import '../registries/task_registry.dart';
 import '../registries/workspace_registry.dart';
+import '../skills/skill_definition.dart';
+import '../ui/organization/org_chart_model.dart';
 
 /// Global bootstrap handles — overridden at the scoped [ProviderScope] in
 /// `main.dart` after [KnowledgeInit.boot]. All derived providers below list
@@ -184,6 +186,25 @@ final skillChangesProvider = StreamProvider<void>((ref) {
   return ref.watch(knowledgeInitProvider).skills.changes;
 }, dependencies: [knowledgeInitProvider]);
 
+/// Skill definitions visible in the active workspace — own workspace, its org
+/// ancestors, and genuine templates — resolved exactly like the `skill_list`
+/// tool so the UI never lists a sibling/parent workspace's skills. Refreshes
+/// on any skill or workspace change.
+final visibleSkillsProvider = FutureProvider<List<SkillDefinition>>((ref) async {
+  ref.watch(skillChangesProvider);
+  ref.watch(workspaceChangesProvider);
+  final init = ref.watch(knowledgeInitProvider);
+  final wsId = init.registries.workspace.activeId;
+  final ids = await init.skillResolver.visibleIds(workspaceId: wsId);
+  final defs = <SkillDefinition>[];
+  for (final id in ids) {
+    final def = await init.skillResolver.resolve(id, workspaceId: wsId);
+    if (def != null) defs.add(def);
+  }
+  defs.sort((a, b) => a.id.compareTo(b.id));
+  return defs;
+}, dependencies: [knowledgeInitProvider]);
+
 final knowledgeChangesProvider = StreamProvider<void>((ref) {
   return ref.watch(knowledgeInitProvider).registries.knowledge.changes;
 }, dependencies: [knowledgeInitProvider]);
@@ -299,6 +320,139 @@ final integratedAxisProvider =
         activeWorkspaceIdProvider,
       ],
     );
+
+/// Whole-organization inputs — every workspace (org hierarchy via `parentId`)
+/// with its members (role + knowledge refs) and processes (steps + dependsOn
+/// DAG + gates + trigger / triggerSource). The Organization page builds the
+/// chart from these for the selected lens (workflow / structure / knowledge) —
+/// kept as raw inputs (not a built model) so switching lens is a pure
+/// re-layout with no re-fetch. No new backend: reads the workspace / member /
+/// process registries. Re-resolves on workspace / member / knowledge / skill /
+/// process changes so the chart stays live.
+final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>((ref) async {
+  ref.watch(workspaceChangesProvider);
+  ref.watch(memberChangesProvider);
+  ref.watch(knowledgeChangesProvider);
+  ref.watch(skillChangesProvider);
+  final init = ref.watch(knowledgeInitProvider);
+
+  ref.watch(processChangesProvider);
+
+  final wsList = await init.registries.workspace.list();
+  final inputs = <OrgWsInput>[];
+
+  for (final ws in wsList) {
+    final members = await init.registries.member.listForWorkspace(ws.id);
+    // Member id → display name, and member id → qualified flowbrain agent id
+    // (for the detail dialog). The process YAML references members by id, but
+    // `system.agents.getAgent` needs the qualified agentId — keep both so the
+    // chart can match on member id yet open the right agent on tap.
+    final labelOf = <String, String>{};
+    final agentIdOf = <String, String>{};
+    for (final m in members) {
+      labelOf[m.id] = m.displayName;
+      if (m is AgentMember) {
+        labelOf[m.agentId] = m.displayName;
+        agentIdOf[m.id] = m.agentId;
+      }
+    }
+    String nameFor(String id) => labelOf[id] ?? id;
+
+    // All members — agents AND people (persons appear in the structure lens
+    // org chart; only agents carry knowledge refs). isAgent drives the 🤖/👤
+    // icon.
+    final agents = <OrgAgentInput>[
+      for (final mem in members)
+        if (mem is AgentMember)
+          OrgAgentInput(
+            agentId: mem.agentId,
+            memberId: mem.id,
+            displayName: mem.displayName,
+            role: mem.tags['role'] ?? 'agent',
+            isAgent: true,
+            skillRefs: mem.skillIds,
+            profileRef: mem.profileRef.isEmpty ? null : mem.profileRef,
+            philosophyRef: mem.philosophyRef.isEmpty ? null : mem.philosophyRef,
+          )
+        else
+          OrgAgentInput(
+            agentId: mem.id,
+            memberId: mem.id,
+            displayName: mem.displayName,
+            role: mem.tags['role'] ?? 'member',
+            isAgent: false,
+          ),
+    ];
+
+    // Processes → pipeline lanes. Each process contributes its ordered steps
+    // (assignee + skill) and its gates (approval → sign-off marker, philosophy
+    // / quality → inline checkpoint). The approver of an approval gate comes
+    // from the separate gates list or an inline step approval (both surface as
+    // GateKind.approval with params.approverId).
+    final processes = <OrgProcessInput>[];
+    try {
+      final procs = await init.registries.process.list(wsId: ws.id);
+      for (final p in procs) {
+        processes.add(
+          OrgProcessInput(
+            id: p.id,
+            title: p.title,
+            trigger: p.trigger.name,
+            triggerSource: p.triggerSource,
+            steps: [
+              for (final s in p.steps)
+                OrgStepInput(
+                  stepId: s.stepId,
+                  assigneeId: s.assigneeId,
+                  assigneeLabel: nameFor(s.assigneeId),
+                  assigneeAgentId: agentIdOf[s.assigneeId],
+                  skillId: s.skillId,
+                  dependsOn: s.dependsOn,
+                ),
+            ],
+            gates: [
+              for (final g in p.gates)
+                OrgGateInput(
+                  afterStep: g.afterStep,
+                  kind: g.kind.name,
+                  approverId: g.params['approverId'] as String?,
+                  approverLabel: (g.params['approverId'] is String)
+                      ? nameFor(g.params['approverId'] as String)
+                      : null,
+                  approverAgentId: (g.params['approverId'] is String)
+                      ? agentIdOf[g.params['approverId'] as String]
+                      : null,
+                ),
+            ],
+          ),
+        );
+      }
+    } catch (_) {
+      // Process registry optional / unbound — leave lanes empty.
+    }
+
+    inputs.add(
+      OrgWsInput(
+        id: ws.id,
+        title: ws.title,
+        type: ws.type.name,
+        parentId: ws.parentId,
+        leadMemberId: ws.leadMemberId,
+        agents: agents,
+        processes: processes,
+      ),
+    );
+  }
+
+  return inputs;
+}, dependencies: [
+  knowledgeInitProvider,
+  workspaceChangesProvider,
+  memberChangesProvider,
+  knowledgeChangesProvider,
+  skillChangesProvider,
+  processChangesProvider,
+]);
 
 final bundleListProvider = FutureProvider<List<Bundle>>((ref) async {
   final init = ref.watch(knowledgeInitProvider);

@@ -27,12 +27,15 @@ Future<List<Map<String, dynamic>>> pendingApprovals(
     includeReserved: true,
   );
   final pending = <Map<String, dynamic>>[];
+  // Org-level cross-workspace scan → unscoped reader (Adapters.orgKv). The
+  // active-scoped `kv` would throw on the first key outside the active ws.
+  final store = init.adapters.orgKv;
   for (final ws in workspaces) {
-    final keys = await init.adapters.kv.keys(
+    final keys = await store.keys(
       prefix: 'ws/${ws.id}/process_runs/',
     );
     for (final k in keys) {
-      final raw = await init.adapters.kv.get(k);
+      final raw = await store.get(k);
       if (raw is! Map) continue;
       ProcessRun run;
       try {
@@ -87,12 +90,14 @@ Future<List<Map<String, dynamic>>> pendingTasks(
     includeReserved: true,
   );
   final tasks = <Map<String, dynamic>>[];
+  // Org-level cross-workspace scan → unscoped reader (Adapters.orgKv).
+  final store = init.adapters.orgKv;
   for (final ws in workspaces) {
-    final keys = await init.adapters.kv.keys(
+    final keys = await store.keys(
       prefix: 'ws/${ws.id}/process_runs/',
     );
     for (final k in keys) {
-      final raw = await init.adapters.kv.get(k);
+      final raw = await store.get(k);
       if (raw is! Map) continue;
       ProcessRun run;
       try {

@@ -17,12 +17,15 @@
 ///   sv10 resolve with both ids, agent file present — returns agent overlay
 ///   sv11 resolve with both ids, agent file absent — falls through to ws layer
 ///   sv12 resolve — corrupted YAML in workspace file returns null (no crash)
+///   sv13 visibleIds/resolve — workspace-origin skill hidden from sibling ws
+///   sv14 visibleIds/resolve — template (no origin) visible in every ws
+///   sv15 ancestor chain — child inherits parent skill, not vice versa
+///   sv16 ancestor chain — parent's on-disk skill resolved from child
 library;
 
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/src/apps/ops/skills/skill_definition.dart';
 import 'package:appplayer_studio/src/apps/ops/skills/skill_registry.dart';
 import 'package:appplayer_studio/src/apps/ops/skills/skill_resolver.dart';
@@ -296,5 +299,90 @@ actionBody:
     // Should not throw; returns null gracefully.
     final result = await resolver.resolve('broken', workspaceId: wsId);
     expect(result, isNull);
+  });
+
+  // --- workspace-scope isolation (origin filter) ---------------------------
+
+  // sv13 — a workspace-authored catalog skill (registered with workspaceId)
+  // must NOT be visible to a sibling workspace.
+  test('sv13 workspace-origin skill hidden from sibling workspace', () async {
+    catalog.register(_def('recruit'), workspaceId: 'org/devteam');
+    final resolver = _makeResolver();
+
+    // Visible in its own workspace.
+    final own = await resolver.visibleIds(workspaceId: 'org/devteam');
+    expect(own, contains('recruit'));
+    expect(
+      await resolver.resolve('recruit', workspaceId: 'org/devteam'),
+      isNotNull,
+    );
+
+    // Hidden in a sibling.
+    final sibling = await resolver.visibleIds(workspaceId: 'org/devmag');
+    expect(sibling, isNot(contains('recruit')));
+    expect(
+      await resolver.resolve('recruit', workspaceId: 'org/devmag'),
+      isNull,
+    );
+  });
+
+  // sv14 — a genuine template (registered without workspaceId) stays globally
+  // visible, matching the pre-existing catalog semantics.
+  test('sv14 template (no origin) visible in every workspace', () async {
+    catalog.register(_def('summarize')); // no workspaceId = template
+    final resolver = _makeResolver();
+    for (final ws in ['org/a', 'org/b']) {
+      expect(await resolver.visibleIds(workspaceId: ws), contains('summarize'));
+      expect(await resolver.resolve('summarize', workspaceId: ws), isNotNull);
+    }
+  });
+
+  // sv15 — a parent's workspace-origin skill is inherited by a child through
+  // the ancestor chain, but a child's is NOT visible to the parent.
+  test('sv15 ancestor chain — child inherits parent, not vice versa', () async {
+    catalog.register(_def('org_policy'), workspaceId: 'org/root');
+    catalog.register(_def('team_only'), workspaceId: 'org/child');
+    final resolver = SkillResolver(
+      catalog: catalog,
+      workspacesRoot: tmp.path,
+      ancestorsOf: (id) async => id == 'org/child' ? ['org/root'] : const [],
+    );
+
+    // Child sees both its own and the inherited parent skill.
+    final child = await resolver.visibleIds(workspaceId: 'org/child');
+    expect(child, containsAll(['org_policy', 'team_only']));
+    expect(
+      await resolver.resolve('org_policy', workspaceId: 'org/child'),
+      isNotNull,
+    );
+
+    // Parent sees only its own — the child skill does not leak upward.
+    final parent = await resolver.visibleIds(workspaceId: 'org/root');
+    expect(parent, contains('org_policy'));
+    expect(parent, isNot(contains('team_only')));
+    expect(
+      await resolver.resolve('team_only', workspaceId: 'org/root'),
+      isNull,
+    );
+  });
+
+  // sv16 — a child's ancestor `skills/<id>.yaml` on disk is resolved through
+  // the chain (disk inheritance, independent of the catalog).
+  test('sv16 ancestor disk skill resolved through chain', () async {
+    final resolver = SkillResolver(
+      catalog: catalog,
+      workspacesRoot: tmp.path,
+      ancestorsOf: (id) async => id == 'org/child' ? ['org/root'] : const [],
+    );
+    await _writeSkillYaml(
+      '${_wsRoot(tmp.path, 'org/root')}/skills/inherited.yaml',
+      'inherited',
+    );
+
+    final ids = await resolver.visibleIds(workspaceId: 'org/child');
+    expect(ids, contains('inherited'));
+    final def = await resolver.resolve('inherited', workspaceId: 'org/child');
+    expect(def, isNotNull);
+    expect(def!.description, 'from file');
   });
 }

@@ -82,7 +82,7 @@ class BundleInstaller {
     await _appendRecord(wsRoot, record);
 
     // Live-register any skills that arrived with this install.
-    await _reloadWorkspaceSkills(wsRoot);
+    await _reloadWorkspaceSkills(wsRoot, workspaceId);
     return record;
   }
 
@@ -140,7 +140,7 @@ class BundleInstaller {
     // Write a new installed_bundles.yaml minus the uninstalled entries.
     final remaining = installs.where((r) => r.bundleId != bundleId).toList();
     await _writeInstalls(wsRoot, remaining);
-    await _reloadWorkspaceSkills(wsRoot);
+    await _reloadWorkspaceSkills(wsRoot, workspaceId);
   }
 
   Future<void> _appendRecord(String wsRoot, InstallationRecord rec) async {
@@ -197,7 +197,7 @@ class BundleInstaller {
     await writeStringAtomic(file, buf.toString());
   }
 
-  Future<void> _reloadWorkspaceSkills(String wsRoot) async {
+  Future<void> _reloadWorkspaceSkills(String wsRoot, String workspaceId) async {
     final registry = appSkills;
     if (registry == null) return; // first-run path: defer until next boot.
     final dir = Directory('$wsRoot/skills');
@@ -212,7 +212,9 @@ class BundleInstaller {
         final yaml = loadYaml(raw);
         if (yaml is YamlMap) {
           final def = SkillDefinition.fromYaml(Map<String, dynamic>.from(yaml));
-          registry.register(def);
+          // Bundle skills are installed into a workspace — tag them so they
+          // stay scoped to it, not visible to sibling workspaces.
+          registry.register(def, workspaceId: workspaceId);
         }
       } catch (e) {
         stderr.writeln('Skill reload failed: ${entity.path}: $e');

@@ -124,6 +124,44 @@ void main() {
     },
   );
 
+  test('rootDir is read fresh — a hot-swap moves the tree', () async {
+    // The store reads rootDir() per call, so pointing it at a new dir mid-life
+    // makes subsequent reads/writes track the new tree (settings/workspace
+    // change) rather than the one captured at construction.
+    final a = await Directory.systemTemp.createTemp('sealed_auth_swap_a');
+    final b = await Directory.systemTemp.createTemp('sealed_auth_swap_b');
+    addTearDown(() async {
+      if (await a.exists()) await a.delete(recursive: true);
+      if (await b.exists()) await b.delete(recursive: true);
+    });
+    var live = a.path;
+    final swap = SealedAuthProfileStore(
+      sealer: AtRestSealer(storage: InMemorySecureStorage()),
+      rootDir: () => live,
+    );
+    final path = await swap.put(sample());
+    expect(path, startsWith(a.path));
+
+    live = b.path; // hot-swap the root
+    // A fresh store on the new root sees nothing from the old tree.
+    final onB = SealedAuthProfileStore(sealer: swap.sealer, rootDir: () => b.path);
+    expect(await onB.get('acme', 'alice-acme'), isNull);
+    // The same store now writes under the new root.
+    final path2 = await swap.put(sample());
+    expect(path2, startsWith(b.path));
+  });
+
+  test('a live put is served from the hot cache without a fresh disk read',
+      () async {
+    // put warms the in-memory cache; deleting the .enc under the store's feet
+    // must not drop the just-sealed profile from a same-instance get.
+    await store.put(sample());
+    await File('${root.path}/acme/alice-acme.enc').delete();
+    final got = await store.get('acme', 'alice-acme');
+    expect(got, isNotNull, reason: 'served from hot cache');
+    expect(got!.cookies.single.value, 'super-secret-token');
+  });
+
   test(
     'a store sharing storage opens what another sealed (key persistence)',
     () async {

@@ -46,6 +46,7 @@ class AgentMember extends Member {
     required this.skillIds,
     required this.philosophyRef,
     this.model,
+    this.role = AgentRole.worker,
     this.authProfiles = const [],
     super.tags,
   }) : agentId = agentId ?? id,
@@ -62,6 +63,14 @@ class AgentMember extends Member {
   /// Persisted to yaml so reloads keep the same provider/model without
   /// going back to the config default. See `FR-OPS-001`.
   final ModelSpec? model;
+
+  /// Orchestration role (worker / manager / reviewer) — mirrors the kernel
+  /// `Agent.role`. Persisted to yaml so a re-role survives a `.kv` rebuild
+  /// (the boot mirror seeds the kernel record from this, not a hardcoded
+  /// worker). Changed in place via `update(role:)` — never delete→recreate,
+  /// which would destroy the agent's accumulated individuality (FactGraph ·
+  /// owned forks · history).
+  final AgentRole role;
 
   /// Compatibility fields, slated for gradual deprecation. The new code path
   /// trusts flowbrain `agents.assignProfile` / `assignSkill` etc. — these
@@ -152,6 +161,7 @@ class MemberRegistry {
     String? systemPrompt,
     Map<String, String> tags = const {},
     String? rootDir,
+    AgentRole role = AgentRole.worker,
   }) async {
     final resolvedAgentId = agentId ?? id;
     if (knowledgeSystem.isAgentSubsystemActivated) {
@@ -160,7 +170,11 @@ class MemberRegistry {
         await knowledgeSystem.agents.createAgent(
           id: resolvedAgentId,
           displayName: displayName,
-          role: AgentRole.worker,
+          // Orchestration role (worker / manager / reviewer) — governs which
+          // AgentFacade methods are callable (manager routes, reviewer
+          // verdicts). Defaults to worker; the ops tool resolves it from the
+          // assigned profile's `defaultRole` (profile = the persona/role).
+          role: role,
           // Explicit per-call model → host-injected inherited default →
           // stub only as the last resort (unwired standalone / test boot).
           model: model ?? defaultModel ?? defaultModelSpec,
@@ -200,6 +214,7 @@ class MemberRegistry {
       skillIds: skillIds,
       philosophyRef: philosophyRef,
       model: model,
+      role: role,
       tags: tags,
     );
     await _persist(workspaceId, agent, rootDir ?? this.rootDir);
@@ -251,6 +266,7 @@ class MemberRegistry {
     required String workspaceId,
     String? displayName,
     ModelSpec? model,
+    AgentRole? role,
     String? profileRef,
     List<String>? skillIds,
     String? philosophyRef,
@@ -271,12 +287,21 @@ class MemberRegistry {
         skillIds: skillIds ?? cur.skillIds,
         philosophyRef: philosophyRef ?? cur.philosophyRef,
         model: model ?? cur.model,
+        // Re-role IN PLACE — the kernel agent record is updated (below),
+        // never deleted+recreated, so the individuality (FactGraph · owned
+        // forks · history) is preserved.
+        role: role ?? cur.role,
         authProfiles: cur.authProfiles,
         tags: tags ?? cur.tags,
       );
-      if (model != null && knowledgeSystem.isAgentSubsystemActivated) {
+      if ((model != null || role != null) &&
+          knowledgeSystem.isAgentSubsystemActivated) {
         try {
-          await knowledgeSystem.agents.updateAgent(cur.agentId, model: model);
+          await knowledgeSystem.agents.updateAgent(
+            cur.agentId,
+            model: model,
+            role: role,
+          );
         } on StateError {
           // Agent not yet mirrored in flowbrain — yaml persists the choice
           // so the next boot's WorkspaceLoader picks it up. Silent skip.
@@ -355,6 +380,10 @@ class MemberRegistry {
       profileRef: m.profileRef,
       skillIds: m.skillIds,
       philosophyRef: m.philosophyRef,
+      // Carry model + role through — omitting them here silently wiped the
+      // persisted ModelSpec (pre-existing bug) and would wipe the role.
+      model: m.model,
+      role: m.role,
       authProfiles: updatedAuths,
       tags: m.tags,
     );
@@ -484,6 +513,8 @@ class MemberRegistry {
       skillIds: (y['skillIds'] as List?)?.cast<String>() ?? const [],
       philosophyRef: (y['philosophyRef'] as String?) ?? '',
       model: model,
+      role: AgentRole.values.asNameMap()[y['role'] as String? ?? ''] ??
+          AgentRole.worker,
       authProfiles: authProfiles,
       tags:
           (y['tags'] as Map?)?.map(
@@ -508,6 +539,9 @@ class MemberRegistry {
       }
     } else if (m is AgentMember) {
       if (m.agentId != m.id) buf.writeln('agentId: ${m.agentId}');
+      // Orchestration role — persisted so a re-role survives a .kv rebuild
+      // (boot mirror seeds from this). Omitted when worker (the default).
+      if (m.role != AgentRole.worker) buf.writeln('role: ${m.role.name}');
       final ms = m.model;
       if (ms != null) {
         buf.writeln('model:');

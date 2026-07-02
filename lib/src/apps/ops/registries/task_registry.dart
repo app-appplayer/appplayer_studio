@@ -100,6 +100,15 @@ typedef SkillDispatch =
       Map<String, dynamic> args,
     );
 
+/// Runs the task's assignee AGENT on a request, returning its deliverable —
+/// or null when the assignee is not a runnable agent (a person, unknown id,
+/// or the agent subsystem is off), in which case [TaskRegistry.run] falls back
+/// to headless skill dispatch. Injected at boot (resolves the bare member id
+/// to its scoped kernel agent + calls the agent), so both manual `task_run`
+/// and the recurring scheduler actually wake the assignee.
+typedef AgentRun =
+    Future<String?> Function(String assigneeId, String request);
+
 class TaskRegistry {
   TaskRegistry({
     required this.kv,
@@ -114,6 +123,10 @@ class TaskRegistry {
 
   /// Injected after bootstrap to allow running skills.
   SkillDispatch? dispatch;
+
+  /// Injected after bootstrap — drives the assignee agent (assign + produce).
+  /// Null / returns null → fall back to [dispatch] (headless skill run).
+  AgentRun? agentRun;
 
   final Map<String, Map<String, Task>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -168,12 +181,20 @@ class TaskRegistry {
   Future<TaskRunRef> run(String id) async {
     final t = await get(id);
     if (t == null) throw StateError('Task not found: $id');
-    if (t.skillIds.isEmpty) {
-      throw StateError('Task $id has no skillIds');
-    }
-    final d = dispatch;
-    if (d == null) {
-      throw StateError('SkillDispatch not attached to TaskRegistry');
+    final assignee = t.assigneeIds.isEmpty ? null : t.assigneeIds.first;
+    // Two execution paths: drive the assignee AGENT, or run a skill. The agent
+    // path is available only when an assignee + the `agentRun` seam are both
+    // present. When it is NOT, the task must run via a skill — validate that
+    // up front (config errors propagate as StateError, distinct from a runtime
+    // failure which becomes a `blocked` run inside the try below).
+    final canTryAgent = assignee != null && agentRun != null;
+    if (!canTryAgent) {
+      if (t.skillIds.isEmpty) {
+        throw StateError('Task $id has no skillIds');
+      }
+      if (dispatch == null) {
+        throw StateError('SkillDispatch not attached to TaskRegistry');
+      }
     }
     final runId = _uuid.v4();
     final startedAt = DateTime.now();
@@ -191,17 +212,38 @@ class TaskRegistry {
     await update(running);
 
     try {
-      final result = await d(t.skillIds.first, {
-        ...t.inputs,
-        'workspace': t.workspaceId,
-        'actor': t.assigneeIds.firstOrNull,
-      });
+      // Prefer driving the assignee AGENT (assign + produce): the member
+      // actually performs the task and its history records the turn. Returns
+      // null when the assignee is not a runnable agent → fall back to headless
+      // skill dispatch (unchanged behaviour). Covers manual `task_run` AND the
+      // recurring scheduler, since both call run().
+      String? summary;
+      if (canTryAgent) {
+        summary = await agentRun!(assignee!, _taskRequest(t));
+      }
+      if (summary == null) {
+        // Agent path unavailable / declined (person, unknown id, subsystem
+        // off) → run the task's skill. Guaranteed present unless the agent
+        // path was viable (validated above).
+        final d = dispatch;
+        if (d == null || t.skillIds.isEmpty) {
+          throw StateError(
+            'Task $id assignee is not a runnable agent and has no skill to run',
+          );
+        }
+        final result = await d(t.skillIds.first, {
+          ...t.inputs,
+          'workspace': t.workspaceId,
+          'actor': assignee,
+        });
+        summary = result.toString();
+      }
       final ref = TaskRunRef(
         runId: runId,
         startedAt: startedAt,
         endedAt: DateTime.now(),
         endState: TaskState.completed,
-        summary: result.toString(),
+        summary: summary,
       );
       await update(
         running.copyWith(state: TaskState.completed, runs: [...t.runs, ref]),
@@ -220,6 +262,18 @@ class TaskRegistry {
       );
       return ref;
     }
+  }
+
+  /// Build the instruction handed to the assignee agent from the task's own
+  /// fields (title / description / skills / inputs) — the "what to produce".
+  String _taskRequest(Task t) {
+    final b = StringBuffer(t.title);
+    if ((t.description ?? '').isNotEmpty) b.write('\n\n${t.description}');
+    if (t.skillIds.isNotEmpty) {
+      b.write('\n\n(관련 스킬: ${t.skillIds.join(', ')})');
+    }
+    if (t.inputs.isNotEmpty) b.write('\n\n입력: ${t.inputs}');
+    return b.toString();
   }
 
   Future<void> cancel(String id) async {

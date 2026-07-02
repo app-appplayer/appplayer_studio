@@ -6,6 +6,16 @@ import 'dart:io';
 import 'package:appplayer_studio/builtin_api.dart' as mk show BundleActivation;
 import 'package:appplayer_studio/builtin_api.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
+// Concrete decision/expression engines + the Decision port adapter — not
+// surfaced by builtin_api's flowbrain_core re-export (which brings only the
+// `EnginePorts` shell). `show` the 4 impls so `EnginePorts` keeps coming from
+// builtin_api (no duplicate-symbol ambiguity).
+import 'package:mcp_profile/mcp_profile.dart'
+    show
+        DecisionPortAdapter,
+        DefaultDecisionEnginePort,
+        PassthroughExpressionEnginePort,
+        StubAppraisalEnginePort;
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart' show readBundleAt;
@@ -44,6 +54,7 @@ class KnowledgeInit {
     required this.skillExecutor,
     required this.scheduler,
     required this.projectRoot,
+    this.ethosStore,
     List<({mk.BundleActivation activation, mb.McpBundle bundle})> activations =
         const <({mk.BundleActivation activation, mb.McpBundle bundle})>[],
     this.observability,
@@ -64,6 +75,7 @@ class KnowledgeInit {
     required SkillExecutor skillExecutor,
     required TaskScheduler scheduler,
     String projectRoot = '',
+    EthosStorePort? ethosStore,
     ObservabilityModule? observability,
   }) => KnowledgeInit._(
     system: system,
@@ -74,6 +86,7 @@ class KnowledgeInit {
     skillExecutor: skillExecutor,
     scheduler: scheduler,
     projectRoot: projectRoot,
+    ethosStore: ethosStore,
     observability: observability,
   );
 
@@ -84,6 +97,15 @@ class KnowledgeInit {
   final SkillResolver skillResolver;
   final SkillExecutor skillExecutor;
   final TaskScheduler scheduler;
+
+  /// Per-project active-ethos store — the workspace **charter** lives here.
+  /// Null in unbound / test boots. Charter tools (`workspace_set_charter`)
+  /// write + activate the org charter through this so it governs the
+  /// per-project system: the process philosophy gate (`philosophy_check`) and
+  /// opted-in agents both read this store's active ethos. (cherry-confirmed:
+  /// governance routes through the per-project active ethos, not the global
+  /// `bk.philosophy.*`.)
+  final EthosStorePort? ethosStore;
 
   /// Snapshot of `OpsConfig.workspacesRoot` taken at boot — used as the
   /// project-name source for resolving manifest bundle ids (each
@@ -210,6 +232,10 @@ class KnowledgeInit {
       rootDir: config.storage.localKvPath,
       workspaceId: config.activeWorkspace,
     );
+    // Unscoped reader over the same store for org-level cross-workspace
+    // aggregation (Inbox). No active binding → reads span workspaces; the
+    // scoped `kv` above forbids that. See Adapters.orgKv.
+    final orgKv = KvStoragePortAdapter(rootDir: config.storage.localKvPath);
 
     // 2. LLM holder — host-composed LlmPort pool + inbound MCP serving.
     // Outbound MCP is the host `mcp.*` capability now (S-LLM-2), not here.
@@ -273,16 +299,23 @@ class KnowledgeInit {
       workspacesRoot: config.workspacesRoot,
     );
 
-    // L2 ProfileRuntime — registry-backed pool; engines stubbed in v1
-    // (Appraisal returns empty metric set, Decision falls back to
-    // `proceed`, Expression formats raw content as-is). Workspace yaml
-    // seeds populate the registry via [WorkspaceLoader] so AgentFacade's
-    // `_poolStarters.profile` enumerates them. Real engines plug in
-    // later by replacing `EnginePorts.stub()` here.
+    // L2 ProfileRuntime — registry-backed pool. Decision + expression engines
+    // are now the REAL impls (judgment-determinism handoff): `Default`
+    // decision evaluates rules instead of always-`proceed`, and the
+    // `Passthrough` expression is already the real one. Appraisal stays the
+    // stub engine — the real `AppraisalEnginePort` bridge over the appraisal
+    // engine is the one piece that does NOT yet exist in mcp_profile (only
+    // Stub + a caching decorator), so wiring it now would gain nothing; it is
+    // returned to cherry as its own ticket. Workspace yaml seeds populate the
+    // registry via [WorkspaceLoader].
     final profileRegistry = ProfileRegistry();
     final profileRuntime = ProfileRuntime(
       registry: profileRegistry,
-      engines: EnginePorts.stub(),
+      engines: const EnginePorts(
+        decision: DefaultDecisionEnginePort(),
+        expression: PassthroughExpressionEnginePort(),
+        appraisal: StubAppraisalEnginePort(),
+      ),
     );
 
     // L3 PhilosophyEngine — single workspace ethos. Persists ethos
@@ -382,13 +415,28 @@ class KnowledgeInit {
       //     `opsRuntime == null` and bundle activation throws "OpsRuntime not
       //     configured" on process_start (task_run / the scheduler are
       //     unaffected — they don't route through the process executor).
+      // judgment-determinism handoff (cherry-confirmed) — replace the
+      // crash-guard stubs with the REAL ports that the host already owns,
+      // so a bound project's process gates judge for real instead of the
+      // stub's always-`proceed` (0.5). All per-project (no global routing):
+      //   facts / claims — the disk-backed FactGraph already exposes real
+      //     ports (`factGraph.facts` / `.claims`); no manual adapter, no dep.
+      //   decision — adapts THIS project's ProfileRuntime (real Default
+      //     decision engine wired above) via the published mcp_profile
+      //     `DecisionPortAdapter`.
+      // Still stub (returned to cherry / out of scope): appraisal (real
+      //   AppraisalEnginePort bridge missing in mcp_profile), skill / metrics
+      //   / mcp / llm / philosophy (separate seams).
       final opsRuntime = OpsRuntime.fromConsumedPorts(
         ConsumedOpsPorts(
-          facts: mb.StubFactsPort(),
-          claims: mb.StubClaimsPort(),
+          facts: factGraph.facts,
+          claims: factGraph.claims,
           skillRuntime: mb.StubSkillRuntimePort(),
           appraisal: mb.StubAppraisalPort(),
-          decision: mb.StubDecisionPort(),
+          decision: DecisionPortAdapter(
+            runtime: profileRuntime,
+            registry: profileRegistry,
+          ),
           metrics: mb.StubMetricsPort(),
           mcp: const mb.StubMcpPort(),
           llm: mb.StubLlmPort(),
@@ -456,6 +504,10 @@ class KnowledgeInit {
     if (config.workspacesRoot.isNotEmpty) {
       await workspaceRegistry.ensureSystemWorkspace();
     }
+    // Scope workspace-authored skills to the active workspace + its org
+    // ancestor chain, so a sibling/parent workspace never sees another team's
+    // skills (the resolver falls back to own-workspace-only when unset).
+    skillResolver.ancestorsOf = workspaceRegistry.ancestorIds;
 
     // 8c. System administrator agent — created idempotently (skipped when
     // already present so reboots stay cheap). Disabled when
@@ -646,12 +698,13 @@ class KnowledgeInit {
     return KnowledgeInit._(
       system: system,
       registries: registries,
-      adapters: Adapters(llm: llm, kv: kv),
+      adapters: Adapters(llm: llm, kv: kv, orgKv: orgKv),
       skills: appSkills,
       skillResolver: skillResolver,
       skillExecutor: skillExecutor,
       scheduler: scheduler,
       projectRoot: config.workspacesRoot,
+      ethosStore: ethosStore,
       activations: activations,
       observability: observability,
     );
@@ -820,10 +873,22 @@ and confirm destructive actions before proceeding.
 ''';
 
 class Adapters {
-  Adapters({required this.llm, required this.kv});
+  Adapters({required this.llm, required this.kv, required this.orgKv});
 
   final LlmAdapter llm;
+
+  /// Active-workspace-scoped KV. Enforces `ws/<active>/` isolation on
+  /// reads/writes — the default handle for workspace-bound operations.
   final KvStoragePortAdapter kv;
+
+  /// Unscoped org-level reader over the SAME store. The Inbox is a
+  /// cross-workspace org view by design (see [pendingApprovals] /
+  /// [pendingTasks] — org escalation means a manager sees approvals in
+  /// workspaces below them in the tree), so it legitimately reads every
+  /// `ws/<id>/process_runs/*` partition. The scoped [kv] throws on any key
+  /// outside the active workspace, so those aggregation reads route through
+  /// this handle. Read-only aggregation — never a mutation path.
+  final KvStoragePortAdapter orgKv;
 }
 
 /// Derive the bundle catalog root from the workspaces root by sibling

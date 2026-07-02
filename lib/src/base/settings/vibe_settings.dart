@@ -19,6 +19,7 @@ class VibeSettings {
     this.llmEndpoint,
     Map<String, String>? llmProviders,
     this.lastProjectPath,
+    Map<String, String>? domainLastProject,
     List<String>? recentProjects,
     this.chatPanelWidth,
     this.propsPanelWidth,
@@ -34,8 +35,13 @@ class VibeSettings {
     this.browserViewportWidth,
     this.browserViewportHeight,
     this.browserRespectRobots,
+    this.browserAuthAttachEndpoint,
+    this.browserAuthUserDataDir,
   }) : llmProviders = Map<String, String>.from(
          llmProviders ?? const <String, String>{},
+       ),
+       domainLastProject = Map<String, String>.from(
+         domainLastProject ?? const <String, String>{},
        ),
        recentProjects = List<String>.from(recentProjects ?? const <String>[]),
        recentSearches = List<String>.from(recentSearches ?? const <String>[]);
@@ -86,8 +92,16 @@ class VibeSettings {
   }
 
   /// Absolute path of the project folder that was active in the last
-  /// session.
+  /// session (host-level).
   String? lastProjectPath;
+
+  /// Per built-in-app last-opened project path — keyed by the built-in's
+  /// own id (e.g. `makemind_ops`, `app_builder`). A built-in is one of
+  /// several host tabs, each able to hold a different project, so a single
+  /// host [lastProjectPath] is not enough. Lives in THIS (per-host) config
+  /// store so the debug host and the release host keep independent bindings;
+  /// the value is a configurable project path, not a fixed folder.
+  final Map<String, String> domainLastProject;
 
   /// Most-recently-opened project paths in MRU order (head = newest).
   /// Capped at [recentProjectsLimit] entries.
@@ -150,6 +164,16 @@ class VibeSettings {
   /// Enforce robots.txt on the host browser engine. Null/false = off.
   bool? browserRespectRobots;
 
+  /// Interactive-auth (S2) session source for the headful auth engine.
+  /// [browserAuthAttachEndpoint]: CDP endpoint of a user-launched Chrome
+  /// (`--remote-debugging-port`) the auth engine attaches to — reuse an
+  /// already-signed-in session instead of driving a login in automation
+  /// (which SSO providers block). [browserAuthUserDataDir]: a persistent real
+  /// profile the auth engine reuses (auto-launch counterpart). Both empty =
+  /// default fresh-temp headful spawn.
+  String? browserAuthAttachEndpoint;
+  String? browserAuthUserDataDir;
+
   /// Move [path] to the head of [recentProjects] (deduping any earlier
   /// entry) and trim the tail to [recentProjectsLimit]. Also updates
   /// [lastProjectPath]. Caller is responsible for [save].
@@ -188,6 +212,7 @@ class VibeSettings {
     if (llmProviders.isNotEmpty) 'llmProviders': llmProviders,
     if (lastProjectPath != null && lastProjectPath!.isNotEmpty)
       'lastProjectPath': lastProjectPath,
+    if (domainLastProject.isNotEmpty) 'domainLastProject': domainLastProject,
     if (recentProjects.isNotEmpty) 'recentProjects': recentProjects,
     if (chatPanelWidth != null) 'chatPanelWidth': chatPanelWidth,
     if (propsPanelWidth != null) 'propsPanelWidth': propsPanelWidth,
@@ -210,6 +235,11 @@ class VibeSettings {
       'browserViewportHeight': browserViewportHeight,
     if (browserRespectRobots != null)
       'browserRespectRobots': browserRespectRobots,
+    if (browserAuthAttachEndpoint != null &&
+        browserAuthAttachEndpoint!.isNotEmpty)
+      'browserAuthAttachEndpoint': browserAuthAttachEndpoint,
+    if (browserAuthUserDataDir != null && browserAuthUserDataDir!.isNotEmpty)
+      'browserAuthUserDataDir': browserAuthUserDataDir,
   };
 
   /// Normalize stored `mcpServerUrl` so the Streamable HTTP canonical
@@ -238,6 +268,10 @@ class VibeSettings {
             ?.map((k, v) => MapEntry('$k', '$v'))
             .cast<String, String>(),
     lastProjectPath: json['lastProjectPath'] as String?,
+    domainLastProject:
+        (json['domainLastProject'] as Map?)
+            ?.map((k, v) => MapEntry('$k', '$v'))
+            .cast<String, String>(),
     recentProjects:
         (json['recentProjects'] as List<dynamic>?)
             ?.whereType<String>()
@@ -259,6 +293,8 @@ class VibeSettings {
     browserViewportWidth: (json['browserViewportWidth'] as num?)?.toInt(),
     browserViewportHeight: (json['browserViewportHeight'] as num?)?.toInt(),
     browserRespectRobots: json['browserRespectRobots'] as bool?,
+    browserAuthAttachEndpoint: json['browserAuthAttachEndpoint'] as String?,
+    browserAuthUserDataDir: json['browserAuthUserDataDir'] as String?,
   );
 
   /// Accepts `'system'` / `'light'` / `'dark'`; any other value (including

@@ -16,10 +16,7 @@ class SkillsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(skillChangesProvider);
-    final init = ref.watch(knowledgeInitProvider);
-    final skills = init.skills.list();
-    final rows = [...skills]..sort((a, b) => a.id.compareTo(b.id));
+    final rowsAsync = ref.watch(visibleSkillsProvider);
     final integrated = ref.watch(integratedAxisProvider(AgentAxis.skill));
 
     return DefaultTabController(
@@ -68,7 +65,15 @@ class SkillsPage extends ConsumerWidget {
             child: TabBarView(
               children: [
                 // ── Tab 1: pool definitions (entry to yaml editor) ──────────
-                rows.isEmpty
+                rowsAsync.when(
+                  loading:
+                      () => const Center(child: CircularProgressIndicator()),
+                  error:
+                      (e, _) =>
+                          Center(child: Text('Failed to load skills: $e')),
+                  data:
+                      (rows) =>
+                          rows.isEmpty
                     ? EmptyState(
                       icon: Icons.flash_on_outlined,
                       headline: 'No skills loaded',
@@ -127,6 +132,7 @@ class SkillsPage extends ConsumerWidget {
                         );
                       },
                     ),
+                ),
                 // ── Tab 2: integrated view (pool seed + assigned agent owned) ──
                 AxisManagementPage(
                   axis: AgentAxis.skill,
@@ -149,7 +155,11 @@ class SkillsPage extends ConsumerWidget {
     String action,
   ) async {
     if (action == 'edit-ws') {
-      final existing = ref.read(knowledgeInitProvider).skills.get(skillId);
+      final init = ref.read(knowledgeInitProvider);
+      final existing = await init.skillResolver.resolve(
+        skillId,
+        workspaceId: init.registries.workspace.activeId,
+      );
       final initialYaml =
           existing == null
               ? _skillYamlTemplate.replaceFirst('my-skill', skillId)
@@ -157,6 +167,7 @@ class SkillsPage extends ConsumerWidget {
                   'description: "${existing.description}"\n'
                   '${existing.tags.isEmpty ? "" : "tags:\n${existing.tags.map((t) => "  - $t").join("\n")}\n"}'
                   '# Edit the full YAML directly, then save.\n';
+      if (!context.mounted) return;
       await _showSkillEditor(
         context,
         ref,

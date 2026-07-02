@@ -28,6 +28,7 @@
           "bk.agent.ask",
           "bk.agent.dispatch",
           "bk.agent.history",
+          "bk.agent.update",
           "bk.fact.query",
           "bk.fact.get",
           "bk.fact.entity.get",

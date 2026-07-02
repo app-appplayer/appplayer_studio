@@ -97,7 +97,16 @@ class VibeShell extends StatefulWidget {
     this.selfUiSimDir,
     this.studioChromeBridge,
     this.hostTabKey,
+    this.onProjectBindingChanged,
   });
+
+  /// Notifies the parent when the opened project changes (open → path,
+  /// close → null) so a built-in mount can persist the binding in the
+  /// **per-host** host config store (`VibeSettings.domainLastProject`)
+  /// instead of the shared `app_builder_vibe` sidecar — keeping debug and
+  /// release hosts from sharing one last-project. Null when standalone (the
+  /// sidecar's own `lastProjectPath` is authoritative there).
+  final Future<void> Function(String? projectPath)? onProjectBindingChanged;
 
   /// Chrome tab path that hosts this shell — propagated down to the
   /// preview's [DslWorkspaceView] as its `gateTabKey` so the embedded
@@ -846,6 +855,8 @@ class VibeShellState extends State<VibeShell> {
       if (proj == null) return;
       await _stopChannelWatchers();
       _settings.lastProjectPath = null;
+      // ignore: unawaited_futures
+      widget.onProjectBindingChanged?.call(null);
       // ignore: unawaited_futures
       _settings.save(VibeSettings.defaultPath('app_builder_vibe'));
       widget.chat.onTurnPersisted = null;
@@ -4379,6 +4390,8 @@ class VibeShellState extends State<VibeShell> {
     await _stopChannelWatchers();
     _settings.lastProjectPath = null;
     // ignore: unawaited_futures
+    widget.onProjectBindingChanged?.call(null);
+    // ignore: unawaited_futures
     _settings.save(VibeSettings.defaultPath('app_builder_vibe'));
     widget.chat.onClearLog = null;
     widget.chat.onTurnPersisted = null;
@@ -4431,6 +4444,9 @@ class VibeShellState extends State<VibeShell> {
     _settings.bumpRecent(projectPath);
     if (!mounted) return;
     setState(() {});
+    // Per-host project binding (built-in mount). No-op standalone.
+    // ignore: unawaited_futures
+    widget.onProjectBindingChanged?.call(projectPath);
     try {
       await _settings.save(VibeSettings.defaultPath('app_builder_vibe'));
     } catch (_) {
@@ -4442,7 +4458,11 @@ class VibeShellState extends State<VibeShell> {
     if (!await Directory(path).exists()) {
       _toast('Project no longer exists: $path');
       _settings.recentProjects.removeWhere((e) => e == path);
-      if (_settings.lastProjectPath == path) _settings.lastProjectPath = null;
+      if (_settings.lastProjectPath == path) {
+        _settings.lastProjectPath = null;
+        // ignore: unawaited_futures
+        widget.onProjectBindingChanged?.call(null);
+      }
       // ignore: unawaited_futures
       _settings.save(VibeSettings.defaultPath('app_builder_vibe'));
       if (mounted) setState(() {});

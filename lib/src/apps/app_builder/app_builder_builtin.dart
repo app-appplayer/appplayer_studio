@@ -524,6 +524,28 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
     _bootstrap();
   }
 
+  /// Persist the App Builder project binding in the per-host host config store
+  /// (`VibeSettings.domainLastProject`, keyed by this built-in's id) so the
+  /// debug and release hosts keep independent bindings — never a shared
+  /// `app_builder_vibe` sidecar. No-op standalone (no host backbone; the
+  /// sidecar's own `lastProjectPath` is authoritative there).
+  Future<void> _persistProjectBinding(String? projectPath) async {
+    final hostToolId = widget.backbone?.toolId;
+    if (hostToolId == null) return;
+    try {
+      final path = VibeSettings.defaultPath(hostToolId);
+      final hs = await VibeSettings.load(path);
+      if (projectPath == null || projectPath.isEmpty) {
+        hs.domainLastProject.remove(widget.app.id);
+      } else {
+        hs.domainLastProject[widget.app.id] = projectPath;
+      }
+      await hs.save(path);
+    } catch (_) {
+      /* best-effort persistence */
+    }
+  }
+
   Future<void> _bootstrap() async {
     try {
       // Two settings concerns, kept distinct:
@@ -538,6 +560,22 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
       final own = await VibeSettings.load(
         VibeSettings.defaultPath('app_builder_vibe'),
       );
+      // Project binding is kept PER HOST when running as a built-in: the debug
+      // (`vibe_studio_debug`) and release (`vibe_studio`) hosts must NOT share
+      // one last-opened project (the shared `app_builder_vibe` sidecar made
+      // them collide). The pointer lives as a value in the per-host host config
+      // store (`VibeSettings.domainLastProject`, keyed by this built-in's id) —
+      // no hardcoded folder. Standalone (no host backbone) keeps its own sidecar.
+      final hostToolId = widget.backbone?.toolId;
+      // Built-in: ONLY the per-host `domainLastProject` key — never the shared
+      // `app_builder_vibe` sidecar (`own.lastProjectPath`), which is
+      // host-agnostic and would let one host inherit another's binding
+      // (cross-host leak, mirrors the ops rule). Standalone (no host backbone)
+      // legitimately uses its own sidecar.
+      final boundProject = hostToolId != null
+          ? (await VibeSettings.load(VibeSettings.defaultPath(hostToolId)))
+              .domainLastProject[widget.app.id]
+          : own.lastProjectPath;
       final inh = widget.inheritedSettings;
       final settings = VibeSettings(
         // Studio config from the host (falls back to the sidecar value
@@ -548,8 +586,9 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
         llmApiKey: inh['llmApiKey'] as String?,
         llmModel: inh['llmModel'] as String?,
         llmEndpoint: inh['llmEndpoint'] as String?,
-        // App Builder session state from its own sidecar store.
-        lastProjectPath: own.lastProjectPath,
+        // Project binding: per-host (built-in) or sidecar (standalone).
+        lastProjectPath: boundProject,
+        // App Builder UI session state from its own sidecar store.
         recentProjects: own.recentProjects,
         chatPanelWidth: own.chatPanelWidth,
         propsPanelWidth: own.propsPanelWidth,
@@ -588,8 +627,22 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
           canonical: _canonical,
         );
         settings.bumpRecent(project.projectPath);
-        // ignore: unawaited_futures
-        settings.save(VibeSettings.defaultPath('app_builder_vibe'));
+        if (hostToolId != null) {
+          // Built-in: binding → per-host host config store; UI state (recents /
+          // panel widths) → app sidecar (without the binding) so it never leaks
+          // across hosts.
+          // ignore: unawaited_futures
+          _persistProjectBinding(project.projectPath);
+          // ignore: unawaited_futures
+          VibeSettings(
+            recentProjects: settings.recentProjects,
+            chatPanelWidth: settings.chatPanelWidth,
+            propsPanelWidth: settings.propsPanelWidth,
+          ).save(VibeSettings.defaultPath('app_builder_vibe'));
+        } else {
+          // ignore: unawaited_futures
+          settings.save(VibeSettings.defaultPath('app_builder_vibe'));
+        }
       }
       final projection =
           project == null
@@ -1055,6 +1108,9 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
       // `buildUI()` on AppBuilder's tab activeness, not on the
       // embedded bundle's own path.
       hostTabKey: widget.bundlePath,
+      // Persist the project binding in the PER-HOST host config store so the
+      // debug and release hosts don't share one last-opened project.
+      onProjectBindingChanged: _persistProjectBinding,
     );
   }
 }

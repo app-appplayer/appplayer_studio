@@ -5,6 +5,7 @@ import 'package:appplayer_studio/builtin_api.dart'
     show
         AgentAxis,
         AgentForkSource,
+        AgentRole,
         ForkSource,
         ModelSpec,
         PoolForkSource,
@@ -15,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:appplayer_secure/appplayer_secure.dart'
     show SecureStorage, FlutterSecureStorageBackend;
 
+import '../../../base/infra/project_paths.dart';
 import '../../../base/install/capability_recipes/capability_recipes.dart'
     show CredentialMigrator;
 import '../../../base/install/knowledge_persistence/knowledge_persistence.dart'
@@ -33,6 +35,7 @@ import '../../../base/agent/agent_host.dart' show AgentHost;
 import '../../../base/agent/agent_invoke_queue.dart';
 import '../core/inbox_query.dart';
 import '../init/knowledge_init.dart';
+import '../init/workspace_context.dart';
 import '../ops_builtin.dart' show OpsBuiltInApp;
 import '../observability/diagnostic_export.dart';
 import '../portability/html_report.dart';
@@ -58,6 +61,33 @@ class SystemTools {
   /// otherwise. Every handler's `init.registries.*` / `init.projectRoot`
   /// resolves through this.
   KnowledgeInit get init => OpsBuiltInApp.liveInit ?? _bootInit;
+
+  /// Resolve the workspace a handler operates on without depending on the
+  /// global mutable active (which concurrent actors flip via
+  /// `workspace_switch`). Order: explicit `workspaceId`/`workspace` arg → the
+  /// caller's execution-scoped workspace → active (UI fallback). See
+  /// [resolveWorkspaceId] / [WorkspaceExecutionContext]. Handlers that took a
+  /// tool-specific selector arg (`id`, `ownerId`) pass it via [explicit].
+  String? _wsId(Map<String, dynamic> args, {String? explicit}) {
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    return resolveWorkspaceId(
+      args,
+      execWorkspaceId: WorkspaceExecutionContext.current,
+      activeWorkspaceId: init.registries.workspace.activeId,
+    );
+  }
+
+  /// Schema fragment for the optional, uniform `workspaceId` parameter added
+  /// to workspace-scoped tools (konpi "active workspace" inquiry). Omitting it
+  /// resolves through [_wsId]; supplying it targets a specific department per
+  /// call (cross-department staff).
+  static const Map<String, dynamic> _workspaceIdParam = <String, dynamic>{
+    'type': 'string',
+    'description':
+        'Target workspace id. Optional — defaults to the caller\'s '
+        'execution workspace, then the active (UI) workspace. Pass explicitly '
+        'to operate on a specific department regardless of the UI lens.',
+  };
 
   /// Register all system tools on the host endpoint via the
   /// [BuiltinToolRegistry] facade (cleanup: builtins do not see the
@@ -340,16 +370,33 @@ class SystemTools {
       (args) async {
         final id = args['id'] as String;
         await init.switchWorkspace(id);
-        // Persist the active workspace to config so it survives a re-boot
-        // (boot restores from `config.activeWorkspace`) and config readers
-        // (config_get / the ops.manager agent / `makemind-ops://state`) see the
-        // same active workspace as the in-memory registry. Without this the
-        // switch is in-memory only and is lost on the next ensureBoot.
+        // Persist PER-PROJECT (the boot-restore source of truth):
+        // `<projectRoot>/.makemind-ops-active`. This is what `_withProjectRoot`
+        // reads on the next boot, so a switch here NEVER clobbers another
+        // project/host via the shared global `~/.makemind-ops/config.yaml`
+        // (that single field carried a foreign id → _system fallback → empty
+        // Home). Travels with the project; isolated across hosts + projects.
+        final projectRoot = init.projectRoot;
+        if (projectRoot.isNotEmpty) {
+          try {
+            await File(
+              p.join(projectRoot, '.makemind-ops-active'),
+            ).writeAsString(id);
+          } catch (_) {
+            /* best-effort */
+          }
+        }
+        // Mirror into the in-memory config so this session's live readers
+        // (config_get / the ops.manager agent / `makemind-ops://state`) match
+        // the registry — but do NOT persist it to the shared global
+        // `~/.makemind-ops/config.yaml`. That single global field is what
+        // cross-contaminated hosts/projects (a debug switch overwrote it with a
+        // foreign ws id → the release boot fell back to `_system` → empty Home).
+        // The per-project file above is now the sole persisted boot-restore
+        // source; the global file is left untouched.
         final cfg = await OpsConfig.load();
         if (cfg.activeWorkspace != id) {
-          final updated = _copyConfig(cfg, activeWorkspace: id);
-          await updated.save();
-          init.notifyConfigChanged(updated);
+          init.notifyConfigChanged(_copyConfig(cfg, activeWorkspace: id));
         }
         return {'activeId': init.registries.workspace.activeId};
       },
@@ -534,6 +581,35 @@ class SystemTools {
     );
     _register(
       server,
+      'workspace_set_lead',
+      'Set (or clear) a workspace\'s **lead** (팀장 / unit head) — the member '
+          'who heads the team this workspace represents. Renders at the top of '
+          'the unit in the org chart (lead → members) and is the natural '
+          'default approver / escalation target. Pass empty/omit `memberId` to '
+          'clear. (Workspace = recursive org unit; realizes the team-lead tier '
+          'of specs/platform/12-flowbrain-runtime.)',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'memberId': {'type': 'string'},
+        },
+        'required': ['id'],
+      },
+      (args) async {
+        try {
+          final ws = await init.registries.workspace.setLead(
+            args['id'] as String,
+            args['memberId'] as String?,
+          );
+          return {'id': ws.id, 'leadMemberId': ws.leadMemberId};
+        } on StateError catch (e) {
+          return {'error': e.message};
+        }
+      },
+    );
+    _register(
+      server,
       'workspace_tree',
       'Organization view for a workspace: `ancestors` (escalation chain, '
           'nearest parent first) and `children` (direct reports). Defaults to '
@@ -565,10 +641,13 @@ class SystemTools {
     _register(
       server,
       'member_list',
-      'List members of the current workspace',
-      const {},
-      (_) async {
-        final wsId = init.registries.workspace.activeId;
+      'List members of a workspace (defaults to the caller/active workspace).',
+      {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final members = await init.registries.member.listForWorkspace(wsId);
         return {
@@ -594,9 +673,7 @@ class SystemTools {
         'required': ['id'],
       },
       (args) async {
-        final wsId =
-            (args['workspaceId'] as String?) ??
-            init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final m = await init.registries.member.get(args['id'] as String);
         if (m == null) return {'error': 'member not found', 'id': args['id']};
@@ -634,6 +711,14 @@ class SystemTools {
             'items': {'type': 'string'},
           },
           'philosophyRef': {'type': 'string'},
+          'role': {
+            'type': 'string',
+            'description':
+                'Orchestration role — worker | manager | reviewer (manager '
+                'routes, reviewer verdicts). Omit to inherit the assigned '
+                'profile\'s `defaultRole` (profile = the persona/role), else '
+                'worker.',
+          },
           'provider': {
             'type': 'string',
             'description': 'LLM provider id (claude | openai | stub).',
@@ -669,6 +754,14 @@ class SystemTools {
                   temperature: (args['temperature'] as num?)?.toDouble(),
                 )
                 : null;
+        final profileRef =
+            (args['profileRef'] as String?) ?? 'profiles/default';
+        // Orchestration role: explicit arg > the assigned profile's
+        // `defaultRole` (profile = the persona/role, so the role travels with
+        // it) > worker.
+        final roleStr = (args['role'] as String?)?.trim().isNotEmpty == true
+            ? (args['role'] as String).trim()
+            : await _profileDefaultRole(init, wsId, profileRef);
         final agent = await init.registries.member.createAgent(
           id: args['id'] as String,
           // Project + workspace scoped kernel id (member.id stays bare for
@@ -676,12 +769,13 @@ class SystemTools {
           // project's agent + owned forks from other projects.
           agentId: _scopedAgentId(init, wsId, args['id'] as String),
           displayName: args['displayName'] as String,
-          profileRef: (args['profileRef'] as String?) ?? 'profiles/default',
+          profileRef: profileRef,
           skillIds: (args['skillIds'] as List?)?.cast<String>() ?? const [],
           philosophyRef:
               (args['philosophyRef'] as String?) ?? 'philosophies/default',
           workspaceId: wsId,
           model: modelSpec,
+          role: _agentRoleFromString(roleStr),
         );
         // P2 (additive) — persist the agent's knowledge definition into
         // the workspace `.mbd` via the universal `studio.builder.addAgent`
@@ -738,11 +832,12 @@ class SystemTools {
       server,
       'agent_ask',
       'Send one user-turn message to an agent and get its reply.',
-      const {
+      {
         'type': 'object',
         'properties': {
           'agentId': {'type': 'string'},
           'message': {'type': 'string'},
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['agentId', 'message'],
       },
@@ -754,11 +849,19 @@ class SystemTools {
           init,
           args['agentId'] as String,
         );
+        // Pin the agent run to a stable workspace (explicit arg → inherited
+        // execution pin → active snapshot at ask-time), so the agent's own
+        // tool calls during the run don't drift when another actor flips the
+        // UI lens mid-run.
+        final wsId = _wsId(args);
         // Serialize per agent — concurrent requests to the same agent queue
         // and run one at a time (worker model + conversation race-free).
         final reply = await serializePerAgent(
           resolvedId,
-          () => init.system.agents.ask(resolvedId, args['message'] as String),
+          () => WorkspaceExecutionContext.run(
+            wsId,
+            () => init.system.agents.ask(resolvedId, args['message'] as String),
+          ),
         );
         return {
           'agentId': reply.agentId,
@@ -772,7 +875,12 @@ class SystemTools {
     _register(
       server,
       'agent_route',
-      'Ask a manager-role agent to route a request to the best worker.',
+      'A manager/lead agent divides work: routes a request to the best-fit '
+          'member. Pass `execute:true` to also RUN the chosen member on the '
+          'request and return their deliverable (`deliverable` + '
+          '`deliveredBy`) — the "assign + request output" flow (lead → member '
+          '→ result). Ids may be bare member ids (`dev1`, `ops.manager.<ws>_*`); '
+          'they are resolved to the kernel the same way `agent_ask` does.',
       const {
         'type': 'object',
         'properties': {
@@ -782,6 +890,12 @@ class SystemTools {
             'type': 'array',
             'items': {'type': 'string'},
           },
+          'execute': {
+            'type': 'boolean',
+            'description':
+                'When true, run the routed member on the request and return '
+                'their deliverable (assign + collect in one call).',
+          },
         },
         'required': ['managerId', 'request'],
       },
@@ -789,17 +903,52 @@ class SystemTools {
         if (!init.system.isAgentSubsystemActivated) {
           return {'error': 'Agent Subsystem not activated'};
         }
-        final decision = await init.system.agents.route(
+        // Resolve manager + candidate ids to their scoped kernel agent ids —
+        // callers pass bare member ids, which the kernel `route()` otherwise
+        // cannot find (AgentNotFoundException). Keep a scoped→bare map so the
+        // decision reads back in the caller's terms.
+        final managerId = await _resolveAgentId(
+          init,
           args['managerId'] as String,
-          args['request'] as String,
-          candidateAgentIds:
-              (args['candidateAgentIds'] as List?)?.cast<String>(),
         );
-        return {
-          'targetAgentId': decision.targetAgentId,
+        final rawCandidates =
+            (args['candidateAgentIds'] as List?)?.cast<String>();
+        List<String>? candidates;
+        final scopedToBare = <String, String>{};
+        if (rawCandidates != null) {
+          candidates = <String>[];
+          for (final c in rawCandidates) {
+            final scoped = await _resolveAgentId(init, c);
+            candidates.add(scoped);
+            scopedToBare[scoped] = c;
+          }
+        }
+        final decision = await init.system.agents.route(
+          managerId,
+          args['request'] as String,
+          candidateAgentIds: candidates,
+        );
+        final target = decision.targetAgentId;
+        final result = <String, dynamic>{
+          'targetAgentId': scopedToBare[target] ?? target,
           'confidence': decision.confidence,
           if (decision.reason != null) 'reason': decision.reason,
         };
+        // Assign + collect: actually run the routed member so the lead gets a
+        // real deliverable back (member history records the turn — no
+        // fabricated "member reported" from the manager).
+        if (args['execute'] == true && target.isNotEmpty) {
+          final reply = await serializePerAgent(
+            target,
+            () => init.system.agents.ask(target, args['request'] as String),
+          );
+          result['deliveredBy'] = scopedToBare[target] ?? reply.agentId;
+          result['deliverable'] = reply.content;
+          if (reply.finishReason != null) {
+            result['finishReason'] = reply.finishReason;
+          }
+        }
+        return result;
       },
     );
 
@@ -1006,6 +1155,294 @@ class SystemTools {
       },
     );
 
+    // --- Org charter (per-project active anchor ethos) ---
+    // The workspace charter IS the per-project active ethos (cherry-confirmed
+    // per-project routing). `workspace_set_charter` writes + activates it;
+    // `philosophy_check` is the per-project gate path (replaces the global
+    // `bk.philosophy.check`); `workspace_get_charter` reads it for display.
+    _register(
+      server,
+      'philosophy_check',
+      'Check a proposed action / output against the ACTIVE workspace charter '
+          '(per-project ethos). Returns `{hasHardViolation, hardViolationIds, '
+          'softViolationIds}`. The process philosophy gate routes here so it '
+          'judges against this workspace\'s charter, not a global ethos.',
+      const {
+        'type': 'object',
+        'properties': {
+          'action': {'type': 'string'},
+          'actor': {'type': 'string'},
+          'output': {'type': 'string'},
+        },
+      },
+      (args) async {
+        // Enforce the charter inherited along THIS workspace's own ancestor
+        // chain (07 §182): the prohibitions of the company ∘ department ∘ own
+        // charter all gate (same-line only). Deterministic seam =
+        // `forbiddenPatterns` substring (the NL seam is unwired), applied here
+        // across the whole chain instead of a single per-project active ethos.
+        final wsId = init.registries.workspace.activeId ?? '_system';
+        final chain = await _charterChain(init, wsId);
+        if (chain.sources.isEmpty) {
+          // No charter anywhere on the chain → fail open (as before).
+          return <String, dynamic>{
+            'hasHardViolation': false,
+            'hardViolationIds': <String>[],
+            'softViolationIds': <String>[],
+          };
+        }
+        final haystack =
+            '${args['action'] ?? ''}\n${args['output'] ?? ''}'.toLowerCase();
+        final hard = <String>[];
+        final soft = <String>[];
+        for (final p in chain.prohibitions) {
+          final hit = p.patterns.any(
+            (pat) => pat.isNotEmpty && haystack.contains(pat.toLowerCase()),
+          );
+          if (hit) (p.hard ? hard : soft).add(p.id);
+        }
+        return <String, dynamic>{
+          'hasHardViolation': hard.isNotEmpty,
+          'hardViolationIds': hard,
+          'softViolationIds': soft,
+          'charterSources': chain.sources, // which org levels contributed
+        };
+      },
+    );
+
+    _register(
+      server,
+      'workspace_set_charter',
+      'Set the active (bound) workspace\'s org charter — mission / values / '
+          'prohibitions / north-star — as the per-project active anchor ethos. '
+          'It then governs the workspace: the process philosophy gate + '
+          'opted-in agents judge against it; members inherit it (override only '
+          'via an explicit per-member philosophy fork). Reuses the kernel Ethos '
+          '(prohibitions = the rules that actually gate; mission / values / '
+          'north-star are descriptive, carried in metadata).',
+      const {
+        'type': 'object',
+        'properties': {
+          'mission': {'type': 'string'},
+          'values': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          // Each item: a string (statement; relies on the NL judgment seam)
+          // or `{statement, patterns:[..]}` — patterns are the deterministic
+          // forbidden substrings that actually gate (mcp_philosophy honors
+          // `forbiddenPatterns`), so a charter that must HARD-block supplies
+          // patterns. String-only prohibitions are advisory until the NL seam
+          // is wired.
+          'prohibitions': {'type': 'array'},
+          'doctrineRef': {'type': 'string'},
+          'northStar': {'type': 'string'},
+        },
+      },
+      (args) async {
+        final store = init.ethosStore;
+        if (store == null) {
+          return {'error': 'no per-project ethos store — open a project first'};
+        }
+        final wsId = init.registries.workspace.activeId ?? '_system';
+        final mission = (args['mission'] as String?)?.trim() ?? '';
+        final values =
+            (args['values'] as List?)?.cast<String>() ?? const <String>[];
+        // Normalise prohibitions to {statement, patterns[]} — tolerate plain
+        // strings.
+        final prohibitions = <({String statement, List<String> patterns})>[];
+        for (final raw in (args['prohibitions'] as List? ?? const [])) {
+          if (raw is String) {
+            prohibitions.add((statement: raw, patterns: const <String>[]));
+          } else if (raw is Map) {
+            final stmt = (raw['statement'] as String?)?.trim() ?? '';
+            if (stmt.isEmpty) continue;
+            prohibitions.add((
+              statement: stmt,
+              patterns:
+                  (raw['patterns'] as List?)?.cast<String>() ?? const <String>[],
+            ));
+          }
+        }
+        final northStar = (args['northStar'] as String?)?.trim() ?? '';
+        final doctrineRef = (args['doctrineRef'] as String?)?.trim() ?? '';
+        final now = DateTime.now();
+        final ethosId = 'charter.$wsId';
+        final ethos = bundle.Ethos(
+          id: ethosId,
+          name: mission.isEmpty ? '$wsId charter' : mission,
+          valuePriorities: const [],
+          prohibitions: <bundle.Prohibition>[
+            for (var i = 0; i < prohibitions.length; i++)
+              bundle.Prohibition(
+                id: 'charter_p$i',
+                statement: prohibitions[i].statement,
+                severity: bundle.ProhibitionSeverity.hard,
+                rationale: 'org charter',
+                forbiddenPatterns: prohibitions[i].patterns,
+              ),
+          ],
+          metadata: bundle.EthosMetadata(
+            version: '1',
+            createdAt: now,
+            updatedAt: now,
+            context: jsonEncode(<String, dynamic>{
+              'kind': 'charter',
+              'workspaceId': wsId,
+              if (mission.isNotEmpty) 'mission': mission,
+              if (values.isNotEmpty) 'values': values,
+              if (northStar.isNotEmpty) 'northStar': northStar,
+              if (doctrineRef.isNotEmpty) 'doctrineRef': doctrineRef,
+            }),
+            tags: const <String>['charter', 'anchor'],
+          ),
+        );
+        // Spec `07-knowledge-access.md` §ethos governance — provenance lives at
+        // the ethos payload top level: `payload.provenance = {kind: 'anchor'}`.
+        // A charter is an anchor (a principle), so it activates immediately;
+        // member overrides are `derived` (serves: this charter) via their own
+        // fork. (Charter writes the per-project store directly, not the global
+        // `bk.philosophy.put` — cherry's per-project routing decision.)
+        await store.putEthos(
+          bundle.EthosRecord(
+            id: ethosId,
+            name: ethos.name,
+            version: '1',
+            payload: <String, dynamic>{
+              ...ethos.toJson(),
+              'provenance': <String, dynamic>{'kind': 'anchor'},
+            },
+            createdAt: now,
+          ),
+        );
+        await store.activateEthos(ethosId);
+        return <String, dynamic>{
+          'ok': true,
+          'workspace': wsId,
+          'ethosId': ethosId,
+          'prohibitions': prohibitions.length,
+        };
+      },
+    );
+
+    _register(
+      server,
+      'workspace_get_charter',
+      'Read a workspace\'s EFFECTIVE charter — resolved along its own '
+          'org ancestor chain (07 §182, same line only): prohibitions '
+          'accumulate (company + department + own), mission / values / '
+          'north-star take the nearest (self-first) value. `inheritedFrom` '
+          'lists the org levels that contributed. `charter` is null when no '
+          'charter is set anywhere on the chain. Defaults to the caller/active '
+          'workspace; pass workspaceId to target another.',
+      {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args) ?? '_system';
+        final chain = await _charterChain(init, wsId);
+        if (chain.sources.isEmpty) return <String, dynamic>{'charter': null};
+        return <String, dynamic>{
+          'charter': <String, dynamic>{
+            'workspace': wsId,
+            'mission': chain.descriptive['mission'],
+            'values': chain.descriptive['values'],
+            'northStar': chain.descriptive['northStar'],
+            'doctrineRef': chain.descriptive['doctrineRef'],
+            // Accumulated prohibitions with the org level that set each.
+            'prohibitions': <Map<String, dynamic>>[
+              for (final p in chain.prohibitions)
+                <String, dynamic>{
+                  'statement': p.statement,
+                  'from': p.source,
+                  'hard': p.hard,
+                },
+            ],
+            'inheritedFrom': chain.sources, // self → ancestors (nearest first)
+            'isCharter': true,
+          },
+        };
+      },
+    );
+
+    // --- Org memory (RFC4) — lessons the ORG accumulates, not a member's.
+    // Stored as workspace-scoped facts (`category:"org_lesson"`) in the
+    // per-project FactGraph, so they survive member churn and agents already
+    // retrieve them through the existing workspace knowledge query (the
+    // "learning loop"). No new kernel / store — reuses `saveFact`.
+    _register(
+      server,
+      'workspace_record_lesson',
+      'Record an org-level lesson for the active workspace — what worked / a '
+          'rejection pattern / a learning — so it persists at the organization '
+          '(not the member) and outlives member turnover. Stored as a '
+          '`category:"org_lesson"` workspace fact in the per-project FactGraph.',
+      const {
+        'type': 'object',
+        'properties': {
+          'learning': {'type': 'string'},
+          'situation': {'type': 'string'},
+          'outcome': {'type': 'string'},
+          'tags': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+        },
+        'required': ['learning'],
+      },
+      (args) async {
+        final learning = (args['learning'] as String?)?.trim() ?? '';
+        if (learning.isEmpty) return {'error': 'learning required'};
+        final key = 'lesson_${DateTime.now().millisecondsSinceEpoch}';
+        await init.registries.knowledge.saveFact(
+          category: 'org_lesson',
+          key: key,
+          value: learning,
+          metadata: <String, Object?>{
+            if ((args['situation'] as String?)?.isNotEmpty ?? false)
+              'situation': args['situation'],
+            if ((args['outcome'] as String?)?.isNotEmpty ?? false)
+              'outcome': args['outcome'],
+            if (args['tags'] != null) 'tags': args['tags'],
+          },
+        );
+        return {'ok': true, 'key': key};
+      },
+    );
+
+    _register(
+      server,
+      'workspace_lessons',
+      'List the active workspace\'s accumulated org lessons '
+          '(`category:"org_lesson"`), newest first.',
+      const {
+        'type': 'object',
+        'properties': {
+          'limit': {'type': 'integer'},
+        },
+      },
+      (args) async {
+        final facts = await init.registries.knowledge.listKvFacts();
+        final lessons =
+            facts.where((f) => f.category == 'org_lesson').toList()
+              ..sort((a, b) => (b.savedAt ?? '').compareTo(a.savedAt ?? ''));
+        final limit = (args['limit'] as num?)?.toInt() ?? 50;
+        return <String, dynamic>{
+          'lessons': <Map<String, dynamic>>[
+            for (final l in lessons.take(limit))
+              <String, dynamic>{
+                'key': l.key,
+                'learning': l.value,
+                'situation': l.metadata['situation'],
+                'outcome': l.metadata['outcome'],
+                'savedAt': l.savedAt,
+              },
+          ],
+        };
+      },
+    );
+
     _register(
       server,
       'member_add_person',
@@ -1070,16 +1507,25 @@ class SystemTools {
       server,
       'member_update',
       'Update a member\'s name, profile, skills, philosophy, email, roles, '
-          'tags, or — for agents — their LLM ModelSpec. `provider` + `model` '
-          'must be supplied together when changing the ModelSpec; passing '
-          'only one is rejected. Defaults to the active workspace when '
-          'workspaceId is omitted.',
+          'tags, or — for agents — their LLM ModelSpec and orchestration '
+          '`role` (worker | manager | reviewer). Re-role is IN PLACE: the '
+          'kernel agent record is updated without delete/recreate, so the '
+          'individual\'s FactGraph · owned forks · history are preserved. '
+          '`provider` + `model` must be supplied together when changing the '
+          'ModelSpec; passing only one is rejected. Defaults to the active '
+          'workspace when workspaceId is omitted.',
       const {
         'type': 'object',
         'properties': {
           'id': {'type': 'string'},
           'workspaceId': {'type': 'string'},
           'displayName': {'type': 'string'},
+          'role': {
+            'type': 'string',
+            'enum': ['worker', 'manager', 'reviewer'],
+            'description': 'Orchestration role — changed in place '
+                '(individuality preserved).',
+          },
           'profileRef': {'type': 'string'},
           'skillIds': {
             'type': 'array',
@@ -1126,10 +1572,25 @@ class SystemTools {
                   temperature: (args['temperature'] as num?)?.toDouble(),
                 )
                 : null;
+        final roleArg = (args['role'] as String?)?.trim();
+        AgentRole? role;
+        if (roleArg != null && roleArg.isNotEmpty) {
+          role = AgentRole.values.asNameMap()[roleArg];
+          // Unknown role = reject (no silent default) — same contract as
+          // the kernel's bk.agent.update.
+          if (role == null) {
+            return {
+              'error':
+                  'unknown role "$roleArg" — expected worker | manager | '
+                  'reviewer',
+            };
+          }
+        }
         final m = await init.registries.member.update(
           memberId: args['id'] as String,
           workspaceId: wsId,
           displayName: args['displayName'] as String?,
+          role: role,
           profileRef: args['profileRef'] as String?,
           skillIds: (args['skillIds'] as List?)?.cast<String>(),
           philosophyRef: args['philosophyRef'] as String?,
@@ -1142,6 +1603,7 @@ class SystemTools {
           'id': m.id,
           'displayName': m.displayName,
           'kind': m.kind.name,
+          if (m is AgentMember) 'role': m.role.name,
           if (m is AgentMember && m.model != null) 'model': m.model!.toJson(),
         };
       },
@@ -1273,10 +1735,13 @@ class SystemTools {
     _register(
       server,
       'task_list',
-      'List tasks in the current workspace',
-      const {},
-      (_) async {
-        final wsId = init.registries.workspace.activeId;
+      'List tasks in a workspace (defaults to the caller/active workspace).',
+      {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final tasks = await init.registries.task.list(wsId: wsId);
         return {
@@ -1355,11 +1820,12 @@ class SystemTools {
             'description': 'ISO-8601 due timestamp (optional).',
           },
           'inputs': {'type': 'object'},
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['id', 'title', 'skillIds'],
       },
       (args) async {
-        final wsId = init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final kind = TaskKind.values.firstWhere(
           (k) => k.name == (args['kind'] as String? ?? 'oneOff'),
@@ -1406,7 +1872,13 @@ class SystemTools {
       },
       (args) async {
         final ref = await init.registries.task.run(args['id'] as String);
-        return {'runId': ref.runId, 'endState': ref.endState.name};
+        return {
+          'runId': ref.runId,
+          'endState': ref.endState.name,
+          // The assignee agent's deliverable (or skill result) — so the caller
+          // sees the produced output, not just a completed flag.
+          if (ref.summary != null) 'summary': ref.summary,
+        };
       },
     );
 
@@ -1520,8 +1992,12 @@ class SystemTools {
 
     // --- Processes ---
 
-    _register(server, 'process_list', 'List processes', const {}, (_) async {
-      final wsId = init.registries.workspace.activeId;
+    _register(server, 'process_list', 'List processes (defaults to the '
+        'caller/active workspace).', {
+      'type': 'object',
+      'properties': {'workspaceId': _workspaceIdParam},
+    }, (args) async {
+      final wsId = _wsId(args);
       if (wsId == null) return {'error': 'no active workspace'};
       final list = await init.registries.process.list(wsId: wsId);
       return {
@@ -1558,6 +2034,10 @@ class SystemTools {
           'id': p.id,
           'title': p.title,
           'trigger': p.trigger.name,
+          // Cross-process event chain (trigger: event) — echoed so a tool
+          // reader sees the same topology the disk YAML carries.
+          if (p.triggerSource != null && p.triggerSource!.isNotEmpty)
+            'triggerSource': p.triggerSource,
           'steps': [
             for (final s in p.steps)
               {
@@ -1565,6 +2045,10 @@ class SystemTools {
                 'assigneeId': s.assigneeId,
                 'skillId': s.skillId,
                 'inputs': s.inputs,
+                // Explicit DAG deps — omitted when empty (default linear
+                // chain), so readers can distinguish "no topology" from
+                // "depends on nothing".
+                if (s.dependsOn.isNotEmpty) 'dependsOn': s.dependsOn,
               },
           ],
           'gates': [
@@ -1831,9 +2315,7 @@ class SystemTools {
         'required': ['yaml'],
       },
       (args) async {
-        final wsId =
-            (args['workspaceId'] as String?) ??
-            init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final p = await init.registries.process.saveFromYaml(
           args['yaml'] as String,
@@ -2131,15 +2613,17 @@ class SystemTools {
     _register(
       server,
       'skill_list',
-      'List loaded skills (current workspace + active agent overlay included)',
-      const {
+      'List loaded skills (workspace + agent overlay). Defaults to the '
+          'caller/active workspace; pass workspaceId to target another.',
+      {
         'type': 'object',
         'properties': {
           'actorId': {'type': 'string'},
+          'workspaceId': _workspaceIdParam,
         },
       },
       (args) async {
-        final wsId = init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         final actorId = args['actorId'] as String?;
         final ids = await init.skillResolver.visibleIds(
           workspaceId: wsId,
@@ -2169,16 +2653,17 @@ class SystemTools {
       server,
       'skill_get',
       'Return a skill\'s final resolved YAML (agent overlay → ws override → template)',
-      const {
+      {
         'type': 'object',
         'properties': {
           'id': {'type': 'string'},
           'actorId': {'type': 'string'},
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['id'],
       },
       (args) async {
-        final wsId = init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         final def = await init.skillResolver.resolve(
           args['id'] as String,
           workspaceId: wsId,
@@ -2224,11 +2709,12 @@ class SystemTools {
             'type': 'string',
             'description': 'Required when scope=agent',
           },
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['yaml', 'scope'],
       },
       (args) async {
-        final wsId = init.registries.workspace.activeId;
+        final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
         final yamlStr = args['yaml'] as String;
         final scope = args['scope'] as String;
@@ -2239,10 +2725,7 @@ class SystemTools {
         final String path;
         switch (scope) {
           case 'workspace':
-            path =
-                init.registries.workspace.activeId == null
-                    ? ''
-                    : '${_wsRoot(init, wsId)}/skills/${def.id}.yaml';
+            path = '${_wsRoot(init, wsId)}/skills/${def.id}.yaml';
             break;
           case 'agent':
             if (actorId == null)
@@ -2264,7 +2747,7 @@ class SystemTools {
           skillId: def.id,
         );
         if (scope == 'workspace') {
-          init.skills.register(def);
+          init.skills.register(def, workspaceId: wsId);
         }
         // P2 (additive) — mirror the workspace skill into the project-level
         // pool via the universal `studio.builder.addSkill` host tool
@@ -2568,8 +3051,13 @@ class SystemTools {
         Map<String, dynamic> result;
         switch (capability) {
           case 'fs':
-            final r = await hostJson('fs.read', {'path': locator});
-            result = {'preview': clip((r['text'] ?? '').toString())};
+            // Use the project-aware host fs capability so a project-relative
+            // locator resolves against the active project (portable across
+            // folder rename/copy/move). `studio.fs.read` returns `content`.
+            final r = await hostJson('studio.fs.read', {'path': locator});
+            result = {
+              'preview': clip((r['content'] ?? r['text'] ?? '').toString()),
+            };
             break;
           case 'db':
             result = await hostJson('db.query', {
@@ -2714,11 +3202,39 @@ class SystemTools {
         'required': ['category', 'key', 'value'],
       },
       (args) async {
+        final category = args['category'] as String;
+        var metadata = (args['metadata'] as Map?)?.cast<String, Object?>();
+        // Project portability: an asset's `fs` locator is stored PROJECT-ROOT
+        // RELATIVE so renaming / copying / moving the project folder never
+        // breaks the link. Resolution happens at read time — the host `fs.*`
+        // capability resolves a relative locator against the active project
+        // root ([registerFsTools.activeProjectRoot]). URLs / external refs and
+        // non-`fs` capabilities pass through unchanged.
+        if (category == 'asset' &&
+            metadata != null &&
+            init.projectRoot.isNotEmpty) {
+          final cap = (metadata['capability'] ?? '').toString();
+          final loc = (metadata['locator'] ?? '').toString();
+          if (cap == 'fs' && loc.isNotEmpty) {
+            // Relativise against the SAME anchor the host `fs.*` capability
+            // resolves against at read time — the active workspace's bundle
+            // dir (`t.currentProject`), not the project root — so `asset_open`
+            // round-trips after a folder rename / copy / move.
+            final anchor = wsBundleDir(
+              init.projectRoot,
+              init.registries.workspace.activeId ?? systemWorkspaceSlot,
+            );
+            metadata = <String, Object?>{
+              ...metadata,
+              'locator': ProjectPaths.toRelative(anchor, loc),
+            };
+          }
+        }
         await init.registries.knowledge.saveFact(
-          category: args['category'] as String,
+          category: category,
           key: args['key'] as String,
           value: args['value'] as Object,
-          metadata: (args['metadata'] as Map?)?.cast<String, Object?>(),
+          metadata: metadata,
         );
         return {'saved': true};
       },
@@ -2926,12 +3442,21 @@ class SystemTools {
     _register(
       server,
       'knowledge_file_list',
-      'List files under knowledge/ in the current workspace (recursive; paths are relative to the workspace)',
+      'List files under knowledge/ for the workspace, INCLUDING those inherited '
+          'from its org ancestor chain (07 §182, same line only — parent → '
+          'grandparent → …, never a sibling branch). The workspace\'s own file '
+          'shadows an ancestor file at the same path. Inherited entries carry '
+          '`inheritedFrom` (the ancestor that owns them). Recursive; paths '
+          'relative to the owning workspace.',
       const {
         'type': 'object',
         'properties': {
           'workspaceId': {'type': 'string'},
           'subPath': {'type': 'string', 'description': 'Subdirectory filter'},
+          'ownOnly': {
+            'type': 'boolean',
+            'description': 'true = skip ancestor inheritance (own files only).',
+          },
         },
       },
       (args) async {
@@ -2940,19 +3465,33 @@ class SystemTools {
             init.registries.workspace.activeId;
         if (wsId == null) return {'error': 'no active workspace'};
         final subPath = args['subPath'] as String? ?? '';
-        final base =
-            '${_wsRoot(init, wsId)}/knowledge${subPath.isEmpty ? "" : "/$subPath"}';
-        final dir = Directory(base);
-        if (!await dir.exists()) return {'files': <String>[], 'base': base};
+        final ownOnly = args['ownOnly'] == true;
+        // Self first, then the parentId chain — own shadows ancestor.
+        final chain = <String>[
+          wsId,
+          if (!ownOnly) ...await init.registries.workspace.ancestors(wsId),
+        ];
         final files = <Map<String, dynamic>>[];
-        await for (final e in dir.list(recursive: true)) {
-          if (e is! File) continue;
-          final stat = await e.stat();
-          files.add({
-            'path': e.path.substring('${_wsRoot(init, wsId)}/'.length),
-            'size': stat.size,
-            'modifiedAt': stat.modified.toIso8601String(),
-          });
+        final seen = <String>{}; // relative path — nearer level wins
+        for (var i = 0; i < chain.length; i++) {
+          final owner = chain[i];
+          final root = _wsRoot(init, owner);
+          final base =
+              '$root/knowledge${subPath.isEmpty ? "" : "/$subPath"}';
+          final dir = Directory(base);
+          if (!await dir.exists()) continue;
+          await for (final e in dir.list(recursive: true)) {
+            if (e is! File) continue;
+            final rel = e.path.substring('$root/'.length);
+            if (!seen.add(rel)) continue; // a nearer level already provided it
+            final stat = await e.stat();
+            files.add({
+              'path': rel,
+              'size': stat.size,
+              'modifiedAt': stat.modified.toIso8601String(),
+              if (i > 0) 'inheritedFrom': owner,
+            });
+          }
         }
         return {'files': files, 'workspace': wsId};
       },
@@ -2982,10 +3521,23 @@ class SystemTools {
         if (!rel.startsWith('knowledge/')) {
           return {'error': 'path must start with knowledge/'};
         }
-        final abs = '${_wsRoot(init, wsId)}/$rel';
-        final f = File(abs);
-        if (!await f.exists()) return {'error': 'file not found: $abs'};
-        return {'path': rel, 'content': await f.readAsString()};
+        // Own file first, then inherit down the org ancestor chain (same line).
+        final chain = <String>[
+          wsId,
+          ...await init.registries.workspace.ancestors(wsId),
+        ];
+        for (var i = 0; i < chain.length; i++) {
+          final owner = chain[i];
+          final f = File('${_wsRoot(init, owner)}/$rel');
+          if (await f.exists()) {
+            return {
+              'path': rel,
+              'content': await f.readAsString(),
+              if (i > 0) 'inheritedFrom': owner,
+            };
+          }
+        }
+        return {'error': 'file not found on workspace or its ancestor chain: $rel'};
       },
     );
 
@@ -3133,10 +3685,15 @@ class SystemTools {
     _register(
       server,
       'status_snapshot',
-      'Engine state snapshot (counts of workspaces, members, tasks, processes, bundles, skills)',
-      const {},
-      (_) async {
-        final wsId = init.registries.workspace.activeId;
+      'Engine state snapshot (counts of workspaces, members, tasks, processes, '
+          'bundles, skills). Per-workspace counts default to the caller/active '
+          'workspace; pass workspaceId to snapshot another.',
+      {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args);
         final wsList = await init.registries.workspace.list();
         final members =
             wsId == null
@@ -3155,6 +3712,15 @@ class SystemTools {
             wsId == null
                 ? const <dynamic>[]
                 : await init.registries.bundleInstaller.listInstalled(wsId);
+        // Count the skills actually visible in this workspace (disk + shared
+        // + agent overlay), matching `skill_list`. `init.skills` is only the
+        // static boot app-skill list, so it under-reported (e.g. 2 vs 12).
+        final skillIds = wsId == null
+            ? const <String>[]
+            : await init.skillResolver.visibleIds(
+                workspaceId: wsId,
+                actorId: null,
+              );
         return {
           'activeWorkspace': wsId,
           'workspaceCount': wsList.length,
@@ -3163,7 +3729,7 @@ class SystemTools {
           'processes': processes.length,
           'catalogBundles': bundles.length,
           'installedBundles': installed.length,
-          'skills': init.skills.length,
+          'skills': skillIds.length,
           'internalLlm': init.adapters.llm.hasInternalLlm,
           // Sampling fallback available when a connected MCP client
           // advertises the `sampling` capability — skill_generate and
@@ -3578,7 +4144,7 @@ class SystemTools {
       actorId: actorId,
       skillId: def.id,
     );
-    if (scope == 'workspace') init.skills.register(def);
+    if (scope == 'workspace') init.skills.register(def, workspaceId: wsId);
     return {'saved': true, 'id': def.id, 'scope': scope, 'path': path};
   }
 
@@ -3592,18 +4158,34 @@ class SystemTools {
   ///     sets the flag, then resume re-evaluates).
   ///   - quality gate → an appraise action step + a `when` on its score.
   ///   - philosophy gate → a prohibition-check action + a `when` on its
-  ///     verdict. Calls the kernel's `bk.philosophy.check` standard tool
-  ///     (registered through `addStandardTools`); the behavior dispatcher
-  ///     merges its `hasHardViolation` result into run state so the gate's
-  ///     `when` can read it and route to `stop` on a hard violation.
+  ///     verdict. Calls the per-project `philosophy_check` Ops tool (which
+  ///     reads THIS workspace's active charter ethos via
+  ///     `init.system.philosophy`), NOT the global `bk.philosophy.check`
+  ///     (which binds `backbone.app`); the behavior dispatcher merges its
+  ///     `hasHardViolation` result into run state so the gate's `when` can
+  ///     read it and route to `stop` on a hard violation.
   Map<String, dynamic> _processToBehavior(Process p) {
     final gatesByStep = <String, List<ProcessGate>>{};
     for (final g in p.gates) {
       (gatesByStep[g.afterStep] ??= <ProcessGate>[]).add(g);
     }
     final steps = <Map<String, dynamic>>[];
+    // Maps a process stepId → the behavior node that marks its completion
+    // (the step's own node, or the last gate/handoff node chained after it).
+    // An explicit `dependsOn` on a later step is resolved against this so the
+    // dependency points at the predecessor's *terminal* node, not a mid-chain
+    // gate. Absent map entry ⇒ depend on the raw step id (forward ref / typo
+    // tolerated).
+    final stepTerminal = <String, String>{};
     String? prev;
     for (final s in p.steps) {
+      // The action node's upstream deps: explicit `dependsOn` (a real DAG —
+      // independent branches run in parallel) resolved to terminal nodes, else
+      // the textually-previous step (the default linear chain).
+      final List<String> stepDeps =
+          s.dependsOn.isNotEmpty
+              ? [for (final d in s.dependsOn) stepTerminal[d] ?? d]
+              : (prev != null ? <String>[prev] : const <String>[]);
       // A step whose skill is the `agent_ask` / `delegate` sentinel delegates
       // the work to its assignee AGENT through the host `agent_ask` tool. The
       // assignee may live in another workspace — kernel `agents.ask` resolves
@@ -3623,7 +4205,7 @@ class SystemTools {
           'id': s.stepId,
           'when': 'done_${s.stepId} == true',
           'then': <String, String>{'false': 'wait'},
-          if (prev != null) 'dependsOn': <String>[prev],
+          if (stepDeps.isNotEmpty) 'dependsOn': stepDeps,
         });
       } else if (s.skillId == 'io.execute' || s.skillId == 'run') {
         // Real work — run an allowlisted dev command (git/dart/flutter/pub)
@@ -3646,7 +4228,7 @@ class SystemTools {
               'role': 'operator',
             },
           },
-          if (prev != null) 'dependsOn': <String>[prev],
+          if (stepDeps.isNotEmpty) 'dependsOn': stepDeps,
         });
       } else {
         final isDelegate = s.skillId == 'agent_ask' || s.skillId == 'delegate';
@@ -3674,7 +4256,7 @@ class SystemTools {
         steps.add(<String, dynamic>{
           'id': s.stepId,
           'do': action,
-          if (prev != null) 'dependsOn': <String>[prev],
+          if (stepDeps.isNotEmpty) 'dependsOn': stepDeps,
         });
       }
       var dep = s.stepId;
@@ -3748,7 +4330,10 @@ class SystemTools {
             steps.add(<String, dynamic>{
               'id': evalId,
               'do': <String, dynamic>{
-                'tool': 'bk.philosophy.check',
+                // Per-project charter gate (`philosophy_check`) — judges
+                // against THIS workspace's active charter ethos, not the
+                // global `bk.philosophy.check` (which binds `backbone.app`).
+                'tool': 'philosophy_check',
                 'args': <String, dynamic>{
                   'action': s.skillId,
                   if (s.assigneeId.isNotEmpty) 'actor': s.assigneeId,
@@ -3766,6 +4351,7 @@ class SystemTools {
             break;
         }
       }
+      stepTerminal[s.stepId] = dep;
       prev = dep;
     }
     return <String, dynamic>{'id': p.id, 'name': p.title, 'steps': steps};
@@ -3795,6 +4381,118 @@ class SystemTools {
     return '${p.basename(root)}.${wsId.replaceAll('/', '_')}.$localId';
   }
 
+  /// Resolve the **effective charter along a workspace's own ancestor chain**
+  /// (07 §182: top-down inheritance, same line only). Walks `[wsId, …ancestors]`
+  /// — `WorkspaceRegistry.ancestors` follows the `parentId` chain and NEVER a
+  /// sibling / other branch, so a workspace only inherits from its own line.
+  /// Prohibitions **accumulate** up the chain (company ∘ dept ∘ own); mission /
+  /// northStar / values / doctrineRef take the **nearest** (self-first) value.
+  /// Returns the collected prohibitions (with source level), the nearest
+  /// descriptive fields, and the source levels that contributed.
+  Future<
+      ({
+        List<
+                ({
+                  String id,
+                  String source,
+                  String statement,
+                  List<String> patterns,
+                  bool hard
+                })>
+            prohibitions,
+        Map<String, dynamic> descriptive,
+        List<String> sources,
+      })> _charterChain(KnowledgeInit init, String wsId) async {
+    final phil = init.system.philosophy;
+    final prohibitions = <({
+      String id,
+      String source,
+      String statement,
+      List<String> patterns,
+      bool hard
+    })>[];
+    final descriptive = <String, dynamic>{};
+    final sources = <String>[];
+    if (!phil.isAvailable) {
+      return (prohibitions: prohibitions, descriptive: descriptive, sources: sources);
+    }
+    // Self first, then the parentId chain (nearest ancestor → root). Same line
+    // only — ancestors() excludes siblings / other branches by construction.
+    final chain = <String>[
+      wsId,
+      ...await init.registries.workspace.ancestors(wsId),
+    ];
+    for (final id in chain) {
+      final charterId = 'charter.$id';
+      try {
+        final e = await phil.getEthosById(charterId);
+        // Guard: getEthosById may fall back to the active ethos for an unknown
+        // id — only accept the ethos that is THIS level's charter.
+        if (e.id != charterId) continue;
+        sources.add(id);
+        for (final pr in e.prohibitions) {
+          prohibitions.add((
+            id: '$id/${pr.id}',
+            source: id,
+            statement: pr.statement,
+            patterns: pr.forbiddenPatterns,
+            hard: pr.severity == bundle.ProhibitionSeverity.hard,
+          ));
+        }
+        final c = e.metadata.context;
+        if (c != null && c.isNotEmpty) {
+          try {
+            final ctx = jsonDecode(c) as Map<String, dynamic>;
+            for (final k in const ['mission', 'northStar', 'doctrineRef', 'values']) {
+              if (descriptive[k] == null && ctx[k] != null) {
+                descriptive[k] = ctx[k];
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {
+        // No charter at this level — skip; a higher ancestor may still have one.
+      }
+    }
+    return (prohibitions: prohibitions, descriptive: descriptive, sources: sources);
+  }
+
+  /// Map a role string to [AgentRole]; unknown / null → worker.
+  AgentRole _agentRoleFromString(String? s) {
+    switch ((s ?? '').trim().toLowerCase()) {
+      case 'manager':
+        return AgentRole.manager;
+      case 'reviewer':
+        return AgentRole.reviewer;
+      default:
+        return AgentRole.worker;
+    }
+  }
+
+  /// The assigned profile's `defaultRole` (profile = the persona/role, so the
+  /// orchestration role travels with it). Best-effort file read from the
+  /// workspace's `profiles/<id>.yaml`; null when absent. `profileRef` may be
+  /// `profiles/<id>` or a bare `<id>`.
+  Future<String?> _profileDefaultRole(
+    KnowledgeInit init,
+    String wsId,
+    String profileRef,
+  ) async {
+    if (profileRef.isEmpty || init.projectRoot.isEmpty) return null;
+    final id = profileRef.replaceFirst(RegExp(r'^profiles/'), '');
+    try {
+      final f = File('${wsContentRoot(init.projectRoot, wsId)}/profiles/$id.yaml');
+      if (!await f.exists()) return null;
+      final y = loadYaml(await f.readAsString());
+      if (y is Map && y['defaultRole'] is String) {
+        return y['defaultRole'] as String;
+      }
+    } catch (_) {
+      /* best-effort */
+    }
+    return null;
+  }
+
   /// Resolve a caller-supplied agent id to the kernel agentId. MCP callers
   /// pass the bare local id (`editor`); the Members UI passes the stored
   /// `member.agentId` already. Looking the member up returns its stored
@@ -3822,6 +4520,12 @@ class SystemTools {
     if (wsId != null) {
       final f = File('${_wsRoot(init, wsId)}/skills/$skillId.yaml');
       if (await f.exists()) return 'workspace';
+      // Inherited from an org ancestor — still a workspace skill, just owned
+      // higher up the chain.
+      for (final ancestor in await init.registries.workspace.ancestorIds(wsId)) {
+        final af = File('${_wsRoot(init, ancestor)}/skills/$skillId.yaml');
+        if (await af.exists()) return 'workspace';
+      }
     }
     return 'template';
   }

@@ -15,10 +15,16 @@
 library;
 
 import 'dart:async' show unawaited;
-import 'dart:convert' show jsonEncode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
+import 'package:appplayer_secure/appplayer_secure.dart' show SecureStorage;
 import 'package:brain_kernel/brain_kernel.dart';
 import 'package:mcp_channel/mcp_channel.dart';
+
+// Vendored channel_drivers recipe (brain_kernel/recipes) — external connector
+// assembly (`channel.connect`/`channel.disconnect`). Committed copy, never
+// hand-edited (see debug/tool/sync_channel_drivers_fork.sh).
+import 'channel_drivers/channel_drivers.dart';
 
 /// Capability namespace — exposed names are `channel.<verb>`.
 const String channelCapabilityId = 'channel';
@@ -189,28 +195,57 @@ List<String> registerChannelCapability({
   required KvStoragePortAdapter? Function() kv,
   required FactFacade? Function() facts,
   Future<String> Function(String agentId, String message)? askAgent,
+  SecureStorage? secure,
 }) {
   // Host-owned long-lived state.
   final connectors = <String, ExtendedChannelPort>{};
   final sessions = SessionManager(InMemorySessionStore());
 
+  // Inbound routing bindings: conversationId → target agentId. Data-driven so
+  // an EXTERNAL conversation (a kakao room, a slack channel) routes to the
+  // right agent — the in-app feed uses conversationId == agentId, but external
+  // platforms carry native conversation ids. Persisted to the project KV so
+  // bindings survive a reboot; the host code stays generic, the routing policy
+  // is data (`channel.bind` / `channel.unbind`).
+  const bindingsKey = 'channel/inbound_bindings';
+  final bindings = <String, String>{};
+  unawaited(() async {
+    try {
+      final raw = await kv()?.get(bindingsKey);
+      if (raw is Map) {
+        raw.forEach((c, a) => bindings[c.toString()] = a.toString());
+      }
+    } catch (_) {
+      /* best-effort hydrate */
+    }
+  }());
+  Future<void> persistBindings() async {
+    try {
+      await kv()?.set(bindingsKey, bindings);
+    } catch (_) {
+      /* best-effort */
+    }
+  }
+
+  // Attach an agentic ChannelHandler to a connector so its inbound messages
+  // route to an agent (conversationId → binding → agentId) and the reply is
+  // sent back. Loop-safe — connectors only emit on real inbound, never on the
+  // agent's own reply. No-op when no `askAgent` is wired.
+  void attachAgentHandler(ExtendedChannelPort port) {
+    if (askAgent == null) return;
+    final handler = ChannelHandler(
+      port: port,
+      sessionManager: sessions,
+      processor: _AgentMessageProcessor(askAgent, bindings),
+    );
+    unawaited(handler.start());
+  }
+
   // The in-app feed is always available as `in_app`.
   final inApp = _InAppConnector(kv, facts);
   connectors['in_app'] = inApp;
   inApp.start();
-
-  // Agentic inbound (P2): attach a ChannelHandler whose MessageProcessor
-  // delegates to the host agent. The conversationId names the target agent
-  // (the same id `channel_notify` addresses as recipient). Loop-safe — the
-  // connector only emits on `receiveInbound`, never on the agent's reply.
-  if (askAgent != null) {
-    final handler = ChannelHandler(
-      port: inApp,
-      sessionManager: sessions,
-      processor: _AgentMessageProcessor(askAgent),
-    );
-    unawaited(handler.start());
-  }
+  attachAgentHandler(inApp);
 
   ExtendedChannelPort? conn(String id) => connectors[id];
 
@@ -406,6 +441,276 @@ List<String> registerChannelCapability({
     ),
   );
 
+  // P3 — external connectors. The channel_drivers recipe provisions real
+  // `mcp_channel` connectors (slack / telegram / email / kakao / …) into the
+  // SAME `connectors` map at runtime via `channel.connect` / `channel.disconnect`
+  // — so `channel.send` / `channel.receive` reach them, identically across
+  // Studio / AppPlayer / FlowBrain (vendored recipe, no core change).
+  // Platform-gated to desktop for this host.
+  final driverRegistry = ChannelDriverRegistry();
+  registerChannelConnectors(driverRegistry);
+  final driverTools = channelDriverTools(
+    registry: driverRegistry,
+    connectors: connectors,
+    platform: ChannelPlatform.desktop,
+  );
+  for (final entry in driverTools.entries) {
+    final rawName = entry.key.startsWith('channel.')
+        ? entry.key.substring('channel.'.length)
+        : entry.key;
+    final handler = entry.value;
+    exposed.add(
+      registry.registerExposed(
+        bundleId: channelCapabilityId,
+        rawName: rawName,
+        description: rawName == 'connect'
+            ? 'Provision + connect an external channel connector '
+                '(`platform` + `id` + `params`, e.g. slack / telegram / email / '
+                'kakao). Adds it to the live connectors map so `channel.send` / '
+                '`channel.receive` reach it. §6 destructive (external I/O).'
+            : 'Stop + deregister a connected external channel connector (`id`).',
+        inputSchema: rawName == 'connect'
+            ? const <String, dynamic>{
+                'type': 'object',
+                'properties': <String, dynamic>{
+                  'platform': <String, dynamic>{'type': 'string'},
+                  'id': <String, dynamic>{'type': 'string'},
+                  'params': <String, dynamic>{'type': 'object'},
+                },
+                'required': <String>['platform', 'id'],
+              }
+            : const <String, dynamic>{
+                'type': 'object',
+                'properties': <String, dynamic>{
+                  'id': <String, dynamic>{'type': 'string'},
+                },
+                'required': <String>['id'],
+              },
+        handler: (args) async {
+          var callArgs = args;
+          // On connect, when no inline params are given, resolve this
+          // connector's stored credentials from the secure vault — so secrets
+          // never travel in the tool call / chat / logs. Inline params still
+          // win when explicitly provided.
+          if (rawName == 'connect' && secure != null) {
+            final id = callArgs['id'] as String?;
+            final hasParams = (callArgs['params'] as Map?)?.isNotEmpty ?? false;
+            if (id != null && !hasParams) {
+              final raw = await secure.read('channel.cred/$id');
+              if (raw != null && raw.isNotEmpty) {
+                try {
+                  callArgs = <String, dynamic>{
+                    ...callArgs,
+                    'params': jsonDecode(raw),
+                  };
+                } catch (_) {
+                  /* stored cred corrupt → fall through to recipe validation */
+                }
+              }
+            }
+          }
+          final out =
+              await handler(callArgs) as Map<String, dynamic>? ?? const {};
+          // On a successful connect, give the new connector the same agentic
+          // inbound routing the in-app feed has, so external inbound reaches
+          // agents (resolved via bindings) too.
+          if (rawName == 'connect' && out['ok'] == true) {
+            final id = out['id'] as String?;
+            final port = id == null ? null : connectors[id];
+            if (port != null) attachAgentHandler(port);
+          }
+          return _result(out, isError: out['ok'] == false);
+        },
+      ),
+    );
+  }
+
+  // Inbound routing bindings (data) — map an external conversation to the agent
+  // that should handle it. Generic: the host reads the binding, the policy is
+  // data. `channel.receive` from a bound conversation routes to that agent
+  // (which can then `process_approve` / `agent_route` / `channel.send`).
+  exposed.add(
+    registry.registerExposed(
+      bundleId: channelCapabilityId,
+      rawName: 'bind',
+      description:
+          'Route inbound from a conversation to an agent: bind '
+          '`{conversationId, agentId}`. The agent then handles that '
+          'conversation (approve via `process_approve`, delegate via '
+          '`agent_route`, reply/notify via `channel.send`). Persisted.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'conversationId': <String, dynamic>{'type': 'string'},
+          'agentId': <String, dynamic>{'type': 'string'},
+        },
+        'required': <String>['conversationId', 'agentId'],
+      },
+      handler: (args) async {
+        final conv = (args['conversationId'] as String?)?.trim() ?? '';
+        final agent = (args['agentId'] as String?)?.trim() ?? '';
+        if (conv.isEmpty || agent.isEmpty) {
+          return _result(<String, dynamic>{
+            'ok': false,
+            'error': 'conversationId and agentId required',
+          }, isError: true);
+        }
+        bindings[conv] = agent;
+        await persistBindings();
+        return _result(<String, dynamic>{
+          'ok': true,
+          'conversationId': conv,
+          'agentId': agent,
+        }, isError: false);
+      },
+    ),
+  );
+
+  exposed.add(
+    registry.registerExposed(
+      bundleId: channelCapabilityId,
+      rawName: 'unbind',
+      description: 'Remove an inbound routing binding (`conversationId`).',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'conversationId': <String, dynamic>{'type': 'string'},
+        },
+        'required': <String>['conversationId'],
+      },
+      handler: (args) async {
+        final conv = (args['conversationId'] as String?)?.trim() ?? '';
+        final removed = bindings.remove(conv) != null;
+        if (removed) await persistBindings();
+        return _result(<String, dynamic>{'ok': true, 'removed': removed},
+            isError: false);
+      },
+    ),
+  );
+
+  exposed.add(
+    registry.registerExposed(
+      bundleId: channelCapabilityId,
+      rawName: 'bindings',
+      description: 'List inbound routing bindings (conversationId → agentId).',
+      inputSchema: const <String, dynamic>{'type': 'object'},
+      handler: (args) async => _result(<String, dynamic>{
+        'ok': true,
+        'bindings': <Map<String, dynamic>>[
+          for (final e in bindings.entries)
+            <String, dynamic>{'conversationId': e.key, 'agentId': e.value},
+        ],
+      }, isError: false),
+    ),
+  );
+
+  // Credential vault (secure). Store a connector's credentials in the OS
+  // keychain keyed by connector id, so `channel.connect` resolves them by id
+  // and secrets never travel in a tool call / chat / log. No plaintext get — a
+  // caller can list ids and set/remove, never read a stored secret back. The
+  // `id` distinguishes accounts, so different accounts on the same platform are
+  // just different ids (host-owned or app-scoped by id convention). Only wired
+  // when a secure store is available.
+  if (secure != null) {
+    final store = secure;
+    const idsKey = 'channel.cred._ids';
+    Future<List<String>> readIds() async {
+      try {
+        final raw = await store.read(idsKey);
+        if (raw == null || raw.isEmpty) return <String>[];
+        return (jsonDecode(raw) as List).map((e) => e.toString()).toList();
+      } catch (_) {
+        return <String>[];
+      }
+    }
+
+    exposed.add(
+      registry.registerExposed(
+        bundleId: channelCapabilityId,
+        rawName: 'credential_set',
+        description:
+            'Securely store a connector\'s credentials (OS keychain), keyed by '
+            '`id`. `channel.connect{id}` then resolves them — secrets never '
+            'travel in the connect call. `params` = that platform\'s fields '
+            '(e.g. slack `botToken`/`signingSecret`, kakao `botId`, email '
+            '`botEmail`/`host`/`username`/`password`). No plaintext read-back.',
+        inputSchema: const <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'string'},
+            'platform': <String, dynamic>{'type': 'string'},
+            'params': <String, dynamic>{'type': 'object'},
+          },
+          'required': <String>['id', 'params'],
+        },
+        handler: (args) async {
+          final id = (args['id'] as String?)?.trim() ?? '';
+          final params = (args['params'] as Map?)?.cast<String, dynamic>();
+          if (id.isEmpty || params == null || params.isEmpty) {
+            return _result(<String, dynamic>{
+              'ok': false,
+              'error': 'id and non-empty params required',
+            }, isError: true);
+          }
+          await store.write('channel.cred/$id', jsonEncode(params));
+          final ids = await readIds();
+          if (!ids.contains(id)) {
+            ids.add(id);
+            await store.write(idsKey, jsonEncode(ids));
+          }
+          return _result(<String, dynamic>{
+            'ok': true,
+            'id': id,
+            if (args['platform'] != null) 'platform': args['platform'],
+            'fields': params.keys.toList(), // names only, never values
+          }, isError: false);
+        },
+      ),
+    );
+
+    exposed.add(
+      registry.registerExposed(
+        bundleId: channelCapabilityId,
+        rawName: 'credential_ids',
+        description:
+            'List connector ids that have stored credentials (ids only — never '
+            'the secret values).',
+        inputSchema: const <String, dynamic>{'type': 'object'},
+        handler: (args) async =>
+            _result(<String, dynamic>{'ok': true, 'ids': await readIds()},
+                isError: false),
+      ),
+    );
+
+    exposed.add(
+      registry.registerExposed(
+        bundleId: channelCapabilityId,
+        rawName: 'credential_remove',
+        description: 'Delete a connector\'s stored credentials (`id`).',
+        inputSchema: const <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'string'},
+          },
+          'required': <String>['id'],
+        },
+        handler: (args) async {
+          final id = (args['id'] as String?)?.trim() ?? '';
+          if (id.isEmpty) {
+            return _result(<String, dynamic>{'ok': false, 'error': 'id required'},
+                isError: true);
+          }
+          await store.delete('channel.cred/$id');
+          final ids = await readIds()
+            ..remove(id);
+          await store.write(idsKey, jsonEncode(ids));
+          return _result(<String, dynamic>{'ok': true, 'id': id},
+              isError: false);
+        },
+      ),
+    );
+  }
+
   return exposed;
 }
 
@@ -414,17 +719,26 @@ List<String> registerChannelCapability({
 /// `channel_notify` addresses as recipient). A failed ask is surfaced as a
 /// plain reply so the loop always completes.
 class _AgentMessageProcessor implements MessageProcessor {
-  _AgentMessageProcessor(this._askAgent);
+  _AgentMessageProcessor(this._askAgent, this._bindings);
 
   final Future<String> Function(String agentId, String message) _askAgent;
+
+  /// conversationId → target agentId. External platforms carry native
+  /// conversation ids, so a binding routes them to an agent; the in-app feed
+  /// uses conversationId == agentId, so an unbound conversation falls back to
+  /// itself. Owned by the host (see `registerChannelCapability`), mutated by
+  /// `channel.bind` / `channel.unbind`.
+  final Map<String, String> _bindings;
 
   @override
   Future<ProcessResult> process(ChannelEvent event, Session session) async {
     final text = event.text ?? '';
     if (text.isEmpty) return ProcessResult.ignore();
+    final convId = event.conversation.conversationId;
+    final agentId = _bindings[convId] ?? convId;
     String reply;
     try {
-      reply = await _askAgent(event.conversation.conversationId, text);
+      reply = await _askAgent(agentId, text);
     } catch (e) {
       reply = 'agent error: $e';
     }

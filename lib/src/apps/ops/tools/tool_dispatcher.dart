@@ -2,6 +2,7 @@ import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 
 import '../config/ops_error.dart';
 import '../init/knowledge_init.dart';
+import '../init/workspace_context.dart';
 import '../observability/activity_event.dart';
 import '../observability/observability_module.dart';
 import '../registries/member_registry.dart';
@@ -20,8 +21,15 @@ class ToolDispatcher {
     Map<String, dynamic> args,
   ) async {
     final sw = Stopwatch()..start();
-    final workspaceId =
-        (args['workspace'] as String?) ?? init.registries.workspace.activeId;
+    // Resolve the target workspace without depending on the global mutable
+    // active (which concurrent actors flip): explicit arg → the caller's
+    // execution-scoped workspace → active (UI fallback). See
+    // [resolveWorkspaceId].
+    final workspaceId = resolveWorkspaceId(
+      args,
+      execWorkspaceId: WorkspaceExecutionContext.current,
+      activeWorkspaceId: init.registries.workspace.activeId,
+    );
     if (workspaceId == null || workspaceId.isEmpty) {
       throw OpsError(code: 'E2001', message: 'No active workspace.');
     }
@@ -74,11 +82,17 @@ class ToolDispatcher {
           ..remove('actor');
 
     try {
-      final out = await init.skillExecutor.run(
-        def,
-        inputs,
-        actorId: actor,
-        workspaceId: workspaceId,
+      // Pin the resolved workspace for the whole skill execution so any host
+      // tool calls it re-enters (behavior `do:{tool}` steps, LLM tool-use)
+      // default to this workspace, not whatever the UI lens is now pointing at.
+      final out = await WorkspaceExecutionContext.run(
+        workspaceId,
+        () => init.skillExecutor.run(
+          def,
+          inputs,
+          actorId: actor,
+          workspaceId: workspaceId,
+        ),
       );
       sw.stop();
       _record(

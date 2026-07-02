@@ -160,6 +160,17 @@ void main() {
       expect(s2.llmProviders['openai'], 'sk-2');
     });
 
+    test('domainLastProject map survives round-trip (per built-in pointer)', () {
+      final s = VibeSettings(
+        domainLastProject: {'makemind_ops': '/projects/acme', 'app_builder': '/projects/ui'},
+      );
+      final s2 = VibeSettings.fromJson(s.toJson());
+      expect(s2.domainLastProject['makemind_ops'], '/projects/acme');
+      expect(s2.domainLastProject['app_builder'], '/projects/ui');
+      // empty map is omitted from json (no stray key)
+      expect(VibeSettings().toJson().containsKey('domainLastProject'), isFalse);
+    });
+
     test('recentProjects list survives round-trip', () {
       final s = VibeSettings(recentProjects: ['/a', '/b']);
       final s2 = VibeSettings.fromJson(s.toJson());

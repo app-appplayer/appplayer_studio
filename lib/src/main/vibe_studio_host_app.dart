@@ -29,6 +29,8 @@ import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
 import 'package:appplayer_studio/src/base/install/plugin_install.dart';
 import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
 import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
+import 'package:appplayer_secure/appplayer_secure.dart'
+    show FlutterSecureStorageBackend;
 
 /// Collaborators handed to a host extension so it can register tools and
 /// surfaces without `standard` (the open base) knowing what the extension
@@ -848,6 +850,8 @@ class VibeStudioHostApp extends StudioApp {
                   ? <String, int>{'width': w, 'height': h}
                   : null,
           respectRobots: s?.browserRespectRobots ?? false,
+          authAttachEndpoint: s?.browserAuthAttachEndpoint,
+          authUserDataDir: s?.browserAuthUserDataDir,
         );
       },
       // `browser.auth_capture` (seal) + `setAuth` re-injection (S2). Sealer
@@ -888,6 +892,9 @@ class VibeStudioHostApp extends StudioApp {
         );
         return reply.content;
       },
+      // Secure credential vault (OS keychain) for `channel.credential_set` /
+      // `channel.connect` resolution — secrets never travel in the tool call.
+      secure: FlutterSecureStorageBackend(),
     );
     // `io.*` — sandboxed OS process / shell execution (mcp_io + the
     // mcp_io_process ProcessAdapter). One host-owned runtime shared like
@@ -983,7 +990,15 @@ class VibeStudioHostApp extends StudioApp {
     // Generic file IO primitives scoped to VibeSettings.workspaceDir.
     // Domain tools (JS / external MCP) use these to read/write data
     // files under the workspace without needing dart:io bindings.
-    registerFsTools(boot, toolId: toolId);
+    // Wire the active project root so `fs.*` resolves project-relative links
+    // against the currently-open project (portable across folder rename/copy/
+    // move) — the shared, host-level seam every built-in + bundle app inherits.
+    registerFsTools(
+      boot,
+      toolId: toolId,
+      activeProjectRoot: () =>
+          _chromeBridge.activeProjectInfo?.call()['projectPath'] as String?,
+    );
     // ── studio.search.* — BM25 search across installed bundles.
     // Body lives in vibe_studio_base.
     registerSearchTools(boot, bundles: bundles);
@@ -1308,7 +1323,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    (boot as mh.ServerBootstrap).server.addPrompt(
+    boot.server.addPrompt(
       name: 'add-page-widget',
       description:
           'Add a widget to a page in an active bundle\'s mcp_ui_dsl tree.',
@@ -1346,7 +1361,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    (boot as mh.ServerBootstrap).server.addPrompt(
+    boot.server.addPrompt(
       name: 'wire-button-tool',
       description:
           'Wire a button\'s click action to invoke an MCP tool in an active bundle.',
@@ -1385,7 +1400,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    (boot as mh.ServerBootstrap).server.addPrompt(
+    boot.server.addPrompt(
       name: 'install-bundle',
       description:
           'Install an external bundle from a local `.mcpb` or `.mbd` path.',
@@ -2080,7 +2095,7 @@ class VibeStudioHostApp extends StudioApp {
             // does not expose a direct `callResource(uri)` so we use
             // the protocol-level read on the underlying mcp.Server and
             // re-wrap the wire shape into the envelope return type.
-            final raw = await (source as mh.ServerBootstrap).server
+            final raw = await source.server
                 .readResource(uri);
             return mk.KernelReadResourceResult(
               contents: <mk.KernelResourceContent>[

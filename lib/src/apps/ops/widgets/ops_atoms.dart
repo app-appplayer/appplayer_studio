@@ -312,6 +312,11 @@ class OpsCrumb extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text.toUpperCase(),
+      // A breadcrumb is a single line — clip with an ellipsis in a narrow
+      // header instead of wrapping char-by-char.
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontFamily: OpsType.mono,
         fontSize: 11,

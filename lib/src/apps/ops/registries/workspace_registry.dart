@@ -41,6 +41,7 @@ class Workspace {
     this.sharedWith = const [],
     this.shares = const [],
     this.parentId,
+    this.leadMemberId,
     this.tags = const {},
   });
 
@@ -65,6 +66,15 @@ class Workspace {
   /// the approval escalation path (G2/G3). Distinct from the workspace
   /// type/slug (a flat id) — hierarchy is overlay metadata, not nesting.
   final String? parentId;
+
+  /// The member id of this org unit's **lead** (팀장 / unit head) — the head
+  /// of the team that this workspace represents. Renders as the top of the
+  /// unit's hierarchy in the org chart (lead → members) and is the natural
+  /// default approver/escalation target for the unit. `null` = no designated
+  /// lead. Realizes the team-lead middle tier deferred in
+  /// `specs/platform/12-flowbrain-runtime.md §roles` (workspace = recursive
+  /// org unit per `07-knowledge-access.md §182`).
+  final String? leadMemberId;
   final Map<String, String> tags;
 
   Map<String, dynamic> toYamlMap() => {
@@ -78,6 +88,7 @@ class Workspace {
     'sharedWith': sharedWith,
     'shares': shares.map((s) => s.toMap()).toList(),
     if (parentId != null) 'parentId': parentId,
+    if (leadMemberId != null) 'leadMemberId': leadMemberId,
     'tags': tags,
   };
 
@@ -111,6 +122,7 @@ class Workspace {
           if (s is Map) ShareGrant.fromMap(s),
       ],
       parentId: (y['parentId'] as String?),
+      leadMemberId: (y['leadMemberId'] as String?),
       tags:
           (y['tags'] as Map?)?.map(
             (k, v) => MapEntry(k.toString(), v.toString()),
@@ -165,6 +177,25 @@ class WorkspaceRegistry {
   Future<Workspace?> get(String id) async {
     await _ensureLoaded();
     return _cache[id];
+  }
+
+  /// The org ancestor chain of [id] — nearest [parentId] first, self excluded.
+  /// Walks the [Workspace.parentId] overlay; stops at the root, an unknown
+  /// parent, or a cycle. Used to scope skill / knowledge visibility to a
+  /// workspace and the units it reports up to.
+  Future<List<String>> ancestorIds(String id) async {
+    await _ensureLoaded();
+    final out = <String>[];
+    final seen = <String>{id};
+    var cur = _cache[id];
+    while (cur?.parentId != null && cur!.parentId!.isNotEmpty) {
+      final pid = cur.parentId!;
+      if (!seen.add(pid)) break; // cycle guard
+      out.add(pid);
+      cur = _cache[pid];
+      if (cur == null) break; // dangling parent ref
+    }
+    return out;
   }
 
   /// Idempotently ensure the reserved `_system` workspace exists. The
@@ -297,6 +328,7 @@ class WorkspaceRegistry {
       sharedWith: existing.sharedWith,
       shares: existing.shares,
       parentId: existing.parentId,
+      leadMemberId: existing.leadMemberId,
       tags: existing.tags,
     );
     await _writeYaml('${newDir.path}/config.yaml', updated.toYamlMap());
@@ -345,6 +377,7 @@ class WorkspaceRegistry {
       sharedWith: cur.sharedWith,
       shares: cur.shares,
       parentId: cur.parentId,
+      leadMemberId: cur.leadMemberId,
       tags: tags ?? cur.tags,
     );
     await _writeYaml('$rootDir/$id/config.yaml', updated.toYamlMap());
@@ -368,6 +401,7 @@ class WorkspaceRegistry {
       sharedWith: [...ws.sharedWith, toId],
       shares: ws.shares,
       parentId: ws.parentId,
+      leadMemberId: ws.leadMemberId,
       tags: ws.tags,
     );
     await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
@@ -504,11 +538,27 @@ class WorkspaceRegistry {
     ]..sort();
   }
 
+  /// Set (or clear, when [memberId] is null/empty) this org unit's **lead**
+  /// (팀장 / unit head). The lead member must belong to the workspace.
+  Future<Workspace> setLead(String id, String? memberId) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    final lead = (memberId == null || memberId.isEmpty) ? null : memberId;
+    final updated = _copyWith(ws, leadMemberId: lead, clearLead: lead == null);
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
   Workspace _copyWith(
     Workspace ws, {
     List<ShareGrant>? shares,
     String? parentId,
     bool clearParent = false,
+    String? leadMemberId,
+    bool clearLead = false,
   }) => Workspace(
     id: ws.id,
     type: ws.type,
@@ -520,6 +570,7 @@ class WorkspaceRegistry {
     sharedWith: ws.sharedWith,
     shares: shares ?? ws.shares,
     parentId: clearParent ? null : (parentId ?? ws.parentId),
+    leadMemberId: clearLead ? null : (leadMemberId ?? ws.leadMemberId),
     tags: ws.tags,
   );
 

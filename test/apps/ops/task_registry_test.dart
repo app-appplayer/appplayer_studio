@@ -504,6 +504,38 @@ createdAt: 2024-01-01T00:00:00.000Z
       expect(ref.errorCode, isNotNull);
     });
 
+    // --- t18b: assignee-agent auto-run (assign + produce) ---
+    test('t18b run drives the assignee agent when agentRun is wired', () async {
+      // Skill dispatch would return this — it must NOT be used when the
+      // assignee agent runs.
+      reg.dispatch = (skillId, args) async => {'skill': 'should-not-run'};
+      String? seenAssignee;
+      String? seenRequest;
+      reg.agentRun = (assigneeId, request) async {
+        seenAssignee = assigneeId;
+        seenRequest = request;
+        return 'agent deliverable';
+      };
+      await reg.create(_makeTask(id: 'agent_task'));
+      final ref = await reg.run('agent_task');
+
+      expect(ref.endState, TaskState.completed);
+      expect(ref.summary, 'agent deliverable'); // agent output, not the skill
+      expect(seenAssignee, 'ag1');
+      expect(seenRequest, contains('Task One')); // task title in the request
+    });
+
+    // --- t18c: agentRun declines (person/unknown) → skill fallback ---
+    test('t18c agentRun returning null falls back to skill dispatch', () async {
+      reg.dispatch = (skillId, args) async => {'skill': 'fallback-ran'};
+      reg.agentRun = (assigneeId, request) async => null; // not a runnable agent
+      await reg.create(_makeTask(id: 'fallback_task'));
+      final ref = await reg.run('fallback_task');
+
+      expect(ref.endState, TaskState.completed);
+      expect(ref.summary, contains('fallback-ran')); // skill result
+    });
+
     // --- t19: run without dispatch attached ---
     test('t19 run throws StateError when dispatch not attached', () async {
       await reg.create(_makeTask(id: 'no_dispatch'));

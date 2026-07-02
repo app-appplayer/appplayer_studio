@@ -34,7 +34,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' show KvStoragePortAdapter;
 import 'package:appplayer_studio/builtin_api.dart'
-    show KnowledgeSystem, ModelSpec;
+    show AgentRole, KnowledgeSystem, ModelSpec;
 import 'package:appplayer_studio/src/apps/ops/registries/member_registry.dart';
 import 'package:appplayer_studio/src/apps/ops/infra/ws_paths.dart';
 
@@ -310,6 +310,72 @@ void main() {
         expect(a.skillIds, containsAll(['skill.a', 'skill.b']));
       },
     );
+
+    // --- m11b: in-place re-role (individuality preservation contract) ---
+    test(
+      'm11b update(role:) re-roles in place — yaml round-trip, other fields '
+      'and identity preserved',
+      () async {
+        await reg.createAgent(
+          id: 'nora',
+          displayName: 'Nora',
+          profileRef: 'editor',
+          skillIds: ['skill.edit'],
+          philosophyRef: 'ph_ed',
+          workspaceId: 'project/ws1',
+          model: const ModelSpec(provider: 'anthropic', model: 'opus'),
+        );
+
+        final updated =
+            await reg.update(
+                  memberId: 'nora',
+                  workspaceId: 'project/ws1',
+                  role: AgentRole.reviewer,
+                )
+                as AgentMember;
+        // Role changed; identity + every other field intact (no recreate).
+        expect(updated.role, AgentRole.reviewer);
+        expect(updated.agentId, 'nora');
+        expect(updated.displayName, 'Nora');
+        expect(updated.profileRef, 'editor');
+        expect(updated.skillIds, ['skill.edit']);
+        expect(updated.model?.model, 'opus');
+
+        // Durable: fresh registry re-reads the role from yaml (this is what
+        // the boot mirror seeds the kernel record from after a .kv rebuild).
+        final reg2 = MemberRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv2')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+        final back =
+            (await reg2.listForWorkspace('project/ws1')).firstWhere(
+                  (m) => m.id == 'nora',
+                )
+                as AgentMember;
+        expect(back.role, AgentRole.reviewer);
+        expect(back.model?.model, 'opus');
+      },
+    );
+
+    // --- m11c: auth-capture rebuild must not wipe model/role ---
+    test('m11c recordAuthCapture preserves model + role', () async {
+      await reg.createAgent(
+        id: 'grace',
+        displayName: 'Grace',
+        profileRef: 'proof',
+        skillIds: const [],
+        philosophyRef: '',
+        workspaceId: 'project/ws1',
+        model: const ModelSpec(provider: 'openai', model: 'gpt-4o'),
+        role: AgentRole.reviewer,
+      );
+      await reg.captureAuthProfile(memberId: 'grace', systemId: 'wiki');
+      final m = (await reg.get('grace')) as AgentMember;
+      expect(m.authProfiles, hasLength(1));
+      expect(m.model?.model, 'gpt-4o'); // previously wiped (regression)
+      expect(m.role, AgentRole.reviewer);
+    });
 
     // --- m12: update unknown ---
     test('m12 update unknown memberId throws StateError', () {

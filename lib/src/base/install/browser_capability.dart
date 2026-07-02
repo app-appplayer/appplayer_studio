@@ -380,6 +380,8 @@ class BrowserEngineConfig {
     this.timezone,
     this.viewport,
     this.respectRobots = false,
+    this.authAttachEndpoint,
+    this.authUserDataDir,
   });
 
   final int? maxConcurrentContexts;
@@ -392,6 +394,25 @@ class BrowserEngineConfig {
 
   /// Enforce robots.txt (wires a [RobotsCache] backed by an IO fetcher).
   final bool respectRobots;
+
+  /// Interactive-auth session source (S2 — the "reuse a human login instead of
+  /// performing one in automation" model). These apply ONLY to the headful
+  /// auth engine (`open_login` / `auth_capture`), never the headless scraping
+  /// engine — which spawns fresh and injects the sealed profile.
+  ///
+  /// [authAttachEndpoint]: CDP endpoint (`ws://…/devtools/browser/<id>`, or
+  /// `host:port` / `port`) of a Chrome the user launched themselves with
+  /// `--remote-debugging-port`. The auth engine attaches to that live,
+  /// already-signed-in browser instead of spawning a blank one — so SSO
+  /// providers (Google/MS/Okta) that block automation-driven *logins* are
+  /// never asked to authenticate; the existing session is reused.
+  final String? authAttachEndpoint;
+
+  /// Persistent profile dir for the auth engine. When set (and no attach
+  /// endpoint), the headful auth engine reuses this real Chrome profile
+  /// (already signed in) instead of a throwaway temp — the auto-launch
+  /// counterpart to attach. Never deleted on close (`ownsUserDataDir=false`).
+  final String? authUserDataDir;
 
   bool get hasContextDefaults =>
       userAgent != null ||
@@ -514,10 +535,25 @@ class _LazyBrowserEngine {
       policy.resourceCaps = BrowserResourceCaps(maxConcurrentContexts: maxCtx);
     }
     final audit = AuditTrail(sink: InMemoryAuditSink());
-    final launcher = ChromiumLauncher(
-      executablePath: path,
-      headless: _headless,
-    );
+    // Session source for the headful auth engine (S2 human-login reuse):
+    // attach to a running Chrome, else reuse a persistent profile, else the
+    // default fresh-temp spawn. The headless scraping engine always spawns
+    // (it injects the sealed profile — no login involved).
+    final ChromiumLauncher launcher;
+    final attachEndpoint = _headless ? null : cfg.authAttachEndpoint;
+    final authProfile = _headless ? null : cfg.authUserDataDir;
+    if (attachEndpoint != null && attachEndpoint.isNotEmpty) {
+      launcher = ChromiumLauncher.attach(endpoint: attachEndpoint);
+    } else {
+      launcher = ChromiumLauncher(
+        executablePath: path,
+        headless: _headless,
+        userDataDir:
+            (authProfile != null && authProfile.isNotEmpty)
+                ? authProfile
+                : null,
+      );
+    }
     final connection = CdpConnection(launcher: launcher);
     final context = CdpContextPort(connection: connection);
     final engine = CdpEngine(connection: connection);
