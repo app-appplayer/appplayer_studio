@@ -38,18 +38,59 @@ class WorkspaceLoader {
   final ModelSpec? defaultModel;
 
   Future<void> loadActive() async {
-    OpsLog.boot(
-      'wsload',
-      'activeId=${registries.workspace.activeId} root=${config.workspacesRoot}',
-    );
     final wsId = registries.workspace.activeId;
     if (wsId == null) {
       OpsLog.boot('wsload', 'no active workspace');
       return;
     }
-    final wsRoot = wsContentRoot(config.workspacesRoot, wsId);
-
     await registries.workspace.list();
+    await _loadWorkspace(wsId, isActive: true);
+  }
+
+  /// Load EVERY workspace's on-disk knowledge so the kernel agent runtime is
+  /// workspace-COMPLETE: cross-workspace `agent_ask` / `bk.agent.*` resolve
+  /// any member regardless of which workspace is the active UI lens (the
+  /// "all departments run concurrently" model — active is a lens, not an
+  /// execution gate). Without this, only the boot-active workspace's agents
+  /// are mirrored into flowbrain, so `agent_ask({agentId, workspaceId})` for
+  /// another department throws `AgentNotFoundException` even though the member
+  /// exists on disk.
+  ///
+  /// The active workspace is loaded LAST so its entries win any shared-pool
+  /// (flowbrain skill-mirror / global profile-registry) id collision and it —
+  /// and only it — owns the active philosophy.
+  Future<void> loadAll() async {
+    final activeId = registries.workspace.activeId;
+    final workspaces = await registries.workspace.list();
+    final ordered = <String>[
+      for (final w in workspaces)
+        if (w.id != activeId) w.id,
+      if (activeId != null) activeId,
+    ];
+    if (ordered.isEmpty) {
+      OpsLog.boot('wsload', 'loadAll: no workspaces');
+      return;
+    }
+    OpsLog.boot(
+      'wsload',
+      'loadAll: ${ordered.length} workspaces (active=$activeId)',
+    );
+    for (final wsId in ordered) {
+      await _loadWorkspace(wsId, isActive: wsId == activeId);
+    }
+  }
+
+  /// Load one workspace's skills → profiles → philosophies → agents into the
+  /// live system. `isActive` gates the two globally-singular effects so a
+  /// non-active workspace never hijacks them: the active philosophy
+  /// (`_loadPhilosophies`) and — by virtue of the active-last ordering in
+  /// [loadAll] — the winner of any shared-pool id collision.
+  Future<void> _loadWorkspace(String wsId, {required bool isActive}) async {
+    OpsLog.boot(
+      'wsload',
+      'load wsId=$wsId active=$isActive root=${config.workspacesRoot}',
+    );
+    final wsRoot = wsContentRoot(config.workspacesRoot, wsId);
     final members = await registries.member.listForWorkspace(wsId);
 
     // Skills first — flowbrain SkillRuntime registry must be populated
@@ -57,11 +98,11 @@ class WorkspaceLoader {
     // `false` (SkillRuntime can't find the pool entry). Profiles +
     // philosophies feed the same `tryAssign*FromPool` codepath, so they
     // must also be present before any agent mirror.
-    await _loadSkills('$wsRoot/skills');
+    await _loadSkills('$wsRoot/skills', wsId);
     OpsLog.boot('wsload', 'registered skills=${appSkills.length}');
 
     await _loadProfiles('$wsRoot/profiles');
-    await _loadPhilosophies('$wsRoot/philosophies');
+    await _loadPhilosophies('$wsRoot/philosophies', setActive: isActive);
 
     await _mirrorAgentMembers(wsId, members);
   }
@@ -74,6 +115,11 @@ class WorkspaceLoader {
   /// that already exist in the flowbrain registry.
   Future<void> _mirrorAgentMembers(String wsId, List<dynamic> members) async {
     if (!system.isAgentSubsystemActivated) return;
+    // Workspace title for the agent self-identity prompt (test2 #3 — a worker
+    // agent must know its own name + department, not guess the operator or
+    // another persona from ambient context).
+    final ws = await registries.workspace.get(wsId);
+    final wsTitle = ws?.title ?? wsId;
     // Fallback model for yaml agents without a per-agent ModelSpec:
     //   1. host-injected inherited default (configured `settings.llmModel`)
     //   2. explicit Ops yaml provider (`~/.makemind-ops/config.yaml` llm)
@@ -106,14 +152,27 @@ class WorkspaceLoader {
             role: m.role,
             model: modelSpec,
             workspaceId: wsId,
+            systemPrompt: _identityPrompt(m, wsId, wsTitle),
             tags: m.tags,
           );
           mirrored++;
-        } else if (m.model != null && existing.model != m.model) {
-          // yaml carries a per-agent ModelSpec that drifted from flowbrain's
-          // in-memory record (e.g. config-default change between sessions).
-          // Reapply yaml as the persisted truth.
-          await system.agents.updateAgent(m.agentId, model: m.model);
+        } else {
+          // Already mirrored — persisted across a `.kv`-backed reboot. Re-seed
+          // the runtime fields that drift from the durable record: a yaml
+          // ModelSpec change (e.g. config-default change between sessions) and
+          // the self-identity prompt (composed fresh here — not persisted on
+          // the member yaml, so an agent created before this wiring still
+          // gains its identity on the next boot).
+          final identity = _identityPrompt(m, wsId, wsTitle);
+          final modelDrift = m.model != null && existing.model != m.model;
+          final promptDrift = existing.systemPrompt != identity;
+          if (modelDrift || promptDrift) {
+            await system.agents.updateAgent(
+              m.agentId,
+              model: modelDrift ? m.model : null,
+              systemPrompt: promptDrift ? identity : null,
+            );
+          }
         }
         // Mirror the yaml-declared 4-axis assignments into flowbrain owned
         // storage. Without this step the AgentMember.skillIds list shows
@@ -153,14 +212,26 @@ class WorkspaceLoader {
     }
   }
 
-  Future<void> _loadSkills(String dirPath) async {
+  /// The ambient self-identity anchor for a worker agent: who it is and which
+  /// department it belongs to. Seeded as the kernel Agent `systemPrompt` at
+  /// mirror time; charter / role rules are layered on top by the kernel. The
+  /// operator's admin agent has its own system prompt — workers get this so
+  /// they stop answering with the operator's or another persona's identity
+  /// (test2 #3).
+  String _identityPrompt(AgentMember m, String wsId, String wsTitle) {
+    return 'You are ${m.displayName}, a ${m.role.name} in the "$wsTitle" '
+        'workspace ($wsId) of this makemind Ops organization. When asked who '
+        'you are or which team/department you belong to, answer with this '
+        'identity — never the operator or another persona.';
+  }
+
+  Future<void> _loadSkills(String dirPath, String wsId) async {
     final dir = Directory(dirPath);
     if (!await dir.exists()) {
       OpsLog.boot('wsload', 'skill scan skip missing: $dirPath');
       return;
     }
     OpsLog.boot('wsload', 'skill scan: $dirPath');
-    final wsId = registries.workspace.activeId;
     await for (final entity in dir.list()) {
       if (entity is! File) continue;
       if (!entity.path.endsWith('.yaml') && !entity.path.endsWith('.yml')) {
@@ -232,7 +303,10 @@ class WorkspaceLoader {
   /// valuePriorities, prohibitions, judgmentCriteria, directionalAttitudes,
   /// metadata, scopes). The decoded `Ethos` is stored as `EthosRecord`
   /// payload via `Ethos.toJson()`.
-  Future<void> _loadPhilosophies(String dirPath) async {
+  Future<void> _loadPhilosophies(
+    String dirPath, {
+    required bool setActive,
+  }) async {
     final dir = Directory(dirPath);
     if (!await dir.exists()) {
       OpsLog.boot('wsload', 'philosophy scan skip missing: $dirPath');
@@ -270,7 +344,7 @@ class WorkspaceLoader {
         OpsLog.warn('wsload', 'philosophy load failed: ${entity.path}: $e');
       }
     }
-    if (firstId != null) {
+    if (firstId != null && setActive) {
       try {
         await ethosStore.activateEthos(firstId);
       } catch (e) {

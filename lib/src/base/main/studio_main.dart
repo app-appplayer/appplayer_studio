@@ -76,6 +76,29 @@ class StudioMain {
 
     final app = await factory(args);
 
+    // Global async-error backstop. A long-running agent turn (e.g. the Claude
+    // Code fallback subprocess) can surface an error from a stream / timer /
+    // unawaited callback OUTSIDE any tool-handler `await` chain; without a
+    // top-level handler such an uncaught async error can take the whole host
+    // process down mid-run (the reported `agent_ask` disconnect that left the
+    // process dead). Log via stderr (the host's boot/transport channel) and
+    // keep the process alive — per-tool errors are still returned to callers by
+    // the tool wrapper's own try/catch, so this only swallows the out-of-band
+    // class that would otherwise be fatal.
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      stderr.writeln(
+        '${app.toolId}: uncaught async error (host kept alive) — $error',
+      );
+      return true;
+    };
+    final prevFlutterOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      stderr.writeln(
+        '${app.toolId}: flutter error — ${details.exceptionAsString()}',
+      );
+      prevFlutterOnError?.call(details);
+    };
+
     final configRootName = app.configRootName ?? app.toolId;
     final configRoot = p.join(_homeDir(), '.config', configRootName);
     final settingsPath = p.join(configRoot, 'settings.json');

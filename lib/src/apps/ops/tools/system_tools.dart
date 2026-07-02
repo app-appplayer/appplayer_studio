@@ -1374,11 +1374,13 @@ class SystemTools {
     _register(
       server,
       'workspace_record_lesson',
-      'Record an org-level lesson for the active workspace — what worked / a '
+      'Record an org-level lesson for a workspace — what worked / a '
           'rejection pattern / a learning — so it persists at the organization '
           '(not the member) and outlives member turnover. Stored as a '
-          '`category:"org_lesson"` workspace fact in the per-project FactGraph.',
-      const {
+          '`category:"org_lesson"` workspace fact in the per-project FactGraph. '
+          '`workspaceId` targets a specific department (defaults to the active / '
+          'execution-pinned workspace).',
+      {
         'type': 'object',
         'properties': {
           'learning': {'type': 'string'},
@@ -1388,6 +1390,7 @@ class SystemTools {
             'type': 'array',
             'items': {'type': 'string'},
           },
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['learning'],
       },
@@ -1406,6 +1409,7 @@ class SystemTools {
               'outcome': args['outcome'],
             if (args['tags'] != null) 'tags': args['tags'],
           },
+          workspaceId: _wsId(args),
         );
         return {'ok': true, 'key': key};
       },
@@ -3190,19 +3194,24 @@ class SystemTools {
     _register(
       server,
       'knowledge_fact_save',
-      'Save a knowledge fact at category/key (writes to both FactFacade and KV)',
-      const {
+      'Save a knowledge fact at category/key (writes to both FactFacade and KV). '
+          '`workspaceId` attributes the fact to a specific department (defaults '
+          'to the active / execution-pinned workspace) — e.g. record a fact '
+          'ABOUT an `org/media` member while pinned elsewhere.',
+      {
         'type': 'object',
         'properties': {
           'category': {'type': 'string'},
           'key': {'type': 'string'},
           'value': {'type': 'string'},
           'metadata': {'type': 'object'},
+          'workspaceId': _workspaceIdParam,
         },
         'required': ['category', 'key', 'value'],
       },
       (args) async {
         final category = args['category'] as String;
+        final wsId = _wsId(args);
         var metadata = (args['metadata'] as Map?)?.cast<String, Object?>();
         // Project portability: an asset's `fs` locator is stored PROJECT-ROOT
         // RELATIVE so renaming / copying / moving the project folder never
@@ -3222,7 +3231,7 @@ class SystemTools {
             // round-trips after a folder rename / copy / move.
             final anchor = wsBundleDir(
               init.projectRoot,
-              init.registries.workspace.activeId ?? systemWorkspaceSlot,
+              wsId ?? init.registries.workspace.activeId ?? systemWorkspaceSlot,
             );
             metadata = <String, Object?>{
               ...metadata,
@@ -3235,6 +3244,7 @@ class SystemTools {
           key: args['key'] as String,
           value: args['value'] as Object,
           metadata: metadata,
+          workspaceId: wsId,
         );
         return {'saved': true};
       },

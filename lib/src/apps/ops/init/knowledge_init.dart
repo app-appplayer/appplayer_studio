@@ -660,7 +660,11 @@ class KnowledgeInit {
     }
 
     OpsLog.boot('init', 'pre-wsload activeWs="${config.activeWorkspace}"');
-    // 12. Load active workspace knowledge (agents · skills · philosophy · systems).
+    // 12. Load ALL workspaces' knowledge (agents · skills · philosophy) so the
+    // kernel agent runtime is workspace-COMPLETE — every department's members
+    // are resolvable for cross-workspace `agent_ask` / `bk.agent.*`, not just
+    // the active UI lens (test2 #2/#4). The active workspace is loaded last so
+    // it wins shared-pool collisions + owns the active philosophy.
     if (config.activeWorkspace.isNotEmpty) {
       await registries.workspace.setActive(config.activeWorkspace);
       await WorkspaceLoader(
@@ -671,7 +675,7 @@ class KnowledgeInit {
         executor: skillExecutor,
         ethosStore: ethosStore,
         defaultModel: defaultAgentModel,
-      ).loadActive();
+      ).loadAll();
       OpsLog.boot('init', 'wsload done — skills=${appSkills.length}');
       // 12b retired — boot used to seed 5 `workspace_insight` sample
       // facts (vendor_terms · q2_clusters · gate_outcome · avg_confidence

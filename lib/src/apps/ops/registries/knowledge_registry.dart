@@ -110,9 +110,15 @@ class KnowledgeRegistry {
     required String key,
     required Object value,
     Map<String, Object?>? metadata,
+    String? workspaceId,
   }) async {
     final content = value is String ? value : value.toString();
-    final wsId = kv.workspaceId!;
+    // Target workspace for this fact. Defaults to the KV's bound workspace
+    // (active / execution-pinned), but an explicit [workspaceId] attributes the
+    // fact to the department it is ABOUT — e.g. an HR-pinned agent recording an
+    // onboarding fact for an `org/media` member — instead of the caller's own
+    // pin (test2 #5 / workspace-concurrency phase-2).
+    final wsId = workspaceId ?? kv.workspaceId!;
     // Persist the fact into the FactGraph so it is graph-queryable
     // (`bk.fact.query types:['fact']`) and assignable to agents
     // (`bk.agent.assign_facts` scopes a FactQuery over the graph). An
@@ -137,13 +143,19 @@ class KnowledgeRegistry {
         createdAt: DateTime.now(),
       ),
     ]);
-    await kv.set('ws/${kv.workspaceId!}/registry/knowledge/$category/$key', {
-      'category': category,
-      'key': key,
-      'value': value,
-      if (metadata != null) 'metadata': metadata,
-      'savedAt': DateTime.now().toIso8601String(),
-    });
+    // The KV mirror is the active workspace's sandbox — the KV adapter guards
+    // reads/writes to its bound ws (`_assertScope`). Mirror only when the fact
+    // targets that ws; a cross-workspace fact lives in the project-wide
+    // FactGraph alone (which carries it by its `workspaceId` tag).
+    if (wsId == kv.workspaceId!) {
+      await kv.set('ws/$wsId/registry/knowledge/$category/$key', {
+        'category': category,
+        'key': key,
+        'value': value,
+        if (metadata != null) 'metadata': metadata,
+        'savedAt': DateTime.now().toIso8601String(),
+      });
+    }
     _notify();
   }
 
@@ -175,9 +187,15 @@ class KnowledgeRegistry {
     );
 
     // KV fallback / merge — substring match against category / key / value.
-    final kvHits = await listKvFacts(filter: question);
+    // The KV half is the active workspace's sandbox (guarded reads), so it is
+    // read only for a query scoped to that bound ws. A cross-workspace query
+    // relies on the graph half alone, which already carries cross-ws facts by
+    // their `workspaceId` tag (test2 #5).
+    final kvHits = wsScope == kv.workspaceId!
+        ? await listKvFacts(filter: question)
+        : const <KvFactEntry>[];
     final fromKv = <bundle.FactRecord>[];
-    final wsId = kv.workspaceId!;
+    final wsId = wsScope;
     for (final entry in kvHits.take(limit)) {
       fromKv.add(
         bundle.FactRecord(

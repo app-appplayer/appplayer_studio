@@ -136,6 +136,42 @@
   is new.
 
 ### Fixed
+- The kernel agent runtime is now **workspace-complete** — boot mirrors *every*
+  workspace's agents into flowbrain, not just the active one. Previously only
+  the boot-active workspace was loaded (`loadActive`), so `agent_ask({agentId,
+  workspaceId})` for another department threw `AgentNotFoundException` even
+  though the member existed on disk (the member resolved, but the kernel runtime
+  held no such agent), and `bk.agent.*` (e.g. assign-facts) could not see
+  per-project members outside the active lens. `loadAll` loads all workspaces
+  (active last, so it still wins any shared skill-pool / profile-registry id
+  collision and owns the active philosophy), matching the "all departments run
+  concurrently — active is a UI lens, not an execution gate" model. Cross-workspace
+  `agent_ask` / `agent_route` now resolve any member regardless of the active
+  workspace.
+- Worker agents now carry a **self-identity** system prompt ("You are
+  `<displayName>`, a `<role>` in the `<workspace title>` workspace") seeded at
+  mirror time, so an agent answers with its own name and department instead of
+  guessing the operator or another persona from ambient context. Applied on
+  create and re-seeded on an already-mirrored agent whose prompt drifted (a
+  `.kv`-persisted agent created before this wiring gains its identity on the
+  next boot).
+- `knowledge_fact_save` / `workspace_record_lesson` now take a `workspaceId` so a
+  fact can be attributed to the department it is ABOUT — e.g. an HR-pinned agent
+  recording an onboarding fact for an `org/media` member — instead of always
+  landing in the caller's active / execution-pinned workspace. `saveFact`
+  defaults to the bound workspace but routes an explicit target to the
+  project-wide FactGraph (the KV mirror stays the active workspace's sandbox —
+  its adapter guards cross-workspace reads/writes — so a cross-workspace fact
+  lives in the graph alone), and `query(workspaceId:)` round-trips it. Facts do
+  not leak into the caller's own workspace.
+- The host no longer dies on an uncaught async error raised OUTSIDE a tool
+  handler's `await` chain — e.g. a long-running agent turn (the Claude Code
+  fallback subprocess) surfacing an error from a stream / timer / unawaited
+  callback. `StudioMain.run` installs a top-level `PlatformDispatcher.onError`
+  (and `FlutterError.onError`) backstop that logs to stderr and keeps the
+  process alive; per-tool errors are still returned to callers by the tool
+  wrapper's own try/catch. Previously an out-of-band error of this class could
+  take the whole host process down mid-run.
 - Home header no longer overflows on a narrow content area — the title now
   takes flexible space (and ellipsizes) so the Filter / New task buttons stay
   in view instead of a `RenderFlex overflowed` stripe. `OpsCrumb` clips to a
