@@ -1,6 +1,20 @@
 ## [0.1.4] - 2026-06-30
 
 ### Added
+- The Ops org chart is ALIVE now (관제탑 B1): the Organization page layers
+  a real-time overlay over the static chart — per-unit ⏳ pending-approval
+  and ▤ today's-output badges on the unit header (a blocked unit's frame
+  turns to the warn color), an activity glow ring on member chips that
+  invoked within the last two minutes, and DELEGATION ARROWS that light up
+  from the delegating seat to the assignee and fade over ninety seconds.
+  `agent_route` now persists the previously-discarded routing decision as
+  an `agent.routed` fact (from→to·confidence·reason — the delegation trail
+  the chart and the future artifact-journey view read). Activity stores
+  emit no change tick, so a 4s polling overlay provider (alive only while
+  the page is mounted) feeds the painter; chart geometry still rebuilds
+  only on registry mutations, preserving pan/zoom. Live-verified: real
+  route decision drew the arrow, invocation counts landed as ▤ badges.
+  Design: `docs/makemind_ops/ops-living-org-chart.md`.
 - Form Builder screen/issued-content parity + image as an issue medium.
   The on-screen sheet (template preview, compose live view, as-issued
   view) now prints form fields exactly as the issued artifacts do —
