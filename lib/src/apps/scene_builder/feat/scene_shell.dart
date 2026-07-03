@@ -6,7 +6,11 @@ import 'package:appplayer_studio/base.dart'
         BuiltInAppRegistry,
         ChromeBridge,
         DomainLifecycleState,
+        DomainSettingsPanel,
         HeaderAction,
+        ManifestFieldList,
+        SettingsSection,
+        bakeInheritedFields,
         VibeChatController,
         WorkspaceTabActiveScope,
         materialIconByName;
@@ -33,11 +37,15 @@ class SceneShell extends StatefulWidget {
     required this.bundlePath,
     required this.chromeBridge,
     required this.chat,
+    this.inheritedSettings = const <String, Object?>{},
+    this.overridesFile = '',
   });
 
   final String bundlePath;
   final ChromeBridge chromeBridge;
   final VibeChatController chat;
+  final Map<String, Object?> inheritedSettings;
+  final String overridesFile;
 
   @override
   State<SceneShell> createState() => _SceneShellState();
@@ -68,9 +76,12 @@ class _SceneShellState extends State<SceneShell> {
         BuiltInAppContext(
             bundlePath: widget.bundlePath,
             chromeBridge: widget.chromeBridge,
+            inheritedSettings: widget.inheritedSettings,
+            overridesFile: widget.overridesFile,
           )
           ..headerActionsProvider = _provideHeaderActions
-          ..lifecycleStateProvider = _provideLifecycleState;
+          ..lifecycleStateProvider = _provideLifecycleState
+          ..domainSettingsProvider = _provideDomainSettings;
     BuiltInAppRegistry.instance.mount(
       widget.bundlePath,
       const SceneBuilderBuiltInApp(),
@@ -223,6 +234,34 @@ class _SceneShellState extends State<SceneShell> {
 
   /// Active scene project path — owned minimally by this shell.
   String? _activeSceneProject() => _currentProject;
+
+  /// Domain Settings — the per-domain Workspace folder override (where new
+  /// scene projects land; `studio.scene.project.new` consumes it through
+  /// the active context's overridesFile).
+  DomainSettingsPanel? _provideDomainSettings() {
+    return DomainSettingsPanel(
+      name: 'Scene Builder',
+      sections: <SettingsSection>[
+        SettingsSection(
+          label: 'Workspace',
+          body: ManifestFieldList(
+            fields: bakeInheritedFields(const <Map<String, dynamic>>[
+              <String, dynamic>{
+                'key': 'workspaceDir',
+                'label': 'Workspace folder',
+                'type': 'folder',
+                'description':
+                    'Parent directory where new Scene Builder projects '
+                    'land. Inherits from Studio Settings; a per-domain '
+                    'override may be set here.',
+              },
+            ], widget.inheritedSettings),
+            overridesFile: widget.overridesFile,
+          ),
+        ),
+      ],
+    );
+  }
 
   DomainLifecycleState _provideLifecycleState() {
     final cp = _activeSceneProject();

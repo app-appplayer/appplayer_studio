@@ -18,7 +18,10 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../../agent/agent_host.dart';
+import '../../install/builtin_app.dart' show BuiltInAppRegistry;
 import '../../main/chrome_bridge.dart';
+import '../../settings/manifest_field_inheritance.dart'
+    show readPackageOverrides;
 
 /// Per-scene-project chat-context isolation — ensure a scene-project-scoped
 /// manager (`<sceneManager>.<projectId>`) exists and route the chat to it via
@@ -140,6 +143,14 @@ void registerSceneProjectTools(
   required String configRoot,
 }) {
   Future<String?> readWorkspaceDir() async {
+    // Scene Builder's own Domain Settings override wins over the
+    // studio-wide workspaceDir (per-domain project locations).
+    final activeCtx = BuiltInAppRegistry.instance.activeContext;
+    if (activeCtx != null) {
+      final domainDir =
+          readPackageOverrides(activeCtx.overridesFile)['workspaceDir'];
+      if (domainDir is String && domainDir.isNotEmpty) return domainDir;
+    }
     final f = File(p.join(configRoot, 'settings.json'));
     if (!await f.exists()) return null;
     try {

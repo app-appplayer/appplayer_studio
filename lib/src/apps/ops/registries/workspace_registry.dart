@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:appplayer_studio/builtin_api.dart';
 import 'package:yaml/yaml.dart';
 
+import '../infra/ws_paths.dart' show wsContentRoot;
 import '../util/atomic_write.dart';
 
 /// A directed, scoped, read-only knowledge-share grant from a workspace to
@@ -247,6 +248,20 @@ class WorkspaceRegistry {
         'before creating workspaces.',
       );
     }
+    // Hard invariant: the id is `<type>/<slug>`, so its metadata dir nests
+    // exactly two levels under the root — the shape the reload scan reads. A
+    // slash in the slug nests one deeper: the workspace persists but silently
+    // disappears from `workspace_list` on the next boot (created-then-gone
+    // round-trip hole, live-caught 2026-07-03). Hierarchy is [setParent],
+    // not a path-like slug.
+    if (slug.contains('/')) {
+      throw ArgumentError.value(
+        slug,
+        'slug',
+        'must not contain "/" — use a flat slug and express nesting with '
+            'workspace_set_parent',
+      );
+    }
     final id = '${type.name}/$slug';
     if (_cache.containsKey(id)) {
       throw StateError('workspace id already exists: $id');
@@ -276,8 +291,22 @@ class WorkspaceRegistry {
 
   Future<void> delete(String id) async {
     await _ensureLoaded();
-    final dir = Directory('$rootDir/$id');
-    if (await dir.exists()) await dir.delete(recursive: true);
+    // Two on-disk homes must BOTH go, or the delete is only half-applied:
+    //   1. metadata dir `<root>/<id>` — the type-nested `config.yaml` that
+    //      `_ensureLoaded` scans for `workspace_list`.
+    //   2. content bundle `<root>/<slug>.mbd` (`wsContentRoot`) — the members
+    //      / skills / processes that `member_list({workspaceId})` and the Ops
+    //      tab read DIRECTLY by id, independent of the registry list.
+    // Leaking (2) left a deleted workspace's members resolvable and the tab
+    // resurrected it on reboot while `workspace_list` (fed by (1)) showed it
+    // gone — a half-delete inconsistency.
+    final metaDir = Directory('$rootDir/$id');
+    if (await metaDir.exists()) await metaDir.delete(recursive: true);
+    final contentPath = wsContentRoot(rootDir, id);
+    if (contentPath.isNotEmpty) {
+      final contentDir = Directory(contentPath);
+      if (await contentDir.exists()) await contentDir.delete(recursive: true);
+    }
     // Clear the workspace's KV keys. Disable scope enforcement for the bulk
     // delete (we are removing another workspace's keys, not the active one).
     final prevWs = kv.workspaceId;

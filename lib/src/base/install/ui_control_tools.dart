@@ -19,8 +19,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show PopupMenuEntry, PopupMenuItem;
 import 'package:flutter/rendering.dart';
@@ -1025,9 +1023,11 @@ void registerUiControlTools(
         'find widgets when the exact elementId is unknown — e.g. '
         'locate the "Inherit from Studio" toggle by its visible label '
         'or find every dialog action button by `type:"dialog_action"`. '
-        'Only widgets tagged with MetaData (see inspectTag) appear in '
-        'results — see `studio.debug.layout_snapshot` for the canonical '
-        'node enumeration.',
+        'Tagged (MetaData / inspectTag) widgets match first; when the '
+        'tag search finds nothing, a VISIBLE-TEXT fallback walks the '
+        'live element tree (RichText), so text on native built-in pages '
+        'is findable too (matchedField "visibleText", elementId null — '
+        'tap via the returned rect centre).',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
@@ -1096,12 +1096,25 @@ void registerUiControlTools(
           if (v is String && v.isNotEmpty) {
             final hit = exact ? (v == q) : v.toLowerCase().contains(q);
             if (hit) {
+              // Same rect shape as the visible-text fallback
+              // ({x, y, width, height}) — the snapshot node carries a
+              // positional list, and a mixed shape confuses LLM drivers
+              // (the seeded manual documents the map form).
+              final r = n['rect'];
               matches.add(<String, dynamic>{
                 'elementId': n['id'] ?? v,
                 'type': n['type'],
                 'matchedField': f,
                 'matchedValue': v,
-                'rect': n['rect'],
+                if (r is List && r.length == 4)
+                  'rect': <String, double>{
+                    'x': (r[0] as num).toDouble(),
+                    'y': (r[1] as num).toDouble(),
+                    'width': (r[2] as num).toDouble(),
+                    'height': (r[3] as num).toDouble(),
+                  }
+                else if (r != null)
+                  'rect': r,
                 if (n['label'] != null) 'label': n['label'],
                 if (n['text'] != null) 'text': n['text'],
                 if (n['title'] != null) 'title': n['title'],
@@ -1111,6 +1124,18 @@ void registerUiControlTools(
           }
         }
         if (matches.length >= limit) break;
+      }
+      // Visible-text fallback: MetaData tagging covers the DSL-rendered
+      // surfaces, but native built-in pages (Form Builder / Ops cards,
+      // NavigationRail labels, dialogs) carry no inspectTag — walk the
+      // live element tree for on-screen text so `find` works on ANY page
+      // (live-caught 2026-07-03: `find "Issues"` returned 0 on a visible
+      // rail label). Runs when the tag search found nothing and the query
+      // targets text-ish fields.
+      if (matches.isEmpty && (field == 'any' || field == 'text')) {
+        matches.addAll(
+          _visibleTextMatches(query, exact: exact, limit: limit),
+        );
       }
       return _text(
         jsonEncode(<String, dynamic>{
@@ -1427,14 +1452,36 @@ Future<void> _dispatchTap(double x, double y, {int holdMs = 40}) async {
 
 int _nextPointer = 1_000_000;
 
-PointerDeviceKind _pointerKind() {
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.iOS:
-    case TargetPlatform.android:
-      return PointerDeviceKind.touch;
-    default:
-      return PointerDeviceKind.mouse;
-  }
+/// Gesture kind for synthetic taps / drags: ALWAYS touch, on every platform
+/// — the same choice `flutter_test`'s WidgetTester makes. A mouse-kind
+/// Down/Up without a preceding PointerAddedEvent trips MouseTracker's
+/// device-lifecycle assertion (`(event is PointerAddedEvent) == (lastEvent
+/// is PointerRemovedEvent)`), and the corrupted tracker then silently
+/// swallows every later synthetic tap (live-caught 2026-07-03). Touch
+/// events bypass MouseTracker entirely; gesture recognizers accept both
+/// kinds. Mouse-only interactions (hover / right-click / wheel) go through
+/// the persistent synthetic mouse device instead ([_ensureSyntheticMouse]).
+PointerDeviceKind _pointerKind() => PointerDeviceKind.touch;
+
+/// One persistent synthetic MOUSE device for the mouse-only paths.
+/// MouseTracker requires a device's FIRST event to be PointerAddedEvent —
+/// add it once and keep it alive (removing it would immediately cancel the
+/// hover state the caller wanted to capture).
+const int _kSyntheticMouseDevice = 990001;
+bool _syntheticMouseAdded = false;
+
+void _ensureSyntheticMouse(Offset position) {
+  if (_syntheticMouseAdded) return;
+  _syntheticMouseAdded = true;
+  GestureBinding.instance.dispatchEvent(
+    PointerAddedEvent(
+      timeStamp: SchedulerBinding.instance.currentSystemFrameTimeStamp,
+      position: position,
+      kind: PointerDeviceKind.mouse,
+      device: _kSyntheticMouseDevice,
+    ),
+    null,
+  );
 }
 
 /// Resolve a position from either `elementId` (rect centre) or
@@ -1463,6 +1510,8 @@ Offset? _resolvePosition(
 Future<void> _dispatchScroll(double x, double y, double dx, double dy) async {
   final binding = GestureBinding.instance;
   final pos = Offset(x, y);
+  // Wheel scroll is a mouse signal — same persistent device lifecycle.
+  _ensureSyntheticMouse(pos);
   final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
   final hitResult = HitTestResult();
   binding.hitTest(hitResult, pos);
@@ -1472,6 +1521,7 @@ Future<void> _dispatchScroll(double x, double y, double dx, double dy) async {
       position: pos,
       scrollDelta: Offset(dx, dy),
       kind: PointerDeviceKind.mouse,
+      device: _kSyntheticMouseDevice,
     ),
     hitResult,
   );
@@ -1480,6 +1530,7 @@ Future<void> _dispatchScroll(double x, double y, double dx, double dy) async {
 Future<void> _dispatchHover(double x, double y) async {
   final binding = GestureBinding.instance;
   final pos = Offset(x, y);
+  _ensureSyntheticMouse(pos);
   final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
   final hitResult = HitTestResult();
   binding.hitTest(hitResult, pos);
@@ -1488,6 +1539,7 @@ Future<void> _dispatchHover(double x, double y) async {
       timeStamp: now,
       position: pos,
       kind: PointerDeviceKind.mouse,
+      device: _kSyntheticMouseDevice,
     ),
     hitResult,
   );
@@ -1496,6 +1548,9 @@ Future<void> _dispatchHover(double x, double y) async {
 Future<void> _dispatchSecondaryTap(double x, double y) async {
   final binding = GestureBinding.instance;
   final pos = Offset(x, y);
+  // Right-click is inherently a MOUSE gesture — use the persistent
+  // synthetic mouse device so MouseTracker sees a legal lifecycle.
+  _ensureSyntheticMouse(pos);
   final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
   final pointer = _nextPointer++;
   final hitResult = HitTestResult();
@@ -1506,6 +1561,7 @@ Future<void> _dispatchSecondaryTap(double x, double y) async {
       pointer: pointer,
       position: pos,
       kind: PointerDeviceKind.mouse,
+      device: _kSyntheticMouseDevice,
       buttons: kSecondaryMouseButton,
     ),
     hitResult,
@@ -1517,6 +1573,7 @@ Future<void> _dispatchSecondaryTap(double x, double y) async {
       pointer: pointer,
       position: pos,
       kind: PointerDeviceKind.mouse,
+      device: _kSyntheticMouseDevice,
       buttons: 0,
     ),
     hitResult,
@@ -1782,4 +1839,48 @@ Future<bool> _dispatchMacKey(_KeySpec spec, Set<String> mods) async {
   } catch (_) {
     return false;
   }
+}
+
+/// Walk the live element tree for on-screen TEXT matching [query] — the
+/// `studio.ui.find` fallback for widgets without an inspectTag (native
+/// built-in pages). Matches on [RichText] (every `Text` renders through
+/// one, so matching `Text` too would double-report) and returns tappable
+/// global rects. Off-stage / zero-size render objects are skipped.
+List<Map<String, dynamic>> _visibleTextMatches(
+  String query, {
+  required bool exact,
+  required int limit,
+}) {
+  final results = <Map<String, dynamic>>[];
+  final q = exact ? query : query.toLowerCase();
+  void visit(Element element) {
+    if (results.length >= limit) return;
+    final widget = element.widget;
+    if (widget is RichText) {
+      final text = widget.text.toPlainText();
+      final hit = exact ? (text == q) : text.toLowerCase().contains(q);
+      if (hit && text.isNotEmpty) {
+        final ro = element.renderObject;
+        if (ro is RenderBox && ro.attached && ro.hasSize && ro.size.width > 0) {
+          final topLeft = ro.localToGlobal(Offset.zero);
+          results.add(<String, dynamic>{
+            'elementId': null,
+            'type': 'visibleText',
+            'matchedField': 'visibleText',
+            'matchedValue': text,
+            'rect': <String, double>{
+              'x': topLeft.dx,
+              'y': topLeft.dy,
+              'width': ro.size.width,
+              'height': ro.size.height,
+            },
+          });
+        }
+      }
+    }
+    element.visitChildren(visit);
+  }
+  final root = WidgetsBinding.instance.rootElement;
+  if (root != null) visit(root);
+  return results;
 }

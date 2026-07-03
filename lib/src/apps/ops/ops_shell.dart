@@ -60,12 +60,14 @@ import 'package:appplayer_studio/base.dart'
         LifecycleHandler,
         LifecycleSlots,
         SettingsSection,
+        ManifestFieldList,
+        bakeInheritedFields,
+        effectiveWorkspaceDir,
         StudioBackbone,
         StudioWelcomePanel,
         WorkspaceTabActiveScope,
         inspectTag;
 import 'infra/project_seed.dart' show applyOpsProjectSeed, isOpsProjectDir;
-import 'infra/ws_paths.dart' show wsBundleDir;
 import 'package:appplayer_studio/ui.dart' as ui;
 
 /// Sidebar route — mirrors the order of `apps/Ops/dart/lib/widgets/
@@ -194,28 +196,31 @@ class _OpsShellState extends State<OpsShell> {
   /// seed root.
   String? _currentProject;
 
-  // Per-workspace chat-context isolation — Ops's operational unit is the
-  // workspace, so each one gets a scope-qualified manager clone
-  // (`ops.manager.<workspaceId>`) and the chat is routed to it via
-  // `chatManagerOverride`, exactly like App Builder / Scene per project.
-  // Without this, all workspaces shared the single `ops.manager` conversation
-  // (FlowBrain keys conv by agentId) and chat leaked across workspaces.
-  // The active workspace changes through the workspace registry (driven by
-  // the `workspace_switch` / `workspace_create` MCP tools, decoupled from
-  // this widget), so we subscribe to its `changes` stream rather than react
-  // to a rebuild. `_scopedManagerId` is cached so tab re-activation re-applies
-  // it without re-deriving from the volatile `activeChatAgentId`.
+  // Single per-PROJECT chat coordinator — the manager is scoped by the ops
+  // project path alone (`ops.manager.<opsProject>`) and the chat routes to it
+  // via `chatManagerOverride`, exactly like App Builder / Scene Builder. The
+  // coordinator is the Studio-level command channel for the whole project — the
+  // one human interface — NOT a member of any workspace's org chart and NOT
+  // per-workspace. Workspaces are data-isolation lenses that all run
+  // concurrently (the kernel agent runtime is workspace-complete via
+  // `loadAll`), so the active workspace still changes through the workspace
+  // registry (driven by `workspace_switch` / `workspace_create`, decoupled from
+  // this widget) — we subscribe to its `changes` stream — but a switch only
+  // refreshes the chat roster (the now-viewed department's agents); it never
+  // re-scopes the coordinator or re-keys its single conversation. Department
+  // isolation stays at the data layer (facts / members / skills per workspace).
+  // `_scopedManagerId` is cached so tab re-activation re-applies it without
+  // re-deriving from the volatile `activeChatAgentId`.
   StreamSubscription<void>? _wsChangesSub;
   StreamSubscription<void>? _memberChangesSub;
   String? _scopedManagerId;
 
   /// Ops's base chat manager id — the seed ships `ops.manager` as the Ops
   /// project manager (standard `.manager` naming, parity with App Builder /
-  /// Scene Builder / Studio managers; was the non-standard `ops.manager`). Used
-  /// as the clone base for per-workspace managers. Referenced directly (not
-  /// read from the volatile `activeChatAgentId`, the host's deferred-synced
-  /// display value) so the scoped clone inherits `ops.manager`'s persona /
-  /// tool scope.
+  /// Scene Builder / Studio managers). Used as the base for the per-project
+  /// coordinator clone. Referenced directly (not read from the volatile
+  /// `activeChatAgentId`, the host's deferred-synced display value) so the
+  /// scoped clone inherits `ops.manager`'s persona / tool scope.
   static const String _opsManagerId = 'ops.manager';
 
   // The chrome lifecycle slots (`newProjectInActive` /
@@ -330,6 +335,23 @@ class _OpsShellState extends State<OpsShell> {
       name: 'Ops',
       sections: <SettingsSection>[
         SettingsSection(
+          label: 'Workspace',
+          body: ManifestFieldList(
+            fields: bakeInheritedFields(const <Map<String, dynamic>>[
+              <String, dynamic>{
+                'key': 'workspaceDir',
+                'label': 'Workspace folder',
+                'type': 'folder',
+                'description':
+                    'Parent directory where new Ops projects land. '
+                    'Inherits from Studio Settings; a per-domain override '
+                    'may be set here.',
+              },
+            ], widget.inheritedSettings),
+            overridesFile: widget.overridesFile,
+          ),
+        ),
+        SettingsSection(
           label: 'Configuration',
           body: FutureBuilder<OpsBootResult>(
             future: boot,
@@ -412,9 +434,12 @@ class _OpsShellState extends State<OpsShell> {
   /// Host's `workspaceDir` setting forwarded via `inheritedSettings`
   /// — used as the `New project` dialog's default parent.
   String? _readWorkspaceDir() {
-    final v = widget.inheritedSettings['workspaceDir'];
-    if (v is String && v.isNotEmpty) return v;
-    return null;
+    // Domain override (Ops Domain Settings → Workspace folder) wins over
+    // the inherited studio-wide value — per-domain project locations.
+    return effectiveWorkspaceDir(
+      inherited: widget.inheritedSettings,
+      overridesFile: widget.overridesFile,
+    );
   }
 
   /// Read by host `_syncHeaderActions` and pushed into
@@ -640,7 +665,10 @@ class _OpsShellState extends State<OpsShell> {
       final reg = (OpsBuiltInApp.liveInit ?? result.init).registries.workspace;
       _wsChangesSub?.cancel();
       _wsChangesSub = reg.changes.listen((_) {
-        if (mounted) _applyOpsScopedManager(reg.activeId);
+        // Workspace switch = data-lens change only. The coordinator + its
+        // single per-project conversation stay put; just refresh the roster so
+        // the chat chip lists the now-viewed department's agents.
+        if (mounted) _publishChatRoster();
       });
       // Refresh the chat agent roster whenever this project's members change
       // (agent create / update / delete) so a freshly created agent becomes
@@ -652,7 +680,7 @@ class _OpsShellState extends State<OpsShell> {
       _memberChangesSub = memberReg.changes.listen((_) {
         if (mounted) _publishChatRoster();
       });
-      _applyOpsScopedManager(reg.activeId);
+      _applyOpsScopedManager();
     });
     return <String, dynamic>{
       'ok': true,
@@ -661,45 +689,35 @@ class _OpsShellState extends State<OpsShell> {
     };
   }
 
-  /// Ensure a workspace-scoped manager clone
-  /// (`ops.manager.<opsProject>.<workspaceId>`) exists and route the chat to it
-  /// via `chatManagerOverride` — Ops's per-unit chat isolation. The unit is
-  /// (ops project ⊃ workspace): the same workspace slug under different ops
-  /// projects is a DIFFERENT unit, so the scope must encode BOTH levels —
-  /// keying on `workspaceId` alone would collide (e.g. every ops project's
-  /// `tasks` workspace sharing one conversation). Caches the qualified id so a
-  /// tab re-activation re-applies it ([didChangeDependencies]); only writes the
-  /// shared bridge override while this is the active tab. Best-effort.
-  Future<void> _applyOpsScopedManager(String? workspaceId) async {
-    if (workspaceId == null || workspaceId.isEmpty) return;
+  /// Ensure the single per-PROJECT coordinator manager
+  /// (`ops.manager.<opsProject>`) exists and route the chat to it via
+  /// `chatManagerOverride` — exactly like App Builder / Scene Builder
+  /// (`_applyScopedManager`, scoped by project path). The coordinator is the
+  /// Studio-level command channel for the WHOLE ops project — the single human
+  /// interface for all work instructions — NOT a member of any workspace's org
+  /// chart and NOT per-workspace. Workspaces are data-isolation lenses that all
+  /// run concurrently (the kernel agent runtime is workspace-complete via
+  /// `loadAll`), so switching one changes the VIEW, not the coordinator or its
+  /// single conversation. The chat + `fs.*` anchor stays the ops project (set
+  /// once at bind — [_bindProject]'s `setActiveTabProject(dir)`), so there is
+  /// ONE coordinator conversation per project. Caches the qualified id for tab
+  /// re-activation ([didChangeDependencies]); only writes the shared bridge
+  /// override while this is the active tab. Best-effort.
+  Future<void> _applyOpsScopedManager() async {
     final opsProject = _currentProject;
     if (opsProject == null || opsProject.isEmpty) return;
     try {
-      // Full hierarchical unit id = ops project path + workspace id.
-      final unitId = '$opsProject/$workspaceId';
+      // Scope by the ops PROJECT path (same-name-≠-same-thing → full path).
       final qualified = await AgentHost.shared?.ensureScopedManager(
         _opsManagerId,
-        unitId,
+        opsProject,
       );
       if (qualified == null || !mounted) return;
       _scopedManagerId = qualified;
       if (_isActiveTab) {
         widget.chromeBridge.chatManagerOverride.value = qualified;
-        // Re-key the host chat controller (UI panel + persistence + the MCP
-        // `studio.chat.send` path, which both derive `pkgPath::currentProject`)
-        // to THIS workspace so the visible chat is per-workspace, matching the
-        // conv isolation. The workspace's real bundle dir
-        // (`<opsProject>/<wsId_>.mbd`, materialised by `applyOpsWorkspaceSeed`)
-        // is the per-workspace unit path carried via `t.currentProject`. The
-        // Ops header stays the ops project (it reads `lifecycleState`, driven
-        // by Ops's own `_currentProject`, not `t.currentProject`).
-        // Same anchor the host `fs.*` capability resolves project-relative
-        // links against (see [wsBundleDir]) — keep this single-sourced so
-        // asset-locator save/resolve stay consistent.
-        final wsDir = wsBundleDir(opsProject, workspaceId);
-        widget.chromeBridge.setActiveTabProject?.call(wsDir);
-        // Publish this workspace's agents so the chat chip can list + directly
-        // converse with them (manager stays the default selection).
+        // The active workspace's agents are still listed on the chat chip for
+        // direct conversation (the coordinator stays the default selection).
         _publishChatRoster();
       }
     } catch (_) {

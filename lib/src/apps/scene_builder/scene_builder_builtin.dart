@@ -85,6 +85,8 @@ class SceneBuilderBuiltInApp extends BuiltInApp {
       bundlePath: bundlePath,
       chromeBridge: chromeBridge,
       chat: chat,
+      inheritedSettings: inheritedSettings,
+      overridesFile: overridesFile,
     );
   }
 }

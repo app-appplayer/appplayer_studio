@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart'
     show
+        effectiveWorkspaceDir,
         BuiltInApp,
         BuiltInAppContext,
         BuiltInAppRegistry,
@@ -578,9 +579,16 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
           : own.lastProjectPath;
       final inh = widget.inheritedSettings;
       final settings = VibeSettings(
-        // Studio config from the host (falls back to the sidecar value
-        // when the host hasn't set it).
-        workspaceDir: (inh['workspaceDir'] as String?) ?? own.workspaceDir,
+        // Workspace folder: the DOMAIN override (Domain Settings →
+        // Workspace folder, persisted in overridesFile) wins over the
+        // studio-wide value — previously the field was shown + saved but
+        // never consumed, so per-domain project locations silently fell
+        // back to the studio dir (display-only trap, fixed 2026-07-03).
+        workspaceDir: effectiveWorkspaceDir(
+              inherited: inh,
+              overridesFile: widget.overridesFile,
+            ) ??
+            own.workspaceDir,
         mcpServerUrl: inh['mcpServerUrl'] as String?,
         mcpTransport: (inh['mcpTransport'] as String?) ?? 'http',
         llmApiKey: inh['llmApiKey'] as String?,

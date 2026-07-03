@@ -1,0 +1,166 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:appplayer_studio/base.dart'
+    show
+        BuiltInApp,
+        BuiltInLauncher,
+        BuiltinToolRegistry,
+        ChromeBridge,
+        FormCapabilityBinding,
+        StudioBackbone;
+// Builtin = OS-level app · host wrapper API only. Zero direct
+// `package:brain_kernel` / `mcp_host` / `mcp_server` imports; the engine
+// (`mcp_form`) is reached exclusively through the host `form.*` capability.
+
+import 'init/form_init.dart';
+import 'tools/form_builder_tools.dart';
+import 'ui/form_shell.dart';
+
+/// Form Builder — template create/manage + LLM object insertion + document
+/// issuing (immutable snapshots with provenance + supersedes corrections).
+///
+/// Storage = the bound project's FactGraph via the kernel (templates through
+/// the rebound host `form.*` capability; drafts/issues through
+/// `form_builder.*`). The app owns NO content data (rosters, ledgers…) —
+/// that lives in the knowledge/execution system (Ops); this app is the
+/// document-issuing instrument.
+class FormBuilderBuiltInApp extends BuiltInApp {
+  const FormBuilderBuiltInApp();
+
+  @override
+  String get id => 'form_builder';
+
+  @override
+  String get label => 'Form Builder';
+
+  static const String _builtInMarker = '.builtin_form_builder';
+
+  /// Live bound-project core, resolved at CALL TIME by tool handlers (the
+  /// stale-init trap: handlers registered at host boot must reach the
+  /// currently bound project, not the one captured at registration).
+  static FormInit? _liveInit;
+  static FormInit? get liveInit => _liveInit;
+
+  static String? _bootedProject;
+  static Future<FormInit>? _bootFuture;
+
+  /// Boot (or rebind) the Form Builder core to [projectRoot]. Project-keyed:
+  /// a different root disposes the previous init and re-points the host
+  /// `form.*` template persistence at the new project's FactGraph.
+  ///
+  /// The capability rebind happens HERE, after the staleness check — never
+  /// inside `FormInit.boot` — so a slower earlier boot that lost the race
+  /// can neither become `liveInit` nor clobber the newer project's `form.*`
+  /// binding (last bind wins deterministically).
+  static Future<FormInit> ensureBoot(String projectRoot) async {
+    if (_bootedProject == projectRoot && _bootFuture != null) {
+      return _bootFuture!;
+    }
+    final previous = _liveInit;
+    _liveInit = null;
+    _bootedProject = projectRoot;
+    final future = () async {
+      if (previous != null) await previous.dispose();
+      return FormInit.boot(projectRoot, p.basename(projectRoot));
+    }();
+    _bootFuture = future;
+    final init = await future;
+    if (_bootedProject == projectRoot) {
+      _liveInit = init;
+      await FormCapabilityBinding.bindProject(
+        facts: init.system.facts,
+        workspaceId: init.projectId,
+      );
+    }
+    return init;
+  }
+
+  /// Unbind the current project (tab close / project close): the host
+  /// `form.*` falls back to its in-memory default.
+  static Future<void> closeProject() async {
+    final previous = _liveInit;
+    _liveInit = null;
+    _bootedProject = null;
+    _bootFuture = null;
+    FormCapabilityBinding.unbindProject();
+    if (previous != null) await previous.dispose();
+  }
+
+  @override
+  bool canHandle(String bundlePath) {
+    final dir = Directory(bundlePath);
+    if (!dir.existsSync()) return false;
+    // Two recognised forms (Ops parity — the host may resolve either the
+    // launcher marker dir or the seed mbd path):
+    if (File(p.join(bundlePath, _builtInMarker)).existsSync()) return true;
+    final manifest = File(p.join(bundlePath, 'manifest.json'));
+    if (!manifest.existsSync()) return false;
+    try {
+      // Cheap substring check — avoids a JSON decode on every chrome
+      // `matchFor` walk (same rationale as Ops).
+      final body = manifest.readAsStringSync();
+      return body.contains('"id": "com.makemind.form_builder"') ||
+          body.contains('"id":"com.makemind.form_builder"');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  BuiltInLauncher launcher(ChromeBridge chromeBridge, String workspaceDir) {
+    final defaultDir = p.join(workspaceDir, 'form_builder');
+    final dir = Directory(defaultDir);
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    final marker = File(p.join(defaultDir, _builtInMarker));
+    if (!marker.existsSync()) {
+      marker.writeAsStringSync('');
+    }
+    return BuiltInLauncher(
+      id: id,
+      label: label,
+      iconName: 'description',
+      launchPath: defaultDir,
+      onLaunch: () async {
+        /* marker already exists from `launcher()` */
+      },
+    );
+  }
+
+  @override
+  Future<void> registerHostTools(
+    BuiltinToolRegistry server,
+    ChromeBridge chromeBridge, {
+    StudioBackbone? backbone,
+  }) async {
+    FormBuilderTools(liveInit: () => _liveInit, server: server)
+        .registerOn(server);
+  }
+
+  @override
+  Widget mount({
+    required BuildContext context,
+    required String bundlePath,
+    required ChromeBridge chromeBridge,
+    required dynamic Function(String tabKey) chatLookup,
+    required String tabKey,
+    required BuiltinToolRegistry server,
+    required StudioBackbone backbone,
+    Map<String, Object?> inheritedSettings = const <String, Object?>{},
+    String overridesFile = '',
+  }) {
+    return FormShell(
+      key: ValueKey('form_builder::$bundlePath'),
+      app: this,
+      bundlePath: bundlePath,
+      chromeBridge: chromeBridge,
+      server: server,
+      backbone: backbone,
+      inheritedSettings: inheritedSettings,
+      overridesFile: overridesFile,
+    );
+  }
+}

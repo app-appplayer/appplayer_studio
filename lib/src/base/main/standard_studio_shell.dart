@@ -17,7 +17,7 @@ import 'dart:ui' as ui show Image, ImageByteFormat, PictureRecorder;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/rendering.dart' show OffsetLayer, RenderRepaintBoundary;
 
 import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as fb;
@@ -934,11 +934,21 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
     double pixelRatio = 1.0,
     Rect? area,
   }) async {
-    final ctx = _shellRootKey.currentContext;
-    if (ctx == null) return null;
-    final ro = ctx.findRenderObject();
-    if (ro is! RenderRepaintBoundary) return null;
-    final image = await ro.toImage(pixelRatio: pixelRatio);
+    // `showDialog` mounts under the ROOT navigator, ABOVE the shell's
+    // RepaintBoundary — a boundary-scoped capture silently drops every
+    // open dialog/overlay, which reads as "the tap did nothing" to an LLM
+    // driving the UI (live-misdiagnosed 2026-07-03; Ops's ui_capture had
+    // the same fix). Capture the whole render view so overlays are
+    // included; fall back to the shell boundary when the root layer
+    // isn't an OffsetLayer.
+    ui.Image? image = await _captureRootViewImage(pixelRatio);
+    if (image == null) {
+      final ctx = _shellRootKey.currentContext;
+      if (ctx == null) return null;
+      final ro = ctx.findRenderObject();
+      if (ro is! RenderRepaintBoundary) return null;
+      image = await ro.toImage(pixelRatio: pixelRatio);
+    }
     try {
       ui.Image finalImage = image;
       if (area != null) {
@@ -951,6 +961,26 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       return byteData?.buffer.asUint8List();
     } finally {
       image.dispose();
+    }
+  }
+
+  /// Whole-window image (root render view layer) — includes root-navigator
+  /// overlays (dialogs, menus) that live above the shell boundary. Null when
+  /// the root layer shape is unexpected (caller falls back to the boundary).
+  Future<ui.Image?> _captureRootViewImage(double pixelRatio) async {
+    try {
+      final views = WidgetsBinding.instance.renderViews;
+      if (views.isEmpty) return null;
+      final renderView = views.first;
+      // ignore: invalid_use_of_protected_member
+      final layer = renderView.layer;
+      if (layer is! OffsetLayer) return null;
+      return await layer.toImage(
+        renderView.paintBounds,
+        pixelRatio: pixelRatio,
+      );
+    } catch (_) {
+      return null;
     }
   }
 

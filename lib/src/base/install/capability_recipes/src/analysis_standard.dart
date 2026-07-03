@@ -26,9 +26,8 @@ AnalysisPort standardAnalysisPort({
     parameterResolver: ParameterResolver(),
   );
   final jobManager = JobManager(storage: _InMemoryStorage<AnalysisJob>());
-  final artifactStore = ArtifactStore(
-    storage: _InMemoryStorage<AnalysisArtifact>(),
-  );
+  final artifactStore =
+      ArtifactStore(storage: _InMemoryStorage<AnalysisArtifact>());
   final dataSourceRegistry = DataSourceRegistry();
 
   final catalog = FunctionCatalog();
@@ -145,26 +144,19 @@ class _NoopEventPort implements EventPort {
 class _NoopMetricPort implements MetricPort {
   @override
   Future<MetricValue> compute(
-    String metricName,
-    Map<String, dynamic> context,
-  ) async => MetricValue(value: 0.0, timestamp: DateTime.now());
+          String metricName, Map<String, dynamic> context) async =>
+      MetricValue(value: 0.0, timestamp: DateTime.now());
 
   @override
-  Future<void> record(
-    String metricName,
-    double value, {
-    Map<String, String>? tags,
-  }) async {}
+  Future<void> record(String metricName, double value,
+      {Map<String, String>? tags}) async {}
 
   @override
   Stream<MetricEvent> watch(String metricName) =>
       const Stream<MetricEvent>.empty();
 
   @override
-  Future<List<MetricValue>> history(
-    String metricName, {
-    DateTime? start,
-    DateTime? end,
-    int? limit,
-  }) async => <MetricValue>[];
+  Future<List<MetricValue>> history(String metricName,
+          {DateTime? start, DateTime? end, int? limit}) async =>
+      <MetricValue>[];
 }

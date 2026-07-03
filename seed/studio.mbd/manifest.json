@@ -250,7 +250,7 @@
       {
         "id": "studio_host_builtins",
         "name": "Built-in apps catalog",
-        "description": "The three built-in apps the host ships — id / label / purpose / tool surface / default agent. Manager reads this to route bundle requests.",
+        "description": "The four built-in apps the host ships - id / label / purpose / tool surface / default agent. Manager reads this to route bundle requests.",
         "documents": [
           {
             "id": "app_builder",
@@ -266,6 +266,12 @@
             "id": "makemind_ops",
             "title": "makemind_ops · Ops",
             "content": "Built-in id: makemind_ops\nLabel: Ops\nDefault chat agent: ops.manager.\nPurpose: workspace operations — members / tasks / processes / philosophies / skills / agents / knowledge / bundles. A project-bound surface (per-project root); each project lives at `<workspaceDir>/<project>/` with marker `project.opsproj` + per-workspace `.mbd` directories.\nTool surface: `makemind_ops.*` family — workspace_create / workspace_list / member_* / task_* / process_* / skill_* / profile_* / philosophy_* / knowledge_* / bundle_* + 9 browser primitives (page_view / web_search / extract / crawl / monitor / submit_form / download / page_audit_role / page_compare_actors). Plus the kernel-standard `bk.*` surface.\nKnowledge: `ops_overview` (5 docs — overview · capabilities · workspace_structure · tool_surface · agents).\nTrigger from Home: user says 'manage workspace' / 'add member' / 'kick off process' → host manager opens the Ops tab and dispatches to `ops.manager`."
+          },
+          {
+            "id": "form_builder",
+            "title": "Form Builder",
+            "format": "markdown",
+            "content": "Built-in id: form_builder\nLabel: Form Builder\nDefault chat agent: form_builder.manager (per-project coordinator clone).\nPurpose: form templates (create/manage/version) + object insertion (human or schema-constrained LLM fill) + document ISSUING - immutable snapshots with provenance, per-year issue numbers, and supersedes corrections (quotations, official letters, resumes, periodic reports). Owns NO content data (rosters, ledgers live in Ops); a form is a projection of those records. Project-bound surface: marker `project.formproj`, artifacts under `<project>/forms/<issueNumber>/`, templates/drafts/issues persist as facts in the project FactGraph.\nTool surface: host `form.*` capability (13 verbs incl. save_template / create_document / validate / render / template_schema / capacity - template persistence is fact-backed while a form project is bound) + `form_builder.*` (draft_save/draft_get/draft_list/draft_delete + issue/issue_list/issue_get). Authoring/issuing manual = `studio://knowledge/form_builder_manual/*`."
           }
         ]
       },
@@ -283,6 +289,43 @@
             "id": "safety_rules",
             "title": "Safety rules",
             "content": "1. Never invent agent ids / tool names / bundle paths — call `bk.agent.list` / `studio.meta.list_tools` / `studio.bundle.list` first when uncertain.\n2. `studio.chrome.create_package` · `studio.bundle.install` · `studio.bundle.activate` · `studio.bundle.uninstall` are internal — the host gates external callers. Surface the gate's reject message verbatim when you hit one.\n3. When dispatching with `bk.agent.dispatch`, pass the user's original intent (or a clear paraphrase) as the `input`; do not over-summarise.\n4. Tool errors surface as `[error] …` in this chat — relay them to the user with the corrective action (e.g. 'set the API key in Settings → LLM') instead of pretending the call succeeded.\n5. When `bk.knowledge.query` returns no hits, say so and ask the user to clarify or point at a doc — don't extrapolate."
+          }
+        ]
+      },
+      {
+        "id": "studio_debug_manual",
+        "name": "Studio debugging & UI-verification manual",
+        "description": "How an LLM (or the manager) drives, inspects, and VERIFIES the Studio UI over MCP for debugging — the loop that ties the studio.debug.* / studio.renderer.* / studio.ui.* tool references into an end-to-end workflow. Read this before trying to reproduce a UI bug or confirm a fix on screen.",
+        "documents": [
+          {
+            "id": "overview",
+            "title": "The debugging loop + the #1 gotcha",
+            "content": "Debugging the Studio UI over MCP is a loop: OPEN the target app -> BIND a project (if the domain needs one) -> INSPECT what is on screen -> DRIVE it (click/type) -> CAPTURE + ASSERT -> iterate. Each step maps to real tools (below).\n\n#1 GOTCHA (this trips everyone, including the people who built it): a built-in app's domain tools register ONLY AFTER that app is open AND its project is bound. Before that, `tools/list` shows just the host surface (`studio.*`) + already-mounted apps (e.g. `app_builder.*`) and NONE of the domain tools you want (`workspace_*`, `member_*`, `ui_*`). Seeing them 'missing' almost always means 'app not open / no project bound' — NOT 'tool does not exist'. So always bootstrap first.\n\nGolden rule: prefer a DOMAIN tool over a synthetic click when one exists (e.g. Ops `workspace_switch {id}` beats tapping the dropdown) — it is faster and deterministic. Use synthetic UI driving for what has no tool, and for confirming the CHROME renders the result."
+          },
+          {
+            "id": "bootstrap",
+            "title": "Open an app + bind a project (so its tools appear)",
+            "content": "1. OPEN a built-in app: `studio.chrome.open_seed {id}` where id = `app_builder` | `scene_builder` | `makemind_ops`. This mounts the app and registers its tool surface.\n2. BIND a project (domains like Ops need one; App Builder/Scene Builder use their own project tools). For Ops in the CURRENT tab: `studio.project.new {name, parent}` (create + bind) or `studio.project.open {path}` (open existing, no dialog). `parent` defaults to settings.workspaceDir; pass an absolute path to control location.\n3. CONFIRM: `studio.project.info {}` -> `{packageName, packagePath}`. Only now do `workspace_create` / `workspace_list` / `member_create_agent` / `ui_*` show up in `tools/list`.\n\nSAFETY: never drive the user's live project. Create a throwaway under a scratch dir (`studio.project.new {name:'dbg', parent:'/tmp/...'}`), verify, then delete the folder. This needs no settings edits — project.new binds the current tab directly."
+          },
+          {
+            "id": "inspect",
+            "title": "See what is on screen (without clicking)",
+            "content": "Read the UI before and after every action.\n\n- `studio.renderer.layout_snapshot` -> widget tree + TEXT content. BEST for asserting a label/value is present (e.g. the Home header shows 'Marketing'). It walks the chrome captureRoot AND `WidgetsBinding.rootElement`, so showDialog/overlay content surfaces too. Resolution-independent — prefer it over pixels for text assertions.\n- `studio.renderer.current_view` -> the active domain view id.\n- `studio.debug.screenshot {pixelRatio?}` or `studio.renderer.screenshot {area?, pixelRatio?}` -> a PNG. Screenshots capture the WHOLE window including open dialogs/overlays (root-navigator), so a dialog you opened is visible in the shot. `area` = `window` | `body` | `left_panel` | `{x,y,w,h}` (logical px). Image is returned as `content[].type=='image'` base64 — decode it to a file to view. Use pixels for layout/spacing/visual bugs where text is not enough.\n\nNATIVE vs DSL: the Ops / App Builder native Flutter chrome is NOT a DSL UI runtime. So `ui_page_state` returns `{attached:false}` and `ui_capture` / `ui_navigate` / `ui_state` target the DSL surface only. Capture the native chrome via `studio.debug.screenshot` / `studio.renderer.*`; use `ui_*` for DSL-rendered views inside an app.\n\n`studio.ui.find {query}` matches tagged (inspectTag) widgets first and falls back to VISIBLE TEXT on any page (matchedField `visibleText`, elementId null) - tap the returned rect centre: `studio.ui.tap {x: rect.x+rect.width/2, y: rect.y+rect.height/2}`. This works on native built-in pages (rail labels, list cards, dialog buttons), so prefer find->tap over guessing coordinates."
+          },
+          {
+            "id": "drive",
+            "title": "Interact programmatically (synthetic pointer + keyboard)",
+            "content": "`studio.ui.*` drives the app through the Flutter binding (no macOS accessibility, no stealing the user's real pointer/focus). Resolve `elementId` from a `layout_snapshot` rect — accepts a bare `id` or `<type>:<key>`.\n\n- `studio.ui.tap {elementId | x,y, mode?: tap|long|double}` — synthetic click.\n- `studio.ui.type {text, elementId?, clear?, submit?}` — sets the focused TextField's controller directly (bypasses IME, so Korean/CJK does not garble); `submit:true` fires onSubmitted (Enter).\n- `studio.ui.scroll {elementId|x,y, dx, dy}` · `studio.ui.hover` (tooltip/hover capture) · `studio.ui.right_click` (context menu) · `studio.ui.drag {from, to, steps?}` (splitter / DnD) · `studio.ui.dismiss_dialog` (pop topmost route).\n- `studio.ui.set_center_mode {UI|Bundle|Debug}` — 3-way center switch.\n- DSL views: `ui_navigate` / `ui_capture`.\n\nPattern: tap/type to open a menu or fill a field, then re-`layout_snapshot` to confirm the resulting state before the next action."
+          },
+          {
+            "id": "verify_and_diagnose",
+            "title": "Assert, visual-regress, and diagnose non-visual state",
+            "content": "ASSERT-BY-STRUCTURE (preferred): after an action, `layout_snapshot` and check the expected text / elementId is present. Durable across window sizes and themes.\n\nVISUAL REGRESSION: `studio.renderer.image_diff {a, b, threshold?}` -> `{score, diffPixels, totalPixels, w, h}` — both PNGs must share dimensions. `studio.debug.snapshot_diff` diffs layout snapshots. Capture a baseline, drive, capture again, diff, report.\n\nVERIFY THE TRIGGER FIRED: before trusting a before/after differential, confirm the action actually took effect (state changed / a tool returned ok). A silently-failed action (wrong arg name, unbound project) leaves state unchanged and reads as a false 'no change = correct'.\n\nDIAGNOSE non-visual state when the UI looks wrong: `studio.debug.dispatch_log` (recent tool dispatches) · `boot` / `notify` · `tabs` / `activation` / `bundles` / `runtimes` / `runtime_state` · `agents` / `chat` · `config` / `settings` / `overrides` · `workspace_snapshot` (workspaceDir mbds + projects) · `history.{list,diff,restore}` · `wait_for` / `set_state` / `dispatch_tool` · `servers` (DomainServerManager pool)."
+          },
+          {
+            "id": "protocol",
+            "title": "MCP-over-HTTP mechanics (the parsing traps)",
+            "content": "Studio serves MCP at `http://localhost:<port>/mcp` (streamable-HTTP; debug 7840, release 7830).\n\n1. POST `initialize` -> reuse the `mcp-session-id` RESPONSE HEADER on every later call. Send `notifications/initialized` once, then `tools/call`.\n2. Call a tool with `{\"method\":\"tools/call\",\"params\":{\"name\":\"<tool>\",\"arguments\":{...}}}`. Using the tool name AS the JSON-RPC method returns `-32601 Method not found` (a common first-timer mistake).\n3. Responses arrive as SSE `data: {json}` frames. Parse each `data:` line with a real JSON parser. Naive text splitting (grep/sed) breaks on the large `tools/list` (~530 tools) and makes tools look absent — this is a frequent false 'tool not found'.\n4. Image tools return `content[].type=='image'` base64 (not text) — decode to a PNG file to view; a text-only reader silently drops them."
           }
         ]
       },

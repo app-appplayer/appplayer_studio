@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifest": {
+    "id": "com.makemind.form_builder",
+    "name": "Form Builder",
+    "version": "0.1.0",
+    "type": "library",
+    "description": "Form Builder built-in seed - the project manager agent and the authoring/issuing knowledge an LLM needs to create templates, insert objects, and issue documents."
+  },
+  "agents": {
+    "agents": [
+      {
+        "id": "form_builder.manager",
+        "displayName": "Form Manager",
+        "role": "manager",
+        "systemPrompt": "You are the Form Builder project coordinator - the single human interface for one form project (one per project, cloned per project path). You create and manage FORM TEMPLATES, fill them (insert objects into fields), and ISSUE documents as immutable snapshots. Template EDITING is conversational and yours: when the human says things like 'outline the title', 'make the total bold red', 'add our seal stamp image', you get_template -> apply the change to the JSON (style maps / blocks; see the conversational_editing + template_authoring knowledge) -> bump version -> save_template -> render to confirm. Build templates that LOOK like real forms (borders, shading, tables, stamps) - never a bare text list. Storage boundary: you own only document-management records (templates via form.save_template - fact-backed for the bound project; drafts/issues via form_builder.*). You do NOT store domain content data (rosters, ledgers, price lists) - that belongs to the knowledge/execution system (Ops); read it when filling, never accumulate it here. Standard fill-and-issue flow: 1) form.get_template (or form.list_templates) to see the schema, 2) compose field values as a JSON object that matches the schema exactly - no fields the schema does not declare, 3) form.create_document {templateId, data}, 4) form.validate {documentId} and fix what it reports, 5) form_builder.draft_save {documentId, templateId, templateVersion, data} - the durable working copy, 6) form_builder.issue {documentId} to publish: it renders artifacts into forms/<issueNumber>/ and freezes content + provenance as an immutable fact. A correction is a NEW issue with supersedes set to the old issueId - issued records never change. Report exactly what tools returned; if rendering fails or a format is unavailable, say so - do not invent success.",
+        "tools": [
+          "form.list_templates",
+          "form.save_template",
+          "form.get_template",
+          "form.delete_template",
+          "form.get_template_versions",
+          "form.create_document",
+          "form.patch",
+          "form.validate",
+          "form.render",
+          "form.export",
+          "form.get_status",
+          "form_builder.draft_save",
+          "form_builder.draft_get",
+          "form_builder.draft_list",
+          "form_builder.issue",
+          "form_builder.issue_list",
+          "form_builder.issue_get",
+          "bk.fact.query",
+          "bk.knowledge.query"
+        ],
+        "model": {
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      }
+    ]
+  },
+  "knowledge": {
+    "sources": [
+      {
+        "id": "form_builder_manual",
+        "name": "Form Builder authoring & issuing manual",
+        "description": "How an LLM (or the manager) creates form templates, fills them within the schema, and issues immutable document snapshots through the form.* / form_builder.* tools.",
+        "documents": [
+          {
+            "id": "overview",
+            "title": "What Form Builder is + the storage boundary",
+            "format": "markdown",
+            "content": "# Form Builder\n\nCreate/manage FORM TEMPLATES, insert objects (fill fields), and ISSUE documents - resumes, quotations, official letters, periodic work reports. One tab = one form project directory.\n\n## Storage boundary (important)\n- Templates persist as facts in the bound project's FactGraph - transparently, through the host `form.*` capability (`form.save_template` etc.). Version history is kept; duplicate templateId+version is rejected.\n- Drafts and issued snapshots persist via `form_builder.*` tools (also project facts).\n- The app owns NO content data. Rosters, ledgers, customer lists live in the knowledge/execution system (Ops) - read them when filling a form; never accumulate them here.\n\n## Two tool families\n- `form.*` = the stateless engine surface (templates, documents, validate, render). Pure operations - use directly.\n- `form_builder.*` = what gains persistence/history: `draft_save/draft_get/draft_list`, `issue`, `issue_list/issue_get`. Only bound-project state lives here.\n\nA project must be bound (Form Builder tab -> New/Open project) before `form_builder.*` answers; before that it returns `form_builder.no_project`.\n\n## Bootstrap (external LLM over MCP)\n1. Open the app tab: `studio.chrome.open_seed {namespace:'form_builder'}`.\n2. Bind a project IN THAT TAB: `studio.project.new {name, parent}` (seeds `project.formproj` + `forms/`) or `studio.project.open {path}`.\n   CAUTION: `studio.project.new` binds whatever tab is CURRENTLY active - open the Form Builder tab first, or you will bind some other app's project.\n3. Confirm: `form_builder.draft_list {}` answers (instead of `form_builder.no_project`).\n`form.*` exists from boot, but template persistence is fact-backed only while a Form Builder project is bound."
+          },
+          {
+            "id": "template_authoring",
+            "title": "Template authoring (FormTemplate JSON)",
+            "format": "markdown",
+            "content": "# Template authoring\n\nA template is canonical `FormTemplate` JSON: `{templateId, version, name, schema:{fields:[{name,type,...}]}, layoutPolicy:{pageSize,margins,fontPolicy}, defaultSections?, locale?, i18nStrings?}`.\n\n- Save with `form.save_template {template}` - each save is a NEW (templateId, version); the same pair is rejected (`template.duplicate`), so bump `version` to revise.\n- Read with `form.get_template {templateId, version?}` (omit version = current), list with `form.list_templates`, history with `form.get_template_versions {templateId}`.\n- `form.delete_template {templateId}` removes the template and its history from the project. Issued documents keep their frozen content and artifacts regardless.\n- The schema must declare at least one field. Field values inserted later MUST match this schema exactly - it is the contract the fill flow is constrained by.\n\n## Renderable content = defaultSections blocks (THE trap)\nThe `schema` alone does NOT render - a template without `defaultSections` produces an EMPTY document body. Rendered output comes from `defaultSections[].blocks`; field values appear only where a `formField` block references them:\n\n```json\n\"defaultSections\": [{\"sectionId\": \"main\", \"index\": 0, \"title\": \"...\",\n  \"blocks\": [\n    {\"blockId\": \"h1\", \"type\": \"heading\", \"index\": 0, \"level\": 1, \"content\": \"QUOTATION\"},\n    {\"blockId\": \"b1\", \"type\": \"formField\", \"index\": 1, \"fieldName\": \"title\", \"fieldType\": \"text\"}\n  ]}]\n```\n\nBlock types: `heading{level,content}` \u00b7 `text{content,format}` \u00b7 `formField{fieldName,fieldType}` (binds a schema field) \u00b7 `table` \u00b7 `chart` \u00b7 `image` \u00b7 `repeatable` (array rows) \u00b7 `conditional` \u00b7 `canvas`. Every block needs `blockId` + `index`. Rule of thumb: one `formField` block per schema field you want visible, plus headings/text for the fixed copy.\n\n## Styling \u2014 make it look like a real form (NOT a text list)\nEvery block takes a `style` map. A quotation deserves an outlined title, label shading, a line-item table, a bold red total, and a seal stamp \u2014 use them:\n- Box: `border: {width, color: '#RRGGBB', radius}` (outlines/frames), `background` (label shading), `align: left|center|right`, `height` (fixed box; add `overflow: grow|shrink|clip|summarize`).\n- Text marks: `bold`, `italic`, `underline`, `strike`, `color`, `highlight`, `fontSize` (or `size`), `fontFamily`.\n- Lists/numbering: `listStyle`, `numberFormat`; headings auto-number via `numbering: true`.\n\n## Block catalog (beyond text)\n- `table` \u2014 line items: `{type:'table', columns:[{id,title,type}], rows:[{cells:{colId: value}}], headerRepeat}`.\n- `image` \u2014 logos & SEAL STAMPS: `{type:'image', src:'stamp.png', maxWidth, aspectRatio, style:{align:'right'}}`. `src` resolves against the PROJECT ROOT \u2014 drop the image file into the project folder.\n- `chart` \u2014 native charts (bar/line/pie) rendered into PDF/HTML.\n- `repeatable` (array rows), `conditional` (branching), `canvas`.\n\nExample (an outlined centered title):\n```json\n{\"blockId\":\"title\",\"type\":\"heading\",\"index\":0,\"level\":1,\"content\":\"\uacac  \uc801  \uc11c\",\n \"style\":{\"align\":\"center\",\"fontSize\":30,\"bold\":true,\"color\":\"#1A3C6E\",\n           \"border\":{\"width\":2,\"color\":\"#1A3C6E\",\"radius\":4},\"height\":64}}\n```\n\n## Free placement \u2014 seals, watermarks, overlapping images\nAny block can leave the text flow and sit ANYWHERE on the page via `style.placement` \u2014 page-edge coordinates in mm (margins ignored), matching the ruler the app can show:\n```json\n{\"blockId\":\"seal\",\"type\":\"image\",\"src\":\"stamp.png\",\"maxWidth\":120,\n \"style\":{\"placement\":{\"anchor\":\"bottom-left\",\"x\":20,\"y\":20}}}\n```\n- `anchor`: top-left \u00b7 top-center \u00b7 top-right \u00b7 bottom-left \u00b7 bottom-center \u00b7 bottom-right \u00b7 center (edge-centred anchors centre the block on that edge \u2014 a company name centred near the bottom is `{anchor: 'bottom-center', y: 24}`).\n- `x`/`y`: mm offsets from that corner/edge; `width`: mm box width (optional).\n- `align` vs `placement`: `align` positions a block WITHIN the text flow (left/center/right); `placement` REMOVES it from the flow and anchors it on the page. They are mutually exclusive \u2014 when placement is set, drop `align`.\n- Placed blocks OVERLAP the flow (a company seal over the signature line is normal).\n- Typical Korean business doc: the company seal goes bottom-left or bottom-right (e.g. '(\uc8fc)\uba54\uc774\ud06c\ub9c8\uc778\ub4dc \ub3c4\uc7a5\uc744 \ub9e8 \uc544\ub798 \uc88c\uce21\uc5d0' \u2192 anchor bottom-left).\n\n## Page frame (NOT YET \u2014 engine gap)\nA whole-page outline (`layoutPolicy.pageBorder`) is NOT storable yet: the engine's layoutPolicy round-trip drops unknown keys. Until the engine adds the field, approximate a frame with a bordered top-level block, or wait \u2014 do not promise page frames.\n\nNOTE: `style.placement` holds in the ISSUED artifacts too (PDF and HTML, any block type \u2014 a bottom-right seal image, a bottom-center company text line). Still verify the issued file after layout changes.."
+          },
+          {
+            "id": "fill_flow",
+            "title": "Fill flow (insert objects within the schema)",
+            "format": "markdown",
+            "content": "# Fill flow\n\n1. `form.template_schema {templateId, version?, withCapacity?}` -> a JSON Schema (draft 2020-12) of the fillable fields. Generate `data` AS STRUCTURED OUTPUT against this schema - it is the \"fill only inside the schema\" contract. (`form.get_template` shows the raw template when you need layout/blocks.)\n2. Compose `data` as a JSON object matching the schema EXACTLY - every required field present, no invented fields, values typed correctly. When field content comes from organizational data (tasks, members, price lists), query it from the knowledge system (`bk.fact.query` / Ops tools) - the form is a projection of those records, not their home.\n3. `form.create_document {templateId, data}` -> `documentId` (engine documents are session-scoped).\n4. `form.validate {documentId}` -> fix reported problems (repeat 3-4 as needed; `form.patch` applies JSON Patch ops to a draft-state document).\n5. `form_builder.draft_save {documentId, templateId, templateVersion, data}` (templateVersion = `form.create_document`'s response value, for exact issue provenance) - the durable working copy (a project fact; latest save per documentId wins). Engine documents do not survive a restart - the saved draft does; re-create the engine document from its data when resuming.\n6. For fixed-size boxes, budget the text with `form.capacity {templateId, fieldId?}` (maxChars / lines / charsPerLine) BEFORE writing long values - do not overflow.\n7. Preview with `form.render {documentId, format}` (pdf | html | docx | markdown | uiDsl | image; base64 payload \u2014 image is a real PNG raster, single-column documents in v1).\n\n## Tables \u2014 fill line items per DOCUMENT with form.patch\nA template's `table` block ships the columns (+ example rows at most); the REAL rows are per-document content. After `form.create_document`, replace them with as many rows as the data needs (the table GROWS with the content \u2014 a financial statement with 5 lines or 50):\n```json\n{\"op\":\"replace\",\"path\":\"/sections/0/blocks/<tableIndex>/rows\",\"value\":[\n  {\"cells\":{\"no\":\"1\",\"name\":\"\ub9e4\ucd9c\uc561\",\"amount\":\"\u20a91,200,000,000\"}}, ...]}\n```\nvia `form.patch {documentId, patches:[...]}`. Passing an array inside `data` does NOT fill a table \u2014 patch is the path. Page model: `layoutPolicy.pageSize` documents are FULL-PAGE forms (a sparse quotation still issues as one full A4 sheet; long content flows to more pages in PDF); render with `options:{pageFlow:'continuous'}` for web-like single-flow output instead."
+          },
+          {
+            "id": "issue_protocol",
+            "title": "Issue protocol (immutable snapshots + corrections)",
+            "format": "markdown",
+            "content": "# Issue protocol\n\n`form_builder.issue {documentId, formats?, supersedes?, issuedBy?}` publishes the SAVED draft. `formats` = the media the user CHOSE (default ['pdf']; pdf | html | docx | markdown | uiDsl | image[png]) \u2014 only checked/requested media are written; the typed formdoc record is always frozen alongside. CAUTION image v1 renders heading/text/image blocks only (business-card scope): a document with tables or form fields loses that content in the PNG \u2014 do not offer image as the only medium for such documents (engine follow-up ticketed). ALWAYS pass `issuedBy` (your agent id, or the human requester when acting on their behalf) - issued records are provenance, and an anonymous issue is a hole in it:\n1. allocates the issue number (`<year>-<NNN>`, per project),\n2. renders each requested format and writes artifacts under `forms/<issueNumber>/` (project-relative locators),\n3. freezes content (the draft's template ref + data) + provenance (issuedAt, issuedBy, supersedes) as an IMMUTABLE `form_issue` fact,\n4. marks the draft published.\n\nRules:\n- An issued record NEVER changes. A correction = compose the fixed content, then a NEW `form_builder.issue` with `supersedes: <old issueId>` - the old snapshot stays as-issued.\n- `form_builder.issue_list` / `issue_get` read the history (latest first, supersedes links included).\n- Requires a saved draft for the documentId (`form_builder.draft_save` first) - the issue freezes saved content, not transient engine state.\n- Report render failures honestly (e.g. a format unavailable in this build) - never fabricate an issued artifact."
+          },
+          {
+            "id": "conversational_editing",
+            "title": "Conversational template editing (the primary edit path)",
+            "format": "markdown",
+            "content": "# Conversational template editing\n\nTemplates are edited BY YOU through conversation \u2014 the human says what they want (\"put a navy outline around the title\", \"make the total bold red, right-aligned\", \"add our seal stamp bottom-right\", \"add a line-item table\"), you apply it:\n\n1. `form.get_template {templateId}` \u2014 the current version's full JSON.\n2. Apply the requested change to the JSON: adjust block `style` maps, add/remove/reorder blocks (keep `blockId` unique and `index` sequential), extend `schema.fields` when a new fillable field appears.\n3. Bump `version` (patch bump for styling, minor for structure) \u2014 the same (templateId, version) is rejected.\n4. `form.save_template {template}` \u2014 the new version becomes current; history keeps the old one.\n5. Confirm by rendering: `form.create_document` with placeholder data + `form.render {format:'uiDsl'}` (the app shows it as the actual form) or `pdf`/`html`.\n\nRules:\n- NEVER retype the whole template from memory \u2014 always start from `form.get_template` output.\n- Report the version you saved and what changed; if a request needs an asset (a stamp/logo image), ask for the file or its project-relative path.\n- Styling vocabulary = the template_authoring doc's style/block catalog."
+          }
+        ]
+      },
+      {
+        "id": "form_spec",
+        "title": "Form template specification (working English draft)",
+        "documents": [
+          {
+            "id": "spec_template_shape",
+            "title": "FormTemplate shape and block catalog",
+            "format": "markdown",
+            "content": "# Form Template Specification \u2014 shape & blocks\n\nSTATUS: working draft derived from the PUBLISHED engine types (mcp_bundle 0.4.5 `form_port.dart`) and mcp_form's styling layer. When `specs-pub/form` is published it supersedes this document.\n\n## Template (canonical JSON)\n```json\n{\n  \"templateId\": \"quote-kr\",       // stable id\n  \"version\": \"1.0.0\",           // semver; (templateId, version) is immutable\n  \"name\": \"Quotation\",\n  \"schema\": {\"fields\": [{\"name\": \"recipient\", \"type\": \"string\"}]},\n  \"defaultSections\": [{\"sectionId\": \"main\", \"index\": 0, \"blocks\": [...]}],\n  \"layoutPolicy\": {\"pageSize\": {...}, \"margins\": {...}, \"fontPolicy\": {...}}\n}\n```\nRules: saving the SAME (templateId, version) is rejected \u2014 bump the patch slot for edits. Version history is preserved; issued documents pin their exact version.\n\n## Block types (closed vocabulary)\n`text` \u00b7 `heading` \u00b7 `table` \u00b7 `chart` \u00b7 `image` \u00b7 `formField` \u00b7 `repeatable` \u00b7 `conditional` \u00b7 `canvas` \u2014 any other `type` is REJECTED by form.save_template.\n\nCommon block fields: `blockId` (unique), `type`, `index` (order), optional `style` map.\n- heading: `level` (1..6), `content`.\n- text: `content`, optional `format` (plain|markdown).\n- formField: `fieldName` (must exist in schema.fields), `fieldType`.\n- table: `columns: [{id, title, type}]`, `rows: [{cells: {colId: value}}]`, `headerRepeat`. Template rows are EXAMPLE content; per-document rows travel via `form.patch` on the live document.\n- image: `src` (project-root-relative path or http URL), `alt`, `maxWidth` (px), `aspectRatio`.\n- chart: `chartType` + data (rendered natively in PDF/HTML).\n- repeatable: `itemTemplate` (nested blocks) \u2014 array-bound repetition.\n- conditional: `condition` + `thenBlock`/`elseBlock`.\n\n\n## Section titles\n`defaultSections[].title` renders as its OWN standalone section header above the section's blocks in every output (PDF/HTML/markdown/in-app). For a single-section document this DUPLICATES the document's title heading \u2014 omit the section title and use a `heading` block for the document title. Use section titles only to separate multi-section documents.\n"
+          },
+          {
+            "id": "spec_style_vocabulary",
+            "title": "Style vocabulary (enums are enforced)",
+            "format": "markdown",
+            "content": "# Style vocabulary\n\nEvery block accepts a `style` map. ENUMERABLE values are a CLOSED vocabulary \u2014 `form.save_template` REJECTS out-of-spec values with the allowed list, so read the error and correct rather than inventing values.\n\n## Box\n- `align`: left | center | right | justify (position WITHIN the flow).\n- `background`: '#RRGGBB' shading.\n- `border`: {width: pt, color: '#RRGGBB', radius: pt} \u2014 outline around the block.\n- `height`: fixed box height (pt) + `overflow`: grow | shrink | clip | summarize | split.\n## Text marks\n- `bold` | `italic` | `underline` | `strike` (booleans), `color`, `highlight`, `fontSize` (or `size`), `fontFamily`.\n- Rich inline runs: content as `runs: [{text, ...marks}]`.\n## Placement (out-of-flow positioning)\n- `placement`: {anchor, x: mm, y: mm, width: mm?} \u2014 REMOVES the block from the text flow and pins it on the page (page-edge coordinates, margins ignored; overlaps the flow).\n- `anchor` (closed): top-left | top-center | top-right | bottom-left | bottom-center | bottom-right | center. Anything else is REJECTED at save.\n- `align` vs `placement` are mutually exclusive \u2014 when placement is set, drop align.\n- Typical: company seal `{anchor: 'bottom-left', x: 20, y: 20}`; centred company name `{anchor: 'bottom-center', y: 24}`.\n## Page\n- `layoutPolicy.pageSize {size, width, height}` (mm) \u2014 paged documents render as FULL pages (a sparse quotation still fills one A4 sheet).\n- A whole-page frame (`pageBorder`) is NOT storable yet (engine drops unknown layoutPolicy keys) \u2014 do not promise it.\n"
+          },
+          {
+            "id": "spec_validation_feedback",
+            "title": "Validation & error feedback protocol",
+            "format": "markdown",
+            "content": "# Validation & feedback\n\n- `form.save_template` runs a VOCABULARY GATE: out-of-spec block types, align, overflow, or placement anchors are rejected with code `form.spec_violation` and a message listing every violation and the allowed values. Fix the named values and save again \u2014 do NOT retry with a different invented value.\n- `form.validate {documentId}` checks filled documents (required fields, types) before issuing; issue after `isValid: true`.\n- The in-app inspector shows the same vocabulary; an out-of-spec value loaded from an older template shows an error banner and cannot be saved until corrected.\n"
+          }
+        ]
+      }
+    ]
+  }
+}

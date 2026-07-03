@@ -67,12 +67,14 @@ List<CapabilityTool> analysisCapabilityTools(AnalysisPort port) {
         final params = args['parameters'];
         final job = await port.runAnalysis(
           specId: requireString(args, 'specId'),
-          parameters:
-              params is Map
-                  ? params.cast<String, dynamic>()
-                  : <String, dynamic>{},
+          parameters: params is Map
+              ? params.cast<String, dynamic>()
+              : <String, dynamic>{},
         );
-        return <String, dynamic>{'jobId': job.jobId, 'status': job.status.name};
+        return <String, dynamic>{
+          'jobId': job.jobId,
+          'status': job.status.name,
+        };
       },
     ),
     CapabilityTool(

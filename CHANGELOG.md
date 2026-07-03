@@ -1,6 +1,155 @@
 ## [0.1.4] - 2026-06-30
 
 ### Added
+- Form Builder screen/issued-content parity + image as an issue medium.
+  The on-screen sheet (template preview, compose live view, as-issued
+  view) now prints form fields exactly as the issued artifacts do —
+  `fieldName: value` with the label bold (the engine renderers' semantic)
+  — instead of the bare value, so what you see IS what was issued
+  (live-verified against the issued PDF). `image` (png) joined the issue
+  media (Compose chip + `form_builder.issue` formats); selective issuing
+  re-verified end-to-end: exactly the checked media land on disk
+  (live: pdf+image → document.pdf + document.png + the always-frozen
+  formdoc record, no html/md; widget matrix asserts the default=pdf-only
+  and the checked-combination cases plus PNG magic bytes). Known engine
+  boundary, ticketed with repro: the v1 image renderer skips table and
+  form-field blocks and ignores placement/page box, so a quotation-grade
+  document issued as PNG loses its body — the seed manual now warns
+  agents not to offer image as the only medium for such documents.
+- mcp_form 0.2.0 round-3: placement now holds in the REAL issued artifacts
+  (re-verified by rendering, not by markup inspection — the round-2 HTML
+  sign-off below was wrong): short documents keep a full page box in HTML
+  (`min-height` from the page size), so bottom anchors mean the PAPER
+  bottom instead of "right below the last line", and `style.placement` on
+  NON-image blocks (e.g. a bottom-centered company line) now leaves the
+  flow in both PDF and HTML — live-verified eyes-on via PDF→PNG and
+  headless-Chrome renders (stamp at the paper's bottom-right, company text
+  at the bottom center; correction reissued as a superseding snapshot).
+  The engine also gained a pure-Dart `image`/`png` renderer (no browser or
+  platform canvas; the host's injected CJK font applies through the same
+  `standardRendererRegistry` seam — a Korean business card renders real
+  glyph pixels through `form.render {format:'image'}`), background images,
+  an opt-in page border, and `style.pageBreak` for multi-page report
+  structure. Headless e2e grew to 9 (placed text overlay, page-box
+  min-height, PNG magic bytes).
+- mcp_form 0.2.0 round-2 consumption (re-synced vendored `capability_tools`
+  recipe): the host now injects its CJK font through the engine's OFFICIAL
+  renderer seam — `formCapabilityTools(rendererRegistry:
+  standardRendererRegistry(embeddedFont: …, fallbackFonts: […]))` — retiring
+  the temporary vendor-fork font extension. This resolves the known gap
+  below: issued Korean PDFs embed a Type0 subset (live-verified — no `?`
+  glyphs). The engine's new `style.placement` rendering lands in the issued
+  artifacts themselves: the seal prints at the page corner in PDF
+  (`maxWidth` capped, single page — previously full-width + page spill) and
+  as an absolute overlay in HTML. The issued "formdoc" snapshot now
+  consumes the new `form.get_document` (typed document WITH patches
+  applied) instead of merging template sections with a uiDsl round-trip —
+  one call, exact styles and patch-true table rows; image srcs are restored
+  to the template's relative paths (the data-URI embed is for the frozen
+  pdf/html; the in-app viewer resolves files) and referenced images are
+  still copied next to the artifacts. Headless e2e now covers the 14-verb
+  surface, get_document patch fidelity, the placement overlay CSS, and the
+  CJK font embed. Known fidelity gap (engine-scoped): `style.placement` on
+  NON-image blocks (e.g. a bottom-centered company line) renders in the
+  in-app form view but stays in flow in issued PDF/HTML — ticketed
+  upstream.
+- **Form Builder built-in app** — create/manage form templates, fill them
+  (insert objects — by hand or an LLM constrained to the template schema),
+  and ISSUE documents as immutable snapshots: quotations, official letters,
+  resumes, periodic reports. One tab = one form project
+  (`project.formproj`); four routes (Templates / Compose / Issues / About).
+  - Templates persist per project **through the host `form.*` capability**:
+    the registration is rebound onto the bound project's FactGraph
+    (`FactBackedFormTemplatePort` from the vendored `capability_tools`
+    recipe + a kernel `FormTemplateFactStore` binding — one fact per
+    (templateId, version), version history + duplicate rejection preserved,
+    hydrated on bind, survives restarts). Unbound state falls back to the
+    engine's in-memory port. `registerFormCapability` now delegates to the
+    vendored recipe (one canonical form wiring) and explicitly
+    unregisters-then-registers each verb (the endpoint does not replace
+    duplicate tool names).
+  - `form_builder.*` tools (host endpoint — in-app manager and external
+    LLMs drive the same surface): `draft_save/draft_get/draft_list`
+    (durable working copies as project facts; engine documents are
+    session-scoped) and `issue/issue_list/issue_get` — issuing renders the
+    requested formats, writes artifacts under `forms/<issueNumber>/`
+    (project-relative locators), allocates a per-year issue number
+    (`<year>-<NNN>`, derived from persisted issues), and freezes content +
+    provenance (template version, issuedBy, issuedAt) as an IMMUTABLE
+    `form_issue` fact. Corrections are NEW issues linked via `supersedes`
+    — issued records never change.
+  - Seed `form_builder.mbd`: `form_builder.manager` (per-project
+    coordinator clone, explicit tool allowlist) + a 4-doc authoring/issuing
+    manual (storage boundary, template authoring, schema-constrained fill
+    flow, issue protocol). The app owns no content data (rosters, ledgers)
+    — that stays in the knowledge/execution system (Ops); forms project it.
+  - mcp_form 0.2.0 (unpublished) via dependency override; publish pending
+    dogfood sign-off. Live-verified end-to-end over MCP: template
+    save/list, document create/validate, draft save, issue → real
+    PDF + HTML artifacts on disk, supersedes correction, numbering
+    001→002→003, and full template/draft/issue survival across an app
+    restart.
+- Fixed while wiring the above: a draft re-save no longer throws
+  `FactConflictException` (the fact facade rejects duplicate ids — replace
+  is delete-then-write now), and the capability re-registration no longer
+  dies with "Tool ... already exists".
+- Hardened by a built-in-contract audit: the `form.*` project rebind moved
+  behind `ensureBoot`'s staleness check (a boot losing a rapid-rebind race
+  can no longer clobber the newer project's binding — last bind wins),
+  `canHandle` also recognises the seed manifest id (Ops parity), and
+  `form_builder.draft_delete` completes the tool surface (the Compose UI's
+  working-copy cleanup now goes through the same tool an external LLM
+  uses — button = tool). The host built-ins catalog seed (`studio.mbd`)
+  and the design docs now register the fourth built-in.
+- Usage-test round (Korean quotation, correction chain, template versioning,
+  manager-driven issuing in Korean): Form Builder pages are now keyed by the
+  project root, so a rebind (restore → open another project) recreates page
+  state instead of showing the PREVIOUS project's templates/drafts/issues;
+  the seed manual now tells agents to always pass `issuedBy` (provenance).
+  Known gap, engine-side seam pending: Korean PDF renders as `?` until the
+  host can inject an embedded font through the form capability
+  (`formCapabilityTools` lacks the renderer/font parameter — ticketed);
+  HTML output is fully correct.
+- Form Builder templates are real FORMS now, and viewing one means seeing
+  the document: the template detail's Preview (and the Issues as-issued
+  view) render the engine's `uiDsl` output as the actual sheet — white
+  paper, the template's own borders, font effects, label shading,
+  line-item tables, and seal-stamp images (`FormDslPreview`, a display-only
+  mapper over the engine-computed styles; `uiDsl` now rides along as a
+  frozen issue artifact by default). Template EDITING is conversational:
+  the manager applies "outline the title / bold-red total / add our stamp"
+  style requests via get_template → JSON edit → version bump →
+  save_template (taught by a new `conversational_editing` seed doc + a
+  full styling/block catalog — borders, text marks, tables, images,
+  charts — in `template_authoring`; live-verified: three style directives
+  in one Korean sentence landed exactly as v1.0.1 with history intact).
+- Form Builder document management round (viewer-first): a template card
+  now opens a READABLE detail — rendered preview (placeholder values through
+  the real create→render pipeline), fields table, section/block structure —
+  with JSON editing demoted to an action; issued snapshots open as the
+  AS-ISSUED document (the frozen markdown artifact, now issued alongside
+  pdf/html by default, rendered in the Studio viewer kit) with artifact
+  chips + open-folder; a "Correct & reissue" action hands the snapshot to
+  Compose pre-filled with `supersedes` set. Both lists gained search;
+  superseded snapshots dim behind a "current only" toggle; picking a
+  template in Compose seeds a data skeleton from its schema.
+- A **Studio debugging & UI-verification manual** now ships in the host seed
+  knowledge (`studio.mbd` → `studio_debug_manual`, fanned out at boot as
+  `studio://knowledge/studio_debug_manual/*`). Six workflow docs — overview /
+  bootstrap / inspect / drive / verify_and_diagnose / protocol — tie the
+  existing per-tool references (`studio.debug.*` / `studio.renderer.*` /
+  `studio.ui.*`) into the end-to-end loop an LLM needs to reproduce a UI bug or
+  confirm a fix on screen: open an app + bind a project (so its tools register),
+  read the screen (`layout_snapshot` for text, `screenshot` for pixels), drive
+  it (`studio.ui.tap`/`type`), assert + visual-regress (`image_diff`), and the
+  MCP-over-HTTP parsing traps. Fills the gap where the individual tools were
+  documented but the driving/verification workflow was not.
+- The Ops Home H1 is now a **workspace selector** — it shows which workspace
+  (lens) you're viewing and a dropdown switches to any other, right from Home.
+  Previously Home showed a static "Home" title with no indication of the active
+  workspace and no way to switch without leaving for the Workspaces pane.
+  Switching persists through `KnowledgeInit.switchWorkspace` (durable across
+  reboots) and every Home card re-derives against the new lens.
 - External channel connectors are now provisionable at runtime. `channel.connect`
   / `channel.disconnect` (from the vendored `channel_drivers` recipe —
   `base/install/channel_drivers/`, io_drivers-homolog, regenerated by
@@ -134,8 +283,91 @@
   (sealed `.enc`, AEAD) → re-inject into a fresh headless context → authenticated
   page. The public `browser.*` op surface is unchanged; only the session *source*
   is new.
+- Seed knowledge **`ops_operating_playbook`** (makemind_ops.mbd) — an operating
+  playbook of field experience (the HOW) layered on the existing tool manual (the
+  WHAT), so a fresh coordinator / external LLM can read it alone and stand up +
+  continuously run a real organization of any kind (company, newsroom, church,
+  academy, research lab, shop). Nine documents: how-to-use + layering, doctrine,
+  build sequence, member design, doctrine/knowledge tree inheritance, workflow,
+  operating patterns, field-measured pitfalls, verification culture. Universal
+  core only; domain- and country-specific practice (regulations, tax, local
+  customs) is called out as a separate, replaceable layer seeded into the org's
+  own `knowledge/`. Fanned out as `studio://knowledge/ops_operating_playbook/*`
+  MCP resources at boot, so the coordinator + members read it as a tool surface.
 
 ### Fixed
+- The form view is a PACKAGE now — `appplayer_form_view` (utils/, the
+  appplayer_ui_view precedent; promotes the early `tools/core/view/form`
+  try). It renders a typed `FormDocument` as the actual paper form and
+  exists for more than display: every block carries a
+  `MetaData {type: formBlock, id}` tag so LLM drivers locate blocks by
+  coordinate (`studio.ui.find` matches block ids), `onBlockTap` +
+  `selectedBlockId` seed the tap-to-inspect/editor loop, a
+  `FormViewController.capturePng()` lets an LLM verify what it built by
+  looking at it, and the page model covers full-page sheets and
+  section-per-page splits. Form Builder consumes it (the in-app
+  `FormDslPreview` mapper is gone): the Templates panel gains an App
+  Builder-style block inspector (tap a block → its properties + "edit by
+  chat" guidance), and the Issues as-issued view renders frozen `uiDsl`
+  artifacts through the package's `formDocumentFromUiDsl` adapter — the
+  only tool-surface freeze that carries `form.patch` results today
+  (`form.get_document` requested engine-side). Typed input also fixes
+  what the uiDsl path lost: image maxWidth/alignment now render exactly
+  (the screenshot-caught runaway-seal bug), and `studio.ui.find` returns
+  ONE rect shape ({x, y, width, height}) for tagged and visible-text
+  matches alike.
+- Per-domain project locations now actually work. Every built-in's Domain
+  Settings has a "Workspace folder" field (Scene Builder / Ops / Form
+  Builder gained it; App Builder already showed one), and — the real fix —
+  the override is CONSUMED everywhere a project gets created: the New
+  dialog default parent, `studio.project.new`, and
+  `studio.scene.project.new` all resolve the active domain's override
+  first, then the studio-wide workspaceDir. Previously App Builder's field
+  was saved but never read, the other three had no field at all, and
+  project creation silently fell back to the studio dir (or
+  `~/AppPlayerProjects`) — "projects landing in the wrong place".
+- The synthetic UI driver (`studio.ui.*`) is now reliable for LLM-driven
+  verification — three defects fixed as a set (found driving Form Builder):
+  - `studio.ui.find` falls back to VISIBLE TEXT (a live element-tree walk
+    over RichText) when the inspectTag search finds nothing, so text on
+    native built-in pages — rail labels, list cards, dialog buttons — is
+    findable and tappable via the returned rect (previously 0 matches).
+  - Synthetic taps/drags dispatch as TOUCH (flutter_test parity). A
+    mouse-kind Down/Up without a preceding PointerAddedEvent tripped
+    MouseTracker's device-lifecycle assertion and the corrupted tracker
+    then swallowed later taps. Mouse-only paths (hover / right-click /
+    wheel) now ride one persistent synthetic mouse device that is
+    properly added first.
+  - `studio.debug.screenshot` / `studio.renderer.screenshot` capture the
+    WHOLE render view (root-navigator overlays included) with the shell
+    boundary as fallback — open dialogs no longer vanish from shots,
+    which had read as "the tap did nothing" and misdiagnosed working UI
+    (Ops's ui_capture already did this; the shell path now matches).
+  The seeded Studio debugging manual teaches the find→tap flow and the
+  overlay-inclusive screenshot semantics.
+
+- `workspace_delete` is now **persistent + consistent** — a deleted workspace
+  no longer resurrects on reboot. A workspace has two on-disk homes: the
+  type-nested metadata dir (`<root>/<type>/<name>`, scanned for `workspace_list`)
+  and the content bundle (`<root>/<slug>.mbd`, holding members / skills /
+  processes read directly by `member_list({workspaceId})` and the Ops tab).
+  `delete` removed only the metadata dir — a path typo (`<root>/<id>` instead of
+  `wsContentRoot`) leaked the `.mbd`, so `workspace_list` showed the workspace
+  gone while its members stayed resolvable by explicit id and the tab
+  re-discovered it on the next boot (half-delete inconsistency). `delete` now
+  removes both homes; the `workspace_delete` handler additionally evicts the
+  member registry's per-workspace cache (`MemberRegistry.evictWorkspace`) so the
+  removal is consistent in-session too, not just after a reboot.
+- Ops Home no longer lands on nothing. The active workspace is only a view, but
+  when it resolved to the empty reserved `_system` slot Home showed "—" with
+  blank cards — most visibly right after deleting the active workspace. Now a
+  sensible lens is always selected: (a) boot defaults `_system`/absent → the
+  first real workspace; (b) creating the first workspace in a fresh project
+  selects it; (c) deleting the active workspace reselects the first remaining
+  (falling back to `_system` only when the last one is gone). Every reselect
+  goes through `KnowledgeInit.switchWorkspace`, which now persists the
+  per-project active pointer for ALL callers (UI + MCP) — previously only the
+  MCP `workspace_switch` handler wrote it, so a UI switch reset on the next boot.
 - The kernel agent runtime is now **workspace-complete** — boot mirrors *every*
   workspace's agents into flowbrain, not just the active one. Previously only
   the boot-active workspace was loaded (`loadActive`), so `agent_ask({agentId,
@@ -262,6 +494,32 @@
   separate FactGraph-KV layer, tracked for a follow-up.)
 
 ### Changed
+- The Ops organization chart opens at **natural size (1:1)** instead of
+  fit-to-view — a large org must stay READABLE and be explored by pan/zoom,
+  not shrunk whole into the viewport (12+ units rendered illegibly small).
+  Fit-to-view stays as the explicit Fit button; a `1:1` button returns to
+  actual size; max zoom raised to 3x; content edits no longer reset the
+  user's pan/zoom (only a lens switch re-anchors). The chart header now
+  degrades gracefully on narrow panes (scrolling legend, ellipsized hint,
+  fully scrollable strip when even the lens switch doesn't fit) instead of
+  overflowing.
+- `workspace_create` rejects a slug containing `/` up front (registry-level
+  invariant + tool-level guidance). A slash slug composed an id whose
+  metadata dir nested one level deeper than the reload scan reads, so the
+  workspace was created and worked in-session, then silently vanished from
+  `workspace_list` on the next boot. Nesting is `workspace_set_parent`, not
+  a path-like slug.
+- Ops seed knowledge (`ops_overview`/agents) corrected: `ops.manager`'s tool
+  access is the explicit 83-entry allowlist in the seed's agents block (bk.* 10
+  · browser.* 3 · ops 70), not an "empty list (wildcard)" — the old sentence
+  contradicted the manifest's actual `tools` value.
+- Ops operating-playbook seed knowledge refined from a chat-simulation pass
+  (konpi) — three behaviors the coordinator under-applied on a small org are now
+  imperative: `build_sequence` scales the doctrine step to the request (state
+  assumptions + confirm for a one-liner instead of silently skipping it);
+  `member_design` forbids role-only agent names (always "Name · Role", never a
+  nameless "Note-keeper"); `workflow` requires a recurring need ("every week")
+  to become a cron heartbeat task, not a manual process.
 - `mcp_browser` ^0.1.2 → ^0.1.3 — attach mode + persistent profile for the
   interactive-auth session-reuse wiring above (published, hosted-clean resolve).
 - `brain_kernel` ^0.1.4 → ^0.1.5 — picks up the `KvStoragePortAdapter.keys(prefix:)`
@@ -274,6 +532,42 @@
   `system_agent_set_model` entry and the shared `studio.mbd` `studio.fs.*` doc now
   describe the per-project / scoped-manager routing and the workspace write
   surface.
+- Ops chat is now a **single per-project coordinator**, not one manager per
+  workspace. `ops.manager` is scoped by the ops project path alone (`_applyOpsScopedManager`),
+  exactly like App Builder / Scene Builder — the Studio-level command channel for
+  the whole project, not a member of any workspace's org chart. Switching the
+  active workspace no longer re-scopes the chat manager or re-keys its
+  conversation; it changes only the data lens (the chat roster refreshes to the
+  now-viewed department's agents, the coordinator + its single conversation stay
+  put). Enabled by the workspace-complete boot (`loadAll`) above, so the one
+  coordinator can `agent_ask` / `agent_route` / `process_start` across every
+  workspace. Asset locators (`knowledge_fact_save` `capability:fs`) now relativise
+  against the ops **project root** to match the single project chat / `fs.*`
+  anchor — workspaces are logical lenses, so assets are project-shared and connect
+  to a workspace / agent by reference, not by a per-workspace filesystem base.
+  Seed knowledge (`ops_overview/agents`, `ops_concepts/matrix_model`) teaches the
+  coordinator model (one interface, workspaces = concurrent views, department
+  isolation at the data layer).
+- Ops boot skips redundant 4-axis re-forks. Because "active workspace" is a view
+  (all departments load at boot via `loadAll`), every member's skill / profile /
+  philosophy forks were re-applied on every boot — the dominant cost, growing
+  with the roster. Each mirrored agent now carries an `ops_fork_sig` tag =
+  hash(workspace pool CONTENT fingerprint + the member's 4-axis refs); a boot
+  whose signature matches skips the re-fork (the owned forks already persist).
+  Editing any pool yaml or a member's assignments re-stamps the signature so the
+  fork re-fires and picks up the change (content hash, not mtime — boot re-save
+  can bump mtime without changing bytes). Measured on a 16-workspace project:
+  4-axis fork ops on a warm reboot dropped ~183 → ~64.
+- Ops tab renders without waiting for the whole org. Boot now loads only the
+  ACTIVE workspace on the critical path (`loadActive`) and streams the remaining
+  departments in the background (`loadAll`, which re-loads the active workspace
+  last so the shared-pool "active wins" ordering + active philosophy are
+  preserved). The tab paints as soon as the viewed department is ready instead
+  of spinning through every workspace — decoupling tab-render latency from org
+  size. `KnowledgeInit.workspacesReady` completes when the background load
+  finishes; await it when you need every department resolvable right after boot
+  (a cross-workspace `agent_ask`, or a test). Trade-off: a brief post-render
+  window where a not-yet-streamed department's agent is unresolvable.
 
 ## [0.1.3] - 2026-06-30
 

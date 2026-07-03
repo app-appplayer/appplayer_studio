@@ -22,7 +22,10 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../main/chrome_bridge.dart';
+import '../settings/manifest_field_inheritance.dart'
+    show readPackageOverrides;
 import '../settings/vibe_settings.dart';
+import 'builtin_app.dart' show BuiltInAppRegistry;
 import 'project_layout.dart';
 
 /// Register all 6 `studio.project.*` tools onto [boot]. Handlers read
@@ -78,10 +81,22 @@ void registerProjectTools(
           isError: true,
         );
       }
-      // parent fallback — settings.workspaceDir. Bundle tools (e.g.
-      // app_builder.newAppProject) call this without parent so the
-      // host can honour the user's configured workspace.
+      // parent fallback — the ACTIVE tab's domain override (its Domain
+      // Settings "Workspace folder") first, then the studio-wide
+      // settings.workspaceDir. Bundle tools (e.g.
+      // app_builder.newAppProject) call this without parent so the host
+      // honours the per-domain project location the user configured.
       var parent = args['parent'];
+      if (parent is! String || parent.isEmpty) {
+        final activeCtx = BuiltInAppRegistry.instance.activeContext;
+        if (activeCtx != null) {
+          final domainDir =
+              readPackageOverrides(activeCtx.overridesFile)['workspaceDir'];
+          if (domainDir is String && domainDir.isNotEmpty) {
+            parent = domainDir;
+          }
+        }
+      }
       if (parent is! String || parent.isEmpty) {
         try {
           final settings = await VibeSettings.load(

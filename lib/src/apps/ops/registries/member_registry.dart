@@ -137,6 +137,20 @@ class MemberRegistry {
     return null;
   }
 
+  /// Drop the in-memory cache for [wsId] so the next read re-hydrates from
+  /// disk. Called when a workspace is DELETED: `workspace.delete` removes the
+  /// `.mbd` bundle (the members' on-disk home), but this registry keeps a
+  /// per-workspace cache guarded by `_loaded`, so without eviction a deleted
+  /// workspace's members stay resolvable for the rest of the session — the
+  /// "half-delete" inconsistency (gone from `workspace_list`, still alive by
+  /// explicit `workspaceId`). Clearing `_loaded` + `_byWorkspace` makes the
+  /// next `listForWorkspace` / `get` re-scan the now-absent disk dir → empty.
+  void evictWorkspace(String wsId) {
+    _byWorkspace.remove(wsId);
+    _loaded.remove(wsId);
+    _notify();
+  }
+
   /// Create an AgentMember and mirror it into flowbrain's Agent Subsystem.
   ///
   /// Flow (FR-OPS-001):

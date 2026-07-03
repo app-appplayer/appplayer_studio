@@ -22,6 +22,7 @@ import '../registries/task_registry.dart';
 import '../registries/workspace_registry.dart';
 import '../skills/skill_definition.dart';
 import '../ui/organization/org_chart_model.dart';
+import '../ui/organization/org_overlay.dart';
 
 /// Global bootstrap handles — overridden at the scoped [ProviderScope] in
 /// `main.dart` after [KnowledgeInit.boot]. All derived providers below list
@@ -453,6 +454,19 @@ final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>((ref) async {
   skillChangesProvider,
   processChangesProvider,
 ]);
+
+/// Living-org-chart overlay pulse. The chart geometry rebuilds on registry
+/// mutations, but activity (facts / process-run state) emits NO change tick
+/// — so this polls. autoDispose keeps the timer alive only while the
+/// Organization page is mounted. Design: docs/makemind_ops/ops-living-org-chart.md.
+final orgOverlayProvider =
+    StreamProvider.autoDispose<OrgOverlayData>((ref) async* {
+  final init = ref.watch(knowledgeInitProvider);
+  while (true) {
+    yield await pollOrgOverlay(init);
+    await Future<void>.delayed(const Duration(seconds: 4));
+  }
+}, dependencies: [knowledgeInitProvider]);
 
 final bundleListProvider = FutureProvider<List<Bundle>>((ref) async {
   final init = ref.watch(knowledgeInitProvider);

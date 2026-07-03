@@ -1,5 +1,6 @@
 import 'package:appplayer_studio/base.dart' show BuiltInAppRegistry;
 
+import '../form_builder/form_builder_builtin.dart';
 import '../ops/ops_builtin.dart';
 import '../scene_builder/scene_builder_builtin.dart';
 import 'app_builder_builtin.dart';
@@ -12,4 +13,5 @@ void registerBuiltInApps() {
   BuiltInAppRegistry.instance.register(AppBuilderBuiltInApp());
   BuiltInAppRegistry.instance.register(SceneBuilderBuiltInApp());
   BuiltInAppRegistry.instance.register(const OpsBuiltInApp());
+  BuiltInAppRegistry.instance.register(const FormBuilderBuiltInApp());
 }

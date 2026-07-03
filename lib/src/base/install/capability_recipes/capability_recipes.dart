@@ -19,6 +19,12 @@ export 'src/analysis_example.dart';
 export 'src/analysis_standard.dart';
 export 'src/kv_example.dart';
 export 'src/datastore_example.dart';
+// form capability — mcp_form `form.*` surface + fact-backed template
+// persistence seam (FormTemplateFactStore is bound by the host to the
+// kernel's per-project FactGraph).
+export 'src/form_example.dart';
+export 'src/form_fact_store.dart';
+export 'src/fact_backed_form_template_port.dart';
 // secure_capability recipe (Flutter-bound).
 export 'src/secure_example.dart';
 export 'src/secret_example.dart';

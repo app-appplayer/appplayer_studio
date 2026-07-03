@@ -136,3 +136,36 @@ List<Map<String, dynamic>> bakeInheritedFields(
       }(),
   ];
 }
+
+/// Flat key→value map persisted by [ManifestFieldList] for one package /
+/// built-in (`<configRoot>/package_settings/<safe>.json`). Empty map when
+/// the file is absent or unreadable.
+Map<String, Object?> readPackageOverrides(String overridesFile) {
+  if (overridesFile.isEmpty) return const <String, Object?>{};
+  try {
+    final f = File(overridesFile);
+    if (!f.existsSync()) return const <String, Object?>{};
+    final decoded = jsonDecode(f.readAsStringSync());
+    if (decoded is! Map<String, dynamic>) return const <String, Object?>{};
+    return decoded;
+  } catch (_) {
+    return const <String, Object?>{};
+  }
+}
+
+/// The workspace folder new projects should land in for ONE domain:
+/// the domain's own override (its Domain Settings "Workspace folder"
+/// field, persisted in [overridesFile]) wins over the studio-wide
+/// inherited value. Null when neither is set — the domain must be free
+/// to differ per app, but showing a field without consuming it here is
+/// the display-only trap every built-in used to have.
+String? effectiveWorkspaceDir({
+  required Map<String, Object?> inherited,
+  String overridesFile = '',
+}) {
+  final override = readPackageOverrides(overridesFile)['workspaceDir'];
+  if (override is String && override.isNotEmpty) return override;
+  final inheritedDir = inherited['workspaceDir'];
+  if (inheritedDir is String && inheritedDir.isNotEmpty) return inheritedDir;
+  return null;
+}

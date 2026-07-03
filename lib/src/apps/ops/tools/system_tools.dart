@@ -293,6 +293,20 @@ class SystemTools {
           orElse: () => WorkspaceType.project,
         );
         final slug = args['slug'] as String;
+        // A slash in the slug composes an id (`<type>/<slug>`) whose metadata
+        // dir nests one level deeper than the registry's reload scan reads —
+        // the workspace is created and works in-session, then silently
+        // VANISHES from `workspace_list` on the next boot (round-trip hole,
+        // live-caught 2026-07-03). Reject with guidance instead of losing
+        // data later: hierarchy is `workspace_set_parent`, not a path slug.
+        if (slug.contains('/')) {
+          return {
+            'error':
+                'slug must not contain "/" (got "$slug"). Use a flat slug; '
+                'organizational nesting is expressed with '
+                'workspace_set_parent, not a path-like slug.',
+          };
+        }
         final title = (args['title'] as String?) ?? slug;
         final explicitRoot = (args['projectRoot'] as String?)?.trim();
         // Prefer the explicit path the caller passed in (external
@@ -335,6 +349,15 @@ class SystemTools {
         } catch (_) {
           /* best-effort — registry write already succeeded */
         }
+        // Land on the just-created workspace when nothing real is selected yet
+        // (the active lens is still the empty reserved `_system` slot — e.g.
+        // the first workspace in a fresh project). Otherwise Home would sit on
+        // an empty slot right after creating content. switchWorkspace persists
+        // it, so the choice survives a reboot.
+        final active = liveInit.registries.workspace.activeId;
+        if (active == null || active == systemWorkspaceSlot) {
+          await liveInit.switchWorkspace(ws.id);
+        }
         return {'id': ws.id, 'projectRoot': liveInit.projectRoot};
       },
     );
@@ -351,7 +374,23 @@ class SystemTools {
         'required': ['id'],
       },
       (args) async {
-        await init.registries.workspace.delete(args['id'] as String);
+        final id = args['id'] as String;
+        final wasActive = init.registries.workspace.activeId == id;
+        await init.registries.workspace.delete(id);
+        // Cascade: workspace.delete clears the on-disk `.mbd` bundle, but the
+        // member registry caches members per-workspace — evict so the delete is
+        // consistent in-session (no members resolvable by a deleted id).
+        init.registries.member.evictWorkspace(id);
+        // Deleting the ACTIVE lens leaves nothing selected (Home goes empty) —
+        // reselect the first remaining workspace so a sensible default shows
+        // (falls back to the reserved `_system` slot when the last one is gone).
+        // switchWorkspace persists the new pointer, so it survives a reboot.
+        if (wasActive) {
+          final remaining = await init.registries.workspace.list();
+          await init.switchWorkspace(
+            remaining.isNotEmpty ? remaining.first.id : systemWorkspaceSlot,
+          );
+        }
         return {'deleted': true};
       },
     );
@@ -369,23 +408,11 @@ class SystemTools {
       },
       (args) async {
         final id = args['id'] as String;
+        // switchWorkspace persists the per-project active pointer
+        // (`<projectRoot>/.makemind-ops-active`, the boot-restore source read by
+        // `_withProjectRoot`) — a switch here NEVER clobbers another project/host
+        // via the shared global config.
         await init.switchWorkspace(id);
-        // Persist PER-PROJECT (the boot-restore source of truth):
-        // `<projectRoot>/.makemind-ops-active`. This is what `_withProjectRoot`
-        // reads on the next boot, so a switch here NEVER clobbers another
-        // project/host via the shared global `~/.makemind-ops/config.yaml`
-        // (that single field carried a foreign id → _system fallback → empty
-        // Home). Travels with the project; isolated across hosts + projects.
-        final projectRoot = init.projectRoot;
-        if (projectRoot.isNotEmpty) {
-          try {
-            await File(
-              p.join(projectRoot, '.makemind-ops-active'),
-            ).writeAsString(id);
-          } catch (_) {
-            /* best-effort */
-          }
-        }
         // Mirror into the in-memory config so this session's live readers
         // (config_get / the ops.manager agent / `makemind-ops://state`) match
         // the registry — but do NOT persist it to the shared global
@@ -934,6 +961,33 @@ class SystemTools {
           'confidence': decision.confidence,
           if (decision.reason != null) 'reason': decision.reason,
         };
+        // Persist the delegation as an `agent.routed` fact — the decision
+        // used to be returned and dropped, leaving no from→to trail, so the
+        // org chart could never show WHO handed work to WHOM (the living
+        // org chart's delegation edges and the artifact-journey view both
+        // read this).
+        final routedWs = init.registries.knowledge.kv.workspaceId;
+        if (routedWs != null && target.isNotEmpty) {
+          final now = DateTime.now();
+          await init.registries.knowledge.knowledgeSystem.facts
+              .writeFacts(<bundle.FactRecord>[
+            bundle.FactRecord(
+              id: 'agent.routed/${now.microsecondsSinceEpoch}',
+              workspaceId: routedWs,
+              type: 'agent.routed',
+              entityId: scopedToBare[target] ?? target,
+              content: <String, dynamic>{
+                'fromAgentId': args['managerId'],
+                'targetAgentId': scopedToBare[target] ?? target,
+                'workspaceId': routedWs,
+                'confidence': decision.confidence,
+                if (decision.reason != null) 'reason': decision.reason,
+              },
+              confidence: 1.0,
+              createdAt: now,
+            ),
+          ]);
+        }
         // Assign + collect: actually run the routed member so the lead gets a
         // real deliverable back (member history records the turn — no
         // fabricated "member reported" from the manager).
@@ -3226,13 +3280,12 @@ class SystemTools {
           final loc = (metadata['locator'] ?? '').toString();
           if (cap == 'fs' && loc.isNotEmpty) {
             // Relativise against the SAME anchor the host `fs.*` capability
-            // resolves against at read time — the active workspace's bundle
-            // dir (`t.currentProject`), not the project root — so `asset_open`
-            // round-trips after a folder rename / copy / move.
-            final anchor = wsBundleDir(
-              init.projectRoot,
-              wsId ?? init.registries.workspace.activeId ?? systemWorkspaceSlot,
-            );
+            // resolves against at read time — the ops PROJECT root (the single
+            // per-project chat / fs anchor). Workspaces are logical lenses;
+            // assets are project-shared and connect to a workspace / agent by
+            // reference, not by a separate per-workspace filesystem base — so
+            // `asset_open` round-trips after a folder rename / copy / move.
+            final anchor = init.projectRoot;
             metadata = <String, Object?>{
               ...metadata,
               'locator': ProjectPaths.toRelative(anchor, loc),

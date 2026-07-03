@@ -3,56 +3,132 @@
 /// Exposes `mcp_form` (`form.*`) and `mcp_ingest` (`ingest.*`) as general
 /// host tools on the shared [HostToolRegistry], so any built-in (ops, …)
 /// or bundle app uses one engine instead of owning its own (parity rule).
-/// Mirrors the `capability_tools` reference recipe, written directly into
-/// the host to avoid a path-vs-pub version clash on mcp_form / mcp_ingest.
 library;
 
+import 'dart:io';
 import 'dart:convert' show jsonEncode;
 
 import 'package:brain_kernel/brain_kernel.dart';
-import 'package:mcp_form/mcp_form.dart';
+import 'package:mcp_form/mcp_form.dart'
+    show RendererRegistry, TrueTypeFont, standardRendererRegistry;
 import 'package:mcp_ingest/mcp_ingest.dart';
 
-/// Register `form.<verb>` for every tool `mcp_form` declares (shape A —
-/// the package ships its own MCP tool surface).
-List<String> registerFormCapability(HostToolRegistry registry) {
-  final handler = _assembleFormToolHandler();
-  final exposed = <String>[];
-  for (final def in handler.toolDefinitions) {
-    // mcp_form declares names already prefixed (`form.render`); strip so
-    // the registry does not double the namespace.
-    final verb = _stripPrefix(def.name, 'form.');
-    exposed.add(
-      registry.registerExposed(
-        bundleId: 'form',
-        rawName: verb,
-        description: def.description,
-        inputSchema: def.inputSchema,
-        handler: (args) async {
-          try {
-            final out = await handler.handleToolCall(
-              toolName: def.name,
-              arguments: args,
-            );
-            return _result(out, isError: false);
-          } on McpToolError catch (e) {
-            return _result(<String, dynamic>{
-              'ok': false,
-              'code': e.code,
-              'error': e.message,
-            }, isError: true);
-          } catch (e) {
-            return _result(<String, dynamic>{
-              'ok': false,
-              'code': 'form.error',
-              'error': e.toString(),
-            }, isError: true);
-          }
-        },
-      ),
+import 'capability_recipes/capability_recipes.dart'
+    show
+        CapabilityTool,
+        CapabilityToolError,
+        formCapabilityId,
+        formCapabilityTools,
+        registerCapabilityTools;
+import '../../apps/form_builder/infra/form_spec_vocab.dart'
+    show validateTemplateVocabulary;
+
+/// Register `form.<verb>` for every tool `mcp_form` declares, via the
+/// vendored `capability_tools` recipe (the canonical form wiring — the same
+/// assembly any host uses, so a bundle drives `form.*` identically anywhere).
+///
+/// [templatePort] controls where templates persist. The default is the
+/// engine's in-memory port (process-lifetime — the unbound state). The Form
+/// Builder rebinds this registration with a `FactBackedFormTemplatePort`
+/// hydrated from its bound project's FactGraph (see
+/// `form_capability_store.dart::bindFormCapabilityTemplates`).
+///
+/// Re-registration is made explicit: `HostToolRegistry.registerExposed` does
+/// NOT replace (the endpoint throws "Tool ... already exists" — live-verified
+/// 2026-07-03), so each verb is `unregisterExposed`d first. First
+/// registration is a no-op removal.
+List<String> registerFormCapability(
+  HostToolRegistry registry, {
+  FormTemplatePort? templatePort,
+}) {
+  final tools = [
+    for (final tool in formCapabilityTools(
+      templatePort: templatePort,
+      // CJK PDF fidelity: inject a system Korean-capable TrueType through
+      // the engine's renderer seam (subsetting keeps the PDF small). Without
+      // it every Hangul glyph prints '?'.
+      rendererRegistry: _hostRendererRegistry(),
+    ))
+      tool.verb == 'save_template' ? withFormVocabularyGate(tool) : tool,
+  ];
+  for (final tool in tools) {
+    registry.unregisterExposed(
+      bundleId: formCapabilityId,
+      rawName: tool.verb,
     );
   }
-  return exposed;
+  return registerCapabilityTools(
+    registry,
+    capabilityId: formCapabilityId,
+    tools: tools,
+  );
+}
+
+/// The registry every `form.*` registration renders with: the five bundled
+/// renderers plus the host's CJK font on both the primary-embed and fallback
+/// seams (primary covers Hangul-only documents; fallback covers mixed
+/// Latin/Hangul runs).
+RendererRegistry _hostRendererRegistry() {
+  final cjk = _systemCjkFont();
+  return standardRendererRegistry(
+    embeddedFont: cjk,
+    fallbackFonts: cjk == null ? const [] : [cjk],
+  );
+}
+
+TrueTypeFont? _cachedCjkFont;
+bool _cjkFontLoadAttempted = false;
+
+/// First present system font that covers Hangul — parsed once per process.
+TrueTypeFont? _systemCjkFont() {
+  if (_cjkFontLoadAttempted) return _cachedCjkFont;
+  _cjkFontLoadAttempted = true;
+  const candidates = <String>[
+    '/System/Library/Fonts/Supplemental/AppleGothic.ttf', // macOS
+    '/System/Library/Fonts/Supplemental/AppleMyungjo.ttf', // macOS
+    'C:/Windows/Fonts/malgun.ttf', // Windows
+    '/usr/share/fonts/truetype/nanum/NanumGothic.ttf', // Linux
+  ];
+  for (final path in candidates) {
+    try {
+      final file = File(path);
+      if (!file.existsSync()) continue;
+      _cachedCjkFont = TrueTypeFont.parse(file.readAsBytesSync());
+      return _cachedCjkFont;
+    } catch (_) {
+      // Unparseable candidate — try the next; null keeps latin-only PDFs.
+    }
+  }
+  return null;
+}
+
+/// Vocabulary gate on `form.save_template`: out-of-spec enumerable values
+/// (block type, align, overflow, placement anchor) are REJECTED with a
+/// message listing the allowed values — so an LLM (or a person) learns
+/// what went wrong instead of persisting a value viewers can't render.
+/// Vocabulary source: `form_spec_vocab.dart` (derived from the published
+/// engine types until `specs-pub/form` lands).
+CapabilityTool withFormVocabularyGate(CapabilityTool tool) {
+  return CapabilityTool(
+    verb: tool.verb,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    invoke: (args) {
+      final template = (args['template'] as Map?)?.cast<String, dynamic>();
+      if (template != null) {
+        final violations = validateTemplateVocabulary(template);
+        if (violations.isNotEmpty) {
+          throw CapabilityToolError(
+            code: 'form.spec_violation',
+            message:
+                'Template rejected — out-of-spec values:\n'
+                '${violations.join('\n')}',
+          );
+        }
+      }
+      return tool.invoke(args);
+    },
+  );
 }
 
 /// Register `ingest.run` (shape B — wrap the `IngestPipeline` runtime).
@@ -123,26 +199,9 @@ List<String> registerIngestCapability(HostToolRegistry registry) {
   ];
 }
 
-FormToolHandler _assembleFormToolHandler() {
-  final templatePort = FormTemplatePortImpl();
-  final formPort = FormPortImpl(templatePort: templatePort);
-  final rendererPort = FormRendererPortImpl(
-    registry: RendererRegistry(),
-    templatePort: templatePort,
-  );
-  return FormToolHandler(
-    formPort: formPort,
-    templatePort: templatePort,
-    rendererPort: rendererPort,
-  );
-}
-
 KernelToolResult _result(Object? value, {required bool isError}) {
   return KernelToolResult(
     content: <KernelContent>[KernelTextContent(text: jsonEncode(value))],
     isError: isError,
   );
 }
-
-String _stripPrefix(String name, String prefix) =>
-    name.startsWith(prefix) ? name.substring(prefix.length) : name;

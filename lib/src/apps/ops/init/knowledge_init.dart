@@ -98,6 +98,16 @@ class KnowledgeInit {
   final SkillExecutor skillExecutor;
   final TaskScheduler scheduler;
 
+  /// Completes when the BACKGROUND workspace load finishes. `boot` gates the
+  /// Ops tab render on the ACTIVE workspace only and streams the remaining
+  /// departments in the background; this future resolves once every department
+  /// has been mirrored (the kernel runtime is workspace-COMPLETE). Already
+  /// complete for unbound / test boots that had no background phase. Await it
+  /// when you need every department resolvable right after boot — e.g. a
+  /// cross-workspace `agent_ask`, or a test asserting a non-active department's
+  /// agent resolves.
+  Future<void> workspacesReady = Future<void>.value();
+
   /// Per-project active-ethos store — the workspace **charter** lives here.
   /// Null in unbound / test boots. Charter tools (`workspace_set_charter`)
   /// write + activate the org charter through this so it governs the
@@ -660,14 +670,37 @@ class KnowledgeInit {
     }
 
     OpsLog.boot('init', 'pre-wsload activeWs="${config.activeWorkspace}"');
-    // 12. Load ALL workspaces' knowledge (agents · skills · philosophy) so the
-    // kernel agent runtime is workspace-COMPLETE — every department's members
-    // are resolvable for cross-workspace `agent_ask` / `bk.agent.*`, not just
-    // the active UI lens (test2 #2/#4). The active workspace is loaded last so
-    // it wins shared-pool collisions + owns the active philosophy.
-    if (config.activeWorkspace.isNotEmpty) {
-      await registries.workspace.setActive(config.activeWorkspace);
-      await WorkspaceLoader(
+    // Resolves when the background (non-active) department load completes;
+    // stays already-complete when everything loaded synchronously below.
+    var backgroundLoad = Future<void>.value();
+    // 12. Load the ACTIVE workspace on the boot critical path, then stream the
+    // rest in the background. "Active workspace" is only a view — every
+    // department still loads so the kernel runtime is workspace-COMPLETE (all
+    // members resolve for cross-workspace `agent_ask` / `bk.agent.*`, test2
+    // #2/#4) — but blocking the Ops tab render on the WHOLE org makes the tab
+    // spin while every department loads (the chat/coordinator is already
+    // instant). So `loadActive()` (one workspace) gates the tab render, and a
+    // background `loadAll()` mirrors the remaining departments. `loadAll`
+    // re-loads the active workspace LAST, so the shared-pool "active wins"
+    // ordering + the active philosophy are preserved exactly; the active
+    // re-pass is cheap (idempotent skill register + fork-skip). Trade-off: a
+    // brief window after tab render where a not-yet-streamed department's agent
+    // is unresolvable — it becomes available as the background load reaches it.
+    // Resolve the effective active lens. When the configured / persisted
+    // workspace is the reserved `_system` slot (or absent) but real workspaces
+    // exist, default to the first real one so Home lands on content instead of
+    // the empty admin slot (e.g. right after the active workspace was deleted).
+    // The user-facing dropdown never selects `_system`, so defaulting away from
+    // it never overrides an explicit choice.
+    var effectiveActive = config.activeWorkspace;
+    if (effectiveActive.isEmpty ||
+        effectiveActive == WorkspaceRegistry.systemWorkspaceId) {
+      final real = await registries.workspace.list();
+      if (real.isNotEmpty) effectiveActive = real.first.id;
+    }
+    if (effectiveActive.isNotEmpty) {
+      await registries.workspace.setActive(effectiveActive);
+      final loader = WorkspaceLoader(
         config: config,
         registries: registries,
         system: system,
@@ -675,8 +708,17 @@ class KnowledgeInit {
         executor: skillExecutor,
         ethosStore: ethosStore,
         defaultModel: defaultAgentModel,
-      ).loadAll();
-      OpsLog.boot('init', 'wsload done — skills=${appSkills.length}');
+      );
+      await loader.loadActive();
+      OpsLog.boot(
+        'init',
+        'wsload active done — skills=${appSkills.length}, streaming rest',
+      );
+      backgroundLoad = loader.loadAll().then(
+        (_) => OpsLog.boot('init', 'wsload background complete'),
+        onError: (Object e) =>
+            OpsLog.warn('init', 'background wsload failed: $e'),
+      );
       // 12b retired — boot used to seed 5 `workspace_insight` sample
       // facts (vendor_terms · q2_clusters · gate_outcome · avg_confidence
       // · process_throughput) for the home page demo. Per the seed
@@ -699,7 +741,7 @@ class KnowledgeInit {
       workspaces: registries.workspace,
     )..start();
 
-    return KnowledgeInit._(
+    final init = KnowledgeInit._(
       system: system,
       registries: registries,
       adapters: Adapters(llm: llm, kv: kv, orgKv: orgKv),
@@ -712,6 +754,8 @@ class KnowledgeInit {
       activations: activations,
       observability: observability,
     );
+    init.workspacesReady = backgroundLoad;
+    return init;
   }
 
   /// Tear down every `BundleActivation` taken by [boot] so the
@@ -754,7 +798,22 @@ class KnowledgeInit {
 
   Future<void> switchWorkspace(String workspaceId) async {
     await registries.workspace.setActive(workspaceId);
-    // Re-scan workspace directory so registries see the new workspace contents.
+    // Persist the per-project active pointer (`<projectRoot>/.makemind-ops-active`,
+    // the boot-restore source read by `_withProjectRoot`) so EVERY switch path
+    // is durable. Previously only the MCP `workspace_switch` handler wrote it,
+    // so a UI switch (workspace list pane / Home dropdown) was in-memory only
+    // and reset to the old lens on the next boot. Best-effort + per-project, so
+    // it never clobbers another host/project via the shared global config.
+    final root = projectRoot;
+    if (root.isNotEmpty) {
+      try {
+        await File(
+          p.join(root, '.makemind-ops-active'),
+        ).writeAsString(workspaceId);
+      } catch (_) {
+        /* best-effort — boot falls back to the global config value */
+      }
+    }
   }
 
   /// Live-register a behavior into the project bundle's activation so a

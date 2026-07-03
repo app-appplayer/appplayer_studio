@@ -867,6 +867,10 @@ class VibeStudioHostApp extends StudioApp {
     // chunking) — shared engines, host-owned like browser, so built-ins
     // and bundle apps use them instead of each booting their own.
     registerFormCapability(hostTools);
+    // Let the Form Builder rebind `form.*` template persistence onto its
+    // bound project's FactGraph (and back to in-memory on close) without
+    // touching the registry type directly.
+    FormCapabilityBinding.install(hostTools);
     registerIngestCapability(hostTools);
     // `channel.*` — bidirectional multi-connector messaging (mcp_channel). P1
     // = in-app feed connector over the active ops project's canonical KV. P2

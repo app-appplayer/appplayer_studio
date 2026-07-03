@@ -104,7 +104,50 @@ class WorkspaceLoader {
     await _loadProfiles('$wsRoot/profiles');
     await _loadPhilosophies('$wsRoot/philosophies', setActive: isActive);
 
-    await _mirrorAgentMembers(wsId, members);
+    await _mirrorAgentMembers(wsId, members, _poolFingerprint(wsRoot));
+  }
+
+  /// Deterministic FNV-1a 32-bit hex — stable across process runs (unlike
+  /// `String.hashCode`), so a persisted fork signature compares correctly on
+  /// the next boot.
+  String _stableHash(String s) {
+    var h = 0x811c9dc5;
+    for (final c in s.codeUnits) {
+      h = (h ^ c) & 0xffffffff;
+      h = (h * 0x01000193) & 0xffffffff;
+    }
+    return h.toRadixString(16).padLeft(8, '0');
+  }
+
+  /// Content fingerprint of a workspace's 4-axis POOL (skills / profiles /
+  /// philosophies yaml): name + a hash of the file BYTES for every `.yaml`,
+  /// sorted for determinism. Folded into each member's fork signature so
+  /// editing any pool file re-triggers that workspace's forks — the pool is
+  /// COPIED into owned storage at fork time, so a signature that ignored the
+  /// pool would freeze an edited skill/profile/philosophy at its old content.
+  ///
+  /// Hashes CONTENT, not size+mtime: boot re-materialisation / re-save can bump
+  /// a yaml's mtime without changing its bytes, and an mtime-based fingerprint
+  /// would then differ every boot and never let the skip fire.
+  String _poolFingerprint(String wsRoot) {
+    final parts = <String>[];
+    for (final sub in const ['skills', 'profiles', 'philosophies']) {
+      final dir = Directory('$wsRoot/$sub');
+      if (!dir.existsSync()) continue;
+      final files = dir.listSync().whereType<File>().where(
+        (f) => f.path.endsWith('.yaml'),
+      ).toList()..sort((a, b) => a.path.compareTo(b.path));
+      for (final f in files) {
+        String body;
+        try {
+          body = f.readAsStringSync();
+        } catch (_) {
+          body = '';
+        }
+        parts.add('${f.path}:${_stableHash(body)}');
+      }
+    }
+    return _stableHash(parts.join('|'));
   }
 
   /// Ensure every yaml-loaded [AgentMember] has a matching flowbrain
@@ -113,7 +156,11 @@ class WorkspaceLoader {
   /// `AgentNotFoundException` for any agent that was created via the GUI
   /// (yaml on disk) before the engine restarted. Idempotent — skips agents
   /// that already exist in the flowbrain registry.
-  Future<void> _mirrorAgentMembers(String wsId, List<dynamic> members) async {
+  Future<void> _mirrorAgentMembers(
+    String wsId,
+    List<dynamic> members,
+    String poolSig,
+  ) async {
     if (!system.isAgentSubsystemActivated) return;
     // Workspace title for the agent self-identity prompt (test2 #3 — a worker
     // agent must know its own name + department, not guess the operator or
@@ -137,11 +184,22 @@ class WorkspaceLoader {
             : const ModelSpec(provider: 'stub', model: 'stub-1'));
     var mirrored = 0;
     var forks = 0;
+    var forkSkipped = 0;
     for (final m in members) {
       if (m is! AgentMember) continue;
       try {
         final modelSpec = m.model ?? fallbackModel;
         final existing = await system.agents.getAgent(m.agentId);
+        // Fork signature = workspace pool fingerprint + this member's 4-axis
+        // assignment refs. A match against the persisted `ops_fork_sig` tag
+        // means nothing that feeds `tryAssign*FromPool` changed since the last
+        // boot, so the (persisted) owned forks are already current and the
+        // re-fork is pure overhead.
+        final skillPart = ([...m.skillIds]..sort()).join(',');
+        final sig = _stableHash(
+          '$poolSig|$skillPart|${m.profileRef}|${m.philosophyRef}',
+        );
+        var applyForks = true;
         if (existing == null) {
           await system.agents.createAgent(
             id: m.agentId,
@@ -173,6 +231,16 @@ class WorkspaceLoader {
               systemPrompt: promptDrift ? identity : null,
             );
           }
+          // Skip the 4-axis re-fork when the signature is unchanged — the
+          // owned forks persist across the `.kv` reboot, so re-applying an
+          // identical assignment set from an identical pool is wasted boot
+          // work (the dominant cost when every workspace is loaded eagerly
+          // because "active workspace" is a view, not an execution gate).
+          applyForks = existing.tags['ops_fork_sig'] != sig;
+        }
+        if (!applyForks) {
+          forkSkipped++;
+          continue;
         }
         // Mirror the yaml-declared 4-axis assignments into flowbrain owned
         // storage. Without this step the AgentMember.skillIds list shows
@@ -203,12 +271,23 @@ class WorkspaceLoader {
           );
           if (ok) forks++;
         }
+        // Stamp the signature so the next boot can skip this member's re-fork
+        // while nothing that feeds it changes. Carry m.tags (the durable
+        // record) — update replaces the tag map.
+        await system.agents.updateAgent(
+          m.agentId,
+          tags: <String, String>{...m.tags, 'ops_fork_sig': sig},
+        );
       } catch (e) {
         OpsLog.warn('wsload', 'agent mirror failed for ${m.id}: $e');
       }
     }
-    if (mirrored > 0 || forks > 0) {
-      OpsLog.boot('wsload', 'agents mirrored=$mirrored · 4-axis forks=$forks');
+    if (mirrored > 0 || forks > 0 || forkSkipped > 0) {
+      OpsLog.boot(
+        'wsload',
+        'agents mirrored=$mirrored · 4-axis forks=$forks · '
+        'fork-skip=$forkSkipped',
+      );
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../registries/member_registry.dart' as reg show Member, AgentMember;
+import '../../registries/workspace_registry.dart' show Workspace, WorkspaceType;
 import '../../state/providers.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/ops_activity_row.dart';
@@ -140,15 +141,10 @@ class _Header extends ConsumerWidget {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const OpsCrumb('Workspace'),
-              const SizedBox(height: 4),
-              Text(
-                'Home',
-                style: Theme.of(context).textTheme.displayMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            children: const [
+              OpsCrumb('Workspace'),
+              SizedBox(height: 4),
+              _WorkspaceSelector(),
             ],
           ),
         ),
@@ -169,6 +165,90 @@ class _Header extends ConsumerWidget {
           label: const Text('New task'),
         ),
       ],
+    );
+  }
+}
+
+/// Home H1 = the current workspace, rendered as a dropdown so the operator can
+/// both SEE which lens they're in and SWITCH from here (workspaces are views,
+/// not activation gates — the single coordinator spans all). Reads the live
+/// workspace list + active id; switching persists through
+/// `KnowledgeInit.switchWorkspace` (durable across reboots) and updates the
+/// active-id provider so every Home card re-derives against the new lens.
+class _WorkspaceSelector extends ConsumerWidget {
+  const _WorkspaceSelector();
+
+  static IconData _iconFor(WorkspaceType t) => switch (t) {
+    WorkspaceType.org => Icons.apartment,
+    WorkspaceType.personal => Icons.person_outline,
+    WorkspaceType.project => Icons.workspaces_outline,
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeId = ref.watch(activeWorkspaceIdProvider);
+    final list = ref
+        .watch(workspaceListProvider)
+        .maybeWhen(data: (l) => l, orElse: () => const <Workspace>[]);
+    Workspace? current;
+    for (final w in list) {
+      if (w.id == activeId) {
+        current = w;
+        break;
+      }
+    }
+    final label = current?.title ?? (list.isEmpty ? 'No workspace' : '—');
+
+    return PopupMenuButton<String>(
+      tooltip: 'Switch workspace',
+      position: PopupMenuPosition.under,
+      enabled: list.isNotEmpty,
+      onSelected: (id) async {
+        if (id == activeId) return;
+        await ref.read(knowledgeInitProvider).switchWorkspace(id);
+        ref.read(activeWorkspaceIdProvider.notifier).state = id;
+      },
+      itemBuilder:
+          (_) => [
+            for (final w in list)
+              PopupMenuItem<String>(
+                value: w.id,
+                height: 36,
+                child: Row(
+                  children: [
+                    Icon(_iconFor(w.type), size: 15, color: OpsColors.text2),
+                    const SizedBox(width: 8),
+                    Text(w.title),
+                    Text(
+                      '  ${w.id}',
+                      style: TextStyle(
+                        fontFamily: OpsType.mono,
+                        fontSize: 10,
+                        color: OpsColors.text3,
+                      ),
+                    ),
+                    if (w.id == activeId) ...[
+                      const Spacer(),
+                      Icon(Icons.check, size: 14, color: OpsColors.accent),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.displayMedium,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Icon(Icons.arrow_drop_down, size: 22),
+        ],
+      ),
     );
   }
 }

@@ -62,10 +62,8 @@ List<CapabilityTool> kvCapabilityTools(KvStoragePortAdapter kv) {
       verb: 'get',
       description: 'Read the value stored under a key (null if absent).',
       inputSchema: keyProp,
-      invoke:
-          (args) async => <String, dynamic>{
-            'value': await kv.get(requireKey(args)),
-          },
+      invoke: (args) async =>
+          <String, dynamic>{'value': await kv.get(requireKey(args))},
     ),
     CapabilityTool(
       verb: 'remove',
@@ -80,10 +78,8 @@ List<CapabilityTool> kvCapabilityTools(KvStoragePortAdapter kv) {
       verb: 'exists',
       description: 'Whether a value exists under a key.',
       inputSchema: keyProp,
-      invoke:
-          (args) async => <String, dynamic>{
-            'exists': await kv.exists(requireKey(args)),
-          },
+      invoke: (args) async =>
+          <String, dynamic>{'exists': await kv.exists(requireKey(args))},
     ),
     CapabilityTool(
       verb: 'keys',
@@ -94,10 +90,9 @@ List<CapabilityTool> kvCapabilityTools(KvStoragePortAdapter kv) {
           'prefix': <String, dynamic>{'type': 'string'},
         },
       },
-      invoke:
-          (args) async => <String, dynamic>{
-            'keys': await kv.keys(prefix: args['prefix'] as String?),
-          },
+      invoke: (args) async => <String, dynamic>{
+        'keys': await kv.keys(prefix: args['prefix'] as String?),
+      },
     ),
   ];
 }

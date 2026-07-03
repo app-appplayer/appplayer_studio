@@ -86,12 +86,17 @@ void main() {
       );
 
       // Re-boot from the same on-disk tree. The kernel runtime starts empty
-      // and `loadAll` repopulates it from yaml. active resets to `_system`
-      // (config) — so NEITHER department is the active lens.
+      // and `loadAll` repopulates it from yaml. The config's active is the
+      // empty `_system` slot, so the boot defaults to the first real workspace
+      // (id-sorted → org/hr) — org/media is therefore NOT the active lens, the
+      // case that must still resolve cross-workspace.
       final init2 = await boot();
-      expect(init2.registries.workspace.activeId, '_system');
+      expect(init2.registries.workspace.activeId, 'org/hr');
+      // Boot gates the tab on the active workspace and streams the rest — wait
+      // for the background department load before asserting cross-ws presence.
+      await init2.workspacesReady;
 
-      // t1 — both departments' agents mirrored despite neither being active.
+      // t1 — both departments' agents mirrored; org/media is not active.
       final hr = await init2.system.agents.getAgent('hr_lead');
       final media = await init2.system.agents.getAgent('media_lead');
       expect(hr, isNotNull, reason: 'org/hr agent must resolve while inactive');

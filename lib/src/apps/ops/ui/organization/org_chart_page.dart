@@ -22,6 +22,7 @@ import '../../theme/tokens.dart';
 import 'org_chart_model.dart';
 import 'org_chart_painter.dart';
 import 'org_node_detail.dart';
+import 'org_overlay.dart';
 
 class OrgChartPage extends ConsumerStatefulWidget {
   const OrgChartPage({super.key});
@@ -34,13 +35,16 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
   String? _selectedId;
   OrgViewMode _mode = OrgViewMode.workflow;
   final _tc = TransformationController();
-  // The content size we last fitted to, so we re-fit when the chart changes
-  // (a process / member edit) but not on every rebuild (which would fight the
-  // user's manual pan/zoom).
-  Size? _fittedFor;
+  // Whether the transform was initialised for the current lens. The default
+  // view is NATURAL SIZE (1:1) — a large org must stay READABLE and be
+  // explored by pan/zoom, not shrunk whole into the viewport (fit-to-view
+  // made big orgs illegibly small; it stays available as the Fit button).
+  // Content edits (a process / member change) do NOT reset the transform —
+  // that would fight the user's pan/zoom; only a lens switch re-initialises.
+  bool _viewInitialized = false;
 
   static const double _minScale = 0.25;
-  static const double _maxScale = 2.5;
+  static const double _maxScale = 3.0;
 
   @override
   void dispose() {
@@ -48,8 +52,20 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
     super.dispose();
   }
 
+  /// Natural-size (1:1) view, top-aligned: the default and the `1:1` button.
+  /// Content narrower than the viewport is centered; wider content anchors
+  /// left so reading starts at the tree's origin.
+  void _natural(Size content, Size viewport) {
+    if (content.width <= 0 || content.height <= 0) return;
+    const margin = 24.0;
+    final dx = (viewport.width - content.width) / 2;
+    _tc.value = Matrix4.identity()
+      ..translateByDouble(dx < margin ? margin : dx, margin, 0, 1);
+  }
+
   /// Fit the whole chart into [viewport] (scale down only — never magnify past
-  /// 1:1) and center it, top-aligned with a small margin.
+  /// 1:1) and center it, top-aligned with a small margin. Explicit action —
+  /// the overview lens for a quick glance at the whole org.
   void _fit(Size content, Size viewport) {
     if (content.width <= 0 || content.height <= 0) return;
     const margin = 24.0;
@@ -82,7 +98,7 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
             setState(() {
               _mode = m;
               _selectedId = null;
-              _fittedFor = null; // force re-fit for the new lens
+              _viewInitialized = false; // re-anchor 1:1 for the new lens
             });
           },
         ),
@@ -92,6 +108,12 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
             error: (e, _) => _Message(icon: Icons.error_outline, text: '$e'),
             data: (inputs) {
               final model = buildOrgChartModel(inputs, mode: _mode);
+              // Live layer: 4s poll (facts/process runs have no change
+              // stream). A tick only repaints — the geometry above rebuilds
+              // solely on registry mutations, so pan/zoom is untouched.
+              final overlay = ref
+                  .watch(orgOverlayProvider)
+                  .whenOrNull(data: (raw) => resolveOrgOverlay(inputs, raw));
               if (model.nodes.isEmpty) {
                 return const _Message(
                   icon: Icons.hub_outlined,
@@ -103,12 +125,13 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
               return LayoutBuilder(
                 builder: (ctx, constraints) {
                   final viewport = constraints.biggest;
-                  // Fit once per content-size change (post-frame so we don't
-                  // mutate the controller during build).
-                  if (_fittedFor != model.size) {
-                    _fittedFor = model.size;
+                  // Initialise once per lens at NATURAL size (post-frame so we
+                  // don't mutate the controller during build). Content edits
+                  // keep the user's current pan/zoom.
+                  if (!_viewInitialized) {
+                    _viewInitialized = true;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _fit(model.size, viewport);
+                      if (mounted) _natural(model.size, viewport);
                     });
                   }
                   return Stack(
@@ -136,6 +159,7 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
                               painter: OrgChartPainter(
                                 model: model,
                                 selectedId: _selectedId,
+                                overlay: overlay,
                               ),
                             ),
                           ),
@@ -147,6 +171,7 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
                         child: _ZoomBar(
                           onIn: () => _zoomBy(1.25),
                           onOut: () => _zoomBy(0.8),
+                          onNatural: () => _natural(model.size, viewport),
                           onFit: () => _fit(model.size, viewport),
                         ),
                       ),
@@ -179,26 +204,64 @@ class _Header extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Color(0x22FFFFFF))),
       ),
-      child: Row(
-        children: [
-          Text(
+      // The header must never overflow, whatever the pane width. Wide panes
+      // get the fixed title/switch + scrolling legend + right-aligned hint;
+      // panes too narrow for even the fixed part degrade to one fully
+      // scrollable strip.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final title = Text(
             'Organization',
             style: TextStyle(
               fontSize: OpsType.xxl,
               fontWeight: OpsType.semibold,
               color: OpsColors.text,
             ),
-          ),
-          const SizedBox(width: OpsSpace.s6),
-          _LensSwitch(mode: mode, onMode: onMode),
-          const SizedBox(width: OpsSpace.s6),
-          ..._legendFor(mode),
-          const Spacer(),
-          Text(
-            _hintFor(mode),
-            style: TextStyle(fontSize: OpsType.xs, color: OpsColors.text3),
-          ),
-        ],
+          );
+          if (constraints.maxWidth < 560) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  title,
+                  const SizedBox(width: OpsSpace.s6),
+                  _LensSwitch(mode: mode, onMode: onMode),
+                  const SizedBox(width: OpsSpace.s6),
+                  ..._legendFor(mode),
+                ],
+              ),
+            );
+          }
+          return Row(
+            children: [
+              title,
+              const SizedBox(width: OpsSpace.s6),
+              _LensSwitch(mode: mode, onMode: onMode),
+              const SizedBox(width: OpsSpace.s6),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: _legendFor(mode)),
+                ),
+              ),
+              const SizedBox(width: OpsSpace.s4),
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    _hintFor(mode),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: OpsType.xs,
+                      color: OpsColors.text3,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -286,11 +349,18 @@ class _LensSwitch extends StatelessWidget {
   }
 }
 
-/// Bottom-right zoom controls (zoom in / out / fit-to-view).
+/// Bottom-right zoom controls (zoom out / 1:1 / fit-to-view / zoom in).
+/// 1:1 = the readable default for large orgs; Fit = whole-org overview.
 class _ZoomBar extends StatelessWidget {
-  const _ZoomBar({required this.onIn, required this.onOut, required this.onFit});
+  const _ZoomBar({
+    required this.onIn,
+    required this.onOut,
+    required this.onNatural,
+    required this.onFit,
+  });
   final VoidCallback onIn;
   final VoidCallback onOut;
+  final VoidCallback onNatural;
   final VoidCallback onFit;
 
   @override
@@ -305,6 +375,11 @@ class _ZoomBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _ZoomBtn(icon: Icons.remove, tip: 'Zoom out', onTap: onOut),
+          _ZoomBtn(
+            icon: Icons.crop_free_outlined,
+            tip: 'Actual size (1:1)',
+            onTap: onNatural,
+          ),
           _ZoomBtn(icon: Icons.fit_screen_outlined, tip: 'Fit', onTap: onFit),
           _ZoomBtn(icon: Icons.add, tip: 'Zoom in', onTap: onIn),
         ],

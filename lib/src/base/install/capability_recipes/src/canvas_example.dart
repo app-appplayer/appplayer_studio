@@ -47,7 +47,8 @@ List<CapabilityTool> canvasCapabilityTools() {
         },
         'required': <String>['cdl'],
       },
-      invoke: (args) async => parseCdl(requireString(args, 'cdl')).toJson(),
+      invoke: (args) async =>
+          parseCdl(requireString(args, 'cdl')).toJson(),
     ),
     CapabilityTool(
       verb: 'json_to_cdl',

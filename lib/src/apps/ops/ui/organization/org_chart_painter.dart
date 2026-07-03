@@ -14,12 +14,17 @@ import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
 import 'org_chart_model.dart';
+import 'org_overlay.dart';
 
 class OrgChartPainter extends CustomPainter {
-  OrgChartPainter({required this.model, this.selectedId});
+  OrgChartPainter({required this.model, this.selectedId, this.overlay});
 
   final OrgChartModel model;
   final String? selectedId;
+
+  /// Live layer (working glow · unit badges · delegation arrows) — null
+  /// until the first overlay poll lands; the static chart draws unchanged.
+  final OrgChartOverlay? overlay;
 
   OrgNode? _node(String id) {
     for (final n in model.nodes) {
@@ -92,6 +97,9 @@ class OrgChartPainter extends CustomPainter {
         case OrgNodeKind.step:
           _box(canvas, n, OpsColors.app);
         case OrgNodeKind.agent:
+          if (overlay?.activeNodeIds.contains(n.id) ?? false) {
+            _activeGlow(canvas, n.rect);
+          }
           _box(canvas, n, n.isLead ? OpsColors.domain : OpsColors.app);
         case OrgNodeKind.knowledge:
           _box(canvas, n, _axisColor(n.sublabel));
@@ -101,6 +109,76 @@ class OrgChartPainter extends CustomPainter {
           _box(canvas, n, OpsColors.textMute);
       }
     }
+
+    // Pass 4 — live delegation arrows (recent `agent.routed`), on top of
+    // everything: the point is to SEE work flow between people right now.
+    final ov = overlay;
+    if (ov != null) {
+      for (final e in ov.routeEdges) {
+        final a = _node(e.fromNodeId);
+        final b = _node(e.toNodeId);
+        if (a == null || b == null) continue;
+        _delegationArrow(canvas, a.rect, b.rect, e.strength);
+      }
+    }
+  }
+
+  /// Bright ring behind an agent chip whose member invoked within the
+  /// working window — "this seat is active right now".
+  void _activeGlow(Canvas canvas, Rect rect) {
+    final rr = RRect.fromRectAndRadius(
+      rect.inflate(3),
+      const Radius.circular(9),
+    );
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..color = OpsColors.success.withValues(alpha: 0.55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..color = OpsColors.success
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+  }
+
+  /// Delegation flow: a thick teal arrow from the delegating seat to the
+  /// assignee, fading as the event ages out of the window.
+  void _delegationArrow(Canvas canvas, Rect from, Rect to, double strength) {
+    final c = OpsColors.io.withValues(alpha: 0.25 + 0.65 * strength);
+    final p0 = from.center;
+    final p1 = to.center;
+    final dir = (p1 - p0);
+    if (dir.distance < 1) return;
+    // Trim ends so the arrow starts/stops at the chip borders, not centers.
+    final unit = dir / dir.distance;
+    final start = p0 + unit * (from.shortestSide / 2);
+    final end = p1 - unit * (to.shortestSide / 2);
+    canvas.drawLine(
+      start,
+      end,
+      Paint()
+        ..color = c
+        ..strokeWidth = 2.0 + 1.2 * strength
+        ..strokeCap = StrokeCap.round,
+    );
+    final angle = math.atan2(end.dy - start.dy, end.dx - start.dx);
+    const s = 7.0;
+    final tip1 = end - Offset(math.cos(angle - 0.45), math.sin(angle - 0.45)) * s;
+    final tip2 = end - Offset(math.cos(angle + 0.45), math.sin(angle + 0.45)) * s;
+    canvas.drawPath(
+      Path()
+        ..moveTo(end.dx, end.dy)
+        ..lineTo(tip1.dx, tip1.dy)
+        ..lineTo(tip2.dx, tip2.dy)
+        ..close(),
+      Paint()..color = c,
+    );
   }
 
   Color _axisColor(String? axis) => switch (axis) {
@@ -198,6 +276,7 @@ class OrgChartPainter extends CustomPainter {
   /// unit's lead + members, with a header strip carrying the unit title.
   void _unitBox(Canvas canvas, OrgNode n) {
     final selected = n.id == selectedId;
+    final pending = overlay?.pendingByUnit[n.wsId] ?? 0;
     final rr = RRect.fromRectAndRadius(n.rect, const Radius.circular(12));
     canvas.drawRRect(
       rr,
@@ -205,12 +284,16 @@ class OrgChartPainter extends CustomPainter {
         ..style = PaintingStyle.fill
         ..color = OpsColors.domain.withValues(alpha: 0.07),
     );
+    // A unit with work stuck on approval is the thing the eye must find —
+    // its frame turns to the warn color, matching its ⏳ badge.
     canvas.drawRRect(
       rr,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = selected ? 2.0 : 1.3
-        ..color = OpsColors.domain.withValues(alpha: selected ? 1.0 : 0.7),
+        ..strokeWidth = selected ? 2.0 : (pending > 0 ? 1.8 : 1.3)
+        ..color = pending > 0
+            ? OpsColors.warn.withValues(alpha: selected ? 1.0 : 0.9)
+            : OpsColors.domain.withValues(alpha: selected ? 1.0 : 0.7),
     );
     // Header title + sublabel (type · member count).
     final title = TextPainter(
@@ -244,6 +327,58 @@ class OrgChartPainter extends CustomPainter {
         Offset(n.rect.left + 16 + title.width, n.rect.top + 15),
       );
     }
+    // Live badges, header right: ⏳ pending approvals (warn — the unit is
+    // blocked on a person) · ▤ today's outputs (quiet count).
+    final output = overlay?.outputTodayByUnit[n.wsId] ?? 0;
+    var badgeRight = n.rect.right - 12;
+    if (pending > 0) {
+      badgeRight -= _headerBadge(
+        canvas,
+        right: badgeRight,
+        top: n.rect.top + 8,
+        text: '⏳ $pending',
+        color: OpsColors.warn,
+      );
+      badgeRight -= 6;
+    }
+    if (output > 0) {
+      _headerBadge(
+        canvas,
+        right: badgeRight,
+        top: n.rect.top + 8,
+        text: '▤ $output',
+        color: OpsColors.text3,
+      );
+    }
+  }
+
+  /// Pill badge right-aligned in a unit header. Returns its painted width.
+  double _headerBadge(
+    Canvas canvas, {
+    required double right,
+    required double top,
+    required String text,
+    required Color color,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: OpsType.xs,
+          fontFamily: OpsType.mono,
+          fontWeight: OpsType.semibold,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final rect = Rect.fromLTWH(right - tp.width - 12, top, tp.width + 12, 18);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(9)),
+      Paint()..color = color.withValues(alpha: 0.14),
+    );
+    tp.paint(canvas, Offset(rect.left + 6, rect.top + (18 - tp.height) / 2));
+    return rect.width;
   }
 
   // --- node boxes ---
@@ -476,5 +611,7 @@ class OrgChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant OrgChartPainter old) =>
-      old.model != model || old.selectedId != selectedId;
+      old.model != model ||
+      old.selectedId != selectedId ||
+      old.overlay != overlay;
 }
