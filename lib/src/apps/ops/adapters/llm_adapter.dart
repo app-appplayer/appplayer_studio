@@ -11,7 +11,7 @@ import '../observability/recording_llm_port.dart';
 /// LLM holder — the host-composed flowbrain `LlmPort`s the built-in consumes
 /// when it wires the kernel.
 ///
-/// See `docs/03_DDD/builtin-llm-migration.md`. Provider construction lives in
+/// See `docs/_archive/builtin-llm-migration.md`. Provider construction lives in
 /// the host `composeLlm` service (no `claude`/`openai` `new` in the built-in);
 /// this holder only maps settings → host specs and layers the built-in's own
 /// telemetry (`RecordingLlmPort`) on top.
