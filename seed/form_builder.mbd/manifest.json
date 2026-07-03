@@ -33,7 +33,11 @@
           "form_builder.issue_list",
           "form_builder.issue_get",
           "bk.fact.query",
-          "bk.knowledge.query"
+          "bk.knowledge.query",
+          "form_builder.approval_request",
+          "form_builder.approve",
+          "form_builder.reject",
+          "form_builder.approval_list"
         ],
         "model": {
           "provider": "anthropic",
@@ -78,6 +82,12 @@
             "title": "Conversational template editing (the primary edit path)",
             "format": "markdown",
             "content": "# Conversational template editing\n\nTemplates are edited BY YOU through conversation \u2014 the human says what they want (\"put a navy outline around the title\", \"make the total bold red, right-aligned\", \"add our seal stamp bottom-right\", \"add a line-item table\"), you apply it:\n\n1. `form.get_template {templateId}` \u2014 the current version's full JSON.\n2. Apply the requested change to the JSON: adjust block `style` maps, add/remove/reorder blocks (keep `blockId` unique and `index` sequential), extend `schema.fields` when a new fillable field appears.\n3. Bump `version` (patch bump for styling, minor for structure) \u2014 the same (templateId, version) is rejected.\n4. `form.save_template {template}` \u2014 the new version becomes current; history keeps the old one.\n5. Confirm by rendering: `form.create_document` with placeholder data + `form.render {format:'uiDsl'}` (the app shows it as the actual form) or `pdf`/`html`.\n\nRules:\n- NEVER retype the whole template from memory \u2014 always start from `form.get_template` output.\n- Report the version you saved and what changed; if a request needs an asset (a stamp/logo image), ask for the file or its project-relative path.\n- Styling vocabulary = the template_authoring doc's style/block catalog."
+          },
+          {
+            "id": "approval_protocol",
+            "title": "Approval protocol (\uae30\uc548\u00b7\uacb0\uc7ac\ub77c\uc778\u00b7\uacb0\uc7ac\ud568)",
+            "format": "markdown",
+            "content": "# Approval protocol (\uae30\uc548 \u2192 \uacb0\uc7ac\ub77c\uc778 \u2192 \ubc1c\ud589)\n\nApproval is OPT-IN per document. A draft with no approval issues directly; once `form_builder.approval_request` opens a line, `form_builder.issue` REFUSES until the line completes (`form_builder.approval_required`).\n\n## Flow\n1. Fill and SAVE the draft (`form_builder.draft_save`) \u2014 an approval needs a saved draft.\n2. `form_builder.approval_request {documentId, requestedBy, title?, line:[{approverId, roleLabel?}...]}` \u2014 the line is ORDERED; the first approver is notified on the in-app channel. Draft status flips to `review`.\n3. Each gate: `form_builder.approve {documentId, actor, comment?, finalize?}` \u2014 actor MUST be the current gate's designated approverId (`approval.not_your_gate` otherwise). `finalize:true` = \uc804\uacb0: remaining gates are skipped and the approval completes now.\n4. Rejection: `form_builder.reject {documentId, actor, comment}` \u2014 comment REQUIRED (the drafter reads why). Draft returns to `draft`. A fix is RE-SUBMITTED as a NEW approval_request (\uc7ac\uc0c1\uc2e0 \u2014 it replaces the old approval record).\n5. When the line completes the draft is `approved` and `form_builder.issue` proceeds; the issued fact freezes the approval line as provenance (who signed each gate, when).\n\n## \uacb0\uc7ac\ud568 (inbox)\n`form_builder.approval_list {scope:'mine', actor}` = gates waiting on that approver. `scope:'requested'` = what that actor has submitted. The Approvals route renders the same data; buttons call the same tools.\n\n## Honesty rules\n- Never approve/reject as an actor you were not asked to act for.\n- Never fabricate an approval state \u2014 read it back (`approval_list`) after acting.\n- A rejected document must be FIXED and re-submitted; do not bypass the gate by issuing.\n"
           }
         ]
       },

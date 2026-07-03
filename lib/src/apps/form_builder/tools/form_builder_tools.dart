@@ -198,6 +198,17 @@ class FormBuilderTools {
                 'freezes the saved content.',
           );
         }
+        // Approval gate — OPT-IN: a document that never opened an approval
+        // issues exactly as before; one that did must complete its line.
+        final approval = await init.getApproval(documentId);
+        if (approval != null && approval['state'] != 'approved') {
+          throw _ToolError(
+            'form_builder.approval_required',
+            'This document has an approval in state '
+                '"${approval['state']}" — it must complete '
+                '(form_builder.approve) before issuing.',
+          );
+        }
 
         // Template version for provenance. The draft should carry it
         // (callers pass `form.create_document`'s `templateVersion` into
@@ -387,6 +398,14 @@ class FormBuilderTools {
           if (a['issuedBy'] != null) 'issuedBy': a['issuedBy'],
           'issuedAt': DateTime.now().toUtc().toIso8601String(),
           if (a['supersedes'] != null) 'supersedes': a['supersedes'],
+          // Approval provenance frozen as-completed (who signed each gate).
+          if (approval != null)
+            'approval': <String, dynamic>{
+              'requestedBy': approval['requestedBy'],
+              'requestedAt': approval['requestedAt'],
+              'approvedAt': approval['approvedAt'],
+              'line': approval['line'],
+            },
         };
         await init.recordIssue(issue);
         // The draft's lifecycle reflects the publish (the issue fact stays
@@ -433,6 +452,193 @@ class FormBuilderTools {
         return issue;
       }),
     );
+
+    // --- approvals (기안 → 결재라인 → 결재함) ----------------------------
+    // Design: docs/form_builder/form-approval-line.md. Approval is OPT-IN
+    // per document — a draft with no approval issues exactly as before.
+
+    server.addTool(
+      name: 'form_builder.approval_request',
+      description:
+          'Open an approval (기안 상신) for a SAVED draft: an ordered '
+          'approver line — each entry {approverId, roleLabel?} — that must '
+          'complete before form_builder.issue accepts the document. '
+          'Re-requesting after a rejection replaces the approval (재상신). '
+          'Notifies the first approver on the in-app channel.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'documentId': <String, dynamic>{'type': 'string'},
+          'title': <String, dynamic>{'type': 'string'},
+          'requestedBy': <String, dynamic>{'type': 'string'},
+          'line': <String, dynamic>{
+            'type': 'array',
+            'items': <String, dynamic>{
+              'type': 'object',
+              'properties': <String, dynamic>{
+                'approverId': <String, dynamic>{'type': 'string'},
+                'roleLabel': <String, dynamic>{'type': 'string'},
+              },
+              'required': <String>['approverId'],
+            },
+          },
+        },
+        'required': <String>['documentId', 'requestedBy', 'line'],
+      },
+      handler: (args) => _withInit(args, (init, a) async {
+        final approval = await init.requestApproval(
+          documentId: a['documentId'] as String,
+          requestedBy: a['requestedBy'] as String,
+          title: a['title'] as String?,
+          line: ((a['line'] as List).cast<Map>())
+              .map((e) => e.cast<String, dynamic>())
+              .toList(),
+        );
+        await _notify(
+          recipientId: (approval['line'] as List).cast<Map>().first['approverId']
+              as String,
+          text:
+              '승인 대기 도착: ${approval['title'] ?? approval['documentId']} '
+              '(기안자 ${approval['requestedBy']})',
+        );
+        return approval;
+      }),
+    );
+
+    server.addTool(
+      name: 'form_builder.approve',
+      description:
+          'Approve the CURRENT gate of a pending approval as its designated '
+          'approver. `finalize:true` = 전결 (skip the remaining gates and '
+          'complete now). On advance the next approver is notified; on '
+          'completion the requester is.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'documentId': <String, dynamic>{'type': 'string'},
+          'actor': <String, dynamic>{'type': 'string'},
+          'comment': <String, dynamic>{'type': 'string'},
+          'finalize': <String, dynamic>{'type': 'boolean', 'default': false},
+        },
+        'required': <String>['documentId', 'actor'],
+      },
+      handler: (args) => _withInit(args, (init, a) async {
+        final approval = await init.approve(
+          documentId: a['documentId'] as String,
+          actor: a['actor'] as String,
+          comment: a['comment'] as String?,
+          finalize: a['finalize'] == true,
+        );
+        if (approval['state'] == 'approved') {
+          await _notify(
+            recipientId: approval['requestedBy'] as String,
+            text:
+                '결재 완료: ${approval['title'] ?? approval['documentId']} — '
+                '발행 가능 (form_builder.issue)',
+          );
+        } else {
+          final line = (approval['line'] as List).cast<Map>();
+          await _notify(
+            recipientId:
+                line[approval['currentIndex'] as int]['approverId'] as String,
+            text:
+                '승인 대기 도착: ${approval['title'] ?? approval['documentId']} '
+                '(기안자 ${approval['requestedBy']})',
+          );
+        }
+        return approval;
+      }),
+    );
+
+    server.addTool(
+      name: 'form_builder.reject',
+      description:
+          'Reject a pending approval at its current gate (comment REQUIRED '
+          '— the drafter reads why). The draft returns to `draft`; a fix is '
+          're-submitted as a NEW approval_request.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'documentId': <String, dynamic>{'type': 'string'},
+          'actor': <String, dynamic>{'type': 'string'},
+          'comment': <String, dynamic>{'type': 'string'},
+        },
+        'required': <String>['documentId', 'actor', 'comment'],
+      },
+      handler: (args) => _withInit(args, (init, a) async {
+        final approval = await init.reject(
+          documentId: a['documentId'] as String,
+          actor: a['actor'] as String,
+          comment: a['comment'] as String,
+        );
+        await _notify(
+          recipientId: approval['requestedBy'] as String,
+          text:
+              '반려: ${approval['title'] ?? approval['documentId']} — '
+              '사유: ${a['comment']}',
+        );
+        return approval;
+      }),
+    );
+
+    server.addTool(
+      name: 'form_builder.approval_list',
+      description:
+          'The 결재함 data: approvals latest-first. `scope:"mine"` with '
+          '`actor` = approvals WAITING ON that approver (their inbox); '
+          '`scope:"requested"` = approvals that actor opened; default all.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'scope': <String, dynamic>{
+            'type': 'string',
+            'enum': <String>['all', 'mine', 'requested'],
+            'default': 'all',
+          },
+          'actor': <String, dynamic>{'type': 'string'},
+        },
+      },
+      handler: (args) => _withInit(args, (init, a) async {
+        final all = await init.listApprovals();
+        final scope = (a['scope'] as String?) ?? 'all';
+        final actor = a['actor'] as String?;
+        final filtered = switch (scope) {
+          'mine' => [
+              for (final ap in all)
+                if (ap['state'] == 'pending' &&
+                    ((ap['line'] as List).cast<Map>()[ap['currentIndex']
+                            as int]['approverId'] ==
+                        actor))
+                  ap,
+            ],
+          'requested' => [
+              for (final ap in all)
+                if (ap['requestedBy'] == actor) ap,
+            ],
+          _ => all,
+        };
+        return <String, dynamic>{'approvals': filtered};
+      }),
+    );
+  }
+
+  /// Push an in-app notification (host `channel.send` on the always-present
+  /// `in_app` connector). Best-effort decoration — a notify failure OR a
+  /// hang (e.g. an endpoint without the channel capability) never blocks
+  /// the approval action itself.
+  Future<void> _notify({
+    required String recipientId,
+    required String text,
+  }) async {
+    try {
+      await server.callTool('channel.send', <String, dynamic>{
+        'channelId': 'in_app',
+        'conversationId': recipientId,
+        'text': text,
+      }).timeout(const Duration(seconds: 5));
+    } catch (e) {
+      stderr.writeln('form_builder approval notify skipped — $e');
+    }
   }
 
   /// Call a host `form.*` tool in-process and decode its JSON payload.
@@ -478,6 +684,10 @@ class FormBuilderTools {
         content: [mk.KernelTextContent(text: jsonEncode(out))],
       );
     } on _ToolError catch (e) {
+      return _error(e.code, e.message);
+    } on FormApprovalError catch (e) {
+      // Domain codes ride through so an LLM reads them and self-corrects
+      // (approval.not_your_gate, approval.comment_required, …).
       return _error(e.code, e.message);
     } catch (e) {
       return _error('form_builder.error', e.toString());

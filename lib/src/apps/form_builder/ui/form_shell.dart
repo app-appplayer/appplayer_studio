@@ -28,6 +28,7 @@ import 'package:appplayer_studio/src/base/settings/settings_dialog.dart'
 import '../form_builder_builtin.dart';
 import '../infra/project_seed.dart';
 import '../init/form_init.dart';
+import 'approvals_page.dart';
 import 'compose_page.dart';
 import 'issues_page.dart';
 import 'templates_page.dart';
@@ -37,6 +38,7 @@ import 'templates_page.dart';
 enum FormRoute {
   templates('Templates', Icons.grid_view_outlined),
   compose('Compose', Icons.edit_note_outlined),
+  approvals('Approvals', Icons.approval_outlined),
   issues('Issues', Icons.verified_outlined),
   about('About', Icons.info_outline);
 
@@ -436,6 +438,11 @@ class _FormShellState extends State<FormShell> {
                   server: widget.server,
                   init: init,
                   correction: _correction,
+                ),
+                FormRoute.approvals => ApprovalsPage(
+                  key: ValueKey('fb-approvals::${init.projectRoot}'),
+                  server: widget.server,
+                  init: init,
                 ),
                 FormRoute.issues => IssuesPage(
                   key: ValueKey('fb-issues::${init.projectRoot}'),

@@ -76,4 +76,118 @@ void main() {
     await reborn.deleteDraft('doc-9');
     expect(await reborn.listDrafts(), isEmpty);
   });
+
+  test('approval line: request → 2-step approve → completes, draft status '
+      'tracks review→approved', () async {
+    final init = await boot();
+    await init.saveDraft(
+      documentId: 'doc-a',
+      document: {'templateId': 'quote', 'data': {}},
+      status: 'draft',
+    );
+    await init.requestApproval(
+      documentId: 'doc-a',
+      requestedBy: 'nina',
+      title: '지출 기안',
+      line: [
+        {'approverId': 'dept-lead', 'roleLabel': '부서장'},
+        {'approverId': 'owner', 'roleLabel': '오너'},
+      ],
+    );
+    expect((await init.getDraft('doc-a'))!['status'], 'review');
+
+    // Wrong actor at the first gate is refused.
+    await expectLater(
+      init.approve(documentId: 'doc-a', actor: 'owner'),
+      throwsA(isA<FormApprovalError>()),
+    );
+
+    var a = await init.approve(
+        documentId: 'doc-a', actor: 'dept-lead', comment: 'OK');
+    expect(a['state'], 'pending');
+    expect(a['currentIndex'], 1);
+
+    a = await init.approve(documentId: 'doc-a', actor: 'owner');
+    expect(a['state'], 'approved');
+    final line = (a['line'] as List).cast<Map>();
+    expect(line[0]['actedBy'], 'dept-lead');
+    expect(line[0]['comment'], 'OK');
+    expect((await init.getDraft('doc-a'))!['status'], 'approved');
+  });
+
+  test('전결(finalize) skips the rest; reject needs a reason and resets '
+      'the draft; re-request replaces', () async {
+    final init = await boot();
+    await init.saveDraft(
+      documentId: 'doc-b',
+      document: {'templateId': 'quote', 'data': {}},
+      status: 'draft',
+    );
+    Future<void> request() => init.requestApproval(
+          documentId: 'doc-b',
+          requestedBy: 'nina',
+          line: [
+            {'approverId': 'lead'},
+            {'approverId': 'director'},
+            {'approverId': 'owner'},
+          ],
+        );
+
+    // 전결 at the first gate completes the whole line.
+    await request();
+    var a = await init.approve(
+        documentId: 'doc-b', actor: 'lead', finalize: true);
+    expect(a['state'], 'approved');
+    expect(
+      (a['line'] as List).cast<Map>().map((e) => e['status']).toList(),
+      ['approved', 'skipped', 'skipped'],
+    );
+
+    // Re-request (재상신) replaces; a reject without a reason is refused.
+    await request();
+    await expectLater(
+      init.reject(documentId: 'doc-b', actor: 'lead', comment: '  '),
+      throwsA(isA<FormApprovalError>()),
+    );
+    a = await init.reject(
+        documentId: 'doc-b', actor: 'lead', comment: '금액 재검토');
+    expect(a['state'], 'rejected');
+    expect((await init.getDraft('doc-b'))!['status'], 'draft');
+
+    // Acting on a rejected approval is refused; withdraw needs a pending one.
+    await expectLater(
+      init.approve(documentId: 'doc-b', actor: 'lead'),
+      throwsA(isA<FormApprovalError>()),
+    );
+
+    // Withdraw path: only the requester may.
+    await request();
+    await expectLater(
+      init.withdrawApproval(documentId: 'doc-b', actor: 'lead'),
+      throwsA(isA<FormApprovalError>()),
+    );
+    a = await init.withdrawApproval(documentId: 'doc-b', actor: 'nina');
+    expect(a['state'], 'withdrawn');
+  });
+
+  test('approval survives a restart (fact-backed)', () async {
+    final init = await boot();
+    await init.saveDraft(
+      documentId: 'doc-c',
+      document: {'templateId': 'quote', 'data': {}},
+      status: 'draft',
+    );
+    await init.requestApproval(
+      documentId: 'doc-c',
+      requestedBy: 'nina',
+      line: [
+        {'approverId': 'lead'},
+      ],
+    );
+    final reborn = await boot();
+    final a = await reborn.getApproval('doc-c');
+    expect(a, isNotNull);
+    expect(a!['state'], 'pending');
+    expect(await reborn.listApprovals(), hasLength(1));
+  });
 }

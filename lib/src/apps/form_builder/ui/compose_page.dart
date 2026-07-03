@@ -426,6 +426,89 @@ class _ComposePageState extends State<ComposePage> {
     }
   }
 
+  /// 상신 — save the draft, then open an approval line over it
+  /// (`form_builder.approval_request`; button = tool 1:1). The line is
+  /// typed as ordered approver ids; progress/acting lives on the
+  /// Approvals route.
+  Future<void> _requestApproval() async {
+    final titleCtrl = TextEditingController();
+    final lineCtrl = TextEditingController();
+    final byCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Request approval (상신)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(
+                labelText: '기안 제목 (선택)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: byCtrl,
+              decoration: const InputDecoration(
+                labelText: '기안자 (requestedBy)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: lineCtrl,
+              decoration: const InputDecoration(
+                labelText: '결재라인 — 승인자 id 순서대로, 쉼표 구분'
+                    ' (예: dept-lead, owner)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('상신'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final documentId = await _persistDraft();
+      if (documentId == null) return;
+      final line = [
+        for (final id in lineCtrl.text.split(','))
+          if (id.trim().isNotEmpty) {'approverId': id.trim()},
+      ];
+      final out = await callFormTool(
+        widget.server,
+        'form_builder.approval_request',
+        {
+          'documentId': documentId,
+          'requestedBy':
+              byCtrl.text.trim().isEmpty ? 'owner' : byCtrl.text.trim(),
+          if (titleCtrl.text.trim().isNotEmpty) 'title': titleCtrl.text.trim(),
+          'line': line,
+        },
+      );
+      _note(
+        '상신 완료 — 현재 결재자 '
+        '${(out['line'] as List).cast<Map>().first['approverId']}'
+        ' (Approvals 탭에서 진행)',
+      );
+      _refreshDrafts();
+    } catch (e) {
+      _note('$e');
+    }
+  }
+
   Future<void> _issue() async {
     try {
       final documentId = await _persistDraft();
@@ -682,6 +765,11 @@ class _ComposePageState extends State<ComposePage> {
               OutlinedButton(
                 onPressed: _tpl == null ? null : _saveDraft,
                 child: const Text('Save draft'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _tpl == null ? null : _requestApproval,
+                icon: const Icon(Icons.approval_outlined, size: 16),
+                label: const Text('상신'),
               ),
               FilledButton.icon(
                 onPressed: _tpl == null ? null : _issue,

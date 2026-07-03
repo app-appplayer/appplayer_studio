@@ -1,6 +1,29 @@
 ## [0.1.4] - 2026-06-30
 
 ### Added
+- Form Builder gained REAL approval (전자결재 일반화 — the groupware gap
+  where expense requests lived as chat text and the owner's decision queue
+  was a hand-managed file): a saved draft can open an ORDERED approval
+  line (`form_builder.approval_request` — multi-gate, per-gate designated
+  approver, 전결 finalize that skips the rest, rejection with a REQUIRED
+  reason returning the draft to `draft`; re-submission replaces the
+  approval). The gate is OPT-IN and enforced where it matters:
+  `form_builder.issue` refuses (`form_builder.approval_required`) until
+  the line completes, and the issued fact freezes the line as provenance
+  (who signed each gate, when, with what comment). New `Approvals` route
+  (결재함 — pending band with approve/전결/reject dialogs, done band with
+  line progress ● ○ ✕ ⤵) and a Compose 상신 action; every act notifies
+  the next approver / the requester on the in-app channel (host
+  `channel.send`, best-effort with a hang guard). `form_approval` facts
+  ride the same per-project FactGraph as drafts/issues (restart-safe —
+  regression-tested), authorization is the exact designated approver
+  (form projects carry no org tree, so ops-style ancestor escalation is
+  explicitly out of scope for now). Live-verified end-to-end over MCP:
+  request → issue refused → wrong-actor refused → two-gate approve →
+  issue 2026-004 with frozen provenance → in-app 승인 대기 push read back
+  from the feed. Seed manual grew an `approval_protocol` doc (+4 allowlist
+  entries) so the manager drives the same surface honestly. Design:
+  `docs/form_builder/form-approval-line.md`.
 - The Ops org chart is ALIVE now (관제탑 B1): the Organization page layers
   a real-time overlay over the static chart — per-unit ⏳ pending-approval
   and ▤ today's-output badges on the unit header (a blocked unit's frame

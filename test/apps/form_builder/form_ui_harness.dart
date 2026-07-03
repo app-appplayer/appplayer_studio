@@ -54,11 +54,32 @@ class FormUiHarness {
         handler: (args) => _guard(tool.invoke, args),
       );
     }
+    // In-app notification stub — the approval verbs push through host
+    // `channel.send`; the harness records instead of hanging on a tool the
+    // in-process kernel host does not carry (tests can assert pushes).
+    server.addTool(
+      name: 'channel.send',
+      description: 'harness in_app notification recorder',
+      inputSchema: const <String, dynamic>{'type': 'object'},
+      handler: (args) async {
+        notifications.add(args);
+        return mk.KernelToolResult(
+          content: <mk.KernelContent>[
+            mk.KernelTextContent(text: jsonEncode({'ok': true})),
+          ],
+          isError: false,
+        );
+      },
+    );
     final harness = FormUiHarness._(server, init, projectRoot);
     FormBuilderTools(liveInit: () => init, server: server)
         .registerOn(server);
     return harness;
   }
+
+  /// `channel.send` pushes recorded by the harness stub, in order.
+  static final List<Map<String, dynamic>> notifications =
+      <Map<String, dynamic>>[];
 
   Future<void> dispose() async {
     if (await projectRoot.exists()) {

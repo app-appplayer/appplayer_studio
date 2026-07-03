@@ -45,6 +45,7 @@ class FormInit {
 
   static const String draftType = 'form_draft';
   static const String issueType = 'form_issue';
+  static const String approvalType = 'form_approval';
 
   /// Assemble the per-project system. Pure assembly — the host `form.*`
   /// capability rebind is `FormBuilderBuiltInApp.ensureBoot`'s job (after
@@ -189,4 +190,241 @@ class FormInit {
       ),
     ]);
   }
+
+  // --- approvals (기안 → 결재라인 → 결재함) --------------------------------
+  //
+  // One `form_approval` fact per documentId, latest wins (same upsert rule
+  // as drafts — a re-submission after a rejection REPLACES the approval).
+  // The line is an ordered list of gates; each act stamps provenance
+  // (actedBy/actedAt/comment). Design:
+  // `docs/form_builder/form-approval-line.md`. Authorization is the exact
+  // designated approver (form projects carry no org tree, so the ops-style
+  // ancestor escalation is out of scope here — MVP deviation noted in the
+  // design doc).
+
+  /// Open an approval for a saved draft. [line] entries:
+  /// `{approverId, roleLabel?}`. Flips the draft status to `review`.
+  Future<Map<String, dynamic>> requestApproval({
+    required String documentId,
+    required List<Map<String, dynamic>> line,
+    required String requestedBy,
+    String? title,
+  }) async {
+    if (line.isEmpty) {
+      throw const FormApprovalError(
+        'approval.empty_line',
+        'an approval line needs at least one approver',
+      );
+    }
+    final draft = await getDraft(documentId);
+    if (draft == null) {
+      throw const FormApprovalError(
+        'approval.draft_not_found',
+        'save the draft before requesting approval',
+      );
+    }
+    final approval = <String, dynamic>{
+      'documentId': documentId,
+      'templateId': draft['document']?['templateId'],
+      if (title != null) 'title': title,
+      'requestedBy': requestedBy,
+      'requestedAt': DateTime.now().toUtc().toIso8601String(),
+      'line': [
+        for (final e in line)
+          <String, dynamic>{
+            'approverId': e['approverId'],
+            if (e['roleLabel'] != null) 'roleLabel': e['roleLabel'],
+            'status': 'pending',
+          },
+      ],
+      'currentIndex': 0,
+      'state': 'pending',
+    };
+    await _writeApproval(approval);
+    await _setDraftStatus(documentId, 'review');
+    return approval;
+  }
+
+  /// Approve the CURRENT gate as [actor]. [finalize] = 전결 — the remaining
+  /// gates are skipped and the whole approval completes now.
+  Future<Map<String, dynamic>> approve({
+    required String documentId,
+    required String actor,
+    String? comment,
+    bool finalize = false,
+  }) async {
+    final approval = await _pendingApprovalFor(documentId, actor);
+    final line = (approval['line'] as List).cast<Map<String, dynamic>>();
+    final index = approval['currentIndex'] as int;
+    line[index] = <String, dynamic>{
+      ...line[index],
+      'status': 'approved',
+      'actedBy': actor,
+      'actedAt': DateTime.now().toUtc().toIso8601String(),
+      if (comment != null) 'comment': comment,
+    };
+    var next = index + 1;
+    if (finalize) {
+      for (var i = next; i < line.length; i++) {
+        line[i] = <String, dynamic>{...line[i], 'status': 'skipped'};
+      }
+      next = line.length;
+    }
+    approval['currentIndex'] = next;
+    if (next >= line.length) {
+      approval['state'] = 'approved';
+      approval['approvedAt'] = DateTime.now().toUtc().toIso8601String();
+    }
+    await _writeApproval(approval);
+    if (approval['state'] == 'approved') {
+      await _setDraftStatus(documentId, 'approved');
+    }
+    return approval;
+  }
+
+  /// Reject at the CURRENT gate as [actor]. A rejection needs its reason —
+  /// the drafter reads it to fix and re-submit (a NEW approval).
+  Future<Map<String, dynamic>> reject({
+    required String documentId,
+    required String actor,
+    required String comment,
+  }) async {
+    if (comment.trim().isEmpty) {
+      throw const FormApprovalError(
+        'approval.comment_required',
+        'a rejection must say why',
+      );
+    }
+    final approval = await _pendingApprovalFor(documentId, actor);
+    final line = (approval['line'] as List).cast<Map<String, dynamic>>();
+    final index = approval['currentIndex'] as int;
+    line[index] = <String, dynamic>{
+      ...line[index],
+      'status': 'rejected',
+      'actedBy': actor,
+      'actedAt': DateTime.now().toUtc().toIso8601String(),
+      'comment': comment,
+    };
+    approval['state'] = 'rejected';
+    await _writeApproval(approval);
+    await _setDraftStatus(documentId, 'draft');
+    return approval;
+  }
+
+  /// Withdraw a pending approval — only its requester may.
+  Future<Map<String, dynamic>> withdrawApproval({
+    required String documentId,
+    required String actor,
+  }) async {
+    final approval = await getApproval(documentId);
+    if (approval == null || approval['state'] != 'pending') {
+      throw const FormApprovalError(
+        'approval.not_pending',
+        'no pending approval for this document',
+      );
+    }
+    if (approval['requestedBy'] != actor) {
+      throw FormApprovalError(
+        'approval.not_requester',
+        'only ${approval['requestedBy']} may withdraw this request',
+      );
+    }
+    approval['state'] = 'withdrawn';
+    await _writeApproval(approval);
+    await _setDraftStatus(documentId, 'draft');
+    return approval;
+  }
+
+  Future<Map<String, dynamic>?> getApproval(String documentId) async {
+    final hits = await system.facts.queryFacts(
+      FactQuery(
+        workspaceId: projectId,
+        types: const [approvalType],
+        entityId: documentId,
+        limit: 1,
+      ),
+    );
+    return hits.isEmpty ? null : hits.single.content;
+  }
+
+  Future<List<Map<String, dynamic>>> listApprovals() async {
+    final hits = await system.facts.queryFacts(
+      FactQuery(
+        workspaceId: projectId,
+        types: const [approvalType],
+        limit: 1000,
+      ),
+    );
+    final approvals = hits.map((f) => f.content).toList();
+    approvals.sort(
+      (a, b) => (b['requestedAt'] as String? ?? '').compareTo(
+        a['requestedAt'] as String? ?? '',
+      ),
+    );
+    return approvals;
+  }
+
+  Future<Map<String, dynamic>> _pendingApprovalFor(
+    String documentId,
+    String actor,
+  ) async {
+    final approval = await getApproval(documentId);
+    if (approval == null || approval['state'] != 'pending') {
+      throw const FormApprovalError(
+        'approval.not_pending',
+        'no pending approval for this document',
+      );
+    }
+    final line = (approval['line'] as List).cast<Map<String, dynamic>>();
+    final index = approval['currentIndex'] as int;
+    final designated = line[index]['approverId'];
+    if (designated != actor) {
+      throw FormApprovalError(
+        'approval.not_your_gate',
+        'the current gate belongs to $designated',
+      );
+    }
+    return approval;
+  }
+
+  Future<void> _writeApproval(Map<String, dynamic> approval) async {
+    final documentId = approval['documentId'] as String;
+    await system.facts.deleteFacts(<String>['$approvalType/$documentId']);
+    await system.facts.writeFacts(<FactRecord>[
+      FactRecord(
+        id: '$approvalType/$documentId',
+        workspaceId: projectId,
+        type: approvalType,
+        entityId: documentId,
+        content: approval,
+        confidence: 1.0,
+        createdAt: DateTime.now(),
+      ),
+    ]);
+  }
+
+  Future<void> _setDraftStatus(String documentId, String status) async {
+    final draft = await getDraft(documentId);
+    if (draft == null) return;
+    await saveDraft(
+      documentId: documentId,
+      document:
+          (draft['document'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{},
+      status: status,
+      savedBy: draft['savedBy'] as String?,
+    );
+  }
+}
+
+/// Domain error with a stable code — the tool layer maps it onto the
+/// response envelope so an LLM reads the code and self-corrects.
+class FormApprovalError implements Exception {
+  const FormApprovalError(this.code, this.message);
+
+  final String code;
+  final String message;
+
+  @override
+  String toString() => '$code: $message';
 }
