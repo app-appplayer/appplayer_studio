@@ -318,7 +318,12 @@ class OrgChartPainter extends CustomPainter {
       radius: 12,
       strokeWidth: selected ? 2.0 : (pending > 0 ? 1.8 : 1.3),
     );
-    // Header title, sublabel baseline-aligned beside it.
+    // Header title, sublabel baseline-aligned beside it. Badge space is
+    // reserved only when badges will actually draw — a quiet unit gives
+    // its full header width to the text.
+    final output = overlay?.outputTodayByUnit[n.wsId] ?? 0;
+    final badgeReserve =
+        (pending > 0 ? 64.0 : 0) + (output > 0 ? 58.0 : 0) + 12.0;
     final title = TextPainter(
       text: TextSpan(
         text: n.label,
@@ -327,9 +332,11 @@ class OrgChartPainter extends CustomPainter {
       maxLines: 1,
       ellipsis: '…',
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: n.rect.width - 120);
+    )..layout(maxWidth: n.rect.width - 24 - badgeReserve);
     title.paint(canvas, Offset(n.rect.left + 12, n.rect.top + 8));
     if (n.sublabel != null) {
+      final subMax =
+          n.rect.width - 24 - title.width - 8 - badgeReserve;
       final sub = TextPainter(
         text: TextSpan(
           text: n.sublabel,
@@ -338,7 +345,7 @@ class OrgChartPainter extends CustomPainter {
         maxLines: 1,
         ellipsis: '…',
         textDirection: TextDirection.ltr,
-      )..layout(maxWidth: n.rect.width - title.width - 140);
+      )..layout(maxWidth: subMax > 0 ? subMax : 0);
       sub.paint(
         canvas,
         Offset(
@@ -357,7 +364,6 @@ class OrgChartPainter extends CustomPainter {
     );
     // Live badges, header right: ⏳ pending approvals (warn — the unit is
     // blocked on a person) · ▤ today's outputs (quiet count).
-    final output = overlay?.outputTodayByUnit[n.wsId] ?? 0;
     var badgeRight = n.rect.right - 12;
     if (pending > 0) {
       badgeRight -= _headerBadge(
