@@ -240,7 +240,7 @@ abstract class OrgChartMetrics {
   // Process card.
   static const double cardPad = 18; // inner padding around the step grid
   static const double headerH = 36; // title + trigger badge strip
-  static const double signoffBandH = 38; // band above steps for sign-off nodes
+  static const double stepBandGap = 12; // header strip → first step row
   static const double cardGapX = 88; // between event-level columns (event arrow)
   static const double cardGapY = 32; // between stacked cards in one level
 
@@ -252,9 +252,18 @@ abstract class OrgChartMetrics {
 
   static const double gateW = 22; // inline checkpoint diamond
 
+  // Approval sign-off — an INLINE node on the flow line between the gated
+  // step and its successor (never a floating band above the step).
+  static const double gateChipW = 128;
+  static const double gateChipH = 40;
+
+  // Structure lens — top-down org tree.
+  static const double treeGapX = 48; // between sibling subtrees
+  static const double treeGapY = 56; // parent unit → children row
+
   // Roster / chips.
   static const double rosterGapY = 26;
-  static const double chipH = 34;
+  static const double chipH = 44;
   static const double chipGapY = 18; // row stride leaves room for the sublabel
   static const double chipGapX = 20;
   static const double bandGapY = 40; // between workspaces
@@ -303,6 +312,96 @@ OrgChartModel buildOrgChartModel(
 
   final nodes = <OrgNode>[];
   final edges = <OrgEdge>[];
+
+  if (mode == OrgViewMode.structure) {
+    // Top-down org tree — the classic chart shape: each unit box centered
+    // over its child units, parent-bottom → child-top elbows, sibling
+    // subtrees never overlapping (recursive subtree width).
+    final unitSize = <String, Size>{};
+    for (final w in workspaces) {
+      // Content size is origin-independent — measure into scratch lists.
+      final mn = <OrgNode>[];
+      final me = <OrgEdge>[];
+      final band = _layoutStructure(w, 0, 0, mn, me);
+      final uw = band.right + OrgChartMetrics.cardPad * 2;
+      unitSize[w.id] = Size(
+        uw < OrgChartMetrics.boxW ? OrgChartMetrics.boxW : uw,
+        OrgChartMetrics.headerH +
+            OrgChartMetrics.cardPad +
+            band.bottom +
+            OrgChartMetrics.cardPad,
+      );
+    }
+    double subtreeW(String id) {
+      final own = unitSize[id]!.width;
+      final kids = children[id] ?? const [];
+      if (kids.isEmpty) return own;
+      var sum = -OrgChartMetrics.treeGapX;
+      for (final k in kids) {
+        sum += subtreeW(k) + OrgChartMetrics.treeGapX;
+      }
+      return sum > own ? sum : own;
+    }
+
+    var maxRight = 0.0;
+    var maxBottom = 0.0;
+    void place(String id, double left, double top) {
+      final w = byId[id]!;
+      final stw = subtreeW(id);
+      final us = unitSize[id]!;
+      final ux = left + (stw - us.width) / 2;
+      _layoutStructure(
+        w,
+        ux + OrgChartMetrics.cardPad,
+        top + OrgChartMetrics.headerH + OrgChartMetrics.cardPad,
+        nodes,
+        edges,
+      );
+      nodes.add(
+        OrgNode(
+          id: 'ws:$id',
+          kind: OrgNodeKind.workspace,
+          label: w.title,
+          sublabel: '${w.type} · ${w.agents.length} members',
+          wsId: id,
+          isContainer: true,
+          rect: Rect.fromLTWH(ux, top, us.width, us.height),
+        ),
+      );
+      if (ux + us.width > maxRight) maxRight = ux + us.width;
+      if (top + us.height > maxBottom) maxBottom = top + us.height;
+      final kids = children[id] ?? const [];
+      if (kids.isEmpty) return;
+      var kidsW = -OrgChartMetrics.treeGapX;
+      for (final k in kids) {
+        kidsW += subtreeW(k) + OrgChartMetrics.treeGapX;
+      }
+      var cx = left + (stw - kidsW) / 2;
+      final ctop = top + us.height + OrgChartMetrics.treeGapY;
+      for (final k in kids) {
+        edges.add(
+          OrgEdge(fromId: 'ws:$id', toId: 'ws:$k', kind: OrgEdgeKind.hierarchy),
+        );
+        place(k, cx, ctop);
+        cx += subtreeW(k) + OrgChartMetrics.treeGapX;
+      }
+    }
+
+    var rx = OrgChartMetrics.pad;
+    for (final r in roots) {
+      place(r, rx, OrgChartMetrics.pad);
+      rx += subtreeW(r) + OrgChartMetrics.treeGapX * 1.5;
+    }
+    return OrgChartModel(
+      nodes: nodes,
+      edges: edges,
+      size: Size(
+        maxRight + OrgChartMetrics.pad,
+        maxBottom + OrgChartMetrics.pad,
+      ),
+    );
+  }
+
   final wsNodeById = <String, OrgNode>{};
   double runningY = OrgChartMetrics.pad;
   double maxRight = OrgChartMetrics.pad + OrgChartMetrics.boxW;
@@ -311,40 +410,6 @@ OrgChartModel buildOrgChartModel(
     final w = byId[entry.id]!;
     final boxX = OrgChartMetrics.pad + entry.depth * OrgChartMetrics.indentX;
     final pid = w.parentId;
-
-    if (mode == OrgViewMode.structure) {
-      // Structure lens: the org unit is a framing **container** — lay out its
-      // lead + members first, then wrap them in a workspace box whose header
-      // strip carries the unit title. Nested units = separate containers
-      // joined by hierarchy edges.
-      final contentX = boxX + OrgChartMetrics.cardPad;
-      final contentTop =
-          runningY + OrgChartMetrics.headerH + OrgChartMetrics.cardPad;
-      final sband = _layoutStructure(w, contentX, contentTop, nodes, edges);
-      final right = sband.right + OrgChartMetrics.cardPad;
-      final minRight = boxX + OrgChartMetrics.boxW;
-      final containerRight = right < minRight ? minRight : right;
-      final containerBottom = sband.bottom + OrgChartMetrics.cardPad;
-      final wsNode = OrgNode(
-        id: 'ws:${w.id}',
-        kind: OrgNodeKind.workspace,
-        label: w.title,
-        sublabel: '${w.type} · ${w.agents.length} members',
-        wsId: w.id,
-        isContainer: true,
-        rect: Rect.fromLTRB(boxX, runningY, containerRight, containerBottom),
-      );
-      nodes.add(wsNode);
-      wsNodeById[w.id] = wsNode;
-      if (pid != null && wsNodeById.containsKey(pid)) {
-        edges.add(
-          OrgEdge(fromId: 'ws:$pid', toId: wsNode.id, kind: OrgEdgeKind.hierarchy),
-        );
-      }
-      if (containerRight > maxRight) maxRight = containerRight;
-      runningY = containerBottom + OrgChartMetrics.bandGapY;
-      continue;
-    }
 
     // Workflow / knowledge: small header box, then the band below it.
     final wsNode = OrgNode(
@@ -421,7 +486,7 @@ OrgChartModel buildOrgChartModel(
       case OrgViewMode.knowledge:
         band = _layoutKnowledge(w, laneX0, cardTop, nodes, edges);
       case OrgViewMode.structure:
-        band = (right: laneX0, bottom: cardTop); // unreachable (handled above)
+        band = (right: laneX0, bottom: cardTop); // unreachable (early return)
     }
     if (band.right > maxRight) maxRight = band.right;
     final y = band.bottom;
@@ -475,7 +540,14 @@ OrgChartModel buildOrgChartModel(
   }
 
   // Pre-compute each card's size from its step DAG.
-  final sizeById = <String, ({double w, double h, Map<String, ({int lvl, int lane})> pos, int levels})>{};
+  final sizeById = <String,
+      ({
+    double w,
+    double h,
+    Map<String, ({int lvl, int lane})> pos,
+    int levels,
+    List<double> xOff,
+  })>{};
   for (final p in procs) {
     sizeById[p.id] = _cardSize(p);
   }
@@ -520,7 +592,7 @@ OrgChartModel buildOrgChartModel(
           rect: rect,
         ),
       );
-      _placeSteps(w, p, rect, sz.pos, nodes, edges, assignedInProcess);
+      _placeSteps(w, p, rect, sz.pos, sz.xOff, nodes, edges, assignedInProcess);
       if (rect.right > maxRight) maxRight = rect.right;
       cy = rect.bottom + OrgChartMetrics.cardGapY;
       if (rect.bottom > maxBottom) maxBottom = rect.bottom;
@@ -548,8 +620,13 @@ OrgChartModel buildOrgChartModel(
 /// Topological level + lane assignment for a process's steps (effective deps:
 /// explicit `dependsOn`, else the textually-previous step). Returns card size
 /// and per-step (level, lane) cells.
-({double w, double h, Map<String, ({int lvl, int lane})> pos, int levels})
-    _cardSize(OrgProcessInput p) {
+({
+  double w,
+  double h,
+  Map<String, ({int lvl, int lane})> pos,
+  int levels,
+  List<double> xOff,
+}) _cardSize(OrgProcessInput p) {
   final stepIds = [for (final s in p.steps) s.stepId];
   final idx = {for (var i = 0; i < p.steps.length; i++) p.steps[i].stepId: i};
   final effDeps = <String, List<String>>{};
@@ -598,11 +675,31 @@ OrgChartModel buildOrgChartModel(
   }
   final numLevels = byLvl.isEmpty ? 1 : (byLvl.keys.reduce((a, b) => a > b ? a : b) + 1);
   final lanes = maxLane == 0 ? 1 : maxLane;
-  final innerW = numLevels * OrgChartMetrics.stepW + (numLevels - 1) * OrgChartMetrics.stepGapX;
+  // Levels whose steps carry an approval gate get an inline sign-off slot
+  // on the flow line after them — the x offsets absorb it so only gated
+  // gaps widen (no global band tax).
+  final gatedLevels = <int>{
+    for (final g in p.gates)
+      if (g.kind == 'approval' && level.containsKey(g.afterStep))
+        level[g.afterStep]!,
+  };
+  final xOff = List<double>.filled(numLevels + 1, 0);
+  for (var l = 0; l < numLevels; l++) {
+    xOff[l + 1] = xOff[l] +
+        OrgChartMetrics.stepW +
+        (gatedLevels.contains(l)
+            ? OrgChartMetrics.stepGapX + OrgChartMetrics.gateChipW
+            : 0) +
+        OrgChartMetrics.stepGapX;
+  }
+  final innerW = xOff[numLevels] - OrgChartMetrics.stepGapX;
   final innerH = lanes * OrgChartMetrics.stepH + (lanes - 1) * OrgChartMetrics.stepGapY;
   final w = OrgChartMetrics.cardPad * 2 + innerW;
-  final h = OrgChartMetrics.headerH + OrgChartMetrics.signoffBandH + innerH + OrgChartMetrics.cardPad;
-  return (w: w, h: h, pos: pos, levels: numLevels);
+  final h = OrgChartMetrics.headerH +
+      OrgChartMetrics.stepBandGap +
+      innerH +
+      OrgChartMetrics.cardPad;
+  return (w: w, h: h, pos: pos, levels: numLevels, xOff: xOff);
 }
 
 /// Place a process's step / gate / signoff nodes inside [card] using the
@@ -612,17 +709,19 @@ void _placeSteps(
   OrgProcessInput p,
   Rect card,
   Map<String, ({int lvl, int lane})> pos,
+  List<double> xOff,
   List<OrgNode> nodes,
   List<OrgEdge> edges,
   Set<String> assignedInProcess,
 ) {
   final stepsX = card.left + OrgChartMetrics.cardPad;
-  final stepsY = card.top + OrgChartMetrics.headerH + OrgChartMetrics.signoffBandH;
+  final stepsY =
+      card.top + OrgChartMetrics.headerH + OrgChartMetrics.stepBandGap;
   final idx = {for (var i = 0; i < p.steps.length; i++) p.steps[i].stepId: i};
 
   Rect cellOf(String stepId) {
     final c = pos[stepId] ?? (lvl: 0, lane: 0);
-    final x = stepsX + c.lvl * (OrgChartMetrics.stepW + OrgChartMetrics.stepGapX);
+    final x = stepsX + (c.lvl < xOff.length ? xOff[c.lvl] : 0);
     final y = stepsY + c.lane * (OrgChartMetrics.stepH + OrgChartMetrics.stepGapY);
     return Rect.fromLTWH(x, y, OrgChartMetrics.stepW, OrgChartMetrics.stepH);
   }
@@ -646,6 +745,25 @@ void _placeSteps(
     );
   }
 
+  // Approval-gated steps: the flow routes THROUGH the inline sign-off chip
+  // (step → ✓chip → successor), so the gate reads as part of the sequence
+  // instead of a floating badge.
+  final approvalGated = <String>{
+    for (final g in p.gates)
+      if (g.kind == 'approval' && stepRect.containsKey(g.afterStep))
+        g.afterStep,
+  };
+  String stId(String sid) => 'st:${w.id}:${p.id}:$sid';
+  String soId(String sid) => 'so:${w.id}:${p.id}:$sid';
+  final gateFeedAdded = <String>{};
+  void feedGate(String sid) {
+    if (gateFeedAdded.add(sid)) {
+      edges.add(
+        OrgEdge(fromId: stId(sid), toId: soId(sid), kind: OrgEdgeKind.signoff),
+      );
+    }
+  }
+
   // Dependency edges (effective deps: explicit else previous step).
   for (var i = 0; i < p.steps.length; i++) {
     final s = p.steps[i];
@@ -653,14 +771,25 @@ void _placeSteps(
         ? s.dependsOn.where((d) => idx.containsKey(d))
         : (i > 0 ? [p.steps[i - 1].stepId] : const <String>[]);
     for (final d in deps) {
-      edges.add(
-        OrgEdge(
-          fromId: 'st:${w.id}:${p.id}:$d',
-          toId: 'st:${w.id}:${p.id}:${s.stepId}',
-          kind: OrgEdgeKind.dep,
-        ),
-      );
+      if (approvalGated.contains(d)) {
+        feedGate(d);
+        edges.add(
+          OrgEdge(
+            fromId: soId(d),
+            toId: stId(s.stepId),
+            kind: OrgEdgeKind.signoff,
+          ),
+        );
+      } else {
+        edges.add(
+          OrgEdge(fromId: stId(d), toId: stId(s.stepId), kind: OrgEdgeKind.dep),
+        );
+      }
     }
+  }
+  // Terminal gated steps (no successor) still show their gate on the line.
+  for (final d in approvalGated) {
+    feedGate(d);
   }
 
   // Gates.
@@ -673,26 +802,22 @@ void _placeSteps(
     if (r == null) continue;
     for (final g in entry.value) {
       if (g.kind == 'approval') {
-        final soNode = OrgNode(
-          id: 'so:${w.id}:${p.id}:${entry.key}',
-          kind: OrgNodeKind.signoff,
-          label: '✓ ${g.approverLabel ?? g.approverId ?? 'approver'}',
-          wsId: w.id,
-          processId: p.id,
-          agentId: g.approverKey,
-          rect: Rect.fromLTWH(
-            r.left,
-            r.top - OrgChartMetrics.signoffBandH + 2,
-            OrgChartMetrics.stepW,
-            OrgChartMetrics.signoffBandH - 8,
-          ),
-        );
-        nodes.add(soNode);
-        edges.add(
-          OrgEdge(
-            fromId: soNode.id,
-            toId: 'st:${w.id}:${p.id}:${entry.key}',
-            kind: OrgEdgeKind.signoff,
+        // Inline on the flow line, vertically centered on its step's lane.
+        nodes.add(
+          OrgNode(
+            id: 'so:${w.id}:${p.id}:${entry.key}',
+            kind: OrgNodeKind.signoff,
+            label: '✓ ${g.approverLabel ?? g.approverId ?? 'approver'}',
+            sublabel: 'sign-off',
+            wsId: w.id,
+            processId: p.id,
+            agentId: g.approverKey,
+            rect: Rect.fromLTWH(
+              r.right + OrgChartMetrics.stepGapX,
+              r.top + (OrgChartMetrics.stepH - OrgChartMetrics.gateChipH) / 2,
+              OrgChartMetrics.gateChipW,
+              OrgChartMetrics.gateChipH,
+            ),
           ),
         );
       } else {

@@ -13,6 +13,7 @@
 library;
 
 import 'package:appplayer_studio/src/apps/ops/ui/organization/org_chart_model.dart';
+import 'package:flutter/widgets.dart' show Rect;
 import 'package:flutter_test/flutter_test.dart';
 
 OrgWsInput _ws({
@@ -161,7 +162,7 @@ void main() {
     expect(cardB.badge, 'event');
   });
 
-  test('t5 approval gate → sign-off node above the gated step', () {
+  test('t5 approval gate → INLINE sign-off chip on the flow line', () {
     final m = buildOrgChartModel([
       _ws(
         id: 'w',
@@ -185,12 +186,39 @@ void main() {
     final so = m.nodes.where((n) => n.kind == OrgNodeKind.signoff).toList();
     expect(so, hasLength(1));
     expect(so.first.agentId, 'publisher');
+    expect(so.first.sublabel, 'sign-off');
     final plan = _stepFor(m, 'plan');
-    expect(so.first.rect.top, lessThan(plan.rect.top));
+    final publish = _stepFor(m, 'publish');
+    // INLINE on the flow line: after the gated step, lane-centered, and the
+    // successor sits beyond the chip (the gap absorbed the slot).
+    expect(so.first.rect.left, greaterThan(plan.rect.right));
+    expect(publish.rect.left, greaterThan(so.first.rect.right));
+    expect(
+      so.first.rect.center.dy,
+      moreOrLessEquals(plan.rect.center.dy, epsilon: 0.001),
+    );
+    // Flow routes THROUGH the gate: step→chip and chip→successor, and the
+    // direct dep edge between the two steps is gone.
     expect(
       m.edges.any((e) =>
-          e.kind == OrgEdgeKind.signoff && e.toId == plan.id),
+          e.kind == OrgEdgeKind.signoff &&
+          e.fromId == plan.id &&
+          e.toId == so.first.id),
       isTrue,
+    );
+    expect(
+      m.edges.any((e) =>
+          e.kind == OrgEdgeKind.signoff &&
+          e.fromId == so.first.id &&
+          e.toId == publish.id),
+      isTrue,
+    );
+    expect(
+      m.edges.any((e) =>
+          e.kind == OrgEdgeKind.dep &&
+          e.fromId == plan.id &&
+          e.toId == publish.id),
+      isFalse,
     );
   });
 
@@ -343,6 +371,39 @@ void main() {
     final worker = m.nodes.firstWhere(
         (n) => n.kind == OrgNodeKind.agent && !n.isLead);
     expect(worker.sublabel, 'voice-eng');
+  });
+
+  test('t13 structure lens — top-down tree: parent centered above children,'
+      ' siblings never overlap', () {
+    final m = buildOrgChartModel([
+      _ws(id: 'org', agents: [OrgAgentInput(agentId: 'boss', displayName: 'Boss')]),
+      _ws(id: 'org/a', parentId: 'org', agents: [OrgAgentInput(agentId: 'a1', displayName: 'A1'), OrgAgentInput(agentId: 'a2', displayName: 'A2')]),
+      _ws(id: 'org/b', parentId: 'org', agents: [OrgAgentInput(agentId: 'b1', displayName: 'B1')]),
+    ], mode: OrgViewMode.structure);
+    Rect unit(String id) =>
+        m.nodes.firstWhere((n) => n.id == 'ws:$id').rect;
+    final root = unit('org');
+    final a = unit('org/a');
+    final b = unit('org/b');
+    // Children sit BELOW the parent on the same row.
+    expect(a.top, greaterThan(root.bottom));
+    expect(b.top, a.top);
+    // Siblings don't overlap.
+    final noOverlap = a.right <= b.left || b.right <= a.left;
+    expect(noOverlap, isTrue);
+    // Parent is centered over the span of its children.
+    final span = a.expandToInclude(b);
+    expect(
+      root.center.dx,
+      moreOrLessEquals(span.center.dx, epsilon: 1.0),
+    );
+    // Hierarchy edges parent→child exist for both.
+    expect(
+      m.edges
+          .where((e) => e.kind == OrgEdgeKind.hierarchy && e.fromId == 'ws:org')
+          .length,
+      2,
+    );
   });
 
   test('t8 deterministic geometry', () {

@@ -201,8 +201,8 @@ class _Header extends StatelessWidget {
         OpsSpace.s8,
         OpsSpace.s5,
       ),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0x22FFFFFF))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: OpsColors.border)),
       ),
       // The header must never overflow, whatever the pane width. Wide panes
       // get the fixed title/switch + scrolling legend + right-aligned hint;
