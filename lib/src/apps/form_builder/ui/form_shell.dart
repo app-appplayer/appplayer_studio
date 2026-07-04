@@ -31,6 +31,7 @@ import '../init/form_init.dart';
 import 'approvals_page.dart';
 import 'compose_page.dart';
 import 'issues_page.dart';
+import 'registry_page.dart';
 import 'templates_page.dart';
 
 /// Sidebar routes — Templates (create/manage) · Compose (fill/validate) ·
@@ -39,7 +40,7 @@ enum FormRoute {
   templates('Templates', Icons.grid_view_outlined),
   compose('Compose', Icons.edit_note_outlined),
   approvals('Approvals', Icons.approval_outlined),
-  issues('Issues', Icons.verified_outlined),
+  issues('Registry', Icons.library_books_outlined),
   about('About', Icons.info_outline);
 
   const FormRoute(this.label, this.icon);
@@ -132,7 +133,7 @@ class _FormShellState extends State<FormShell> {
       'dashboard' || 'templates' => FormRoute.templates,
       'compose' => FormRoute.compose,
       'approvals' => FormRoute.approvals,
-      'issues' => FormRoute.issues,
+      'issues' || 'registry' => FormRoute.issues,
       'about' => FormRoute.about,
       _ => null,
     };
@@ -477,9 +478,10 @@ class _FormShellState extends State<FormShell> {
                   init: init,
                   landingDocumentId: _landingEntity,
                 ),
-                FormRoute.issues => IssuesPage(
+                FormRoute.issues => RegistryPage(
                   key: ValueKey(
-                    'fb-issues::${init.projectRoot}::${_landingEntity ?? ''}',
+                    'fb-registry::${init.projectRoot}'
+                    '::${_landingEntity ?? ''}',
                   ),
                   init: init,
                   landingIssueId: _landingEntity,

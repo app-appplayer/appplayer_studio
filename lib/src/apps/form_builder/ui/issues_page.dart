@@ -87,7 +87,7 @@ class _IssuesPageState extends State<IssuesPage> {
   }) async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => _IssueDetailDialog(
+      builder: (ctx) => IssueDetailDialog(
         issue: issue,
         superseded: superseded,
         projectRoot: widget.init.projectRoot,
@@ -247,8 +247,8 @@ class _IssuesPageState extends State<IssuesPage> {
   }
 }
 
-class _IssueDetailDialog extends StatelessWidget {
-  const _IssueDetailDialog({
+class IssueDetailDialog extends StatelessWidget {
+  const IssueDetailDialog({
     required this.issue,
     required this.superseded,
     required this.projectRoot,
