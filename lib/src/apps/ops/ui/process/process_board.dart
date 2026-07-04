@@ -65,7 +65,9 @@ class _Swimlane extends StatelessWidget {
     };
     List<ProcessRun> at(String stepId) => [
           for (final r in runs)
-            if (!doneStates.contains(r.state) && r.currentStep == stepId) r,
+            if (!doneStates.contains(r.state) &&
+                boardColumnFor(r) == stepId)
+              r,
         ];
     final done = [
       for (final r in runs)
@@ -234,4 +236,21 @@ class _RunCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The step column a live run sits in. A run suspended on an approval gate
+/// carries a VIRTUAL currentStep (`gate_approval_<step>`) that matches no
+/// column — live-caught 2026-07-04 (the waiting card vanished). Waiting
+/// runs sit at the step their gate follows (`pendingApproval.afterStep`);
+/// the gate_ prefix is stripped as a fallback for older records.
+String boardColumnFor(ProcessRun run) {
+  if (run.state == ProcessRunState.waitingApproval) {
+    final after = run.pendingApproval?.afterStep;
+    if (after != null && after.isNotEmpty) return after;
+  }
+  const gatePrefix = 'gate_approval_';
+  if (run.currentStep.startsWith(gatePrefix)) {
+    return run.currentStep.substring(gatePrefix.length);
+  }
+  return run.currentStep;
 }

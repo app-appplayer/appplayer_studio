@@ -392,6 +392,12 @@ class _ComposePageState extends State<ComposePage> {
   Future<String?> _persistDraft() async {
     final documentId = await _materialise();
     if (documentId == null) return null;
+    // previousDocumentId rides the SAVE: the tool deletes the replaced
+    // draft AND re-keys its approval to the new documentId (an editor
+    // reload re-materialises the engine document under a new id — without
+    // the re-key the document detaches from its approval line;
+    // live-caught 2026-07-04).
+    final previous = _loadedDraftDocumentId;
     await callFormTool(widget.server, 'form_builder.draft_save', {
       'documentId': documentId,
       'templateId': _templateId,
@@ -404,13 +410,9 @@ class _ComposePageState extends State<ComposePage> {
               {for (final e in row.entries) e.key: e.value.text},
           ],
       },
+      if (previous != null && previous != documentId)
+        'previousDocumentId': previous,
     });
-    final previous = _loadedDraftDocumentId;
-    if (previous != null && previous != documentId) {
-      await callFormTool(widget.server, 'form_builder.draft_delete', {
-        'documentId': previous,
-      });
-    }
     _loadedDraftDocumentId = documentId;
     return documentId;
   }
@@ -426,7 +428,7 @@ class _ComposePageState extends State<ComposePage> {
     }
   }
 
-  /// 상신 — save the draft, then open an approval line over it
+  /// Request approval — save the draft, then open an approval line over it
   /// (`form_builder.approval_request`; button = tool 1:1). The line is
   /// typed as ordered approver ids; progress/acting lives on the
   /// Approvals route.
@@ -437,14 +439,14 @@ class _ComposePageState extends State<ComposePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Request approval (상신)'),
+        title: const Text('Request approval'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: titleCtrl,
               decoration: const InputDecoration(
-                labelText: '기안 제목 (선택)',
+                labelText: 'Title (optional)',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -452,7 +454,7 @@ class _ComposePageState extends State<ComposePage> {
             TextField(
               controller: byCtrl,
               decoration: const InputDecoration(
-                labelText: '기안자 (requestedBy)',
+                labelText: 'Requested by',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -460,8 +462,8 @@ class _ComposePageState extends State<ComposePage> {
             TextField(
               controller: lineCtrl,
               decoration: const InputDecoration(
-                labelText: '결재라인 — 승인자 id 순서대로, 쉼표 구분'
-                    ' (예: dept-lead, owner)',
+                labelText: 'Approval line — approver ids in order, '
+                    'comma-separated (e.g. dept-lead, owner)',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -474,7 +476,7 @@ class _ComposePageState extends State<ComposePage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('상신'),
+            child: const Text('Request'),
           ),
         ],
       ),
@@ -499,9 +501,9 @@ class _ComposePageState extends State<ComposePage> {
         },
       );
       _note(
-        '상신 완료 — 현재 결재자 '
+        'Approval requested — current gate '
         '${(out['line'] as List).cast<Map>().first['approverId']}'
-        ' (Approvals 탭에서 진행)',
+        ' (act on the Approvals tab)',
       );
       _refreshDrafts();
     } catch (e) {
@@ -769,7 +771,7 @@ class _ComposePageState extends State<ComposePage> {
               OutlinedButton.icon(
                 onPressed: _tpl == null ? null : _requestApproval,
                 icon: const Icon(Icons.approval_outlined, size: 16),
-                label: const Text('상신'),
+                label: const Text('Request approval'),
               ),
               FilledButton.icon(
                 onPressed: _tpl == null ? null : _issue,

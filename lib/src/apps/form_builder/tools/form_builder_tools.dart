@@ -74,6 +74,15 @@ class FormBuilderTools {
             'default': 'draft',
           },
           'savedBy': <String, dynamic>{'type': 'string'},
+          'previousDocumentId': <String, dynamic>{
+            'type': 'string',
+            'description':
+                'The documentId this save REPLACES (an editor reload '
+                're-materialises the engine document under a new id). The '
+                'old draft is deleted and any approval is RE-KEYED to the '
+                'new documentId — otherwise the document detaches from its '
+                'approval line.',
+          },
         },
         'required': <String>['documentId', 'templateId', 'data'],
       },
@@ -91,6 +100,14 @@ class FormBuilderTools {
           status: (a['status'] as String?) ?? 'draft',
           savedBy: a['savedBy'] as String?,
         );
+        final previous = a['previousDocumentId'] as String?;
+        if (previous != null && previous != a['documentId']) {
+          await init.rekeyApproval(
+            from: previous,
+            to: a['documentId'] as String,
+          );
+          await init.deleteDraft(previous);
+        }
         return <String, dynamic>{'ok': true, 'documentId': a['documentId']};
       }),
     );
@@ -453,17 +470,17 @@ class FormBuilderTools {
       }),
     );
 
-    // --- approvals (기안 → 결재라인 → 결재함) ----------------------------
+    // --- approvals (request → approval line → inbox) ----------------------
     // Design: docs/form_builder/form-approval-line.md. Approval is OPT-IN
     // per document — a draft with no approval issues exactly as before.
 
     server.addTool(
       name: 'form_builder.approval_request',
       description:
-          'Open an approval (기안 상신) for a SAVED draft: an ordered '
+          'Open an approval request for a SAVED draft: an ordered '
           'approver line — each entry {approverId, roleLabel?} — that must '
           'complete before form_builder.issue accepts the document. '
-          'Re-requesting after a rejection replaces the approval (재상신). '
+          'Re-requesting after a rejection replaces the approval. '
           'Notifies the first approver on the in-app channel.',
       inputSchema: const <String, dynamic>{
         'type': 'object',
@@ -498,8 +515,8 @@ class FormBuilderTools {
           recipientId: (approval['line'] as List).cast<Map>().first['approverId']
               as String,
           text:
-              '승인 대기 도착: ${approval['title'] ?? approval['documentId']} '
-              '(기안자 ${approval['requestedBy']})',
+              'Approval waiting: ${approval['title'] ?? approval['documentId']} '
+              '(requested by ${approval['requestedBy']})',
         );
         return approval;
       }),
@@ -509,8 +526,8 @@ class FormBuilderTools {
       name: 'form_builder.approve',
       description:
           'Approve the CURRENT gate of a pending approval as its designated '
-          'approver. `finalize:true` = 전결 (skip the remaining gates and '
-          'complete now). On advance the next approver is notified; on '
+          'approver. `finalize:true` skips the remaining gates and '
+          'completes now. On advance the next approver is notified; on '
           'completion the requester is.',
       inputSchema: const <String, dynamic>{
         'type': 'object',
@@ -533,8 +550,8 @@ class FormBuilderTools {
           await _notify(
             recipientId: approval['requestedBy'] as String,
             text:
-                '결재 완료: ${approval['title'] ?? approval['documentId']} — '
-                '발행 가능 (form_builder.issue)',
+                'Approval complete: ${approval['title'] ?? approval['documentId']}'
+                ' — ready to issue (form_builder.issue)',
           );
         } else {
           final line = (approval['line'] as List).cast<Map>();
@@ -542,8 +559,8 @@ class FormBuilderTools {
             recipientId:
                 line[approval['currentIndex'] as int]['approverId'] as String,
             text:
-                '승인 대기 도착: ${approval['title'] ?? approval['documentId']} '
-                '(기안자 ${approval['requestedBy']})',
+                'Approval waiting: ${approval['title'] ?? approval['documentId']} '
+                '(requested by ${approval['requestedBy']})',
           );
         }
         return approval;
@@ -574,8 +591,8 @@ class FormBuilderTools {
         await _notify(
           recipientId: approval['requestedBy'] as String,
           text:
-              '반려: ${approval['title'] ?? approval['documentId']} — '
-              '사유: ${a['comment']}',
+              'Rejected: ${approval['title'] ?? approval['documentId']} — '
+              'reason: ${a['comment']}',
         );
         return approval;
       }),
@@ -584,7 +601,7 @@ class FormBuilderTools {
     server.addTool(
       name: 'form_builder.approval_list',
       description:
-          'The 결재함 data: approvals latest-first. `scope:"mine"` with '
+          'The approval-inbox data: approvals latest-first. `scope:"mine"` with '
           '`actor` = approvals WAITING ON that approver (their inbox); '
           '`scope:"requested"` = approvals that actor opened; default all.',
       inputSchema: const <String, dynamic>{

@@ -1,7 +1,7 @@
-/// 결재함 — the approval inbox/progress view.
+/// Approval inbox — the approval progress view.
 ///
 /// Two bands over the same `form_approval` facts: gates WAITING on someone
-/// (act here — approve/전결/reject, acting as the gate's designated
+/// (act here — approve/finalize/reject, acting as the gate's designated
 /// approver) and everything else latest-first (line progress ● ○ ✕ ⤵).
 /// Button = tool, 1:1: every mutation goes through `form_builder.approve` /
 /// `form_builder.reject` — exactly what an external LLM drives. Design:
@@ -67,13 +67,14 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
             children: [
               Text(
                 '${approval['title'] ?? approval['documentId']}'
-                ' · 기안 ${approval['requestedBy']}',
+                ' · requested by ${approval['requestedBy']}',
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: commentCtrl,
                 decoration: InputDecoration(
-                  labelText: approve ? 'Comment (optional)' : '반려 사유 (필수)',
+                  labelText:
+                      approve ? 'Comment (optional)' : 'Reason (required)',
                   border: const OutlineInputBorder(),
                 ),
                 maxLines: 2,
@@ -81,7 +82,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
               if (approve)
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('전결 — 잔여 결재 생략하고 완결'),
+                  title: const Text('Finalize — skip remaining gates and complete'),
                   value: finalize,
                   onChanged: (v) =>
                       setDialogState(() => finalize = v ?? false),
@@ -158,16 +159,16 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
           const Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              '기안이 없습니다 — Compose에서 드래프트를 저장한 뒤 '
-              'Request approval 로 상신하세요.',
+              'No approvals yet — save a draft in Compose, then '
+              'Request approval.',
             ),
           ),
         if (pending.isNotEmpty) ...[
-          const _BandHeader('결재 대기'),
+          const _BandHeader('WAITING'),
           for (final a in pending) _card(a, actionable: true),
         ],
         if (done.isNotEmpty) ...[
-          const _BandHeader('완결·반려·철회'),
+          const _BandHeader('COMPLETED · REJECTED · WITHDRAWN'),
           for (final a in done) _card(a, actionable: false),
         ],
       ],
@@ -200,8 +201,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              '기안 ${a['requestedBy']} · ${a['requestedAt'] ?? ''}'
-              '${gate != null ? ' · 현재 결재자 $gate' : ''}',
+              'requested by ${a['requestedBy']} · ${a['requestedAt'] ?? ''}'
+              '${gate != null ? ' · current gate $gate' : ''}',
               style: vibeMono(
                 size: 11,
                 color: VibeTokens.colorOf(context).textSecondary,

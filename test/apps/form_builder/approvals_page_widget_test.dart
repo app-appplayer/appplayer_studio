@@ -90,7 +90,7 @@ void main() {
     // The pending card renders: title, requester, current gate, line chip.
     await pumpPage(tester);
     expect(find.text('지출 기안'), findsOneWidget);
-    expect(find.textContaining('현재 결재자 dept-lead'), findsOneWidget);
+    expect(find.textContaining('current gate dept-lead'), findsOneWidget);
     expect(find.textContaining('dept-lead (부서장)'), findsOneWidget);
 
     // Approve through the dialog (button = tool).
@@ -152,7 +152,7 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
     await settle(tester, 4);
     await tester.enterText(
-      find.widgetWithText(TextField, '반려 사유 (필수)'),
+      find.widgetWithText(TextField, 'Reason (required)'),
       '금액 재검토',
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
@@ -168,5 +168,68 @@ void main() {
       'actor': 'owner',
     });
     expect(mine['approvals'], isEmpty);
+  });
+
+  testWidgets(
+      'draft re-key moves the approval — a reloaded document cannot bypass '
+      'a pending gate and keeps provenance', (tester) async {
+    final created = await call(tester, 'form.create_document', {
+      'templateId': 'harness-quote',
+      'data': {'수신': '재키검증'},
+    });
+    final docA = created['documentId'] as String;
+    await call(tester, 'form_builder.draft_save', {
+      'documentId': docA,
+      'templateId': 'harness-quote',
+      'data': {'수신': '재키검증'},
+    });
+    await call(tester, 'form_builder.approval_request', {
+      'documentId': docA,
+      'requestedBy': 'nina',
+      'title': '재키 기안',
+      'line': [
+        {'approverId': 'lead'},
+      ],
+    });
+
+    // Editor reload: a NEW engine document replaces the draft.
+    final again = await call(tester, 'form.create_document', {
+      'templateId': 'harness-quote',
+      'data': {'수신': '재키검증'},
+    });
+    final docB = again['documentId'] as String;
+    await call(tester, 'form_builder.draft_save', {
+      'documentId': docB,
+      'templateId': 'harness-quote',
+      'data': {'수신': '재키검증'},
+      'previousDocumentId': docA,
+    });
+
+    // The pending gate FOLLOWED the document — issuing docB is refused.
+    final refused = await call(tester, 'form_builder.issue', {
+      'documentId': docB,
+      'formats': ['markdown'],
+    });
+    expect(refused['code'], 'form_builder.approval_required');
+
+    // Approve under the NEW id, issue, and the provenance rides along.
+    await call(tester, 'form_builder.approve', {
+      'documentId': docB,
+      'actor': 'lead',
+    });
+    final issued = await call(tester, 'form_builder.issue', {
+      'documentId': docB,
+      'formats': ['markdown'],
+      'issuedBy': 'nina',
+    });
+    expect((issued['approval'] as Map)['requestedBy'], 'nina');
+    // The old key is gone.
+    final all = await call(tester, 'form_builder.approval_list', {});
+    final ids = [
+      for (final a in (all['approvals'] as List).cast<Map>())
+        a['documentId'],
+    ];
+    expect(ids, contains(docB));
+    expect(ids, isNot(contains(docA)));
   });
 }

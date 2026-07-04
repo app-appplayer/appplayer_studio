@@ -153,13 +153,21 @@ class _ApprovalCard extends StatelessWidget {
         isThreeLine: true,
         trailing: FilledButton(
           onPressed: () async {
+            // A failed approve MUST be visible — the silent catch here hid
+            // a real "No run to resume" (suspended behavior lost across an
+            // app restart; live-caught 2026-07-04). The pending row would
+            // just sit there, the person clicking none the wiser.
             try {
               await init.registries.process.approve(
                 entry['runId'] as String,
                 approverId: approver,
               );
-            } catch (_) {
-              // Surface nothing fancy here — the row refreshes either way.
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Approve failed: $e')),
+                );
+              }
             }
             onDone();
           },

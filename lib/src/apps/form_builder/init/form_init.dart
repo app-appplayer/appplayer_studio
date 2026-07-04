@@ -191,7 +191,7 @@ class FormInit {
     ]);
   }
 
-  // --- approvals (기안 → 결재라인 → 결재함) --------------------------------
+  // --- approvals (request → approval line → inbox) ------------------------
   //
   // One `form_approval` fact per documentId, latest wins (same upsert rule
   // as drafts — a re-submission after a rejection REPLACES the approval).
@@ -245,8 +245,8 @@ class FormInit {
     return approval;
   }
 
-  /// Approve the CURRENT gate as [actor]. [finalize] = 전결 — the remaining
-  /// gates are skipped and the whole approval completes now.
+  /// Approve the CURRENT gate as [actor]. [finalize] skips the remaining
+  /// gates and completes the whole approval now.
   Future<Map<String, dynamic>> approve({
     required String documentId,
     required String actor,
@@ -333,6 +333,23 @@ class FormInit {
     await _writeApproval(approval);
     await _setDraftStatus(documentId, 'draft');
     return approval;
+  }
+
+  /// Move an approval to a new documentId. Compose re-materialises the
+  /// engine document on every draft load (a NEW documentId), so the draft
+  /// is re-keyed — the approval must travel with it or the document
+  /// detaches from its approval (live-caught 2026-07-04: an issued
+  /// document lost its provenance, and a PENDING line could be bypassed).
+  Future<void> rekeyApproval({
+    required String from,
+    required String to,
+  }) async {
+    if (from == to) return;
+    final approval = await getApproval(from);
+    if (approval == null) return;
+    approval['documentId'] = to;
+    await system.facts.deleteFacts(<String>['$approvalType/$from']);
+    await _writeApproval(approval);
   }
 
   Future<Map<String, dynamic>?> getApproval(String documentId) async {

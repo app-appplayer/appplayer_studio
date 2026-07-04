@@ -337,7 +337,7 @@ class _IssueDetailDialog extends StatelessWidget {
               style: theme.textTheme.bodySmall,
             ),
             // B3 artifact journey — the path this document travelled, from
-            // the frozen provenance: 기안 → each approval gate → issue
+            // the frozen provenance: request → each approval gate → issue
             // (+ correction link). Renders only when a trail exists.
             _JourneyStrip(issue: issue),
             const SizedBox(height: 8),
@@ -406,9 +406,9 @@ class _IssueDetailDialog extends StatelessWidget {
   }
 }
 
-/// Artifact journey (B3): a one-line chip trail — 기안(requestedBy) →
+/// Artifact journey (B3): a one-line chip trail — requested(requestedBy) →
 /// each approval gate as-signed (● approved / ✕ rejected / ⤵ skipped,
-/// with actor and time) → 발행(issuedBy) → correction link. Built purely
+/// with actor and time) → issued(issuedBy) → correction link. Built purely
 /// from the provenance frozen INTO the issue fact; hidden when the
 /// document was issued without an approval.
 class _JourneyStrip extends StatelessWidget {
@@ -446,7 +446,7 @@ class _JourneyStrip extends StatelessWidget {
         );
     final children = <Widget>[
       node(
-        '기안 ${approval['requestedBy']}'
+        'requested ${approval['requestedBy']}'
         ' ${_hhmm(approval['requestedAt'])}',
       ),
       for (final g in line) ...[
@@ -469,7 +469,7 @@ class _JourneyStrip extends StatelessWidget {
       ],
       arrow(),
       node(
-        '발행 ${issue['issuedBy'] ?? ''} ${_hhmm(issue['issuedAt'])}'.trim(),
+        'issued ${issue['issuedBy'] ?? ''} ${_hhmm(issue['issuedAt'])}'.trim(),
         color: c.mint,
       ),
       if (issue['supersedes'] != null) ...[
