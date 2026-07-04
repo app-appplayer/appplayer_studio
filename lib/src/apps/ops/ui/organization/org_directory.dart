@@ -619,12 +619,28 @@ class _PropertyPanelState extends ConsumerState<_PropertyPanel> {
     if (m == null) return;
     setState(() => _status = 'saving…');
     try {
-      await opsCallTool(ref, 'member_update', {
-        'id': m.memberId ?? m.agentId,
+      final id = m.memberId ?? m.agentId;
+      // The card's "role" is the member's free-text role TAG (the
+      // member_update `role` arg is the orchestration enum — different
+      // axis), and the registry REPLACES tags wholesale — so read the
+      // current tags first and merge.
+      final cur = await opsCallTool(ref, 'member_get', {
+        'id': id,
+        'workspaceId': widget.sel.wsId,
+      });
+      final tags = <String, dynamic>{
+        ...?(cur['tags'] as Map?)?.cast<String, dynamic>(),
+        'role': _role.text.trim(),
+      };
+      final res = await opsCallTool(ref, 'member_update', {
+        'id': id,
         'workspaceId': widget.sel.wsId,
         'displayName': _name.text.trim(),
-        'role': _role.text.trim(),
+        'tags': tags,
       });
+      // Some handlers report failure as {'error': …} content instead of
+      // an MCP error — surface it instead of a fake "saved".
+      if (res['error'] != null) throw StateError('${res['error']}');
       widget.onChanged();
       if (mounted) setState(() => _status = 'saved');
     } catch (e) {
@@ -656,10 +672,11 @@ class _PropertyPanelState extends ConsumerState<_PropertyPanel> {
     if (ok != true) return;
     setState(() => _status = 'deleting…');
     try {
-      await opsCallTool(ref, 'member_delete', {
+      final res = await opsCallTool(ref, 'member_delete', {
         'id': m.memberId ?? m.agentId,
         'workspaceId': widget.sel.wsId,
       });
+      if (res['error'] != null) throw StateError('${res['error']}');
       widget.onChanged();
       widget.onClose();
     } catch (e) {
