@@ -61,10 +61,13 @@ class _Entry {
   String get status =>
       superseded ? 'superseded' : (isCorrection ? 'correction' : 'current');
 
-  /// The document's representative value (the "recipient" ledger column):
-  /// the template's declared key field when present, else the first
-  /// field of the frozen data.
+  /// The document's representative value (the "recipient" ledger column).
+  /// Preference order: the keyValue FROZEN at issue time (stable against
+  /// template evolution) → the stamped keyField resolved over the frozen
+  /// data → the first field of the frozen data (pre-stamp issues).
   String get recipient {
+    final stamped = issue['keyValue'];
+    if (stamped is String && stamped.isNotEmpty) return stamped;
     final data = ((issue['content'] as Map?)?['data'] as Map?) ?? const {};
     if (data.isEmpty) return '';
     final key = issue['keyField'];

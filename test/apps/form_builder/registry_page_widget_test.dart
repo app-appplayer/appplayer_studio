@@ -48,6 +48,21 @@ void main() {
     await record('2026-002', 'quote', 'Hanul',
         supersedes: 'issue-2026-001', approval: true);
     await record('2026-003', 'expense', 'Daesung');
+    // keyValue frozen at issue time WINS over the first data field.
+    await h.init.recordIssue(<String, dynamic>{
+      'issueId': 'issue-2026-004',
+      'issueNumber': '2026-004',
+      'documentId': 'doc-2026-004',
+      'templateId': 'expense',
+      'content': {
+        'data': {'금액': '999', '수신': 'Frozen Co'},
+      },
+      'artifacts': const [],
+      'issuedBy': 'nina',
+      'issuedAt': '2026-07-04T04:00:00Z',
+      'keyField': '수신',
+      'keyValue': 'Frozen Co',
+    });
   });
   tearDownAll(() => h.dispose());
 
@@ -75,6 +90,9 @@ void main() {
     await pump(tester);
     expect(find.text('2026-001'), findsOneWidget);
     expect(find.text('2026-003'), findsOneWidget);
+    // Stamped keyValue beats the first data field ('999').
+    expect(find.text('Frozen Co'), findsWidgets);
+    expect(find.text('999'), findsNothing);
     // Facet panel: FORM counts (quote=2, expense=1) and YEAR 2026=3.
     expect(find.text('quote'), findsWidgets);
     expect(find.text('expense'), findsWidgets);
@@ -90,7 +108,7 @@ void main() {
     await tester.pump();
     expect(find.text('2026-003'), findsOneWidget);
     expect(find.text('2026-001'), findsNothing);
-    expect(find.textContaining('1 of 3 issued'), findsOneWidget);
+    expect(find.textContaining('2 of 4 issued'), findsOneWidget);
     // Clear.
     await tester.tap(find.text('expense').first);
     await tester.pump();

@@ -245,6 +245,33 @@ class FormBuilderTools {
           }
         }
 
+        // The document's REPRESENTATIVE value for the registry ledger
+        // (the RECIPIENT column/facet). Convention: the template's FIRST
+        // schema field is the key field — the engine's typed schema
+        // carries no keyField declaration (fields/rules/strict only), so
+        // the ledger key is frozen here at issue time instead, stable
+        // against template evolution.
+        String? keyField;
+        String? keyValue;
+        try {
+          if (draftTemplateId is String) {
+            final tpl = await _callFormTool('form.get_template', {
+              'templateId': draftTemplateId,
+              if (templateVersion != null) 'version': templateVersion,
+            });
+            final fields = (((tpl['template'] as Map?)?['schema']
+                    as Map?)?['fields'] as List?) ??
+                const [];
+            if (fields.isNotEmpty) {
+              keyField = '${(fields.first as Map)['name']}';
+              final v = (draft['document']?['data'] as Map?)?[keyField];
+              if (v != null) keyValue = '$v';
+            }
+          }
+        } catch (_) {
+          // Ledger key is decoration on the record — never fails the issue.
+        }
+
         final issueNumber = await init.nextIssueNumber();
         final issueDir = p.join(init.projectRoot, 'forms', issueNumber);
         await Directory(issueDir).create(recursive: true);
@@ -413,6 +440,8 @@ class FormBuilderTools {
           'content': draft['document'],
           'artifacts': artifacts,
           if (a['issuedBy'] != null) 'issuedBy': a['issuedBy'],
+          if (keyField != null) 'keyField': keyField,
+          if (keyValue != null) 'keyValue': keyValue,
           'issuedAt': DateTime.now().toUtc().toIso8601String(),
           if (a['supersedes'] != null) 'supersedes': a['supersedes'],
           // Approval provenance frozen as-completed (who signed each gate).
