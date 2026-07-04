@@ -46,6 +46,47 @@ void main() {
     });
   });
 
+  group('buildEncodeCommand — concat manifest (D3 duration preservation)', () {
+    const manifest = '/rec/frames.txt';
+
+    test('video only → concat demuxer input + fps resample, no -framerate', () {
+      final cmd = buildEncodeCommand(
+        pattern: pattern,
+        fps: 24,
+        out: out,
+        concatManifest: manifest,
+      );
+      expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
+      expect(cmd, isNot(contains('-framerate')));
+      expect(cmd, isNot(contains('-i "$pattern"')));
+      // Resampled to CFR fps on output so the real span plays as a normal MP4.
+      expect(cmd, contains('-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=24"'));
+    });
+
+    test('with audio → fps resample rides inside the filter_complex graph', () {
+      final cmd = buildEncodeCommand(
+        pattern: pattern,
+        fps: 30,
+        out: out,
+        concatManifest: manifest,
+        audioTracks: const <Map<String, dynamic>>[
+          <String, dynamic>{'path': '/a/narration.m4a'},
+        ],
+      );
+      expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
+      expect(cmd, contains('[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30[v]'));
+      expect(cmd, isNot(contains('-framerate')));
+      expect(cmd, contains('-shortest'));
+    });
+
+    test('null manifest → unchanged flat-fps pattern path', () {
+      final cmd = buildEncodeCommand(pattern: pattern, fps: 24, out: out);
+      expect(cmd, contains('-framerate 24 -i "$pattern"'));
+      expect(cmd, isNot(contains('-f concat')));
+      expect(cmd, isNot(contains('fps=24')));
+    });
+  });
+
   group('buildEncodeCommand — single audio track', () {
     test('muxes one track with adelay/volume defaults + AAC + shortest', () {
       final cmd = buildEncodeCommand(

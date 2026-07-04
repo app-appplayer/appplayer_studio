@@ -138,9 +138,37 @@ class RecorderService {
     // closing frame is present regardless).
     await _capture(rec);
     rec.stoppedAt = DateTime.now();
+    // Persist the per-frame timing as a concat manifest NOW, while the
+    // in-memory timestamps exist — `recorder.encode` rebuilds the Recording
+    // from disk (timestamps gone), so the encoder reads `frames.txt` back to
+    // preserve the real duration (D3).
+    await _writeConcatManifest(rec);
     _active = null;
     _lastFrameBytes = null;
     return rec;
+  }
+
+  /// Write the ffconcat manifest (`frames.txt`) beside the frame files so the
+  /// encoder holds each deduped frame for its real span. Best-effort — on any
+  /// failure the encoder falls back to the flat-fps pattern path.
+  Future<void> _writeConcatManifest(Recording rec) async {
+    if (rec.frameCount < 1 || rec.frameOffsetsMs.length != rec.frameCount) {
+      return;
+    }
+    final filenames = <String>[
+      for (var i = 0; i < rec.frameCount; i++)
+        'frame_${i.toString().padLeft(6, '0')}.${rec.format}',
+    ];
+    final manifest = buildConcatManifest(
+      filenames: filenames,
+      offsetsMs: rec.frameOffsetsMs,
+      totalDurationMs: rec.duration.inMilliseconds,
+    );
+    try {
+      await File(p.join(rec.outputDir, 'frames.txt')).writeAsString(manifest);
+    } catch (_) {
+      /* swallow — encoder falls back to the pattern path */
+    }
   }
 
   Recording? statusSnapshot() => _active;
@@ -181,6 +209,12 @@ class RecorderService {
     await file.writeAsBytes(bytes, flush: false);
     rec.frameCount += 1;
     rec.bytesWritten += bytes.length;
+    // Stamp this frame's capture time so the encoder can hold it for its real
+    // on-screen span (the gap to the next unique frame) instead of replaying
+    // deduped frames at a flat fps (D3).
+    rec.frameOffsetsMs.add(
+      DateTime.now().difference(rec.startedAt).inMilliseconds,
+    );
   }
 
   /// Fast 32-bit FNV-1a over a downsampled byte stride. Good enough

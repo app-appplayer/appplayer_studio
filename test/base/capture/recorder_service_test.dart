@@ -8,6 +8,7 @@ library;
 
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -265,6 +266,37 @@ void main() {
       expect(svc.active, isNull);
       final result = await svc.stop();
       expect(result, isNull);
+    });
+  });
+
+  // r21 ------------------------------------------------------------------
+  group('r21: stop() writes the concat manifest (D3)', () {
+    test('frames.txt is written beside the frames when a frame is captured',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('rec_svc_manifest_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final bridge = ChromeBridge();
+      var n = 0;
+      // Distinct bytes each call so nothing is deduped away.
+      bridge.captureScreenshot = ({double pixelRatio = 1.0, Rect? area}) async =>
+          Uint8List.fromList(<int>[n++, 1, 2, 3, 4, 5]);
+      final svc = RecorderService(bridge: bridge, configRoot: dir.path);
+
+      final rec = await svc.start(fps: 10, label: 'd3');
+      expect(rec, isNotNull);
+      // stop() drains one final capture, so at least one frame lands.
+      final stopped = await svc.stop();
+      expect(stopped, isNotNull);
+      expect(stopped!.frameCount, greaterThanOrEqualTo(1));
+      expect(stopped.frameOffsetsMs.length, stopped.frameCount);
+
+      final manifest = File(p.join(stopped.outputDir, 'frames.txt'));
+      expect(manifest.existsSync(), isTrue);
+      final text = manifest.readAsStringSync();
+      expect(text, startsWith('ffconcat version 1.0'));
+      expect(text, contains("file 'frame_000000.png'"));
+      expect(text, contains('duration '));
     });
   });
 

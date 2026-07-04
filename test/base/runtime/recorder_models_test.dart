@@ -155,4 +155,47 @@ void main() {
       expect(parsed, isNotNull);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // buildConcatManifest (D3 — real-duration preservation)
+  // ---------------------------------------------------------------------------
+
+  group('buildConcatManifest', () {
+    // r5 — each frame is held for the gap to the next; last uses total span.
+    test('r5: holds each frame for its real span, repeats the final frame', () {
+      final manifest = buildConcatManifest(
+        filenames: const ['frame_000000.png', 'frame_000001.png'],
+        offsetsMs: const [0, 5000],
+        totalDurationMs: 8000,
+      );
+      expect(manifest, startsWith('ffconcat version 1.0'));
+      expect(manifest, contains("file 'frame_000000.png'\nduration 5.000"));
+      expect(manifest, contains("file 'frame_000001.png'\nduration 3.000"));
+      // Concat demuxer drops the last duration → the final frame is repeated.
+      expect(
+        'file \'frame_000001.png\''.allMatches(manifest).length,
+        2,
+      );
+    });
+
+    // r6 — the D3 core: a single static frame keeps the FULL span (was ~0.04s).
+    test('r6: a lone static frame is held for the entire recording span', () {
+      final manifest = buildConcatManifest(
+        filenames: const ['frame_000000.png'],
+        offsetsMs: const [0],
+        totalDurationMs: 20000,
+      );
+      expect(manifest, contains("file 'frame_000000.png'\nduration 20.000"));
+    });
+
+    // r7 — empty input yields just the header (no frames → no file lines).
+    test('r7: empty frame list yields only the ffconcat header', () {
+      final manifest = buildConcatManifest(
+        filenames: const [],
+        offsetsMs: const [],
+        totalDurationMs: 0,
+      );
+      expect(manifest.trim(), 'ffconcat version 1.0');
+    });
+  });
 }

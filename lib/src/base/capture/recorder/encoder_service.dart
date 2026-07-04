@@ -69,6 +69,12 @@ class EncodingProgress {
 /// `volume` scales gain (1.0 = unchanged; ~0.2 for background music sat
 /// under a voiceover). `-shortest` trims output to the shorter of video /
 /// audio so a slightly-long narration can't leave a black tail.
+/// When [concatManifest] is supplied the video input is ffmpeg's **concat
+/// demuxer** (per-frame durations from `frames.txt`) instead of a flat
+/// `-framerate` image sequence, and the video is resampled to CFR `fps` on
+/// output — so a static scene keeps its real span as a standard constant-fps
+/// MP4 (D3). With no manifest the proven `-framerate … -i pattern` path is
+/// used unchanged.
 String buildEncodeCommand({
   required String pattern,
   required int fps,
@@ -76,23 +82,30 @@ String buildEncodeCommand({
   String codec = 'libx264',
   String pixelFormat = 'yuv420p',
   int? crf,
+  String? concatManifest,
   List<Map<String, dynamic>> audioTracks = const <Map<String, dynamic>>[],
 }) {
   final crfArg = crf == null ? '' : '-crf $crf ';
   const pad = 'pad=ceil(iw/2)*2:ceil(ih/2)*2';
+  // Concat demuxer carries real per-frame durations; resample to CFR fps on
+  // output so the result plays as an ordinary constant-fps MP4.
+  final videoInput = concatManifest == null
+      ? '-framerate $fps -i "$pattern"'
+      : '-f concat -safe 0 -i "$concatManifest"';
+  final vChain = concatManifest == null ? pad : '$pad,fps=$fps';
   final tracks = audioTracks
       .where((t) => (t['path']?.toString() ?? '').isNotEmpty)
       .toList(growable: false);
   if (tracks.isEmpty) {
     // Unchanged simple-filter path — keep the proven behavior.
-    return '-y -framerate $fps -i "$pattern" -c:v $codec '
-        '-pix_fmt $pixelFormat $crfArg-vf "$pad" "$out"';
+    return '-y $videoInput -c:v $codec '
+        '-pix_fmt $pixelFormat $crfArg-vf "$vChain" "$out"';
   }
-  final inputs = StringBuffer('-y -framerate $fps -i "$pattern"');
+  final inputs = StringBuffer('-y $videoInput');
   for (final t in tracks) {
     inputs.write(' -i "${t['path']}"');
   }
-  final graph = StringBuffer('[0:v]$pad[v]');
+  final graph = StringBuffer('[0:v]$vChain[v]');
   final labels = <String>[];
   for (var i = 0; i < tracks.length; i++) {
     final t = tracks[i];
@@ -149,6 +162,11 @@ class EncoderService {
     progress.value = prog;
     final completer = Completer<EncodingProgress>();
     final pattern = p.join(rec.outputDir, 'frame_%06d.${rec.format}');
+    // Prefer the recorder's concat manifest (per-frame real durations) so a
+    // static scene keeps its true span instead of collapsing to frameCount /
+    // fps (D3). Absent (old recordings) → the flat-fps pattern path.
+    final manifestFile = File(p.join(rec.outputDir, 'frames.txt'));
+    final concatManifest = manifestFile.existsSync() ? manifestFile.path : null;
     // `pad=ceil(iw/2)*2:ceil(ih/2)*2` (inside the builder) ensures even
     // dimensions — libx264 + yuv420p require it. Overwrites output;
     // muxes any `audioTracks` (narration / music) into an AAC stream.
@@ -159,6 +177,7 @@ class EncoderService {
       codec: codec,
       pixelFormat: pixelFormat,
       crf: crf,
+      concatManifest: concatManifest,
       audioTracks: audioTracks,
     );
     try {
