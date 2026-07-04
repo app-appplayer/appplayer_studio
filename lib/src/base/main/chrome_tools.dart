@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import 'chrome_bridge.dart';
+import '../install/builtin_app.dart' show BuiltInAppRegistry;
 import '../install/internal_call_guard.dart';
 
 /// Register the 13 `studio.chrome.*` tools onto [boot]. Each handler
@@ -255,6 +256,133 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       return mk.KernelToolResult(
         content: <mk.KernelContent>[mk.KernelTextContent(text: '{"ok":true}')],
       );
+    },
+  );
+
+  boot.addTool(
+    name: 'studio.app.open',
+    description:
+        'Cross-app deep link (docs/03_DDD/app-open-deeplink.md): open or '
+        'focus a built-in app tab, optionally bind a project directory, '
+        'and land on an in-app route focused on one entity. Steps run in '
+        'order and the response reports each — {ok, opened, projectBound?, '
+        'landed?}. Route vocabulary and entity resolution belong to the '
+        'target app (e.g. form_builder: dashboard | templates | compose | '
+        'approvals | issues, entity = issueId / documentId / templateId). '
+        'Example: {app:"form_builder", project:"/path/to/proj", '
+        'route:"approvals", entity:"doc-…"}.',
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{
+        'app': <String, dynamic>{
+          'type': 'string',
+          'description': 'Built-in app id (form_builder, makemind_ops, …).',
+        },
+        'project': <String, dynamic>{
+          'type': 'string',
+          'description': 'Project directory to bind on the tab (optional).',
+        },
+        'route': <String, dynamic>{'type': 'string'},
+        'entity': <String, dynamic>{'type': 'string'},
+      },
+      'required': <String>['app'],
+    },
+    handler: (args) async {
+      Map<String, dynamic> fail(String step, String error) =>
+          <String, dynamic>{'ok': false, 'step': step, 'error': error};
+      mk.KernelToolResult reply(Map<String, dynamic> body,
+              {bool isError = false}) =>
+          mk.KernelToolResult(
+            content: <mk.KernelContent>[
+              mk.KernelTextContent(text: jsonEncode(body)),
+            ],
+            isError: isError,
+          );
+
+      final app = (args['app'] as String?) ?? '';
+      if (app.isEmpty) {
+        return reply(fail('open', 'app (built-in id) required'),
+            isError: true);
+      }
+      final open = bridge.openSeed;
+      if (open == null) {
+        return reply(fail('open', 'shell not mounted'), isError: true);
+      }
+      if (!await open(app)) {
+        return reply(fail('open', 'app "$app" not declared'), isError: true);
+      }
+      final out = <String, dynamic>{'ok': true, 'opened': app};
+
+      // The tab mounts / claims its slots on a frame build — wait for the
+      // app's context (and its navigate hook) to come up instead of
+      // racing it.
+      Future<Future<bool> Function(String, {String? entityId})?>
+          awaitNavigate() async {
+        for (var i = 0; i < 40; i++) {
+          final ctx = BuiltInAppRegistry.instance.activeContext;
+          if (ctx != null &&
+              BuiltInAppRegistry.instance.activeApp?.id == app &&
+              ctx.navigateProvider != null) {
+            return ctx.navigateProvider;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        return null;
+      }
+
+      final project = args['project'] as String?;
+      if (project != null && project.isNotEmpty) {
+        // The active built-in claims openProjectInActive; give it frames
+        // to claim, then bind through its own validated handler.
+        var bound = false;
+        for (var i = 0; i < 40 && !bound; i++) {
+          final bind = bridge.openProjectInActive;
+          if (bind != null &&
+              BuiltInAppRegistry.instance.activeApp?.id == app) {
+            await bind(project);
+            bound = true;
+          } else {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+        }
+        if (!bound) {
+          return reply(
+            {...out, ...fail('project', 'project slot never came up')},
+            isError: true,
+          );
+        }
+        out['projectBound'] = project;
+      }
+
+      final route = args['route'] as String?;
+      if (route != null && route.isNotEmpty) {
+        final navigate = await awaitNavigate();
+        if (navigate == null) {
+          return reply(
+            {
+              ...out,
+              ...fail('route',
+                  'app "$app" exposes no navigateProvider (not navigable)'),
+            },
+            isError: true,
+          );
+        }
+        final landed =
+            await navigate(route, entityId: args['entity'] as String?);
+        if (!landed) {
+          return reply(
+            {
+              ...out,
+              ...fail('route', 'unknown route/entity: $route/'
+                  '${args['entity'] ?? ''}'),
+            },
+            isError: true,
+          );
+        }
+        out['landed'] = route;
+        if (args['entity'] != null) out['entity'] = args['entity'];
+      }
+      return reply(out);
     },
   );
   boot.addTool(

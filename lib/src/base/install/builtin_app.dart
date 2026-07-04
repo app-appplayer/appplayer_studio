@@ -148,6 +148,15 @@ class BuiltInAppContext {
   /// `manifest.projectKinds[]`.
   List<ProjectKindOption>? Function()? projectKindsProvider;
 
+  /// Deep-link landing (the `studio.app.open` contract,
+  /// `docs/03_DDD/app-open-deeplink.md`): land on an in-app route,
+  /// optionally focused on one entity (an issue, an approval's document,
+  /// a template). Route vocabulary and entity resolution are the APP's —
+  /// return false for an unknown route/entity so the caller can surface
+  /// it honestly. Assigned by the app shell in initState alongside the
+  /// other axis providers; null = the app is not navigable from outside.
+  Future<bool> Function(String route, {String? entityId})? navigateProvider;
+
   /// In-process MCP server bootstrap the mount uses to register its
   /// built-in tools (vibe_*, etc). Set by the mount during initState.
   /// Host-level passthrough tools (e.g. `app_builder.dispatch_tool`)

@@ -85,6 +85,12 @@ class _FormShellState extends State<FormShell> {
   /// handoff recreates the editor state.
   Map<String, dynamic>? _correction;
 
+  /// Deep-link landing (`studio.app.open` → [_navigate]): the entity the
+  /// target page should focus once it builds — an issueId on Issues, a
+  /// documentId on Approvals, a templateId on Templates. Cleared on the
+  /// next manual route change (one-shot, same spirit as [_correction]).
+  String? _landingEntity;
+
   /// Per-project chat coordinator clone id (`form_builder.manager.<proj>_<h>`)
   /// — cached so tab re-activation re-applies it without re-deriving from the
   /// volatile `activeChatAgentId`. Single coordinator per project (Ops
@@ -107,7 +113,8 @@ class _FormShellState extends State<FormShell> {
           )
           ..lifecycleStateProvider = _provideLifecycleState
           ..lifecycleBindingsProvider = _provideLifecycleBindings
-          ..domainSettingsProvider = _provideDomainSettings;
+          ..domainSettingsProvider = _provideDomainSettings
+          ..navigateProvider = _navigate;
     BuiltInAppRegistry.instance.mount(widget.bundlePath, widget.app, _ctx);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -115,6 +122,26 @@ class _FormShellState extends State<FormShell> {
         _restoreLastProject();
       }
     });
+  }
+
+  /// Deep-link landing (docs/03_DDD/app-open-deeplink.md). Route names =
+  /// the rail's lower-case labels; unknown route/entity returns false so
+  /// `studio.app.open` reports it instead of landing somewhere wrong.
+  Future<bool> _navigate(String route, {String? entityId}) async {
+    final target = switch (route) {
+      'dashboard' || 'templates' => FormRoute.templates,
+      'compose' => FormRoute.compose,
+      'approvals' => FormRoute.approvals,
+      'issues' => FormRoute.issues,
+      'about' => FormRoute.about,
+      _ => null,
+    };
+    if (target == null || !mounted) return false;
+    setState(() {
+      _route = target;
+      _landingEntity = entityId;
+    });
+    return true;
   }
 
   // --- project lifecycle --------------------------------------------------
@@ -406,8 +433,10 @@ class _FormShellState extends State<FormShell> {
             NavigationRail(
               selectedIndex: _route.index,
               labelType: NavigationRailLabelType.all,
-              onDestinationSelected: (i) =>
-                  setState(() => _route = FormRoute.values[i]),
+              onDestinationSelected: (i) => setState(() {
+                _route = FormRoute.values[i];
+                _landingEntity = null; // one-shot deep-link focus
+              }),
               destinations: [
                 for (final r in FormRoute.values)
                   NavigationRailDestination(
@@ -440,13 +469,20 @@ class _FormShellState extends State<FormShell> {
                   correction: _correction,
                 ),
                 FormRoute.approvals => ApprovalsPage(
-                  key: ValueKey('fb-approvals::${init.projectRoot}'),
+                  key: ValueKey(
+                    'fb-approvals::${init.projectRoot}'
+                    '::${_landingEntity ?? ''}',
+                  ),
                   server: widget.server,
                   init: init,
+                  landingDocumentId: _landingEntity,
                 ),
                 FormRoute.issues => IssuesPage(
-                  key: ValueKey('fb-issues::${init.projectRoot}'),
+                  key: ValueKey(
+                    'fb-issues::${init.projectRoot}::${_landingEntity ?? ''}',
+                  ),
                   init: init,
+                  landingIssueId: _landingEntity,
                   onCorrect: (issue) => setState(() {
                     _correction = issue;
                     _route = FormRoute.compose;

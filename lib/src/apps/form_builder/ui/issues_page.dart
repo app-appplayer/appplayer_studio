@@ -21,12 +21,21 @@ const JsonEncoder _pretty = JsonEncoder.withIndent('  ');
 ///   - "correct & reissue" hands the snapshot to Compose with `supersedes`
 ///     pre-set (corrections never edit an issue).
 class IssuesPage extends StatefulWidget {
-  const IssuesPage({super.key, required this.init, this.onCorrect});
+  const IssuesPage({
+    super.key,
+    required this.init,
+    this.onCorrect,
+    this.landingIssueId,
+  });
 
   final FormInit init;
 
   /// Issues → Compose handoff (shell wires the route switch + prefill).
   final void Function(Map<String, dynamic> issue)? onCorrect;
+
+  /// Deep-link focus (`studio.app.open … route:issues entity:<issueId>`):
+  /// the issue whose detail opens once the list loads. One-shot.
+  final String? landingIssueId;
 
   @override
   State<IssuesPage> createState() => _IssuesPageState();
@@ -36,6 +45,7 @@ class _IssuesPageState extends State<IssuesPage> {
   late Future<List<Map<String, dynamic>>> _issues;
   final TextEditingController _search = TextEditingController();
   bool _currentOnly = false;
+  bool _landed = false;
 
   @override
   void initState() {
@@ -152,6 +162,24 @@ class _IssuesPageState extends State<IssuesPage> {
                 for (final i in all)
                   if (i['supersedes'] != null) i['supersedes'] as String,
               };
+              // Deep-link landing: open the linked issue's detail once.
+              final landing = widget.landingIssueId;
+              if (!_landed && landing != null) {
+                _landed = true;
+                for (final i in all) {
+                  if (i['issueId'] == landing) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _detail(
+                          i,
+                          superseded: supersededIds.contains(landing),
+                        );
+                      }
+                    });
+                    break;
+                  }
+                }
+              }
               final q = _search.text.trim();
               final items = [
                 for (final i in all)

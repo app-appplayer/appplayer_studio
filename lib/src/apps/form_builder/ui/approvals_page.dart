@@ -16,10 +16,20 @@ import '../init/form_init.dart';
 import 'form_tool_client.dart';
 
 class ApprovalsPage extends StatefulWidget {
-  const ApprovalsPage({super.key, required this.server, required this.init});
+  const ApprovalsPage({
+    super.key,
+    required this.server,
+    required this.init,
+    this.landingDocumentId,
+  });
 
   final BuiltinToolRegistry server;
   final FormInit init;
+
+  /// Deep-link focus (`studio.app.open … route:approvals entity:<docId>`):
+  /// the approval card to accent so the linked item is findable at a
+  /// glance in a long inbox.
+  final String? landingDocumentId;
 
   @override
   State<ApprovalsPage> createState() => _ApprovalsPageState();
@@ -181,8 +191,18 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
     final gate = state == 'pending'
         ? line[a['currentIndex'] as int]['approverId']
         : null;
+    final linked = a['documentId'] == widget.landingDocumentId;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
+      shape: linked
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: VibeTokens.colorOf(context).mint,
+                width: 1.4,
+              ),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
