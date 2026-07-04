@@ -6,6 +6,8 @@ import 'dart:io';
 import 'package:appplayer_studio/builtin_api.dart' as mk show BundleActivation;
 import 'package:appplayer_studio/builtin_api.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
+import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart' as kops
+    show KvStateStore;
 // Concrete decision/expression engines + the Decision port adapter — not
 // surfaced by builtin_api's flowbrain_core re-export (which brings only the
 // `EnginePorts` shell). `show` the 4 impls so `EnginePorts` keeps coming from
@@ -652,6 +654,20 @@ class KnowledgeInit {
           // (which always happens after the bind). See
           // `BundleActivation.callTool` (brain_kernel).
           callTool: skillExecutor.callHostTool,
+          // PERSISTENT behavior state — without this the kernel falls back
+          // to its in-memory store and a run suspended on an approval gate
+          // dies with the process: the ops-layer run RECORD survives in KV
+          // while the engine has nothing to resume ("No run to resume",
+          // zombie pending — live-caught 2026-07-04). Same inject-don't-
+          // default pattern as the FactGraph persistence. The org-level KV
+          // handle is used on purpose: runs span workspaces, and the
+          // scoped adapter would reject keys outside the active one.
+          behaviorStore: kops.KvStateStore(
+            writeKv: (k, v) => orgKv.set(k, v),
+            readKv: (k) async => (await orgKv.get(k)) as String?,
+            removeKv: (k) => orgKv.remove(k),
+            prefix: 'behavior/run/${bundle.manifest.id}/',
+          ),
         );
         final result = await activation.activate(bundle);
         activations.add((activation: activation, bundle: bundle));

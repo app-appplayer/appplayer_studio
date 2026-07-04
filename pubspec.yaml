@@ -66,6 +66,11 @@ dependencies:
   # (judgment-determinism). flowbrain_core re-exports EnginePorts but not the
   # concrete mcp_profile impls/adapters.
   mcp_profile: ^0.2.1
+  # Direct dep (was transitive via brain_kernel) so the host can inject the
+  # PERSISTENT behavior StateStore (KvStateStore over the per-project KV)
+  # into BundleActivation — without it suspended approval runs live in the
+  # in-memory default and die on restart (zombie pending; 2026-07-04).
+  mcp_knowledge_ops: ^0.2.2
   uuid: ^4.0.0
   yaml: ^3.1.2
   # Published AppPlayer utility packages (pub.dev): UI view widgets, the
