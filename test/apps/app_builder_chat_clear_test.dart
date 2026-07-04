@@ -55,6 +55,38 @@ void main() {
   });
 
   test(
+    'FIX D7a: clear() also resets the coordinator LLM history via onClearLog',
+    () async {
+      await log.append(_t('hello'));
+
+      // Model the shell_layout D7a wiring: onClearLog wipes the disk log AND
+      // resets the LLM's in-memory history, so a Clear is a genuine fresh
+      // start. Pre-D7a it only cleared the disk log, so the coordinator kept
+      // reusing prior thread precedent after a Clear (the "Clear" was a lie).
+      final llmHistory = <String>['prior-1', 'prior-2'];
+      var historyReset = false;
+      final ctrl = VibeChatController(
+        send: (_) async => ChatTurn(role: 'assistant', text: 'ok'),
+        onClearLog: () async {
+          await log.clear();
+          llmHistory.clear(); // stands in for llm.resetHistory()
+          historyReset = true;
+        },
+      );
+      await ctrl.clear();
+
+      expect(await chatFile.exists(), isFalse);
+      expect(historyReset, isTrue);
+      expect(
+        llmHistory,
+        isEmpty,
+        reason: 'Clear must reset the LLM history, not just the disk log — '
+            'else the coordinator reuses prior precedent after Clear (D7a)',
+      );
+    },
+  );
+
+  test(
     'BUG control: clear() WITHOUT onClearLog leaves chat.jsonl on disk',
     () async {
       await log.append(_t('hello'));

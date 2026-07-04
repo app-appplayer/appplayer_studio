@@ -895,7 +895,12 @@ class VibeShellState extends State<VibeShell> {
       }
       final next = await proj.saveAs(newPath);
       widget.chat.onTurnPersisted = (turn) => next.chatLog.append(turn);
-      widget.chat.onClearLog = () => next.chatLog.clear();
+      // Clear must also reset the LLM history — otherwise the coordinator
+      // keeps reusing prior thread precedent after a Clear (D7a).
+      widget.chat.onClearLog = () async {
+        await next.chatLog.clear();
+        widget.llm?.resetHistory();
+      };
       if (!mounted) return;
       setState(() => _project = next);
       await _recordRecent(next.projectPath);
@@ -1629,7 +1634,12 @@ class VibeShellState extends State<VibeShell> {
   /// conversation feed reflects the project the user is now editing.
   Future<void> _rebindChat(VibeProject proj) async {
     widget.chat.onTurnPersisted = (turn) => proj.chatLog.append(turn);
-    widget.chat.onClearLog = () => proj.chatLog.clear();
+    // Clear must also reset the LLM history — otherwise the coordinator keeps
+    // reusing prior thread precedent after a Clear (D7a).
+    widget.chat.onClearLog = () async {
+      await proj.chatLog.clear();
+      widget.llm?.resetHistory();
+    };
     widget.llm?.resetHistory();
     widget.llm?.bindFileTools(
       FileToolsDispatcher(
@@ -2303,7 +2313,12 @@ class VibeShellState extends State<VibeShell> {
       // future appends without clobbering the in-memory feed (which is
       // already in sync with the copied log).
       widget.chat.onTurnPersisted = (turn) => next.chatLog.append(turn);
-      widget.chat.onClearLog = () => next.chatLog.clear();
+      // Clear must also reset the LLM history — otherwise the coordinator
+      // keeps reusing prior thread precedent after a Clear (D7a).
+      widget.chat.onClearLog = () async {
+        await next.chatLog.clear();
+        widget.llm?.resetHistory();
+      };
       if (!mounted) return;
       setState(() => _project = next);
       await _recordRecent(next.projectPath);
