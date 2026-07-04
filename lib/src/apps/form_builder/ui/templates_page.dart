@@ -4,7 +4,7 @@ import 'dart:convert' show JsonEncoder, jsonDecode;
 import 'package:appplayer_form_view/appplayer_form_view.dart';
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/base.dart'
-    show BuiltinToolRegistry, VibeTokens, inspectTag, vibeMono;
+    show ScopedDialogs, BuiltinToolRegistry, VibeTokens, inspectTag, vibeMono;
 import 'package:mcp_bundle/mcp_bundle.dart'
     show
         FormBlock,
@@ -96,7 +96,7 @@ class TemplatesPage extends StatefulWidget {
   State<TemplatesPage> createState() => _TemplatesPageState();
 }
 
-class _TemplatesPageState extends State<TemplatesPage> {
+class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
   late Future<List<Map<String, dynamic>>> _templates;
   final TextEditingController _search = TextEditingController();
 
@@ -199,10 +199,11 @@ class _TemplatesPageState extends State<TemplatesPage> {
   FormDocument _assemblePreview(Map<String, dynamic> tpl) {
     final fields =
         (((tpl['schema'] as Map?)?['fields'] as List?) ?? const []).cast<Map>();
-    final sections = ((tpl['defaultSections'] as List?) ?? const [])
-        .cast<Map>()
-        .map((m) => FormSection.fromJson(m.cast<String, dynamic>()))
-        .toList();
+    final sections =
+        ((tpl['defaultSections'] as List?) ?? const [])
+            .cast<Map>()
+            .map((m) => FormSection.fromJson(m.cast<String, dynamic>()))
+            .toList();
     return FormDocument(
       documentId: 'preview',
       templateId: '${tpl['templateId']}',
@@ -246,8 +247,7 @@ class _TemplatesPageState extends State<TemplatesPage> {
   /// heading + one field) saves immediately; refinement happens in the
   /// inspector or by chat. JSON stays the expert path (Edit JSON).
   Future<void> _createTemplate() async {
-    final result = await showDialog<(String, String)>(
-      context: context,
+    final result = await showScopedDialog<(String, String)>(
       builder: (ctx) => const _NewTemplateDialog(),
     );
     if (result == null) return;
@@ -296,15 +296,16 @@ class _TemplatesPageState extends State<TemplatesPage> {
       }
     }
     if (!mounted) return;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => _TemplateEditorDialog(
-        server: widget.server,
-        initialJson: initial,
-        title: templateId == null
-            ? 'New template'
-            : 'Edit $templateId (save = new version)',
-      ),
+    final saved = await showScopedDialog<bool>(
+      builder:
+          (ctx) => _TemplateEditorDialog(
+            server: widget.server,
+            initialJson: initial,
+            title:
+                templateId == null
+                    ? 'New template'
+                    : 'Edit $templateId (save = new version)',
+          ),
     );
     if (saved == true) {
       _refresh();
@@ -320,28 +321,29 @@ class _TemplatesPageState extends State<TemplatesPage> {
         {'templateId': templateId},
       );
       if (!mounted) return;
-      final versions = ((out['versions'] as List?) ?? const [])
-          .cast<Map>()
-          .map((m) => m.cast<String, dynamic>())
-          .toList();
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => SimpleDialog(
-          title: Text('$templateId versions'),
-          children: [
-            for (final v in versions)
-              SimpleDialogOption(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _editor(
-                    templateId: templateId,
-                    version: v['version'] as String?,
-                  );
-                },
-                child: Text('${v['version']}  ·  ${v['createdAt'] ?? ''}'),
-              ),
-          ],
-        ),
+      final versions =
+          ((out['versions'] as List?) ?? const [])
+              .cast<Map>()
+              .map((m) => m.cast<String, dynamic>())
+              .toList();
+      await showScopedDialog<void>(
+        builder:
+            (ctx) => SimpleDialog(
+              title: Text('$templateId versions'),
+              children: [
+                for (final v in versions)
+                  SimpleDialogOption(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _editor(
+                        templateId: templateId,
+                        version: v['version'] as String?,
+                      );
+                    },
+                    child: Text('${v['version']}  ·  ${v['createdAt'] ?? ''}'),
+                  ),
+              ],
+            ),
       );
     } catch (e) {
       await _showError(e);
@@ -349,25 +351,25 @@ class _TemplatesPageState extends State<TemplatesPage> {
   }
 
   Future<void> _delete(String templateId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete $templateId?'),
-        content: const Text(
-          'Removes the template and its version history from this project. '
-          'Issued documents keep their frozen content and artifacts.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+    final confirmed = await showScopedDialog<bool>(
+      builder:
+          (ctx) => AlertDialog(
+            title: Text('Delete $templateId?'),
+            content: const Text(
+              'Removes the template and its version history from this project. '
+              'Issued documents keep their frozen content and artifacts.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return;
     try {
@@ -534,7 +536,7 @@ class _TemplatesPageState extends State<TemplatesPage> {
                   tpl == null
                       ? _selectedId!
                       : '${tpl['name']}  ·  ${tpl['templateId']} '
-                            'v${tpl['version']}',
+                          'v${tpl['version']}',
                   style: theme.textTheme.titleMedium,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -561,8 +563,7 @@ class _TemplatesPageState extends State<TemplatesPage> {
                   ButtonSegment(value: 2, label: Text('Structure')),
                 ],
                 selected: {_panelTab},
-                onSelectionChanged: (s) =>
-                    setState(() => _panelTab = s.first),
+                onSelectionChanged: (s) => setState(() => _panelTab = s.first),
               ),
               const SizedBox(width: 8),
               inspectTag(
@@ -621,35 +622,34 @@ class _TemplatesPageState extends State<TemplatesPage> {
             _ =>
               _previewDoc != null
                   ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: FormView(
-                            document: _previewDoc!,
-                            imageBaseDir: widget.projectRoot,
-                            pageWidthMm:
-                                (pageSize?['width'] as num?)?.toDouble() ??
-                                    210,
-                            pageHeightMm:
-                                (pageSize?['height'] as num?)?.toDouble() ??
-                                    297,
-                            showMetrics: _metrics,
-                            pageBorder: ((_tpl?['layoutPolicy']
-                                        as Map?)?['pageBorder'] as Map?)
-                                ?.cast<String, dynamic>(),
-                            selectedBlockId: _inspected?.block.blockId,
-                            onBlockTap: (ref) =>
-                                setState(() => _inspected = ref),
-                          ),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: FormView(
+                          document: _previewDoc!,
+                          imageBaseDir: widget.projectRoot,
+                          pageWidthMm:
+                              (pageSize?['width'] as num?)?.toDouble() ?? 210,
+                          pageHeightMm:
+                              (pageSize?['height'] as num?)?.toDouble() ?? 297,
+                          showMetrics: _metrics,
+                          pageBorder:
+                              ((_tpl?['layoutPolicy'] as Map?)?['pageBorder']
+                                      as Map?)
+                                  ?.cast<String, dynamic>(),
+                          selectedBlockId: _inspected?.block.blockId,
+                          onBlockTap: (ref) => setState(() => _inspected = ref),
                         ),
-                        if (_inspected != null) _inspector(theme),
-                      ],
-                    )
+                      ),
+                      if (_inspected != null) _inspector(theme),
+                    ],
+                  )
                   : Center(
-                      child: _panelError != null
-                          ? Text('Preview failed: $_panelError')
-                          : const CircularProgressIndicator(),
-                    ),
+                    child:
+                        _panelError != null
+                            ? Text('Preview failed: $_panelError')
+                            : const CircularProgressIndicator(),
+                  ),
           },
         ),
       ],
@@ -675,8 +675,8 @@ class _TemplatesPageState extends State<TemplatesPage> {
 
   /// The LIVE template-JSON map for a block (the inspector edits this).
   Map<String, dynamic>? _blockJsonOf(String blockId) {
-    for (final sec in ((_tpl?['defaultSections'] as List?) ?? const [])
-        .cast<Map>()) {
+    for (final sec
+        in ((_tpl?['defaultSections'] as List?) ?? const []).cast<Map>()) {
       for (final b in ((sec['blocks'] as List?) ?? const []).cast<Map>()) {
         if ('${b['blockId']}' == blockId) return b.cast<String, dynamic>();
       }
@@ -699,35 +699,34 @@ class _TemplatesPageState extends State<TemplatesPage> {
   /// richer surgery; this covers the common "one more line/field/image").
   Future<void> _addBlock() async {
     if (_tpl == null) return;
-    final type = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Add block'),
-        children: [
-          for (final (t, label, icon) in [
-            ('heading', 'Heading', Icons.title),
-            ('text', 'Text', Icons.notes),
-            ('formField', 'Field', Icons.input),
-            ('table', 'Table', Icons.table_chart_outlined),
-            ('image', 'Image (logo / seal)', Icons.image_outlined),
-          ])
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop(t),
-              child: Row(
-                children: [
-                  Icon(icon, size: 18),
-                  const SizedBox(width: 8),
-                  Text(label),
-                ],
-              ),
-            ),
-        ],
-      ),
+    final type = await showScopedDialog<String>(
+      builder:
+          (ctx) => SimpleDialog(
+            title: const Text('Add block'),
+            children: [
+              for (final (t, label, icon) in [
+                ('heading', 'Heading', Icons.title),
+                ('text', 'Text', Icons.notes),
+                ('formField', 'Field', Icons.input),
+                ('table', 'Table', Icons.table_chart_outlined),
+                ('image', 'Image (logo / seal)', Icons.image_outlined),
+              ])
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(t),
+                  child: Row(
+                    children: [
+                      Icon(icon, size: 18),
+                      const SizedBox(width: 8),
+                      Text(label),
+                    ],
+                  ),
+                ),
+            ],
+          ),
     );
     if (type == null) return;
     setState(() {
-      final sections =
-          ((_tpl!['defaultSections'] as List?) ?? []).cast<Map>();
+      final sections = ((_tpl!['defaultSections'] as List?) ?? []).cast<Map>();
       if (sections.isEmpty) {
         _tpl!['defaultSections'] = [
           <String, dynamic>{
@@ -737,48 +736,48 @@ class _TemplatesPageState extends State<TemplatesPage> {
           },
         ];
       }
-      final blocks = ((_tpl!['defaultSections'] as List).first['blocks']
-              as List)
-          .cast<Map>();
+      final blocks =
+          ((_tpl!['defaultSections'] as List).first['blocks'] as List)
+              .cast<Map>();
       final id = 'b${DateTime.now().millisecondsSinceEpoch % 100000}';
       blocks.add(switch (type) {
         'heading' => <String, dynamic>{
-            'blockId': id,
-            'type': 'heading',
-            'index': blocks.length,
-            'level': 2,
-            'content': 'Heading',
-          },
+          'blockId': id,
+          'type': 'heading',
+          'index': blocks.length,
+          'level': 2,
+          'content': 'Heading',
+        },
         'text' => <String, dynamic>{
-            'blockId': id,
-            'type': 'text',
-            'index': blocks.length,
-            'content': 'Text',
-          },
+          'blockId': id,
+          'type': 'text',
+          'index': blocks.length,
+          'content': 'Text',
+        },
         'formField' => <String, dynamic>{
-            'blockId': id,
-            'type': 'formField',
-            'index': blocks.length,
-            'fieldName': 'field',
-            'fieldType': 'text',
-          },
+          'blockId': id,
+          'type': 'formField',
+          'index': blocks.length,
+          'fieldName': 'field',
+          'fieldType': 'text',
+        },
         'table' => <String, dynamic>{
-            'blockId': id,
-            'type': 'table',
-            'index': blocks.length,
-            'columns': [
-              {'id': 'c1', 'title': 'Column 1', 'type': 'string'},
-              {'id': 'c2', 'title': 'Column 2', 'type': 'string'},
-            ],
-            'rows': [],
-          },
+          'blockId': id,
+          'type': 'table',
+          'index': blocks.length,
+          'columns': [
+            {'id': 'c1', 'title': 'Column 1', 'type': 'string'},
+            {'id': 'c2', 'title': 'Column 2', 'type': 'string'},
+          ],
+          'rows': [],
+        },
         _ => <String, dynamic>{
-            'blockId': id,
-            'type': 'image',
-            'index': blocks.length,
-            'src': 'image.png',
-            'maxWidth': 120,
-          },
+          'blockId': id,
+          'type': 'image',
+          'index': blocks.length,
+          'src': 'image.png',
+          'maxWidth': 120,
+        },
       });
       _dirty = true;
       _previewDoc = _assemblePreview(_tpl!);
@@ -788,8 +787,8 @@ class _TemplatesPageState extends State<TemplatesPage> {
   /// Remove a block from the template (inspector action).
   void _deleteBlock(String blockId) {
     setState(() {
-      for (final sec in ((_tpl?['defaultSections'] as List?) ?? const [])
-          .cast<Map>()) {
+      for (final sec
+          in ((_tpl?['defaultSections'] as List?) ?? const []).cast<Map>()) {
         ((sec['blocks'] as List?) ?? const []).removeWhere(
           (b) => '${(b as Map)['blockId']}' == blockId,
         );
@@ -933,8 +932,9 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
         // Same (templateId, version) is rejected by design — plain
         // re-saves auto-bump the patch slot instead of dead-ending.
         if ('$e'.contains('already exists')) {
-          template['version'] =
-              _TemplatesPageState._bumpPatch('${template['version']}');
+          template['version'] = _TemplatesPageState._bumpPatch(
+            '${template['version']}',
+          );
           await callFormTool(widget.server, 'form.save_template', {
             'template': template,
           });
@@ -1076,7 +1076,7 @@ class _BlockInspectorState extends State<_BlockInspector> {
     widget.onMutate((b) {
       final style =
           ((b['style'] as Map?)?.cast<String, dynamic>()) ??
-              <String, dynamic>{};
+          <String, dynamic>{};
       if (value == null || value == '') {
         style.remove(key);
       } else {
@@ -1094,10 +1094,10 @@ class _BlockInspectorState extends State<_BlockInspector> {
     widget.onMutate((b) {
       final style =
           ((b['style'] as Map?)?.cast<String, dynamic>()) ??
-              <String, dynamic>{};
+          <String, dynamic>{};
       final border =
           ((style['border'] as Map?)?.cast<String, dynamic>()) ??
-              <String, dynamic>{};
+          <String, dynamic>{};
       if (value == null || value == '') {
         border.remove(key);
       } else {
@@ -1160,34 +1160,56 @@ class _BlockInspectorState extends State<_BlockInspector> {
               children: [
                 if (type == 'heading' || type == 'text') ...[
                   _header('CONTENT', c),
-                  _textRow('content', '${_b['content'] ?? ''}',
-                      (v) => _setTop('content', v)),
+                  _textRow(
+                    'content',
+                    '${_b['content'] ?? ''}',
+                    (v) => _setTop('content', v),
+                  ),
                   if (type == 'heading')
-                    _numRow('level', '${_b['level'] ?? 1}',
-                        (v) => _setTop('level', v?.toInt())),
+                    _numRow(
+                      'level',
+                      '${_b['level'] ?? 1}',
+                      (v) => _setTop('level', v?.toInt()),
+                    ),
                 ],
                 if (type == 'formField') ...[
                   _header('FIELD', c),
-                  _textRow('fieldName', '${_b['fieldName'] ?? ''}',
-                      (v) => _setTop('fieldName', v)),
-                  _textRow('fieldType', '${_b['fieldType'] ?? 'text'}',
-                      (v) => _setTop('fieldType', v)),
+                  _textRow(
+                    'fieldName',
+                    '${_b['fieldName'] ?? ''}',
+                    (v) => _setTop('fieldName', v),
+                  ),
+                  _textRow(
+                    'fieldType',
+                    '${_b['fieldType'] ?? 'text'}',
+                    (v) => _setTop('fieldType', v),
+                  ),
                 ],
                 if (type == 'image') ...[
                   _header('IMAGE', c),
-                  _textRow('src', '${_b['src'] ?? ''}',
-                      (v) => _setTop('src', v)),
-                  _textRow('alt', '${_b['alt'] ?? ''}',
-                      (v) => _setTop('alt', v)),
-                  _numRow('maxWidth', '${_b['maxWidth'] ?? ''}',
-                      (v) => _setTop('maxWidth', v)),
+                  _textRow(
+                    'src',
+                    '${_b['src'] ?? ''}',
+                    (v) => _setTop('src', v),
+                  ),
+                  _textRow(
+                    'alt',
+                    '${_b['alt'] ?? ''}',
+                    (v) => _setTop('alt', v),
+                  ),
+                  _numRow(
+                    'maxWidth',
+                    '${_b['maxWidth'] ?? ''}',
+                    (v) => _setTop('maxWidth', v),
+                  ),
                 ],
                 _header('STYLE', c),
                 _alignRow(),
                 _numRow(
-                    'fontSize',
-                    '${_style['fontSize'] ?? _style['size'] ?? ''}',
-                    (v) => _setStyle('fontSize', v)),
+                  'fontSize',
+                  '${_style['fontSize'] ?? _style['size'] ?? ''}',
+                  (v) => _setStyle('fontSize', v),
+                ),
                 _marksRow(c),
                 _colorRow('color', (v) => _setStyle('color', v)),
                 _colorRow('background', (v) => _setStyle('background', v)),
@@ -1198,13 +1220,22 @@ class _BlockInspectorState extends State<_BlockInspector> {
                   (v) => _setBorder('color', v),
                   value: '${border?['color'] ?? ''}',
                 ),
-                _numRow('border.width', '${border?['width'] ?? ''}',
-                    (v) => _setBorder('width', v)),
-                _numRow('border.radius', '${border?['radius'] ?? ''}',
-                    (v) => _setBorder('radius', v)),
+                _numRow(
+                  'border.width',
+                  '${border?['width'] ?? ''}',
+                  (v) => _setBorder('width', v),
+                ),
+                _numRow(
+                  'border.radius',
+                  '${border?['radius'] ?? ''}',
+                  (v) => _setBorder('radius', v),
+                ),
                 _header('BOX', c),
-                _numRow('height', '${_style['height'] ?? ''}',
-                    (v) => _setStyle('height', v)),
+                _numRow(
+                  'height',
+                  '${_style['height'] ?? ''}',
+                  (v) => _setStyle('height', v),
+                ),
                 _header('PLACEMENT', c),
                 _placementRows(c),
                 Padding(
@@ -1235,13 +1266,15 @@ class _BlockInspectorState extends State<_BlockInspector> {
   // --- rows -----------------------------------------------------------------
 
   Widget _header(String title, dynamic c) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
-        child: Text(
-          title,
-          style: vibeMono(size: 10, color: c.textSecondary)
-              .copyWith(letterSpacing: 1.1),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+    child: Text(
+      title,
+      style: vibeMono(
+        size: 10,
+        color: c.textSecondary,
+      ).copyWith(letterSpacing: 1.1),
+    ),
+  );
 
   Widget _labeled(String label, Widget editor) {
     final c = VibeTokens.colorOf(context);
@@ -1268,8 +1301,7 @@ class _BlockInspectorState extends State<_BlockInspector> {
     return _labeled(
       label,
       TextField(
-        controller:
-            _ctrl(label, value, (v) => set(v.isEmpty ? null : v)),
+        controller: _ctrl(label, value, (v) => set(v.isEmpty ? null : v)),
         style: vibeMono(size: 12),
         decoration: const InputDecoration(
           isDense: true,
@@ -1339,8 +1371,8 @@ class _BlockInspectorState extends State<_BlockInspector> {
           ),
         ],
         selected: {if (current != null) current},
-        onSelectionChanged: (sel) =>
-            _setStyle('align', sel.isEmpty ? null : sel.first),
+        onSelectionChanged:
+            (sel) => _setStyle('align', sel.isEmpty ? null : sel.first),
       ),
     );
   }
@@ -1371,11 +1403,7 @@ class _BlockInspectorState extends State<_BlockInspector> {
     );
   }
 
-  Widget _colorRow(
-    String label,
-    void Function(String?) set, {
-    String? value,
-  }) {
+  Widget _colorRow(String label, void Function(String?) set, {String? value}) {
     final key = label.contains('.') ? label.split('.').last : label;
     final raw = value ?? '${_style[key] ?? ''}';
     final hex = raw == 'null' ? '' : raw;
@@ -1398,15 +1426,16 @@ class _BlockInspectorState extends State<_BlockInspector> {
           const SizedBox(width: 6),
           Expanded(
             child: TextField(
-              controller:
-                  _ctrl(label, hex, (v) => set(v.isEmpty ? null : v)),
+              controller: _ctrl(label, hex, (v) => set(v.isEmpty ? null : v)),
               style: vibeMono(size: 12),
               decoration: const InputDecoration(
                 isDense: true,
                 hintText: '#RRGGBB',
                 border: OutlineInputBorder(),
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
               ),
             ),
           ),
@@ -1423,10 +1452,10 @@ class _BlockInspectorState extends State<_BlockInspector> {
       widget.onMutate((b) {
         final style =
             ((b['style'] as Map?)?.cast<String, dynamic>()) ??
-                <String, dynamic>{};
+            <String, dynamic>{};
         final placement =
             ((style['placement'] as Map?)?.cast<String, dynamic>()) ??
-                <String, dynamic>{};
+            <String, dynamic>{};
         if (value == null) {
           placement.remove(key);
         } else {
@@ -1471,15 +1500,11 @@ class _BlockInspectorState extends State<_BlockInspector> {
             isExpanded: true,
             isDense: true,
             style: vibeMono(size: 12),
-            hint: offSpec
-                ? Text("'$current'?", style: vibeMono(size: 12))
-                : null,
+            hint:
+                offSpec ? Text("'$current'?", style: vibeMono(size: 12)) : null,
             items: [
               for (final a in anchors)
-                DropdownMenuItem(
-                  value: a,
-                  child: Text(a ?? 'in flow'),
-                ),
+                DropdownMenuItem(value: a, child: Text(a ?? 'in flow')),
             ],
             onChanged: (v) {
               setPl('anchor', v);
@@ -1504,22 +1529,24 @@ class _BlockInspectorState extends State<_BlockInspector> {
           _numRow('x (mm)', '${pl['x'] ?? ''}', (v) => setPl('x', v)),
           _numRow('y (mm)', '${pl['y'] ?? ''}', (v) => setPl('y', v)),
           _numRow(
-              'width (mm)', '${pl['width'] ?? ''}', (v) => setPl('width', v)),
+            'width (mm)',
+            '${pl['width'] ?? ''}',
+            (v) => setPl('width', v),
+          ),
         ],
       ],
     );
   }
 
   IconData _icon(String type) => switch (type) {
-        'heading' => Icons.title,
-        'text' => Icons.notes,
-        'formField' => Icons.input,
-        'table' => Icons.table_chart_outlined,
-        'image' => Icons.image_outlined,
-        _ => Icons.widgets_outlined,
-      };
+    'heading' => Icons.title,
+    'text' => Icons.notes,
+    'formField' => Icons.input,
+    'table' => Icons.table_chart_outlined,
+    'image' => Icons.image_outlined,
+    _ => Icons.widgets_outlined,
+  };
 }
-
 
 /// Name → templateId (auto-slug) creation dialog. LISTENER-based (not
 /// onChanged) so programmatic writes into the controllers — `studio.ui.type`
@@ -1590,10 +1617,11 @@ class _NewTemplateDialogState extends State<_NewTemplateDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _name.text.trim().isEmpty
-              ? null
-              : () =>
-                  Navigator.of(context).pop((_name.text.trim(), _id.text)),
+          onPressed:
+              _name.text.trim().isEmpty
+                  ? null
+                  : () =>
+                      Navigator.of(context).pop((_name.text.trim(), _id.text)),
           child: const Text('Create'),
         ),
       ],

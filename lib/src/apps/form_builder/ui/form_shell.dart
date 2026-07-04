@@ -434,10 +434,11 @@ class _FormShellState extends State<FormShell> {
             NavigationRail(
               selectedIndex: _route.index,
               labelType: NavigationRailLabelType.all,
-              onDestinationSelected: (i) => setState(() {
-                _route = FormRoute.values[i];
-                _landingEntity = null; // one-shot deep-link focus
-              }),
+              onDestinationSelected:
+                  (i) => setState(() {
+                    _route = FormRoute.values[i];
+                    _landingEntity = null; // one-shot deep-link focus
+                  }),
               destinations: [
                 for (final r in FormRoute.values)
                   NavigationRailDestination(
@@ -485,10 +486,11 @@ class _FormShellState extends State<FormShell> {
                   ),
                   init: init,
                   landingIssueId: _landingEntity,
-                  onCorrect: (issue) => setState(() {
-                    _correction = issue;
-                    _route = FormRoute.compose;
-                  }),
+                  onCorrect:
+                      (issue) => setState(() {
+                        _correction = issue;
+                        _route = FormRoute.compose;
+                      }),
                 ),
                 FormRoute.about => _AboutPage(projectRoot: init.projectRoot),
               },

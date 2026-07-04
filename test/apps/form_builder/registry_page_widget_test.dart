@@ -135,4 +135,52 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Issue 2026-003'), findsOneWidget);
   });
+
+  testWidgets('open dialog is torn down when the page unmounts',
+      (tester) async {
+    tester.view.physicalSize = const Size(1800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final hostKey = GlobalKey<_HostSwapState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _HostSwap(
+          key: hostKey,
+          child: RegistryPage(init: h.init, landingIssueId: 'issue-2026-003'),
+        ),
+      ),
+    );
+    for (var i = 0; i < 8; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Issue 2026-003'), findsOneWidget);
+    // Project closes → page unmounts → the floating dialog must go too.
+    hostKey.currentState!.setState(() => hostKey.currentState!.closed = true);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Issue 2026-003'), findsNothing);
+    expect(find.text('Welcome'), findsOneWidget);
+  });
+}
+
+// The dialog dies with its page — a project close (or deep-link rebind)
+// unmounts the page; its detail dialog must not float over dead state.
+// Live-caught 2026-07-04: issue dialog over a CLOSED project.
+class _HostSwap extends StatefulWidget {
+  const _HostSwap({super.key, required this.child});
+  final Widget child;
+  @override
+  State<_HostSwap> createState() => _HostSwapState();
+}
+
+class _HostSwapState extends State<_HostSwap> {
+  bool closed = false;
+  @override
+  Widget build(BuildContext context) => closed
+      ? const Scaffold(body: Center(child: Text('Welcome')))
+      : Scaffold(body: widget.child);
 }

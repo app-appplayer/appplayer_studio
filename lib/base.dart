@@ -207,6 +207,7 @@ export 'src/base/conv/self_ui_converter.dart';
 export 'src/base/widgets/agent_models_section.dart';
 export 'src/base/widgets/asset_gallery.dart';
 export 'src/base/widgets/channel_diff_dialog.dart';
+export 'src/base/widgets/scoped_dialogs.dart';
 export 'src/base/widgets/export_dialog.dart';
 export 'src/base/widgets/history_dialog.dart';
 export 'src/base/widgets/import_dialog.dart';

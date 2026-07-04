@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:appplayer_form_view/appplayer_form_view.dart';
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/base.dart'
-    show BuiltinToolRegistry, VibeTokens, vibeMono;
+    show ScopedDialogs, BuiltinToolRegistry, VibeTokens, vibeMono;
 import 'package:mcp_bundle/mcp_bundle.dart'
     show FormDocument, FormDocumentMetadata, FormSection, FormTableBlock;
 import 'package:path/path.dart' as p;
@@ -41,7 +41,7 @@ class ComposePage extends StatefulWidget {
   State<ComposePage> createState() => _ComposePageState();
 }
 
-class _ComposePageState extends State<ComposePage> {
+class _ComposePageState extends State<ComposePage> with ScopedDialogs {
   late Future<List<Map<String, dynamic>>> _drafts;
 
   // --- editor state ---------------------------------------------------------
@@ -62,6 +62,7 @@ class _ComposePageState extends State<ComposePage> {
     });
     return c;
   }
+
   final Map<String, FocusNode> _fieldFocus = {};
 
   /// Table editor state: blockId → rows → colId → controller.
@@ -166,7 +167,8 @@ class _ComposePageState extends State<ComposePage> {
           final blockId = t.$1;
           final columns = t.$2;
           final defaultRows = t.$3;
-          final seed = tableRows?[blockId] ??
+          final seed =
+              tableRows?[blockId] ??
               [
                 for (final r in defaultRows)
                   {
@@ -176,9 +178,7 @@ class _ComposePageState extends State<ComposePage> {
               ];
           _tables[blockId] = [
             for (final r in seed)
-              {
-                for (final col in columns) col: _liveCtrl(r[col] ?? ''),
-              },
+              {for (final col in columns) col: _liveCtrl(r[col] ?? '')},
           ];
         }
       });
@@ -192,8 +192,8 @@ class _ComposePageState extends State<ComposePage> {
     Map<String, dynamic> tpl,
   ) {
     final out = <(String, List<String>, List<Map<String, dynamic>>)>[];
-    for (final sec in ((tpl['defaultSections'] as List?) ?? const [])
-        .cast<Map>()) {
+    for (final sec
+        in ((tpl['defaultSections'] as List?) ?? const []).cast<Map>()) {
       for (final b in ((sec['blocks'] as List?) ?? const []).cast<Map>()) {
         if (b['type'] == 'table') {
           out.add((
@@ -218,28 +218,31 @@ class _ComposePageState extends State<ComposePage> {
         'limit': 100,
       });
       if (!mounted) return;
-      final templates = ((out['templates'] as List?) ?? const [])
-          .cast<Map>()
-          .map((m) => m.cast<String, dynamic>())
-          .toList();
-      final picked = await showDialog<String>(
-        context: context,
-        builder: (ctx) => SimpleDialog(
-          title: const Text('Template'),
-          children: [
-            for (final t in templates)
-              SimpleDialogOption(
-                onPressed: () =>
-                    Navigator.of(ctx).pop(t['templateId'] as String),
-                child: Text('${t['name']} · ${t['templateId']}'),
-              ),
-            if (templates.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('No templates — create one in Templates first.'),
-              ),
-          ],
-        ),
+      final templates =
+          ((out['templates'] as List?) ?? const [])
+              .cast<Map>()
+              .map((m) => m.cast<String, dynamic>())
+              .toList();
+      final picked = await showScopedDialog<String>(
+        builder:
+            (ctx) => SimpleDialog(
+              title: const Text('Template'),
+              children: [
+                for (final t in templates)
+                  SimpleDialogOption(
+                    onPressed:
+                        () => Navigator.of(ctx).pop(t['templateId'] as String),
+                    child: Text('${t['name']} · ${t['templateId']}'),
+                  ),
+                if (templates.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'No templates — create one in Templates first.',
+                    ),
+                  ),
+              ],
+            ),
       );
       if (picked != null) await _loadTemplate(picked);
     } catch (e) {
@@ -269,9 +272,7 @@ class _ComposePageState extends State<ComposePage> {
               if (b is FormTableBlock)
                 b.blockId: [
                   for (final r in b.rows)
-                    {
-                      for (final e in r.cells.entries) e.key: '${e.value}',
-                    },
+                    {for (final e in r.cells.entries) e.key: '${e.value}'},
                 ],
         };
         break;
@@ -289,8 +290,8 @@ class _ComposePageState extends State<ComposePage> {
   // --- live document assembly -------------------------------------------------
 
   Map<String, dynamic> _currentData() => <String, dynamic>{
-        for (final e in _fields.entries) e.key: e.value.text,
-      };
+    for (final e in _fields.entries) e.key: e.value.text,
+  };
 
   List<Map<String, dynamic>> _currentTableRows(String blockId) {
     return [
@@ -307,8 +308,8 @@ class _ComposePageState extends State<ComposePage> {
     final tpl = _tpl;
     if (tpl == null) return null;
     final sections = <FormSection>[];
-    for (final sec in ((tpl['defaultSections'] as List?) ?? const [])
-        .cast<Map>()) {
+    for (final sec
+        in ((tpl['defaultSections'] as List?) ?? const []).cast<Map>()) {
       final secJson = jsonDecode(jsonEncodeSafe(sec)) as Map<String, dynamic>;
       for (final b in ((secJson['blocks'] as List?) ?? const []).cast<Map>()) {
         if (b['type'] == 'table' && _tables.containsKey(b['blockId'])) {
@@ -381,9 +382,9 @@ class _ComposePageState extends State<ComposePage> {
       });
       final ok = out['isValid'] == true;
       final issues = (out['issues'] as List?) ?? const [];
-      _note(ok
-          ? 'Valid — no issues.'
-          : 'Validation: ${_pretty.convert(issues)}');
+      _note(
+        ok ? 'Valid — no issues.' : 'Validation: ${_pretty.convert(issues)}',
+      );
     } catch (e) {
       _note('$e');
     }
@@ -436,50 +437,51 @@ class _ComposePageState extends State<ComposePage> {
     final titleCtrl = TextEditingController();
     final lineCtrl = TextEditingController();
     final byCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Request approval'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Title (optional)',
-                border: OutlineInputBorder(),
-              ),
+    final confirmed = await showScopedDialog<bool>(
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Request approval'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Title (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: byCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Requested by',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: lineCtrl,
+                  decoration: const InputDecoration(
+                    labelText:
+                        'Approval line — approver ids in order, '
+                        'comma-separated (e.g. dept-lead, owner)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: byCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Requested by',
-                border: OutlineInputBorder(),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: lineCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Approval line — approver ids in order, '
-                    'comma-separated (e.g. dept-lead, owner)',
-                border: OutlineInputBorder(),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Request'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Request'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return;
     try {
@@ -541,17 +543,16 @@ class _ComposePageState extends State<ComposePage> {
     await _loadTemplate(
       templateId,
       data: (document['data'] as Map?)?.cast<String, dynamic>() ?? const {},
-      tableRows: tables == null
-          ? null
-          : {
-              for (final e in tables.entries)
-                e.key: [
-                  for (final r in (e.value as List).cast<Map>())
-                    {
-                      for (final c in r.entries) '${c.key}': '${c.value}',
-                    },
-                ],
-            },
+      tableRows:
+          tables == null
+              ? null
+              : {
+                for (final e in tables.entries)
+                  e.key: [
+                    for (final r in (e.value as List).cast<Map>())
+                      {for (final c in r.entries) '${c.key}': '${c.value}'},
+                  ],
+              },
     );
     if (mounted) {
       setState(() {
@@ -576,27 +577,29 @@ class _ComposePageState extends State<ComposePage> {
         SizedBox(width: 240, child: _draftsList(theme)),
         const VerticalDivider(width: 1),
         Expanded(
-          child: doc != null
-              ? FormView(
-                  document: doc,
-                  imageBaseDir: widget.init.projectRoot,
-                  pageWidthMm: (pageSize?['width'] as num?)?.toDouble() ?? 210,
-                  pageHeightMm:
-                      (pageSize?['height'] as num?)?.toDouble() ?? 297,
-                  onBlockTap: (ref) {
-                    // Tap a field on the sheet → focus its input.
-                    final b = ref.block;
-                    final json = b.toJson();
-                    final fieldName = json['fieldName'];
-                    if (fieldName is String &&
-                        _fieldFocus[fieldName] != null) {
-                      _fieldFocus[fieldName]!.requestFocus();
-                    }
-                  },
-                )
-              : const Center(
-                  child: Text('Pick a template — fill it on the form.'),
-                ),
+          child:
+              doc != null
+                  ? FormView(
+                    document: doc,
+                    imageBaseDir: widget.init.projectRoot,
+                    pageWidthMm:
+                        (pageSize?['width'] as num?)?.toDouble() ?? 210,
+                    pageHeightMm:
+                        (pageSize?['height'] as num?)?.toDouble() ?? 297,
+                    onBlockTap: (ref) {
+                      // Tap a field on the sheet → focus its input.
+                      final b = ref.block;
+                      final json = b.toJson();
+                      final fieldName = json['fieldName'];
+                      if (fieldName is String &&
+                          _fieldFocus[fieldName] != null) {
+                        _fieldFocus[fieldName]!.requestFocus();
+                      }
+                    },
+                  )
+                  : const Center(
+                    child: Text('Pick a template — fill it on the form.'),
+                  ),
         ),
         const VerticalDivider(width: 1),
         SizedBox(width: 340, child: _inputPanel(theme)),
@@ -640,8 +643,7 @@ class _ComposePageState extends State<ComposePage> {
                 itemCount: items.length,
                 itemBuilder: (context, i) {
                   final d = items[i];
-                  final doc =
-                      (d['document'] as Map?)?.cast<String, dynamic>();
+                  final doc = (d['document'] as Map?)?.cast<String, dynamic>();
                   return ListTile(
                     dense: true,
                     leading: const Icon(Icons.drafts_outlined, size: 18),
@@ -670,9 +672,9 @@ class _ComposePageState extends State<ComposePage> {
   /// a row editor per table, actions. Every keystroke re-renders the sheet.
   Widget _inputPanel(ThemeData theme) {
     final c = VibeTokens.colorOf(context);
-    final fields = (((_tpl?['schema'] as Map?)?['fields'] as List?) ??
-            const [])
-        .cast<Map>();
+    final fields =
+        (((_tpl?['schema'] as Map?)?['fields'] as List?) ?? const [])
+            .cast<Map>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -744,9 +746,10 @@ class _ComposePageState extends State<ComposePage> {
                   visualDensity: VisualDensity.compact,
                   label: Text(f),
                   selected: _issueFormats.contains(f),
-                  onSelected: (v) => setState(() {
-                    v ? _issueFormats.add(f) : _issueFormats.remove(f);
-                  }),
+                  onSelected:
+                      (v) => setState(() {
+                        v ? _issueFormats.add(f) : _issueFormats.remove(f);
+                      }),
                 ),
             ],
           ),
@@ -799,8 +802,10 @@ class _ComposePageState extends State<ComposePage> {
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
       child: Text(
         title,
-        style: vibeMono(size: 10, color: c.textSecondary)
-            .copyWith(letterSpacing: 1.1),
+        style: vibeMono(
+          size: 10,
+          color: c.textSecondary,
+        ).copyWith(letterSpacing: 1.1),
       ),
     );
   }
@@ -819,8 +824,8 @@ class _ComposePageState extends State<ComposePage> {
     final colTitles = <String, String>{};
     for (final t in _templateTables(_tpl ?? const {})) {
       if (t.$1 != blockId) continue;
-      for (final sec in ((_tpl?['defaultSections'] as List?) ?? const [])
-          .cast<Map>()) {
+      for (final sec
+          in ((_tpl?['defaultSections'] as List?) ?? const []).cast<Map>()) {
         for (final b in ((sec['blocks'] as List?) ?? const []).cast<Map>()) {
           if ('${b['blockId']}' == blockId) {
             for (final col
@@ -855,12 +860,13 @@ class _ComposePageState extends State<ComposePage> {
                         ),
                         const Spacer(),
                         InkWell(
-                          onTap: () => setState(() {
-                            for (final ctrl in rows[r].values) {
-                              ctrl.dispose();
-                            }
-                            _tables[blockId]!.removeAt(r);
-                          }),
+                          onTap:
+                              () => setState(() {
+                                for (final ctrl in rows[r].values) {
+                                  ctrl.dispose();
+                                }
+                                _tables[blockId]!.removeAt(r);
+                              }),
                           child: Icon(
                             Icons.close,
                             size: 14,
@@ -895,11 +901,12 @@ class _ComposePageState extends State<ComposePage> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: () => setState(() {
-                _tables[blockId]!.add({
-                  for (final col in columns) col: _liveCtrl(''),
-                });
-              }),
+              onPressed:
+                  () => setState(() {
+                    _tables[blockId]!.add({
+                      for (final col in columns) col: _liveCtrl(''),
+                    });
+                  }),
               icon: const Icon(Icons.add, size: 16),
               label: const Text('Add row'),
             ),

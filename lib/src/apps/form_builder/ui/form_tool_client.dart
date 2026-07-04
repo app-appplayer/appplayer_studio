@@ -25,14 +25,16 @@ Future<Map<String, dynamic>> callFormTool(
   Map<String, dynamic> args,
 ) async {
   final result = await server.callTool(name, args);
-  final text = result.content
-      .whereType<mk.KernelTextContent>()
-      .map((c) => c.text)
-      .join();
+  final text =
+      result.content
+          .whereType<mk.KernelTextContent>()
+          .map((c) => c.text)
+          .join();
   final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-  final map = decoded is Map
-      ? decoded.cast<String, dynamic>()
-      : <String, dynamic>{'value': decoded};
+  final map =
+      decoded is Map
+          ? decoded.cast<String, dynamic>()
+          : <String, dynamic>{'value': decoded};
   if (result.isError == true) {
     throw FormToolException(
       (map['code'] as String?) ?? 'form.error',

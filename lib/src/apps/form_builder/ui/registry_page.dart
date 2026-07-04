@@ -11,7 +11,8 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:appplayer_studio/base.dart' show VibeTokens, vibeMono;
+import 'package:appplayer_studio/base.dart'
+    show ScopedDialogs, VibeTokens, vibeMono;
 
 import '../init/form_init.dart';
 import 'issues_page.dart' show IssueDetailDialog;
@@ -46,13 +47,11 @@ class _Entry {
   final bool superseded;
 
   String get number => '${issue['issueNumber'] ?? ''}';
-  String get year =>
-      number.contains('-') ? number.split('-').first : 'unknown';
+  String get year => number.contains('-') ? number.split('-').first : 'unknown';
   String get form => '${issue['templateId'] ?? '?'}';
   String get issuedBy => '${issue['issuedBy'] ?? ''}';
   String get issuedAt => '${issue['issuedAt'] ?? ''}';
-  String get month =>
-      issuedAt.length >= 7 ? issuedAt.substring(0, 7) : year;
+  String get month => issuedAt.length >= 7 ? issuedAt.substring(0, 7) : year;
   bool get isCorrection => issue['supersedes'] != null;
   bool get hasApproval => issue['approval'] != null;
 
@@ -76,7 +75,7 @@ class _Entry {
   }
 }
 
-class _RegistryPageState extends State<RegistryPage> {
+class _RegistryPageState extends State<RegistryPage> with ScopedDialogs {
   List<_Entry> _all = const [];
   bool _loading = true;
   bool _landed = false;
@@ -136,19 +135,20 @@ class _RegistryPageState extends State<RegistryPage> {
   }
 
   Future<void> _detail(_Entry e) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => IssueDetailDialog(
-        issue: e.issue,
-        superseded: e.superseded,
-        projectRoot: widget.init.projectRoot,
-        onCorrect: widget.onCorrect == null
-            ? null
-            : () {
-                Navigator.of(ctx).pop();
-                widget.onCorrect!(e.issue);
-              },
-      ),
+    await showScopedDialog<void>(
+      builder:
+          (ctx) => IssueDetailDialog(
+            issue: e.issue,
+            superseded: e.superseded,
+            projectRoot: widget.init.projectRoot,
+            onCorrect:
+                widget.onCorrect == null
+                    ? null
+                    : () {
+                      Navigator.of(ctx).pop();
+                      widget.onCorrect!(e.issue);
+                    },
+          ),
     );
   }
 
@@ -172,12 +172,12 @@ class _RegistryPageState extends State<RegistryPage> {
 
   List<_Entry> _sorted(List<_Entry> list) {
     int cmp(_Entry a, _Entry b) => switch (_sortBy) {
-          _SortBy.number => a.number.compareTo(b.number),
-          _SortBy.date => a.issuedAt.compareTo(b.issuedAt),
-          _SortBy.form => a.form.compareTo(b.form),
-          _SortBy.recipient => a.recipient.compareTo(b.recipient),
-          _SortBy.issuedBy => a.issuedBy.compareTo(b.issuedBy),
-        };
+      _SortBy.number => a.number.compareTo(b.number),
+      _SortBy.date => a.issuedAt.compareTo(b.issuedAt),
+      _SortBy.form => a.form.compareTo(b.form),
+      _SortBy.recipient => a.recipient.compareTo(b.recipient),
+      _SortBy.issuedBy => a.issuedBy.compareTo(b.issuedBy),
+    };
     final out = [...list]..sort(cmp);
     return _ascending ? out : out.reversed.toList();
   }
@@ -265,47 +265,55 @@ class _RegistryPageState extends State<RegistryPage> {
               _HeaderRow(
                 sortBy: _sortBy,
                 ascending: _ascending,
-                onSort: (by) => setState(() {
-                  if (_sortBy == by) {
-                    _ascending = !_ascending;
-                  } else {
-                    _sortBy = by;
-                    _ascending = by != _SortBy.number && by != _SortBy.date;
-                  }
-                }),
+                onSort:
+                    (by) => setState(() {
+                      if (_sortBy == by) {
+                        _ascending = !_ascending;
+                      } else {
+                        _sortBy = by;
+                        _ascending = by != _SortBy.number && by != _SortBy.date;
+                      }
+                    }),
               ),
               Divider(height: 1, color: c.borderSubtle),
               Expanded(
-                child: entries.isEmpty
-                    ? const Center(child: Text('No documents match.'))
-                    : ListView.builder(
-                        itemCount: entries.length,
-                        itemBuilder: (context, i) {
-                          final e = entries[i];
-                          final grouped = _sortBy == _SortBy.number ||
-                              _sortBy == _SortBy.date;
-                          final header = grouped &&
-                              (i == 0 || entries[i - 1].month != e.month);
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              if (header)
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                                  child: Text(
-                                    e.month,
-                                    style: vibeMono(
-                                      size: 11,
-                                      color: c.textTertiary,
-                                    ).copyWith(letterSpacing: 1.2),
+                child:
+                    entries.isEmpty
+                        ? const Center(child: Text('No documents match.'))
+                        : ListView.builder(
+                          itemCount: entries.length,
+                          itemBuilder: (context, i) {
+                            final e = entries[i];
+                            final grouped =
+                                _sortBy == _SortBy.number ||
+                                _sortBy == _SortBy.date;
+                            final header =
+                                grouped &&
+                                (i == 0 || entries[i - 1].month != e.month);
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (header)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      12,
+                                      16,
+                                      4,
+                                    ),
+                                    child: Text(
+                                      e.month,
+                                      style: vibeMono(
+                                        size: 11,
+                                        color: c.textTertiary,
+                                      ).copyWith(letterSpacing: 1.2),
+                                    ),
                                   ),
-                                ),
-                              _Row(entry: e, onTap: () => _detail(e)),
-                            ],
-                          );
-                        },
-                      ),
+                                _Row(entry: e, onTap: () => _detail(e)),
+                              ],
+                            );
+                          },
+                        ),
               ),
             ],
           ),
@@ -351,8 +359,7 @@ class _FacetPanel extends StatelessWidget {
   final ValueChanged<String?> onRecipient;
 
   static List<MapEntry<String, int>> _top(Map<String, int> m, [int n = 8]) {
-    final list = m.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final list = m.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     return list.take(n).toList();
   }
 
@@ -360,47 +367,44 @@ class _FacetPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     Widget section(String title) => Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
-          child: Text(
-            title,
-            style: vibeMono(size: 10, color: c.textMuted)
-                .copyWith(letterSpacing: 1.4),
-          ),
-        );
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
+      child: Text(
+        title,
+        style: vibeMono(
+          size: 10,
+          color: c.textMuted,
+        ).copyWith(letterSpacing: 1.4),
+      ),
+    );
     Widget row(
       String label,
       int count, {
       required bool selected,
       required VoidCallback onTap,
-    }) =>
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            color: selected ? c.mint.withValues(alpha: 0.10) : null,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: selected ? c.mint : c.textSecondary,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
+    }) => InkWell(
+      onTap: onTap,
+      child: Container(
+        color: selected ? c.mint.withValues(alpha: 0.10) : null,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: selected ? c.mint : c.textSecondary,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
-                Text(
-                  '$count',
-                  style: vibeMono(size: 10, color: c.textMuted),
-                ),
-              ],
+              ),
             ),
-          ),
-        );
+            Text('$count', style: vibeMono(size: 10, color: c.textMuted)),
+          ],
+        ),
+      ),
+    );
 
     // Sorted axes: years desc (recent first), forms/recipients by volume.
     final yearKeys = years.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -410,33 +414,50 @@ class _FacetPanel extends StatelessWidget {
         children: [
           section('YEAR'),
           for (final y in yearKeys)
-            row(y, years[y]!,
-                selected: year == y,
-                onTap: () => onYear(year == y ? null : y)),
+            row(
+              y,
+              years[y]!,
+              selected: year == y,
+              onTap: () => onYear(year == y ? null : y),
+            ),
           section('FORM'),
           for (final f in _top(forms))
-            row(f.key, f.value,
-                selected: form == f.key,
-                onTap: () => onForm(form == f.key ? null : f.key)),
+            row(
+              f.key,
+              f.value,
+              selected: form == f.key,
+              onTap: () => onForm(form == f.key ? null : f.key),
+            ),
           section('STATUS'),
           for (final st in const ['current', 'correction', 'superseded'])
             if ((statuses[st] ?? 0) > 0)
-              row(st, statuses[st]!,
-                  selected: status == st,
-                  onTap: () => onStatus(status == st ? null : st)),
+              row(
+                st,
+                statuses[st]!,
+                selected: status == st,
+                onTap: () => onStatus(status == st ? null : st),
+              ),
           section('APPROVAL'),
-          row('marked', approvals['marked'] ?? 0,
-              selected: approval == true,
-              onTap: () => onApproval(approval == true ? null : true)),
-          row('none', approvals['none'] ?? 0,
-              selected: approval == false,
-              onTap: () => onApproval(approval == false ? null : false)),
+          row(
+            'marked',
+            approvals['marked'] ?? 0,
+            selected: approval == true,
+            onTap: () => onApproval(approval == true ? null : true),
+          ),
+          row(
+            'none',
+            approvals['none'] ?? 0,
+            selected: approval == false,
+            onTap: () => onApproval(approval == false ? null : false),
+          ),
           section('RECIPIENT'),
           for (final r in _top(recipients))
-            row(r.key, r.value,
-                selected: recipient == r.key,
-                onTap: () =>
-                    onRecipient(recipient == r.key ? null : r.key)),
+            row(
+              r.key,
+              r.value,
+              selected: recipient == r.key,
+              onTap: () => onRecipient(recipient == r.key ? null : r.key),
+            ),
           const SizedBox(height: 16),
         ],
       ),
@@ -459,28 +480,28 @@ class _HeaderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     Widget head(String label, _SortBy by, int flex) => Expanded(
-          flex: flex,
-          child: InkWell(
-            onTap: () => onSort(by),
-            child: Row(
-              children: [
-                Text(
-                  label,
-                  style: vibeMono(
-                    size: 10,
-                    color: sortBy == by ? c.mint : c.textMuted,
-                  ).copyWith(letterSpacing: 1.2),
-                ),
-                if (sortBy == by)
-                  Icon(
-                    ascending ? Icons.arrow_upward : Icons.arrow_downward,
-                    size: 11,
-                    color: c.mint,
-                  ),
-              ],
+      flex: flex,
+      child: InkWell(
+        onTap: () => onSort(by),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: vibeMono(
+                size: 10,
+                color: sortBy == by ? c.mint : c.textMuted,
+              ).copyWith(letterSpacing: 1.2),
             ),
-          ),
-        );
+            if (sortBy == by)
+              Icon(
+                ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 11,
+                color: c.mint,
+              ),
+          ],
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
@@ -494,8 +515,10 @@ class _HeaderRow extends StatelessWidget {
             width: 120,
             child: Text(
               'STATUS · APPROVAL',
-              style: vibeMono(size: 10, color: c.textMuted)
-                  .copyWith(letterSpacing: 1.2),
+              style: vibeMono(
+                size: 10,
+                color: c.textMuted,
+              ).copyWith(letterSpacing: 1.2),
             ),
           ),
         ],
@@ -519,9 +542,10 @@ class _Row extends StatelessWidget {
       'correction' => c.amber,
       _ => c.mint,
     };
-    final date = entry.issuedAt.length >= 16
-        ? entry.issuedAt.substring(0, 16).replaceFirst('T', ' ')
-        : entry.issuedAt;
+    final date =
+        entry.issuedAt.length >= 16
+            ? entry.issuedAt.substring(0, 16).replaceFirst('T', ' ')
+            : entry.issuedAt;
     return InkWell(
       onTap: onTap,
       child: Opacity(
@@ -530,9 +554,7 @@ class _Row extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                color: c.borderSubtle.withValues(alpha: 0.5),
-              ),
+              bottom: BorderSide(color: c.borderSubtle.withValues(alpha: 0.5)),
             ),
           ),
           child: Row(

@@ -10,7 +10,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/base.dart'
-    show BuiltinToolRegistry, VibeTokens, vibeMono;
+    show ScopedDialogs, BuiltinToolRegistry, VibeTokens, vibeMono;
 
 import '../init/form_init.dart';
 import 'form_tool_client.dart';
@@ -35,7 +35,7 @@ class ApprovalsPage extends StatefulWidget {
   State<ApprovalsPage> createState() => _ApprovalsPageState();
 }
 
-class _ApprovalsPageState extends State<ApprovalsPage> {
+class _ApprovalsPageState extends State<ApprovalsPage> with ScopedDialogs {
   List<Map<String, dynamic>> _approvals = const [];
   bool _loading = true;
   String? _notice;
@@ -64,53 +64,57 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
     final actor = gate['approverId'] as String;
     final commentCtrl = TextEditingController();
     var finalize = false;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(
-            approve ? 'Approve — $actor' : 'Reject — $actor',
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${approval['title'] ?? approval['documentId']}'
-                ' · requested by ${approval['requestedBy']}',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: commentCtrl,
-                decoration: InputDecoration(
-                  labelText:
-                      approve ? 'Comment (optional)' : 'Reason (required)',
-                  border: const OutlineInputBorder(),
+    final confirmed = await showScopedDialog<bool>(
+      builder:
+          (ctx) => StatefulBuilder(
+            builder:
+                (ctx, setDialogState) => AlertDialog(
+                  title: Text(approve ? 'Approve — $actor' : 'Reject — $actor'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${approval['title'] ?? approval['documentId']}'
+                        ' · requested by ${approval['requestedBy']}',
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: commentCtrl,
+                        decoration: InputDecoration(
+                          labelText:
+                              approve
+                                  ? 'Comment (optional)'
+                                  : 'Reason (required)',
+                          border: const OutlineInputBorder(),
+                        ),
+                        maxLines: 2,
+                      ),
+                      if (approve)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Finalize — skip remaining gates and complete',
+                          ),
+                          value: finalize,
+                          onChanged:
+                              (v) =>
+                                  setDialogState(() => finalize = v ?? false),
+                        ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(approve ? 'Approve' : 'Reject'),
+                    ),
+                  ],
                 ),
-                maxLines: 2,
-              ),
-              if (approve)
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Finalize — skip remaining gates and complete'),
-                  value: finalize,
-                  onChanged: (v) =>
-                      setDialogState(() => finalize = v ?? false),
-                ),
-            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(approve ? 'Approve' : 'Reject'),
-            ),
-          ],
-        ),
-      ),
     );
     if (confirmed != true) return;
     try {
@@ -139,16 +143,14 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    final pending =
-        _approvals.where((a) => a['state'] == 'pending').toList();
+    final pending = _approvals.where((a) => a['state'] == 'pending').toList();
     final done = _approvals.where((a) => a['state'] != 'pending').toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Row(
           children: [
-            Text('Approvals',
-                style: Theme.of(context).textTheme.titleLarge),
+            Text('Approvals', style: Theme.of(context).textTheme.titleLarge),
             const Spacer(),
             IconButton(
               tooltip: 'Refresh',
@@ -188,21 +190,23 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
   Widget _card(Map<String, dynamic> a, {required bool actionable}) {
     final line = (a['line'] as List).cast<Map>();
     final state = a['state'] as String;
-    final gate = state == 'pending'
-        ? line[a['currentIndex'] as int]['approverId']
-        : null;
+    final gate =
+        state == 'pending'
+            ? line[a['currentIndex'] as int]['approverId']
+            : null;
     final linked = a['documentId'] == widget.landingDocumentId;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: linked
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: VibeTokens.colorOf(context).mint,
-                width: 1.4,
-              ),
-            )
-          : null,
+      shape:
+          linked
+              ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: VibeTokens.colorOf(context).mint,
+                  width: 1.4,
+                ),
+              )
+              : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -270,11 +274,11 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
   }
 
   static String _mark(String status) => switch (status) {
-        'approved' => '●',
-        'rejected' => '✕',
-        'skipped' => '⤵',
-        _ => '○',
-      };
+    'approved' => '●',
+    'rejected' => '✕',
+    'skipped' => '⤵',
+    _ => '○',
+  };
 }
 
 class _BandHeader extends StatelessWidget {
@@ -284,15 +288,15 @@ class _BandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 4),
-        child: Text(
-          text,
-          style: vibeMono(
-            size: 11,
-            color: VibeTokens.colorOf(context).textTertiary,
-          ).copyWith(letterSpacing: 1.4),
-        ),
-      );
+    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    child: Text(
+      text,
+      style: vibeMono(
+        size: 11,
+        color: VibeTokens.colorOf(context).textTertiary,
+      ).copyWith(letterSpacing: 1.4),
+    ),
+  );
 }
 
 class _StateChip extends StatelessWidget {

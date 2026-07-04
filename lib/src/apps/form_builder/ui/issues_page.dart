@@ -2,7 +2,8 @@ import 'dart:convert' show JsonEncoder, jsonDecode;
 import 'dart:io';
 
 import 'package:appplayer_form_view/appplayer_form_view.dart';
-import 'package:appplayer_studio/base.dart' show VibeTokens, vibeMono;
+import 'package:appplayer_studio/base.dart'
+    show ScopedDialogs, VibeTokens, vibeMono;
 import 'package:flutter/material.dart';
 import 'package:mcp_bundle/mcp_bundle.dart'
     show FormDocument, FormDocumentMetadata, FormSection;
@@ -41,7 +42,7 @@ class IssuesPage extends StatefulWidget {
   State<IssuesPage> createState() => _IssuesPageState();
 }
 
-class _IssuesPageState extends State<IssuesPage> {
+class _IssuesPageState extends State<IssuesPage> with ScopedDialogs {
   late Future<List<Map<String, dynamic>>> _issues;
   final TextEditingController _search = TextEditingController();
   bool _currentOnly = false;
@@ -70,14 +71,15 @@ class _IssuesPageState extends State<IssuesPage> {
 
   bool _matches(Map<String, dynamic> issue, String q) {
     if (q.isEmpty) return true;
-    final hay = StringBuffer()
-      ..write(issue['issueNumber'] ?? '')
-      ..write(' ')
-      ..write(issue['issueId'] ?? '')
-      ..write(' ')
-      ..write(issue['templateId'] ?? '')
-      ..write(' ')
-      ..write(((issue['content'] as Map?)?['data'] ?? '').toString());
+    final hay =
+        StringBuffer()
+          ..write(issue['issueNumber'] ?? '')
+          ..write(' ')
+          ..write(issue['issueId'] ?? '')
+          ..write(' ')
+          ..write(issue['templateId'] ?? '')
+          ..write(' ')
+          ..write(((issue['content'] as Map?)?['data'] ?? '').toString());
     return hay.toString().toLowerCase().contains(q.toLowerCase());
   }
 
@@ -85,19 +87,20 @@ class _IssuesPageState extends State<IssuesPage> {
     Map<String, dynamic> issue, {
     required bool superseded,
   }) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => IssueDetailDialog(
-        issue: issue,
-        superseded: superseded,
-        projectRoot: widget.init.projectRoot,
-        onCorrect: widget.onCorrect == null
-            ? null
-            : () {
-                Navigator.of(ctx).pop();
-                widget.onCorrect!(issue);
-              },
-      ),
+    await showScopedDialog<void>(
+      builder:
+          (ctx) => IssueDetailDialog(
+            issue: issue,
+            superseded: superseded,
+            projectRoot: widget.init.projectRoot,
+            onCorrect:
+                widget.onCorrect == null
+                    ? null
+                    : () {
+                      Navigator.of(ctx).pop();
+                      widget.onCorrect!(issue);
+                    },
+          ),
     );
   }
 
@@ -170,10 +173,7 @@ class _IssuesPageState extends State<IssuesPage> {
                   if (i['issueId'] == landing) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
-                        _detail(
-                          i,
-                          superseded: supersededIds.contains(landing),
-                        );
+                        _detail(i, superseded: supersededIds.contains(landing));
                       }
                     });
                     break;
@@ -184,8 +184,7 @@ class _IssuesPageState extends State<IssuesPage> {
               final items = [
                 for (final i in all)
                   if (_matches(i, q) &&
-                      (!_currentOnly ||
-                          !supersededIds.contains(i['issueId'])))
+                      (!_currentOnly || !supersededIds.contains(i['issueId'])))
                     i,
               ];
               if (items.isEmpty) {
@@ -197,11 +196,10 @@ class _IssuesPageState extends State<IssuesPage> {
                 itemBuilder: (context, index) {
                   final issue = items[index];
                   final superseded = supersededIds.contains(issue['issueId']);
-                  final artifacts =
-                      ((issue['artifacts'] as List?) ?? const [])
-                          .cast<Map>()
-                          .map((a) => a['format'])
-                          .join(' · ');
+                  final artifacts = ((issue['artifacts'] as List?) ?? const [])
+                      .cast<Map>()
+                      .map((a) => a['format'])
+                      .join(' · ');
                   return Opacity(
                     opacity: superseded ? 0.55 : 1,
                     child: Card(
@@ -292,11 +290,13 @@ class IssueDetailDialog extends StatelessWidget {
               author: '${issue['issuedBy'] ?? 'issued'}',
               createdAt: DateTime.fromMillisecondsSinceEpoch(0),
             ),
-            sections: ((snap['sections'] as List?) ?? const [])
-                .whereType<Map>()
-                .map((m) => FormSection.fromJson(m.cast<String, dynamic>()))
-                .toList(),
-            data: (snap['data'] as Map?)?.cast<String, dynamic>() ??
+            sections:
+                ((snap['sections'] as List?) ?? const [])
+                    .whereType<Map>()
+                    .map((m) => FormSection.fromJson(m.cast<String, dynamic>()))
+                    .toList(),
+            data:
+                (snap['data'] as Map?)?.cast<String, dynamic>() ??
                 const <String, dynamic>{},
           );
         }
@@ -370,24 +370,25 @@ class IssueDetailDialog extends StatelessWidget {
             _JourneyStrip(issue: issue),
             const SizedBox(height: 8),
             Expanded(
-              child: formDoc != null
-                  ? FormView(document: formDoc, imageBaseDir: projectRoot)
-                  : mdText != null
-                  ? VbuDocumentViewer(
-                      path: 'issue-${issue['issueNumber']}.md',
-                      text: mdText,
-                    )
-                  : data != null
-                  ? SingleChildScrollView(
-                      child: SelectableText(
-                        _pretty.convert(data),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
+              child:
+                  formDoc != null
+                      ? FormView(document: formDoc, imageBaseDir: projectRoot)
+                      : mdText != null
+                      ? VbuDocumentViewer(
+                        path: 'issue-${issue['issueNumber']}.md',
+                        text: mdText,
+                      )
+                      : data != null
+                      ? SingleChildScrollView(
+                        child: SelectableText(
+                          _pretty.convert(data),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                    )
-                  : const Center(child: Text('No viewable content')),
+                      )
+                      : const Center(child: Text('No viewable content')),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -458,20 +459,21 @@ class _JourneyStrip extends StatelessWidget {
     final line = ((approval['line'] as List?) ?? const []).cast<Map>();
     final c = VibeTokens.colorOf(context);
     Widget node(String text, {Color? color}) => Chip(
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          side: color == null
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      side:
+          color == null
               ? null
               : BorderSide(color: color.withValues(alpha: 0.7)),
-          label: Text(
-            text,
-            style: vibeMono(size: 11, color: color ?? c.textSecondary),
-          ),
-        );
+      label: Text(
+        text,
+        style: vibeMono(size: 11, color: color ?? c.textSecondary),
+      ),
+    );
     Widget arrow() => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Text('→', style: vibeMono(size: 11, color: c.textMuted)),
-        );
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Text('→', style: vibeMono(size: 11, color: c.textMuted)),
+    );
     final children = <Widget>[
       node(
         'requested ${approval['requestedBy']}'
