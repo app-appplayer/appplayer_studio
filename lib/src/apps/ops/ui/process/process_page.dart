@@ -8,6 +8,7 @@ import '../../theme/tokens.dart';
 import '../../ops_builtin.dart' show OpsBuiltInApp;
 import '../../widgets/ops_form.dart';
 import '../../widgets/process_flow_view.dart';
+import 'process_board.dart';
 
 const _processYamlTemplate = '''id: my-process
 title: "My Process"
@@ -30,6 +31,7 @@ class ProcessPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final globalScope = ref.watch(globalScopeProvider);
     final wsId = ref.watch(activeWorkspaceIdProvider);
+    final board = ref.watch(processBoardViewProvider);
     return Column(
       children: [
         Padding(
@@ -44,6 +46,32 @@ class ProcessPage extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
+              // B2 flow board — runs as cards in step columns (this
+              // workspace scope; the aggregate view stays a list).
+              if (!globalScope)
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  segments: const [
+                    ButtonSegment(
+                      value: false,
+                      icon: Icon(Icons.view_list_outlined, size: 16),
+                      label: Text('List'),
+                    ),
+                    ButtonSegment(
+                      value: true,
+                      icon: Icon(Icons.view_kanban_outlined, size: 16),
+                      label: Text('Board'),
+                    ),
+                  ],
+                  selected: {board},
+                  onSelectionChanged: (s) => ref
+                      .read(processBoardViewProvider.notifier)
+                      .state = s.first,
+                ),
+              const SizedBox(width: 12),
               _ScopeToggle(
                 value: globalScope,
                 onChanged:
@@ -72,6 +100,8 @@ class ProcessPage extends ConsumerWidget {
           child:
               globalScope
                   ? const _GlobalProcessList()
+                  : board && wsId != null
+                  ? ProcessBoard(wsId: wsId)
                   : const _WorkspaceProcessList(),
         ),
       ],

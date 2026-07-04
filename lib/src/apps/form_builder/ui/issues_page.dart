@@ -2,6 +2,7 @@ import 'dart:convert' show JsonEncoder, jsonDecode;
 import 'dart:io';
 
 import 'package:appplayer_form_view/appplayer_form_view.dart';
+import 'package:appplayer_studio/base.dart' show VibeTokens, vibeMono;
 import 'package:flutter/material.dart';
 import 'package:mcp_bundle/mcp_bundle.dart'
     show FormDocument, FormDocumentMetadata, FormSection;
@@ -335,6 +336,10 @@ class _IssueDetailDialog extends StatelessWidget {
               '${issue['supersedes'] != null ? ' · corrects ${issue['supersedes']}' : ''}',
               style: theme.textTheme.bodySmall,
             ),
+            // B3 artifact journey — the path this document travelled, from
+            // the frozen provenance: 기안 → each approval gate → issue
+            // (+ correction link). Renders only when a trail exists.
+            _JourneyStrip(issue: issue),
             const SizedBox(height: 8),
             Expanded(
               child: formDoc != null
@@ -397,6 +402,87 @@ class _IssueDetailDialog extends StatelessWidget {
           child: const Text('Close'),
         ),
       ],
+    );
+  }
+}
+
+/// Artifact journey (B3): a one-line chip trail — 기안(requestedBy) →
+/// each approval gate as-signed (● approved / ✕ rejected / ⤵ skipped,
+/// with actor and time) → 발행(issuedBy) → correction link. Built purely
+/// from the provenance frozen INTO the issue fact; hidden when the
+/// document was issued without an approval.
+class _JourneyStrip extends StatelessWidget {
+  const _JourneyStrip({required this.issue});
+
+  final Map<String, dynamic> issue;
+
+  static String _hhmm(Object? iso) {
+    final t = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (t == null) return '';
+    return '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final approval = (issue['approval'] as Map?)?.cast<String, dynamic>();
+    if (approval == null) return const SizedBox(height: 4);
+    final line = ((approval['line'] as List?) ?? const []).cast<Map>();
+    final c = VibeTokens.colorOf(context);
+    Widget node(String text, {Color? color}) => Chip(
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          side: color == null
+              ? null
+              : BorderSide(color: color.withValues(alpha: 0.7)),
+          label: Text(
+            text,
+            style: vibeMono(size: 11, color: color ?? c.textSecondary),
+          ),
+        );
+    Widget arrow() => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text('→', style: vibeMono(size: 11, color: c.textMuted)),
+        );
+    final children = <Widget>[
+      node(
+        '기안 ${approval['requestedBy']}'
+        ' ${_hhmm(approval['requestedAt'])}',
+      ),
+      for (final g in line) ...[
+        arrow(),
+        node(
+          '${switch (g['status']) {
+            'approved' => '●',
+            'rejected' => '✕',
+            'skipped' => '⤵',
+            _ => '○',
+          }} ${g['approverId']}'
+          '${g['actedAt'] != null ? ' ${_hhmm(g['actedAt'])}' : ''}',
+          color: switch (g['status']) {
+            'approved' => c.mint,
+            'rejected' => c.coral,
+            'skipped' => c.textMuted,
+            _ => c.amber,
+          },
+        ),
+      ],
+      arrow(),
+      node(
+        '발행 ${issue['issuedBy'] ?? ''} ${_hhmm(issue['issuedAt'])}'.trim(),
+        color: c.mint,
+      ),
+      if (issue['supersedes'] != null) ...[
+        arrow(),
+        node('corrects ${issue['supersedes']}'),
+      ],
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: children),
+      ),
     );
   }
 }

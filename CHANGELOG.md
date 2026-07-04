@@ -1,6 +1,22 @@
 ## [0.1.4] - 2026-06-30
 
 ### Added
+- Work-flow visibility completed (콘피 문의 B묶음 B2·B3·B4 — all renders
+  over EXISTING records, no new collection): the Processes route gained a
+  List↔Board toggle (B2 flow board — one swimlane per process, columns =
+  its steps + Done, run cards sit at their current step with
+  waitingApproval ⏳/blocked/completed states, 4s poll since run state has
+  no change tick); the Ops Home gained a "Today's flow" card (B4 — the
+  morning briefing as a picture: hour-bucketed lanes for invocations /
+  delegations / approval waits / run starts on one midnight→now axis); and
+  a Form Builder issue's detail now opens with its JOURNEY (B3 — 기안 →
+  each approval gate as-signed → 발행 → correction link, rendered purely
+  from the provenance frozen into the issue fact). All three live-verified
+  eyes-on. New widgets follow the studio design tokens
+  (VibeTokens/vibeMono · OpsColors/OpsCard) — the approvals page and
+  journey strip were restyled onto them after initially shipping with raw
+  Material colorScheme (design-system inheritance is the rule).
+  Design: `docs/makemind_ops/ops-flow-views.md`.
 - Form Builder gained REAL approval (전자결재 일반화 — the groupware gap
   where expense requests lived as chat text and the owner's decision queue
   was a hand-managed file): a saved draft can open an ORDERED approval

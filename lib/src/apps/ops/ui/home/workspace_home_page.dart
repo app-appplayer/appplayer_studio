@@ -13,6 +13,7 @@ import '../../widgets/ops_member_row.dart';
 import '../../widgets/ops_models.dart';
 import '../../widgets/ops_pipeline_node.dart';
 import '../../widgets/process_flow_view.dart';
+import 'today_flow_card.dart';
 
 /// Workspace landing page. KPI strip, activity feed, member roster +
 /// pipeline preview, and a knowledge band. All counts and entries
@@ -80,6 +81,8 @@ class WorkspaceHomePage extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            const TodayFlowCard(),
             const SizedBox(height: 18),
             _KnowledgeBandCard(),
           ],

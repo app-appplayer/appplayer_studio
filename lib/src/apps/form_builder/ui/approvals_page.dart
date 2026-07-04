@@ -9,7 +9,8 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:appplayer_studio/base.dart' show BuiltinToolRegistry;
+import 'package:appplayer_studio/base.dart'
+    show BuiltinToolRegistry, VibeTokens, vibeMono;
 
 import '../init/form_init.dart';
 import 'form_tool_client.dart';
@@ -150,7 +151,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               _notice!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: TextStyle(color: VibeTokens.colorOf(context).coral),
             ),
           ),
         if (_approvals.isEmpty)
@@ -201,7 +202,10 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
             Text(
               '기안 ${a['requestedBy']} · ${a['requestedAt'] ?? ''}'
               '${gate != null ? ' · 현재 결재자 $gate' : ''}',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: vibeMono(
+                size: 11,
+                color: VibeTokens.colorOf(context).textSecondary,
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -262,10 +266,10 @@ class _BandHeader extends StatelessWidget {
         padding: const EdgeInsets.only(top: 12, bottom: 4),
         child: Text(
           text,
-          style: Theme.of(context)
-              .textTheme
-              .labelLarge
-              ?.copyWith(letterSpacing: 1.1),
+          style: vibeMono(
+            size: 11,
+            color: VibeTokens.colorOf(context).textTertiary,
+          ).copyWith(letterSpacing: 1.4),
         ),
       );
 }
@@ -277,18 +281,17 @@ class _StateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = VibeTokens.colorOf(context);
     final (label, color) = switch (state) {
-      'approved' => ('approved', scheme.primary),
-      'rejected' => ('rejected', scheme.error),
-      'withdrawn' => ('withdrawn', scheme.outline),
-      _ => ('pending', scheme.tertiary),
+      'approved' => ('approved', c.mint),
+      'rejected' => ('rejected', c.coral),
+      'withdrawn' => ('withdrawn', c.textMuted),
+      _ => ('pending', c.amber),
     };
     return Chip(
       visualDensity: VisualDensity.compact,
-      label: Text(label),
-      side: BorderSide(color: color),
-      labelStyle: TextStyle(color: color),
+      label: Text(label, style: vibeMono(size: 11, color: color)),
+      side: BorderSide(color: color.withValues(alpha: 0.7)),
     );
   }
 }

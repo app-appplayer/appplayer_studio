@@ -23,6 +23,7 @@ import '../registries/workspace_registry.dart';
 import '../skills/skill_definition.dart';
 import '../ui/organization/org_chart_model.dart';
 import '../ui/organization/org_overlay.dart';
+import '../ui/home/today_flow_card.dart' show TodayFlowData, pollTodayFlow;
 
 /// Global bootstrap handles — overridden at the scoped [ProviderScope] in
 /// `main.dart` after [KnowledgeInit.boot]. All derived providers below list
@@ -454,6 +455,47 @@ final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>((ref) async {
   skillChangesProvider,
   processChangesProvider,
 ]);
+
+/// Processes route view: false = list (default), true = flow board (B2 —
+/// runs as cards moving through step columns).
+final processBoardViewProvider = StateProvider<bool>((ref) => false);
+
+/// Flow-board data pulse: process defs + their runs for one workspace.
+/// Run-state transitions live in KV with NO change tick, so the board polls
+/// (same rule as the org overlay). autoDispose — only while the board shows.
+/// Design: docs/makemind_ops/ops-flow-views.md (B2).
+final processBoardRunsProvider = StreamProvider.autoDispose
+    .family<Map<String, List<ProcessRun>>, String>((ref, wsId) async* {
+  final init = ref.watch(knowledgeInitProvider);
+  while (true) {
+    final map = <String, List<ProcessRun>>{};
+    try {
+      final procs = await init.registries.process.list(wsId: wsId);
+      for (final p in procs) {
+        map[p.id] =
+            await init.registries.process.listRuns(p.id, workspaceId: wsId);
+      }
+    } catch (_) {
+      // Mid-switch/unbound — an empty board this tick, not an error state.
+    }
+    yield map;
+    await Future<void>.delayed(const Duration(seconds: 4));
+  }
+}, dependencies: [knowledgeInitProvider]);
+
+/// "Today's flow" home card pulse (B4) — hour-bucketed invocations /
+/// delegations / approval waits / run starts for the active workspace.
+/// Facts and run records emit no change tick → poll (autoDispose: alive
+/// only while Home shows). Design: docs/makemind_ops/ops-flow-views.md.
+final todayFlowProvider =
+    StreamProvider.autoDispose<TodayFlowData>((ref) async* {
+  final init = ref.watch(knowledgeInitProvider);
+  final wsId = ref.watch(activeWorkspaceIdProvider);
+  while (true) {
+    yield await pollTodayFlow(init, wsId);
+    await Future<void>.delayed(const Duration(seconds: 5));
+  }
+}, dependencies: [knowledgeInitProvider, activeWorkspaceIdProvider]);
 
 /// Living-org-chart overlay pulse. The chart geometry rebuilds on registry
 /// mutations, but activity (facts / process-run state) emits NO change tick
