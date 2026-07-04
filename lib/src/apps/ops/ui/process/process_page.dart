@@ -5,6 +5,7 @@ import '../../registries/process_registry.dart';
 import '../../registries/workspace_registry.dart';
 import '../../state/providers.dart';
 import '../../theme/tokens.dart';
+import '../../widgets/ops_atoms.dart';
 import '../../ops_builtin.dart' show OpsBuiltInApp;
 import '../../widgets/ops_form.dart';
 import '../../widgets/process_flow_view.dart';
@@ -49,27 +50,12 @@ class ProcessPage extends ConsumerWidget {
               // B2 flow board — runs as cards in step columns (this
               // workspace scope; the aggregate view stays a list).
               if (!globalScope)
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  segments: const [
-                    ButtonSegment(
-                      value: false,
-                      icon: Icon(Icons.view_list_outlined, size: 16),
-                      label: Text('List'),
-                    ),
-                    ButtonSegment(
-                      value: true,
-                      icon: Icon(Icons.view_kanban_outlined, size: 16),
-                      label: Text('Board'),
-                    ),
-                  ],
-                  selected: {board},
-                  onSelectionChanged: (s) => ref
-                      .read(processBoardViewProvider.notifier)
-                      .state = s.first,
+                OpsPillSwitch<bool>(
+                  options: const [('List', false), ('Board', true)],
+                  value: board,
+                  onChanged:
+                      (v) =>
+                          ref.read(processBoardViewProvider.notifier).state = v,
                 ),
               const SizedBox(width: 12),
               _ScopeToggle(
@@ -587,22 +573,14 @@ Future<void> _showYamlEditor(
                     if (enableClone)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(
-                              value: 0,
-                              label: Text('Write new'),
-                              icon: Icon(Icons.note_add_outlined),
-                            ),
-                            ButtonSegment(
-                              value: 1,
-                              label: Text('Clone from existing'),
-                              icon: Icon(Icons.copy_outlined),
-                            ),
+                        child: OpsPillSwitch<int>(
+                          options: const [
+                            ('Write new', 0),
+                            ('Clone from existing', 1),
                           ],
-                          selected: {mode},
-                          onSelectionChanged: (s) {
-                            final next = s.first;
+                          value: mode,
+                          onChanged: (__v) {
+                            final next = __v;
                             setState(() => mode = next);
                             if (next == 1) {
                               ensureClones(setState);
@@ -649,22 +627,11 @@ Future<void> _showYamlEditor(
                     ],
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(
-                            value: 0,
-                            label: Text('Form'),
-                            icon: Icon(Icons.list_alt_outlined),
-                          ),
-                          ButtonSegment(
-                            value: 1,
-                            label: Text('Advanced (YAML)'),
-                            icon: Icon(Icons.code),
-                          ),
-                        ],
-                        selected: {viewMode},
-                        onSelectionChanged: (s) {
-                          final next = s.first;
+                      child: OpsPillSwitch<int>(
+                        options: const [('Form', 0), ('Advanced (YAML)', 1)],
+                        value: viewMode,
+                        onChanged: (__v) {
+                          final next = __v;
                           if (next == 1) {
                             ctrl.text = mapToYaml(formValue);
                           } else {

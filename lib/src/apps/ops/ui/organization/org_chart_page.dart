@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
 import '../../theme/tokens.dart';
+import '../../widgets/ops_atoms.dart';
 import 'org_chart_model.dart';
 import 'org_chart_painter.dart';
 import 'org_directory.dart';
@@ -218,51 +219,10 @@ class _Header extends StatelessWidget {
   final bool directory;
   final ValueChanged<bool> onDirectory;
 
-  /// Same pill idiom as [_LensSwitch] — a raw SegmentedButton takes the
-  /// Material default (purple) and breaks the ops palette.
-  Widget _viewSwitch() => Container(
-    decoration: BoxDecoration(
-      color: OpsColors.surface.withValues(alpha: 0.6),
-      borderRadius: OpsRadius.all_md,
-      border: Border.all(color: OpsColors.border),
-    ),
-    padding: const EdgeInsets.all(2),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final (label, value) in const [
-          ('Directory', true),
-          ('Chart', false),
-        ])
-          GestureDetector(
-            onTap: () => onDirectory(value),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: OpsSpace.s5,
-                vertical: OpsSpace.s2,
-              ),
-              decoration: BoxDecoration(
-                color: value == directory
-                    ? OpsColors.accent.withValues(alpha: 0.22)
-                    : Colors.transparent,
-                borderRadius: OpsRadius.all_sm,
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: OpsType.sm,
-                  fontWeight: value == directory
-                      ? OpsType.semibold
-                      : OpsType.regular,
-                  color: value == directory
-                      ? OpsColors.text
-                      : OpsColors.text2,
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
+  Widget _viewSwitch() => OpsPillSwitch<bool>(
+    options: const [('Directory', true), ('Chart', false)],
+    value: directory,
+    onChanged: onDirectory,
   );
 
   @override
@@ -390,43 +350,10 @@ class _LensSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: OpsColors.surface.withValues(alpha: 0.6),
-        borderRadius: OpsRadius.all_md,
-        border: Border.all(color: OpsColors.border),
-      ),
-      padding: const EdgeInsets.all(2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final m in OrgViewMode.values)
-            GestureDetector(
-              onTap: () => onMode(m),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: OpsSpace.s5,
-                  vertical: OpsSpace.s2,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      m == mode
-                          ? OpsColors.accent.withValues(alpha: 0.22)
-                          : Colors.transparent,
-                  borderRadius: OpsRadius.all_sm,
-                ),
-                child: Text(
-                  _labels[m]!,
-                  style: TextStyle(
-                    fontSize: OpsType.sm,
-                    fontWeight: m == mode ? OpsType.semibold : OpsType.regular,
-                    color: m == mode ? OpsColors.text : OpsColors.text2,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return OpsPillSwitch<OrgViewMode>(
+      options: [for (final m in OrgViewMode.values) (_labels[m]!, m)],
+      value: mode,
+      onChanged: onMode,
     );
   }
 }

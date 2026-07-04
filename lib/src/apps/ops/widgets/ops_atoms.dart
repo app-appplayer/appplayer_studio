@@ -342,3 +342,63 @@ class OpsDot extends StatelessWidget {
     );
   }
 }
+
+/// The ONE segmented pill switch for ops — every List|Board / lens / mode
+/// toggle goes through this instead of a raw [SegmentedButton] (which takes
+/// the Material default palette — purple — and breaks the ops theme;
+/// user-caught three times on 2026-07-04).
+class OpsPillSwitch<T> extends StatelessWidget {
+  const OpsPillSwitch({
+    super.key,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// (label, value) pairs, rendered left to right.
+  final List<(String, T)> options;
+  final T value;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: OpsColors.surface.withValues(alpha: 0.6),
+        borderRadius: OpsRadius.all_md,
+        border: Border.all(color: OpsColors.border),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (label, v) in options)
+            GestureDetector(
+              onTap: () => onChanged(v),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: OpsSpace.s5,
+                  vertical: OpsSpace.s2,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      v == value
+                          ? OpsColors.accent.withValues(alpha: 0.22)
+                          : Colors.transparent,
+                  borderRadius: OpsRadius.all_sm,
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: OpsType.sm,
+                    fontWeight: v == value ? OpsType.semibold : OpsType.regular,
+                    color: v == value ? OpsColors.text : OpsColors.text2,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

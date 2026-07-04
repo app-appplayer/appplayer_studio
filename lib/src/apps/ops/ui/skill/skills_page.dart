@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/ops_atoms.dart';
 import '../../widgets/ops_form.dart';
 import '../profile/_axis_management_page.dart';
 
@@ -74,64 +75,72 @@ class SkillsPage extends ConsumerWidget {
                   data:
                       (rows) =>
                           rows.isEmpty
-                    ? EmptyState(
-                      icon: Icons.flash_on_outlined,
-                      headline: 'No skills loaded',
-                      hint:
-                          'Skills are MCP tool wrappers. Install a Bundle or write a skill yaml in the workspace.',
-                      actionLabel: 'Open Bundles',
-                      onAction:
-                          () =>
-                              ref.read(shellRouteProvider.notifier).state =
-                                  'bundles',
-                    )
-                    : ListView.separated(
-                      itemCount: rows.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final s = rows[i];
-                        return ListTile(
-                          leading: const Icon(Icons.flash_on_outlined),
-                          title: Text(s.id),
-                          subtitle: Text(
-                            '${s.description.isEmpty ? "(no description)" : s.description}'
-                            '${s.tags.isEmpty ? "" : " · ${s.tags.join(", ")}"}',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('v${s.version}'),
-                              PopupMenuButton<String>(
-                                onSelected:
-                                    (action) => _handleSkillAction(
-                                      context,
-                                      ref,
-                                      s.id,
-                                      action,
+                              ? EmptyState(
+                                icon: Icons.flash_on_outlined,
+                                headline: 'No skills loaded',
+                                hint:
+                                    'Skills are MCP tool wrappers. Install a Bundle or write a skill yaml in the workspace.',
+                                actionLabel: 'Open Bundles',
+                                onAction:
+                                    () =>
+                                        ref
+                                            .read(shellRouteProvider.notifier)
+                                            .state = 'bundles',
+                              )
+                              : ListView.separated(
+                                itemCount: rows.length,
+                                separatorBuilder:
+                                    (_, __) => const Divider(height: 1),
+                                itemBuilder: (_, i) {
+                                  final s = rows[i];
+                                  return ListTile(
+                                    leading: const Icon(
+                                      Icons.flash_on_outlined,
                                     ),
-                                itemBuilder:
-                                    (_) => const [
-                                      PopupMenuItem(
-                                        height: 32,
-                                        value: 'edit-ws',
-                                        child: Text('Edit workspace scope'),
-                                      ),
-                                      PopupMenuDivider(),
-                                      PopupMenuItem(
-                                        height: 32,
-                                        value: 'delete-ws',
-                                        child: Text(
-                                          'Delete workspace scope',
-                                          style: TextStyle(color: Colors.red),
+                                    title: Text(s.id),
+                                    subtitle: Text(
+                                      '${s.description.isEmpty ? "(no description)" : s.description}'
+                                      '${s.tags.isEmpty ? "" : " · ${s.tags.join(", ")}"}',
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text('v${s.version}'),
+                                        PopupMenuButton<String>(
+                                          onSelected:
+                                              (action) => _handleSkillAction(
+                                                context,
+                                                ref,
+                                                s.id,
+                                                action,
+                                              ),
+                                          itemBuilder:
+                                              (_) => const [
+                                                PopupMenuItem(
+                                                  height: 32,
+                                                  value: 'edit-ws',
+                                                  child: Text(
+                                                    'Edit workspace scope',
+                                                  ),
+                                                ),
+                                                PopupMenuDivider(),
+                                                PopupMenuItem(
+                                                  height: 32,
+                                                  value: 'delete-ws',
+                                                  child: Text(
+                                                    'Delete workspace scope',
+                                                    style: TextStyle(
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
                 ),
                 // ── Tab 2: integrated view (pool seed + assigned agent owned) ──
                 AxisManagementPage(
@@ -288,22 +297,11 @@ Future<void> _showSkillEditor(
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(
-                              value: 0,
-                              label: Text('Form'),
-                              icon: Icon(Icons.list_alt_outlined),
-                            ),
-                            ButtonSegment(
-                              value: 1,
-                              label: Text('Advanced (YAML)'),
-                              icon: Icon(Icons.code),
-                            ),
-                          ],
-                          selected: {viewMode},
-                          onSelectionChanged: (s) {
-                            final next = s.first;
+                        child: OpsPillSwitch<int>(
+                          options: const [('Form', 0), ('Advanced (YAML)', 1)],
+                          value: viewMode,
+                          onChanged: (__v) {
+                            final next = __v;
                             if (next == 1) {
                               ctrl.text = mapToYaml(formValue);
                             } else {

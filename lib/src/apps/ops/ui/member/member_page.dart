@@ -335,16 +335,18 @@ class _ContactChannelDialogState extends ConsumerState<_ContactChannelDialog> {
     try {
       final list = await opsCallTool(ref, 'channel.list', const {});
       final binds = await opsCallTool(ref, 'channel.bindings', const {});
-      final chans = ((list['channels'] as List?) ?? const [])
-          .whereType<Map>()
-          .map((e) => '${e['channelId']}')
-          .where((id) => id != 'in_app')
-          .toList();
-      final mine = ((binds['bindings'] as List?) ?? const [])
-          .whereType<Map>()
-          .where((b) => '${b['agentId']}' == widget.member.id)
-          .map((b) => '${b['conversationId']}')
-          .toList();
+      final chans =
+          ((list['channels'] as List?) ?? const [])
+              .whereType<Map>()
+              .map((e) => '${e['channelId']}')
+              .where((id) => id != 'in_app')
+              .toList();
+      final mine =
+          ((binds['bindings'] as List?) ?? const [])
+              .whereType<Map>()
+              .where((b) => '${b['agentId']}' == widget.member.id)
+              .map((b) => '${b['conversationId']}')
+              .toList();
       if (!mounted) return;
       setState(() {
         _channels = chans;
@@ -410,79 +412,91 @@ class _ContactChannelDialogState extends ConsumerState<_ContactChannelDialog> {
       title: Text('Contact channel — ${widget.member.displayName}'),
       content: SizedBox(
         width: 420,
-        child: _busy
-            ? const SizedBox(
-                height: 80,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Route messages from a conversation to this member (and '
-                    'reach them there). Connect the account first in '
-                    'System → Channels.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  if (_channels.isEmpty)
-                    const Text(
-                      'No external channel connected yet (System → Channels).',
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      initialValue: _channel,
-                      decoration: const InputDecoration(labelText: 'On channel'),
-                      items: [
-                        for (final c in _channels)
-                          DropdownMenuItem(value: c, child: Text(c)),
-                      ],
-                      onChanged: (v) => setState(() => _channel = v),
+        child:
+            _busy
+                ? const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+                : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Route messages from a conversation to this member (and '
+                      'reach them there). Connect the account first in '
+                      'System → Channels.',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _convCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Their conversation id / address',
-                      helperText: 'e.g. a kakao room id, an email address',
+                    const SizedBox(height: 12),
+                    if (_channels.isEmpty)
+                      const Text(
+                        'No external channel connected yet (System → Channels).',
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: _channel,
+                        decoration: const InputDecoration(
+                          labelText: 'On channel',
+                        ),
+                        items: [
+                          for (final c in _channels)
+                            DropdownMenuItem(value: c, child: Text(c)),
+                        ],
+                        onChanged: (v) => setState(() => _channel = v),
+                      ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _convCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Their conversation id / address',
+                        helperText: 'e.g. a kakao room id, an email address',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton(
-                      onPressed: _bind,
-                      child: const Text('Bind'),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: _bind,
+                        child: const Text('Bind'),
+                      ),
                     ),
-                  ),
-                  if (_bound.isNotEmpty) ...[
-                    const Divider(),
-                    Text('Bound conversations',
-                        style: Theme.of(context).textTheme.labelMedium),
-                    for (final c in _bound)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(c,
-                            style:
-                                const TextStyle(fontFamily: OpsType.mono, fontSize: 11)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.link_off, size: 16),
-                          tooltip: 'Unbind',
-                          onPressed: () => _unbind(c),
+                    if (_bound.isNotEmpty) ...[
+                      const Divider(),
+                      Text(
+                        'Bound conversations',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      for (final c in _bound)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            c,
+                            style: const TextStyle(
+                              fontFamily: OpsType.mono,
+                              fontSize: 11,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.link_off, size: 16),
+                            tooltip: 'Unbind',
+                            onPressed: () => _unbind(c),
+                          ),
+                        ),
+                    ],
+                    if (_msg != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _msg!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
                       ),
                   ],
-                  if (_msg != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(_msg!,
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.error)),
-                    ),
-                ],
-              ),
+                ),
       ),
       actions: [
         TextButton(
@@ -763,22 +777,14 @@ Future<void> _showAgentForm(
                     if (!isEdit)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(
-                              value: 0,
-                              label: Text('New agent'),
-                              icon: Icon(Icons.person_add_alt_1),
-                            ),
-                            ButtonSegment(
-                              value: 1,
-                              label: Text('Pick existing'),
-                              icon: Icon(Icons.group_add_outlined),
-                            ),
+                        child: OpsPillSwitch<int>(
+                          options: const [
+                            ('New agent', 0),
+                            ('Pick existing', 1),
                           ],
-                          selected: {mode},
-                          onSelectionChanged: (s) {
-                            final next = s.first;
+                          value: mode,
+                          onChanged: (__v) {
+                            final next = __v;
                             setState(() => mode = next);
                             if (next == 1) ensureAttachables(setState);
                           },

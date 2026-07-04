@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../registries/task_registry.dart';
 import '../../registries/workspace_registry.dart';
 import '../../state/providers.dart';
+import '../../widgets/ops_atoms.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_with_action.dart';
@@ -388,22 +389,14 @@ Future<void> _showCreateDialog(
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(
-                            value: 0,
-                            label: Text('New task'),
-                            icon: Icon(Icons.add),
-                          ),
-                          ButtonSegment(
-                            value: 1,
-                            label: Text('Clone from existing'),
-                            icon: Icon(Icons.copy_outlined),
-                          ),
+                      child: OpsPillSwitch<int>(
+                        options: const [
+                          ('New task', 0),
+                          ('Clone from existing', 1),
                         ],
-                        selected: {mode},
-                        onSelectionChanged: (s) {
-                          final next = s.first;
+                        value: mode,
+                        onChanged: (__v) {
+                          final next = __v;
                           setState(() => mode = next);
                           if (next == 1) ensureClones(setState);
                         },
