@@ -21,6 +21,7 @@ import '../../state/providers.dart';
 import '../../theme/tokens.dart';
 import 'org_chart_model.dart';
 import 'org_chart_painter.dart';
+import 'org_directory.dart';
 import 'org_node_detail.dart';
 import 'org_overlay.dart';
 
@@ -34,6 +35,9 @@ class OrgChartPage extends ConsumerStatefulWidget {
 class _OrgChartPageState extends ConsumerState<OrgChartPage> {
   String? _selectedId;
   OrgViewMode _mode = OrgViewMode.workflow;
+
+  /// Directory (card master-detail, default) vs Chart (painted canvas).
+  bool _directory = true;
   final _tc = TransformationController();
   // Whether the transform was initialised for the current lens. The default
   // view is NATURAL SIZE (1:1) — a large org must stay READABLE and be
@@ -59,8 +63,9 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
     if (content.width <= 0 || content.height <= 0) return;
     const margin = 24.0;
     final dx = (viewport.width - content.width) / 2;
-    _tc.value = Matrix4.identity()
-      ..translateByDouble(dx < margin ? margin : dx, margin, 0, 1);
+    _tc.value =
+        Matrix4.identity()
+          ..translateByDouble(dx < margin ? margin : dx, margin, 0, 1);
   }
 
   /// Fit the whole chart into [viewport] (scale down only — never magnify past
@@ -73,9 +78,10 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
     final sy = (viewport.height - margin * 2) / content.height;
     final scale = math.min(1.0, math.min(sx, sy)).clamp(_minScale, _maxScale);
     final dx = (viewport.width - content.width * scale) / 2;
-    _tc.value = Matrix4.identity()
-      ..translateByDouble(dx < margin ? margin : dx, margin, 0, 1)
-      ..scaleByDouble(scale, scale, 1, 1);
+    _tc.value =
+        Matrix4.identity()
+          ..translateByDouble(dx < margin ? margin : dx, margin, 0, 1)
+          ..scaleByDouble(scale, scale, 1, 1);
   }
 
   void _zoomBy(double factor) {
@@ -93,6 +99,8 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
       children: [
         _Header(
           mode: _mode,
+          directory: _directory,
+          onDirectory: (d) => setState(() => _directory = d),
           onMode: (m) {
             if (m == _mode) return;
             setState(() {
@@ -114,6 +122,17 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
               final overlay = ref
                   .watch(orgOverlayProvider)
                   .whenOrNull(data: (raw) => resolveOrgOverlay(inputs, raw));
+              if (_directory) {
+                if (inputs.isEmpty) {
+                  return const _Message(
+                    icon: Icons.hub_outlined,
+                    text:
+                        'No workspaces yet. Create one (Workspaces) to '
+                        'see the organization.',
+                  );
+                }
+                return OrgDirectory(inputs: inputs, overlay: overlay);
+              }
               if (model.nodes.isEmpty) {
                 return const _Message(
                   icon: Icons.hub_outlined,
@@ -188,9 +207,63 @@ class _OrgChartPageState extends ConsumerState<OrgChartPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.mode, required this.onMode});
+  const _Header({
+    required this.mode,
+    required this.onMode,
+    required this.directory,
+    required this.onDirectory,
+  });
   final OrgViewMode mode;
   final ValueChanged<OrgViewMode> onMode;
+  final bool directory;
+  final ValueChanged<bool> onDirectory;
+
+  /// Same pill idiom as [_LensSwitch] — a raw SegmentedButton takes the
+  /// Material default (purple) and breaks the ops palette.
+  Widget _viewSwitch() => Container(
+    decoration: BoxDecoration(
+      color: OpsColors.surface.withValues(alpha: 0.6),
+      borderRadius: OpsRadius.all_md,
+      border: Border.all(color: OpsColors.border),
+    ),
+    padding: const EdgeInsets.all(2),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (label, value) in const [
+          ('Directory', true),
+          ('Chart', false),
+        ])
+          GestureDetector(
+            onTap: () => onDirectory(value),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: OpsSpace.s5,
+                vertical: OpsSpace.s2,
+              ),
+              decoration: BoxDecoration(
+                color: value == directory
+                    ? OpsColors.accent.withValues(alpha: 0.22)
+                    : Colors.transparent,
+                borderRadius: OpsRadius.all_sm,
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: OpsType.sm,
+                  fontWeight: value == directory
+                      ? OpsType.semibold
+                      : OpsType.regular,
+                  color: value == directory
+                      ? OpsColors.text
+                      : OpsColors.text2,
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -225,9 +298,13 @@ class _Header extends StatelessWidget {
                 children: [
                   title,
                   const SizedBox(width: OpsSpace.s6),
-                  _LensSwitch(mode: mode, onMode: onMode),
-                  const SizedBox(width: OpsSpace.s6),
-                  ..._legendFor(mode),
+                  _viewSwitch(),
+                  if (!directory) ...[
+                    const SizedBox(width: OpsSpace.s6),
+                    _LensSwitch(mode: mode, onMode: onMode),
+                    const SizedBox(width: OpsSpace.s6),
+                    ..._legendFor(mode),
+                  ],
                 ],
               ),
             );
@@ -236,12 +313,16 @@ class _Header extends StatelessWidget {
             children: [
               title,
               const SizedBox(width: OpsSpace.s6),
-              _LensSwitch(mode: mode, onMode: onMode),
+              _viewSwitch(),
+              if (!directory) ...[
+                const SizedBox(width: OpsSpace.s6),
+                _LensSwitch(mode: mode, onMode: onMode),
+              ],
               const SizedBox(width: OpsSpace.s6),
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: Row(children: _legendFor(mode)),
+                  child: Row(children: directory ? const [] : _legendFor(mode)),
                 ),
               ),
               const SizedBox(width: OpsSpace.s4),
@@ -328,9 +409,10 @@ class _LensSwitch extends StatelessWidget {
                   vertical: OpsSpace.s2,
                 ),
                 decoration: BoxDecoration(
-                  color: m == mode
-                      ? OpsColors.accent.withValues(alpha: 0.22)
-                      : Colors.transparent,
+                  color:
+                      m == mode
+                          ? OpsColors.accent.withValues(alpha: 0.22)
+                          : Colors.transparent,
                   borderRadius: OpsRadius.all_sm,
                 ),
                 child: Text(
@@ -426,10 +508,7 @@ class _LegendDot extends StatelessWidget {
           const SizedBox(width: OpsSpace.s2),
           Text(
             label,
-            style: TextStyle(
-              fontSize: OpsType.sm,
-              color: OpsColors.text2,
-            ),
+            style: TextStyle(fontSize: OpsType.sm, color: OpsColors.text2),
           ),
         ],
       ),
@@ -455,10 +534,7 @@ class _Message extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: OpsType.md,
-                color: OpsColors.text3,
-              ),
+              style: TextStyle(fontSize: OpsType.md, color: OpsColors.text3),
             ),
           ],
         ),
