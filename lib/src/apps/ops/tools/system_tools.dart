@@ -872,15 +872,18 @@ class SystemTools {
         if (!init.system.isAgentSubsystemActivated) {
           return {'error': 'Agent Subsystem not activated'};
         }
-        final resolvedId = await _resolveAgentId(
-          init,
-          args['agentId'] as String,
-        );
         // Pin the agent run to a stable workspace (explicit arg → inherited
         // execution pin → active snapshot at ask-time), so the agent's own
         // tool calls during the run don't drift when another actor flips the
-        // UI lens mid-run.
+        // UI lens mid-run. Resolve the member WITHIN this workspace so an
+        // explicit, not-yet-opened workspaceId hydrates before the lookup
+        // (bare resolve only scans already-loaded workspaces → AgentNotFound).
         final wsId = _wsId(args);
+        final resolvedId = await _resolveAgentId(
+          init,
+          args['agentId'] as String,
+          wsId: wsId,
+        );
         // Serialize per agent — concurrent requests to the same agent queue
         // and run one at a time (worker model + conversation race-free).
         final reply = await serializePerAgent(
@@ -4563,8 +4566,16 @@ class SystemTools {
   /// landed); an unknown id (already-scoped, or a host agent like
   /// `_ops_admin`) passes through unchanged. Existing pre-scoping members
   /// keep their bare stored agentId, so nothing breaks.
-  Future<String> _resolveAgentId(KnowledgeInit init, String idOrScoped) async {
-    final m = await init.registries.member.get(idOrScoped);
+  Future<String> _resolveAgentId(
+    KnowledgeInit init,
+    String idOrScoped, {
+    String? wsId,
+  }) async {
+    // When the caller pinned an explicit workspace, resolve the member
+    // WITHIN it so a not-yet-opened workspace hydrates before the lookup
+    // (otherwise the bare scan misses it and we hand the kernel a bare id it
+    // cannot find → AgentNotFoundException; D4).
+    final m = await init.registries.member.get(idOrScoped, wsId: wsId);
     if (m is AgentMember) return m.agentId;
     return idOrScoped;
   }

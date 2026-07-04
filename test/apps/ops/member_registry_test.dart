@@ -26,6 +26,8 @@
 ///   m23 captureAuthProfile — throws for PersonMember
 ///   m24 captureAuthProfile — updates authProfiles, replaces duplicate systemId
 ///   m25 MemberKind enum coverage
+///   m26 get(wsId:) — hydrates a workspace never opened this session (D4)
+///   m27 update — hydrates a not-yet-loaded target workspace (D4, member_update)
 library;
 
 import 'dart:io';
@@ -769,6 +771,89 @@ void main() {
         final a = ws.firstWhere((m) => m.id == 'quinn') as AgentMember;
         // Only one entry for 'slack' after duplicate capture.
         expect(a.authProfiles.where((ap) => ap.systemId == 'slack').length, 1);
+      },
+    );
+  });
+
+  group('MemberRegistry — explicit workspace hydration (D4)', () {
+    late Directory tmp;
+
+    tearDown(() async {
+      if (await tmp.exists()) await tmp.delete(recursive: true);
+    });
+
+    // --- m26: get(wsId:) hydrates a not-yet-loaded workspace ---
+    test(
+      'm26 get with explicit wsId resolves a member in a workspace never '
+      'opened this session (bare get misses it)',
+      () async {
+        tmp = await Directory.systemTemp.createTemp('member_reg_d4_get_');
+        final reg1 = MemberRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv1')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+        await reg1.createAgent(
+          id: 'remote_agent',
+          displayName: 'Remote',
+          profileRef: 'p',
+          skillIds: const [],
+          philosophyRef: 'ph',
+          workspaceId: 'project/cold_ws',
+        );
+
+        // Fresh registry: NOTHING loaded yet (_byWorkspace empty) — exactly the
+        // agent_ask{workspaceId} condition where the target ws was never opened.
+        final reg2 = MemberRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv2')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+
+        // Bare get cannot know which workspace to scan → misses it (this is
+        // why an explicit workspaceId used to fall through to a bare id and
+        // throw AgentNotFoundException downstream).
+        expect(await reg2.get('remote_agent'), isNull);
+        // Explicit wsId hydrates the target and resolves.
+        final found = await reg2.get('remote_agent', wsId: 'project/cold_ws');
+        expect(found, isNotNull);
+        expect((found! as AgentMember).agentId, 'remote_agent');
+      },
+    );
+
+    // --- m27: update on a not-yet-loaded workspace hydrates first ---
+    test(
+      'm27 update on a workspace never opened this session hydrates instead of '
+      'throwing "Member not found" (member_update{workspaceId} family)',
+      () async {
+        tmp = await Directory.systemTemp.createTemp('member_reg_d4_upd_');
+        final reg1 = MemberRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv1')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+        await reg1.createAgent(
+          id: 'cold_member',
+          displayName: 'Cold',
+          profileRef: 'p',
+          skillIds: const [],
+          philosophyRef: 'ph',
+          workspaceId: 'project/cold_ws2',
+        );
+
+        final reg2 = MemberRegistry(
+          kv: KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv2')),
+          knowledgeSystem: KnowledgeSystem.stub(),
+          rootDir: tmp.path,
+        );
+        // Previously threw StateError('Member not found') because the target ws
+        // was absent from the cache; now _ensureLoaded hydrates it first.
+        final updated = await reg2.update(
+          memberId: 'cold_member',
+          workspaceId: 'project/cold_ws2',
+          displayName: 'Cold Renamed',
+        );
+        expect(updated.displayName, 'Cold Renamed');
       },
     );
   });

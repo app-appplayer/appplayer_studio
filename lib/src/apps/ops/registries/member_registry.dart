@@ -128,7 +128,18 @@ class MemberRegistry {
     return _byWorkspace[wsId]?.values.toList(growable: false) ?? const [];
   }
 
-  Future<Member?> get(String memberId) async {
+  Future<Member?> get(String memberId, {String? wsId}) async {
+    // Explicit workspace scope: hydrate the target workspace FIRST so a
+    // member living in a not-yet-opened workspace resolves. The bare scan
+    // below only visits `_byWorkspace.keys` (workspaces already loaded, i.e.
+    // whatever the UI happened to open), so an explicit `workspaceId` that
+    // was never opened would never be `_ensureLoaded`ed → member missed →
+    // caller falls through to a bare id → AgentNotFoundException.
+    if (wsId != null) {
+      await _ensureLoaded(wsId);
+      final m = _byWorkspace[wsId]?[memberId];
+      if (m != null) return m;
+    }
     for (final ws in _byWorkspace.keys) {
       await _ensureLoaded(ws);
       final m = _byWorkspace[ws]?[memberId];
@@ -288,6 +299,11 @@ class MemberRegistry {
     List<String>? roleLabels,
     Map<String, String>? tags,
   }) async {
+    // Hydrate the target workspace before reading the cache — an explicit
+    // `workspaceId` that was never opened in the UI is absent from
+    // `_byWorkspace` and would spuriously throw "Member not found" (the
+    // `agent_ask {workspaceId}` resolution family; D4).
+    await _ensureLoaded(workspaceId);
     final cur = _byWorkspace[workspaceId]?[memberId];
     if (cur == null)
       throw StateError('Member not found: $memberId in $workspaceId');
