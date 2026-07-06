@@ -86,8 +86,27 @@ String buildConcatManifest({
     b.writeln('duration ${(durMs / 1000).toStringAsFixed(3)}');
   }
   if (filenames.isNotEmpty) {
-    // Repeat the final frame — the concat demuxer drops the last duration.
+    // Repeat the final frame so even a single static frame is held: the concat
+    // demuxer ignores the LAST entry's `duration` and holds that frame for the
+    // PREVIOUS duration, so the repeat absorbs the ignored slot. The resulting
+    // stream over-runs the real span, so the encoder trims it with `-t`
+    // (see [sumConcatManifestSeconds] / buildEncodeCommand).
     b.writeln("file '${filenames.last}'");
   }
   return b.toString();
+}
+
+/// Sum of the `duration` directives in a concat [manifest] (seconds) — the
+/// real recording span, used to pin the encode length with ffmpeg `-t`. The
+/// repeated final frame carries no `duration` line, so it is not counted.
+/// Pure — unit-testable.
+double sumConcatManifestSeconds(String manifest) {
+  var total = 0.0;
+  for (final line in manifest.split('\n')) {
+    final t = line.trim();
+    if (t.startsWith('duration ')) {
+      total += double.tryParse(t.substring('duration '.length).trim()) ?? 0.0;
+    }
+  }
+  return total;
 }

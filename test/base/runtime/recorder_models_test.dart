@@ -197,5 +197,17 @@ void main() {
       );
       expect(manifest.trim(), 'ffconcat version 1.0');
     });
+
+    // r8 — sumConcatManifestSeconds recovers the real span (used for -t). The
+    // repeated final frame carries no duration line, so it is not counted.
+    test('r8: sumConcatManifestSeconds sums the duration lines only', () {
+      final manifest = buildConcatManifest(
+        filenames: const ['frame_000000.png', 'frame_000001.png'],
+        offsetsMs: const [0, 8000],
+        totalDurationMs: 20000,
+      );
+      // 8.000 (0→8000) + 12.000 (8000→20000) = 20.000; the repeat is uncounted.
+      expect(sumConcatManifestSeconds(manifest), closeTo(20.0, 1e-9));
+    });
   });
 }

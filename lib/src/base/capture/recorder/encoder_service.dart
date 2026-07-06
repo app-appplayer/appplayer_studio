@@ -73,8 +73,11 @@ class EncodingProgress {
 /// demuxer** (per-frame durations from `frames.txt`) instead of a flat
 /// `-framerate` image sequence, and the video is resampled to CFR `fps` on
 /// output — so a static scene keeps its real span as a standard constant-fps
-/// MP4 (D3). With no manifest the proven `-framerate … -i pattern` path is
-/// used unchanged.
+/// MP4 (D3). The concat demuxer ignores the LAST frame's `duration` (it holds
+/// that frame for the previous duration), so the stream over-runs; pass
+/// [concatDurationSec] (the real recording span) to trim it back with `-t`.
+/// With no manifest the proven `-framerate … -i pattern` path is used
+/// unchanged.
 String buildEncodeCommand({
   required String pattern,
   required int fps,
@@ -83,6 +86,7 @@ String buildEncodeCommand({
   String pixelFormat = 'yuv420p',
   int? crf,
   String? concatManifest,
+  double? concatDurationSec,
   List<Map<String, dynamic>> audioTracks = const <Map<String, dynamic>>[],
 }) {
   final crfArg = crf == null ? '' : '-crf $crf ';
@@ -93,13 +97,18 @@ String buildEncodeCommand({
       ? '-framerate $fps -i "$pattern"'
       : '-f concat -safe 0 -i "$concatManifest"';
   final vChain = concatManifest == null ? pad : '$pad,fps=$fps';
+  // Pin the output to the real recording span (concat path only) — trims the
+  // final frame's over-hold to the exact duration.
+  final tArg = (concatManifest != null && concatDurationSec != null)
+      ? '-t ${concatDurationSec.toStringAsFixed(3)} '
+      : '';
   final tracks = audioTracks
       .where((t) => (t['path']?.toString() ?? '').isNotEmpty)
       .toList(growable: false);
   if (tracks.isEmpty) {
     // Unchanged simple-filter path — keep the proven behavior.
     return '-y $videoInput -c:v $codec '
-        '-pix_fmt $pixelFormat $crfArg-vf "$vChain" "$out"';
+        '-pix_fmt $pixelFormat $crfArg-vf "$vChain" $tArg"$out"';
   }
   final inputs = StringBuffer('-y $videoInput');
   for (final t in tracks) {
@@ -126,7 +135,7 @@ String buildEncodeCommand({
     audioOut = 'aout';
   }
   return '$inputs -filter_complex "$graph" -map "[v]" -map "[$audioOut]" '
-      '-c:v $codec -pix_fmt $pixelFormat $crfArg-c:a aac -shortest "$out"';
+      '-c:v $codec -pix_fmt $pixelFormat $crfArg-c:a aac -shortest $tArg"$out"';
 }
 
 class EncoderService {
@@ -167,6 +176,18 @@ class EncoderService {
     // fps (D3). Absent (old recordings) → the flat-fps pattern path.
     final manifestFile = File(p.join(rec.outputDir, 'frames.txt'));
     final concatManifest = manifestFile.existsSync() ? manifestFile.path : null;
+    // Pin the encode to the real recording span (sum of the manifest's
+    // durations) so the concat demuxer's last-frame over-hold is trimmed off.
+    // Read from disk so it survives the Recording being rebuilt from the dir.
+    double? concatDurationSec;
+    if (concatManifest != null) {
+      try {
+        final secs = sumConcatManifestSeconds(manifestFile.readAsStringSync());
+        if (secs > 0) concatDurationSec = secs;
+      } catch (_) {
+        /* swallow — fall back to no -t */
+      }
+    }
     // `pad=ceil(iw/2)*2:ceil(ih/2)*2` (inside the builder) ensures even
     // dimensions — libx264 + yuv420p require it. Overwrites output;
     // muxes any `audioTracks` (narration / music) into an AAC stream.
@@ -178,6 +199,7 @@ class EncoderService {
       pixelFormat: pixelFormat,
       crf: crf,
       concatManifest: concatManifest,
+      concatDurationSec: concatDurationSec,
       audioTracks: audioTracks,
     );
     try {

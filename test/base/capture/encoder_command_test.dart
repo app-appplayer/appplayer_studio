@@ -49,26 +49,31 @@ void main() {
   group('buildEncodeCommand — concat manifest (D3 duration preservation)', () {
     const manifest = '/rec/frames.txt';
 
-    test('video only → concat demuxer input + fps resample, no -framerate', () {
+    test('video only → concat demuxer input + fps resample + -t, no -framerate',
+        () {
       final cmd = buildEncodeCommand(
         pattern: pattern,
         fps: 24,
         out: out,
         concatManifest: manifest,
+        concatDurationSec: 20.0,
       );
       expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
       expect(cmd, isNot(contains('-framerate')));
       expect(cmd, isNot(contains('-i "$pattern"')));
       // Resampled to CFR fps on output so the real span plays as a normal MP4.
       expect(cmd, contains('-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=24"'));
+      // Pinned to the real span — trims the concat last-frame over-hold.
+      expect(cmd, contains('-t 20.000'));
     });
 
-    test('with audio → fps resample rides inside the filter_complex graph', () {
+    test('with audio → fps resample + -t ride the filter_complex path', () {
       final cmd = buildEncodeCommand(
         pattern: pattern,
         fps: 30,
         out: out,
         concatManifest: manifest,
+        concatDurationSec: 12.5,
         audioTracks: const <Map<String, dynamic>>[
           <String, dynamic>{'path': '/a/narration.m4a'},
         ],
@@ -77,6 +82,17 @@ void main() {
       expect(cmd, contains('[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30[v]'));
       expect(cmd, isNot(contains('-framerate')));
       expect(cmd, contains('-shortest'));
+      expect(cmd, contains('-t 12.500'));
+    });
+
+    test('-t is omitted without a manifest even if a duration is passed', () {
+      final cmd = buildEncodeCommand(
+        pattern: pattern,
+        fps: 24,
+        out: out,
+        concatDurationSec: 20.0,
+      );
+      expect(cmd, isNot(contains('-t ')));
     });
 
     test('null manifest → unchanged flat-fps pattern path', () {
@@ -84,6 +100,7 @@ void main() {
       expect(cmd, contains('-framerate 24 -i "$pattern"'));
       expect(cmd, isNot(contains('-f concat')));
       expect(cmd, isNot(contains('fps=24')));
+      expect(cmd, isNot(contains('-t ')));
     });
   });
 
