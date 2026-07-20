@@ -102,6 +102,8 @@ class OrgChartPainter extends CustomPainter {
           } else {
             _laneElbow(canvas, a.rect, b.rect);
           }
+        case OrgEdgeKind.sideStub:
+          _sideStub(canvas, a.rect, b.rect);
         case OrgEdgeKind.reports:
           _reportLine(canvas, a.rect, b.rect);
         case OrgEdgeKind.event:
@@ -557,25 +559,47 @@ class OrgChartPainter extends CustomPainter {
     );
   }
 
+  /// Staff (support) side-branch: parent's LEFT edge → bus in the gap → the
+  /// staff unit's RIGHT edge. Draws the direct side-hang distinct from the
+  /// downward drop.
+  void _sideStub(Canvas canvas, Rect parent, Rect staff) {
+    // Staff (support) unit — same top-down drop as a line child, but drawn in
+    // the muted support color to keep the staff/line distinction. The staff
+    // tier sits directly below the parent, so this is a short clean elbow.
+    _drop(
+      canvas,
+      parent,
+      staff,
+      OpsColors.text2.withValues(alpha: 0.7),
+    );
+  }
+
   void _elbow(Canvas canvas, Rect parent, Rect child) {
-    // Classic org-chart drop: parent bottom-center → half-gap bus →
-    // child top-center.
+    // Classic org-chart drop: parent bottom-center → bus → child top-center.
+    _drop(canvas, parent, child, OpsColors.domain.withValues(alpha: 0.7));
+  }
+
+  /// Orthogonal parent→child drop. The horizontal bus sits half a tree-gap
+  /// ABOVE the child's row (not at the parent/child midpoint) so that when a
+  /// unit has both a staff tier and a line tier, the line drop's bus clears
+  /// the staff band above it. For a single tier the two are identical.
+  void _drop(Canvas canvas, Rect parent, Rect child, Color color) {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = OpsColors.domain.withValues(alpha: 0.7);
-    final midY = (parent.bottom + child.top) / 2;
+      ..color = color;
+    final busY = child.top - OrgChartMetrics.treeGapY / 2;
     canvas.drawPath(
       Path()
         ..moveTo(parent.center.dx, parent.bottom)
-        ..lineTo(parent.center.dx, midY)
-        ..lineTo(child.center.dx, midY)
+        ..lineTo(parent.center.dx, busY)
+        ..lineTo(child.center.dx, busY)
         ..lineTo(child.center.dx, child.top),
       paint,
     );
   }
 
-  /// Reporting line — lead (팀장) down to a team member, drawn as an elbow
+  /// Reporting line — lead (unit head) down to a team member, drawn as an elbow
   /// (down from the lead's bottom, across, down into the member's top).
   void _reportLine(Canvas canvas, Rect lead, Rect member) {
     final paint = Paint()

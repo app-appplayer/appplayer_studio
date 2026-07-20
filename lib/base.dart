@@ -58,6 +58,9 @@ export 'src/base/builder/schema_validator.dart';
 // ── Builder library (P5) — per-project instance working set ──
 export 'src/base/builder/builder_library_service.dart';
 export 'src/base/builder/builder_library_tools.dart';
+export 'src/base/bridge/discovery_tools.dart';
+export 'src/base/bridge/discovery_trust.dart';
+export 'src/base/bridge/discovery_trust_anchor.dart';
 export 'src/base/bridge/extension_connect_tool.dart';
 export 'src/base/install/bundle_activation.dart';
 export 'src/base/session/session.dart';
@@ -90,6 +93,8 @@ export 'src/base/install/atoms/workspace_atom.dart';
 export 'src/base/runtime/tool_widgets.dart' show registerToolWidgets;
 export 'src/base/runtime/vbu_widgets.dart'
     show registerVbuWidgets, resolveIconName;
+export 'src/base/runtime/stream_sources.dart'
+    show registerStudioStreamSources, studioBleScanHub;
 export 'src/base/install/host_bundle_activation.dart';
 // js_host_bridge.dart removed — superseded by `js_tool_isolate.dart`
 // which runs the bridge inside its own isolate so flutter_js 0.8.7
@@ -232,3 +237,7 @@ export 'src/base/widgets/editors/bundle_knowledge_view.dart';
 export 'src/base/widgets/editors/bundle_manifest_view.dart';
 export 'src/base/widgets/editors/bundle_tools_view.dart';
 export 'src/base/widgets/editors/wiring_settings_list.dart';
+
+// Connected-server (service) render + connection helpers — host-neutral, used
+// by both the marketplace embed (pro) and the local-server feature (base).
+export 'src/base/servers/served_service.dart';

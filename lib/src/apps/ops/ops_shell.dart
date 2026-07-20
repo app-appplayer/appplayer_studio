@@ -291,7 +291,7 @@ class _OpsShellState extends State<OpsShell> {
   Future<void> _restoreLastProject() async {
     if (!mounted || _currentProject != null) return;
     if (isOpsProjectDir(widget.bundlePath)) {
-      _bindProject(widget.bundlePath);
+      unawaited(_bindProject(widget.bundlePath));
       return;
     }
     try {
@@ -313,7 +313,7 @@ class _OpsShellState extends State<OpsShell> {
           last.isNotEmpty &&
           isOpsProjectDir(last)) {
         OpsLog.info('restore', 'reopening last project $last');
-        _bindProject(last);
+        unawaited(_bindProject(last));
       }
     } catch (e) {
       OpsLog.warn('restore', 'failed: $e');
@@ -504,6 +504,26 @@ class _OpsShellState extends State<OpsShell> {
     // ignore: unawaited_futures
     _memberChangesSub?.cancel();
     _releaseSlotsIfMine();
+    // Tab CLOSE = full backend shutdown (design contract
+    // knowledge-operations.md §11.3: "tab close = unregisterAll +
+    // registry.remove"). This State disposes ONLY on tab removal — the
+    // host renders tab bodies in a keyed IndexedStack, so a tab SWITCH
+    // keeps the mount alive and the backend keeps running in the
+    // background (§11.3 "background active = all"). resetBootCache
+    // disposes the live KnowledgeInit → every workspace
+    // BundleActivation.unregisterAll. Guard on this tab owning the live
+    // boot so closing a stale Ops tab (its project isn't the booted one,
+    // or the project was already closed via the header button) never
+    // tears down another tab's — or an already-disposed — backend.
+    final teardown = OpsBuiltInApp.shouldTeardownOnClose(_currentProject);
+    OpsLog.info(
+      'lifecycle',
+      'ops tab dispose: currentProject=$_currentProject '
+          'bootedProject=${OpsBuiltInApp.bootedProject} teardown=$teardown',
+    );
+    if (teardown) {
+      OpsBuiltInApp.resetBootCache();
+    }
     super.dispose();
   }
 
@@ -610,12 +630,24 @@ class _OpsShellState extends State<OpsShell> {
     // current on-disk manifest.
     OpsBuiltInApp.resetBootCache();
     _publishLifecycleState();
+    // Drop the scoped coordinator override + roster: the project is gone, so a
+    // late coordinator wake must NOT still resolve `chatManagerOverride` to this
+    // closed project's `ops.manager.<project>` (which would route the report to
+    // the now-bare welcome-state chat key). `_releaseSlotsIfMine` does this on
+    // tab deactivate; project close (staying on the same tab) needs it too.
+    if (_scopedManagerId != null &&
+        widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
+      widget.chromeBridge.chatManagerOverride.value = null;
+    }
+    _scopedManagerId = null;
+    widget.chromeBridge.chatAgentRoster.value =
+        const <({String id, String displayName, String? modelId})>[];
     // Return the host tab + chat to the no-project (tab-level) state.
     widget.chromeBridge.setActiveTabProject?.call(null);
     return <String, dynamic>{'ok': true, 'closed': true};
   }
 
-  Map<String, dynamic> _bindProject(String dir) {
+  Future<Map<String, dynamic>> _bindProject(String dir) async {
     // ensureBoot runs unconditionally — even when the shell widget is
     // currently unmounted between the MCP `project/new` request and
     // this closure firing — so downstream MCP tools resolving through
@@ -682,6 +714,21 @@ class _OpsShellState extends State<OpsShell> {
       });
       _applyOpsScopedManager();
     });
+    // Await the boot before returning "ok". `ensureBoot` publishes the
+    // project-bound `_liveInit` only when `_doBoot` COMPLETES; returning
+    // early (the old sync bind) let an immediately-following ops tool
+    // (`workspace_create`, `member_*`, `task_run`, …) resolve the STALE
+    // `_liveInit` and bind to the PREVIOUS project — a race reproduced live:
+    // `project.info` (tab currentProject) flipped instantly while the
+    // workspace registry lagged one bind behind. Blocking here makes
+    // `studio.project.new` / `studio.project.open` return only once the new
+    // project is actually the bound one.
+    try {
+      await future;
+    } catch (_) {
+      /* boot failure surfaces through the tools that resolve `_liveInit`;
+         the bind still returns ok so the tab reflects the attempted open */
+    }
     return <String, dynamic>{
       'ok': true,
       'projectPath': dir,

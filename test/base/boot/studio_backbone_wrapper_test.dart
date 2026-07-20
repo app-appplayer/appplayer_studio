@@ -14,7 +14,6 @@ library;
 import 'dart:io';
 
 import 'package:brain_kernel/brain_kernel.dart' as fb;
-import 'package:brain_kernel/mcp_host.dart' show McpClientKernelHost;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/base.dart' show StudioBackbone;
 
@@ -34,7 +33,6 @@ void main() {
       toolId: 'vibe_studio_test',
       configRoot: tmpDir.path,
       app: app,
-      clientHost: McpClientKernelHost(),
       agentHost: null,
       growth: null,
       seedLoader: null,

@@ -62,6 +62,26 @@ String _interpolate(String template, Map<String, Object?> state) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Inline clone of `_chatKeyForTab` (private) — the single key derivation the
+// send / append / debug-chat paths must all agree on. `studio.debug.chat`
+// once read `t.path` alone (project-less), landing on the empty base
+// controller while the live conversation lived under the `::project` key —
+// konpi's "another empty surface". This locks the derivation so the debug
+// surface and the real chat can't diverge again.
+// ---------------------------------------------------------------------------
+
+String _chatKeyForTab({
+  required bool isHome,
+  String? path,
+  String? currentProject,
+}) {
+  if (isHome) return 'home';
+  final pkg = path ?? 'home';
+  final cp = currentProject;
+  return (cp != null && cp.isNotEmpty) ? '$pkg::$cp' : pkg;
+}
+
 void main() {
   // -------------------------------------------------------------------------
   // readFriendlyLabel
@@ -176,6 +196,176 @@ void main() {
     test('ip — null value → empty', () {
       final result = _interpolate('{{key}}', {'key': null});
       expect(result, '');
+    });
+  });
+
+  group('_chatKeyForTab', () {
+    test('ck1 home tab → "home"', () {
+      expect(_chatKeyForTab(isHome: true, path: null), 'home');
+    });
+
+    test('ck2 package, no open project → package path', () {
+      expect(
+        _chatKeyForTab(isHome: false, path: '/pkg/ops', currentProject: null),
+        '/pkg/ops',
+      );
+    });
+
+    test('ck3 package + open project → "<pkg>::<project>" (the debug-chat '
+        'regression: a project-less key read the empty base controller)', () {
+      expect(
+        _chatKeyForTab(
+          isHome: false,
+          path: '/pkg/ops',
+          currentProject: '/tmp/proj/x',
+        ),
+        '/pkg/ops::/tmp/proj/x',
+      );
+    });
+
+    test('ck4 empty project string → package path (no dangling "::")', () {
+      expect(
+        _chatKeyForTab(isHome: false, path: '/pkg/ops', currentProject: ''),
+        '/pkg/ops',
+      );
+    });
+
+    test('ck5 null path (non-home) falls back to "home" base', () {
+      expect(_chatKeyForTab(isHome: false, path: null), 'home');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // `_chatKeyForCoordinator` (inline clone) — routes a coordinator auto-report
+  // (async wake via `deliverAgentChatTurn`) to the chat surface that owns the
+  // coordinator. Two match paths:
+  //   1. base-manager: the coordinator IS a tab's own manager (welcome-state
+  //      `ops.manager`, Home/App Builder base) → its key is always legitimate,
+  //      bare `<pkg>` (welcome conversation) or `<pkg>::<project>`.
+  //   2. scoped-override: a per-project coordinator (`ops.manager.<project>`)
+  //      the active tab routes to. This can go STALE after project close — the
+  //      override still names the closed project but the tab is now unbound, so
+  //      `_chatKeyForTab` yields a bare key. Delivering there leaks a closed
+  //      project's report onto the welcome-state chat (resurfaces as leftover
+  //      content next unbound open), so a bare scoped resolution is dropped.
+  // -------------------------------------------------------------------------
+
+  String? chatKeyForCoordinator({
+    required String agentId,
+    required List<({String chatAgentId, bool isHome, String? path, String? cp})>
+    tabs,
+    required int active,
+    required String? managerOverride,
+    required String activeChatAgentId,
+  }) {
+    if (agentId.isEmpty) return null;
+    String keyOf(({String chatAgentId, bool isHome, String? path, String? cp}) t) =>
+        _chatKeyForTab(isHome: t.isHome, path: t.path, currentProject: t.cp);
+    // 1. base-manager match — always legitimate, key as-is.
+    for (final t in tabs) {
+      if (t.chatAgentId == agentId) return keyOf(t);
+    }
+    // 2. scoped-override match — only while the active tab still holds a project.
+    if (agentId == managerOverride || agentId == activeChatAgentId) {
+      if (active >= 0 && active < tabs.length) {
+        final key = keyOf(tabs[active]);
+        if (key.contains('::')) return key;
+      }
+    }
+    return null;
+  }
+
+  group('_chatKeyForCoordinator', () {
+    const opsBase = 'ops.manager';
+    const opsScoped = 'ops.manager./ops/projA';
+    final unboundOps = (
+      chatAgentId: opsBase,
+      isHome: false,
+      path: '/pkg/ops',
+      cp: null,
+    );
+    final boundOps = (
+      chatAgentId: opsBase,
+      isHome: false,
+      path: '/pkg/ops',
+      cp: '/ops/projA',
+    );
+
+    test('cc1 base manager on unbound tab → its bare welcome key (legitimate)', () {
+      expect(
+        chatKeyForCoordinator(
+          agentId: opsBase,
+          tabs: <({String chatAgentId, bool isHome, String? path, String? cp})>[
+            unboundOps,
+          ],
+          active: 0,
+          managerOverride: null,
+          activeChatAgentId: opsBase,
+        ),
+        '/pkg/ops',
+      );
+    });
+
+    test('cc2 scoped coordinator, tab still bound → "<pkg>::<project>"', () {
+      expect(
+        chatKeyForCoordinator(
+          agentId: opsScoped,
+          tabs: <({String chatAgentId, bool isHome, String? path, String? cp})>[
+            boundOps,
+          ],
+          active: 0,
+          managerOverride: opsScoped,
+          activeChatAgentId: opsScoped,
+        ),
+        '/pkg/ops::/ops/projA',
+      );
+    });
+
+    test('cc3 STALE scoped coordinator after close (override set, tab unbound) '
+        '→ null (no leak onto welcome bare key)', () {
+      expect(
+        chatKeyForCoordinator(
+          agentId: opsScoped,
+          tabs: <({String chatAgentId, bool isHome, String? path, String? cp})>[
+            unboundOps,
+          ],
+          active: 0,
+          // override went stale — still names the closed project.
+          managerOverride: opsScoped,
+          activeChatAgentId: opsScoped,
+        ),
+        isNull,
+      );
+    });
+
+    test('cc4 unknown coordinator matches nothing → null', () {
+      expect(
+        chatKeyForCoordinator(
+          agentId: 'scene.manager./x',
+          tabs: <({String chatAgentId, bool isHome, String? path, String? cp})>[
+            boundOps,
+          ],
+          active: 0,
+          managerOverride: opsScoped,
+          activeChatAgentId: opsScoped,
+        ),
+        isNull,
+      );
+    });
+
+    test('cc5 empty agentId → null', () {
+      expect(
+        chatKeyForCoordinator(
+          agentId: '',
+          tabs: <({String chatAgentId, bool isHome, String? path, String? cp})>[
+            boundOps,
+          ],
+          active: 0,
+          managerOverride: opsScoped,
+          activeChatAgentId: opsScoped,
+        ),
+        isNull,
+      );
     });
   });
 }

@@ -17,6 +17,7 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../agent/agent_host.dart';
+import '../install/bundle_history.dart';
 import '../settings/vibe_settings.dart';
 import 'bundle_install_surface.dart';
 import 'chrome_bridge.dart';
@@ -600,6 +601,49 @@ void registerDebugTools(
     },
   );
   boot.addTool(
+    name: 'studio.debug.activation_hub',
+    description:
+        'Process-singleton `BundleActivationRegistry` contents — the '
+        'canonical backend-lifecycle hub (knowledge-operations.md '
+        '§11.3). `{count, bundles:[{bundleId, skills, profiles, '
+        'philosophies, facts, flows, agents, behaviors}]}`. Unlike '
+        '`studio.debug.activation` (active tab only) this lists EVERY '
+        'registered activation regardless of tab — bundle apps, host '
+        'seed, and host-level builtins that boot their own backend (Ops '
+        'org bundles). Use to confirm a tab CLOSE removed a backend from '
+        "the hub (bundleIds shrink) and a tab SWITCH didn't (unchanged).",
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{},
+    },
+    handler: (args) async {
+      final reg = mk.BundleActivationRegistry.instance;
+      final bundles = <Map<String, dynamic>>[
+        for (final a in reg.all)
+          <String, dynamic>{
+            'bundleId': a.bundleId,
+            'skills': a.registeredSkills.length,
+            'profiles': a.registeredProfiles.length,
+            'philosophies': a.registeredPhilosophies.length,
+            'facts': a.registeredFacts.length,
+            'flows': a.registeredFlows.length,
+            'agents': a.registeredAgents.length,
+            'behaviors': a.registeredBehaviors.length,
+          },
+      ];
+      return mk.KernelToolResult(
+        content: <mk.KernelContent>[
+          mk.KernelTextContent(
+            text: jsonEncode(<String, dynamic>{
+              'count': bundles.length,
+              'bundles': bundles,
+            }),
+          ),
+        ],
+      );
+    },
+  );
+  boot.addTool(
     name: 'studio.debug.runtimes',
     description:
         "Per-tab runtime state for EVERY non-home tab — `[{index, "
@@ -1001,7 +1045,8 @@ void registerDebugTools(
   boot.addTool(
     name: 'studio.debug.history.restore',
     description:
-        "Restore a `<mbdPath>/.history/<id>/` snapshot onto live "
+        "Restore a bundle-history snapshot (sibling `.history-<mbd>/` "
+        "root; legacy in-bundle snapshots still restorable) onto live "
         'files. Captures a fresh "preRestore" snapshot of the current '
         'state first (so the restore itself is undoable), then copies '
         'every file from the snapshot directory back into the bundle. '
@@ -1029,7 +1074,12 @@ void registerDebugTools(
           ],
         );
       }
-      final snapDir = Directory(p.join(mbd, '.history', id));
+      // Snapshots live in the SIBLING history root (bundle_history.dart);
+      // fall back to the legacy in-bundle location for old snapshots.
+      var snapDir = Directory(p.join(bundleHistoryRootFor(mbd), id));
+      if (!await snapDir.exists()) {
+        snapDir = Directory(p.join(legacyBundleHistoryRootFor(mbd), id));
+      }
       if (!await snapDir.exists()) {
         return mk.KernelToolResult(
           content: <mk.KernelContent>[
@@ -1050,7 +1100,9 @@ void registerDebugTools(
               .replaceAll(':', '-')
               .split('.')
               .first;
-      final preDir = Directory(p.join(mbd, '.history', '$ts-preRestore'));
+      final preDir = Directory(
+        p.join(bundleHistoryRootFor(mbd), '$ts-preRestore'),
+      );
       await preDir.create(recursive: true);
       final restoredFiles = <String>[];
       await for (final f in snapDir.list(recursive: true)) {
@@ -1094,7 +1146,8 @@ void registerDebugTools(
   boot.addTool(
     name: 'studio.debug.history.list',
     description:
-        "List the `<mbdPath>/.history/` snapshots accumulated by the "
+        "List the bundle-history snapshots (sibling `.history-<mbd>/` "
+        "root + legacy in-bundle) accumulated by the "
         '`studio.builder.*` mutators. Returns one entry per snapshot: '
         '`{id, ts, label, files}`. The `id` is the directory name and '
         'is what `studio.debug.history.diff` takes. Most recent last.',
@@ -1122,7 +1175,18 @@ void registerDebugTools(
           ],
         );
       }
-      final dir = Directory(p.join(mbd, '.history'));
+      final roots = <Directory>[
+        Directory(bundleHistoryRootFor(mbd)),
+        Directory(legacyBundleHistoryRootFor(mbd)), // pre-move snapshots
+      ];
+      final dir = roots.firstWhere(
+        (d) => d.existsSync(),
+        orElse: () => roots.first,
+      );
+      final extraLegacy =
+          !identical(dir.path, roots[1].path) && roots[1].existsSync()
+              ? roots[1]
+              : null;
       if (!await dir.exists()) {
         return mk.KernelToolResult(
           content: <mk.KernelContent>[
@@ -1136,7 +1200,12 @@ void registerDebugTools(
         );
       }
       final entries = <Map<String, dynamic>>[];
-      await for (final entity in dir.list()) {
+      final scanRoots = <Directory>[
+        dir,
+        if (extraLegacy != null) extraLegacy,
+      ];
+      for (final root in scanRoots) {
+      await for (final entity in root.list()) {
         if (entity is! Directory) continue;
         final id = p.basename(entity.path);
         // Snapshot id format: `<UTC-ISO no millis>-<label>`. Split on
@@ -1157,6 +1226,7 @@ void registerDebugTools(
           'files': files,
         });
       }
+      }
       entries.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
       return mk.KernelToolResult(
         content: <mk.KernelContent>[
@@ -1173,7 +1243,7 @@ void registerDebugTools(
   boot.addTool(
     name: 'studio.debug.history.diff',
     description:
-        'Show the diff between a snapshot in `<mbdPath>/.history/<id>/` '
+        'Show the diff between a bundle-history snapshot '
         'and the current bundle files. Returns per-file `{path, '
         'before, after, identical}` — `before` is the snapshot content, '
         '`after` is what is on disk now. Use to verify that a mutator '
@@ -1207,7 +1277,10 @@ void registerDebugTools(
           ],
         );
       }
-      final snapDir = Directory(p.join(mbd, '.history', id));
+      var snapDir = Directory(p.join(bundleHistoryRootFor(mbd), id));
+      if (!snapDir.existsSync()) {
+        snapDir = Directory(p.join(legacyBundleHistoryRootFor(mbd), id));
+      }
       if (!await snapDir.exists()) {
         return mk.KernelToolResult(
           content: <mk.KernelContent>[

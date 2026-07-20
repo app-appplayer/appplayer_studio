@@ -1,4 +1,4 @@
-/// Document REGISTRY (문서대장) — the finding/browsing surface for issued
+/// Document REGISTRY — the finding/browsing surface for issued
 /// documents at organisational scale. Not a longer list: a ledger.
 ///
 /// Left: FACETS derived entirely from existing records (year/month from

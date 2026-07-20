@@ -7,7 +7,7 @@
 /// public surface via the canonical import.
 ///
 /// Scenario set:
-///   vs1   defaults: mcpTransport='http', autosaveDelaySec=5, themeMode='system'
+///   vs1   defaults: mcpTransport='http', autosaveDelaySec=5, themeMode='dark'
 ///   vs2   bumpRecent() moves path to head, dedupes, caps at limit
 ///   vs3   bumpRecent() ignores empty string
 ///   vs4   bumpRecent() updates lastProjectPath
@@ -55,7 +55,7 @@ void main() {
     final s = VibeSettings();
     expect(s.mcpTransport, 'http');
     expect(s.autosaveDelaySec, 5);
-    expect(s.themeMode, 'system');
+    expect(s.themeMode, 'dark');
     expect(s.debugMode, isFalse);
     expect(s.recentProjects, isEmpty);
     expect(s.recentSearches, isEmpty);
@@ -219,13 +219,19 @@ void main() {
     final s = VibeSettings.fromJson(const <String, dynamic>{});
     expect(s.mcpTransport, 'http');
     expect(s.autosaveDelaySec, 5);
-    expect(s.themeMode, 'system');
+    expect(s.themeMode, 'dark');
     expect(s.debugMode, isFalse);
     expect(s.recentProjects, isEmpty);
 
-    // Invalid themeMode falls back to 'system'.
+    // Invalid themeMode falls back to 'dark' (the studio default theme).
     final s2 = VibeSettings.fromJson(<String, dynamic>{'themeMode': 'purple'});
-    expect(s2.themeMode, 'system');
+    expect(s2.themeMode, 'dark');
+    // Explicit 'system' is preserved — not collapsed into the 'dark' default.
+    final s3 = VibeSettings.fromJson(<String, dynamic>{'themeMode': 'system'});
+    expect(s3.themeMode, 'system');
+    // Explicit 'light' is likewise preserved.
+    final s4 = VibeSettings.fromJson(<String, dynamic>{'themeMode': 'light'});
+    expect(s4.themeMode, 'light');
   });
 
   // ── vs11: fromJson normalises bare mcpServerUrl ───────────────────────────
@@ -289,7 +295,7 @@ void main() {
       await File(path).writeAsString('this is { not JSON');
       final s = await VibeSettings.load(path);
       expect(s.mcpTransport, 'http');
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
     },
   );
 

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/types.dart';
 import 'pattern_enforcer.dart';
+import 'template_ecosystem_versions.dart';
 
 /// Converts the canonical bundle into one of the three Dart-target shapes:
 /// `.mcpb` archive, MDB-serving Dart MCP server, or native Dart MCP server.
@@ -398,12 +399,11 @@ class DartConverterImpl implements DartConverter {
     return result;
   }
 
-  /// Pinned hosted pub versions of the runtime deps the generated
-  /// server needs. Bumping these is the single source of truth for
-  /// shipped artifacts — keep aligned with what `server.dart`
-  /// imports.
-  static const String _mcpServerVersion = '^2.0.0';
-  static const String _mcpBundleVersion = '^0.3.0';
+  /// Hosted pub versions of the runtime deps the generated server needs.
+  /// Sourced from the seed (`template_ecosystem_versions.dart`) so they stay
+  /// in sync with the studio's own pubspec on version-up.
+  static const String _mcpServerVersion = kTemplateMcpServer;
+  static const String _mcpBundleVersion = kTemplateMcpBundle;
 
   /// Pubspec for the headless Dart variants (`bundle` / `inline`).
   /// Layout follows the standard Dart CLI shape: `bin/server.dart`
@@ -1312,7 +1312,8 @@ Future<Map<String, dynamic>> loadUi() async => createApplication();
   // when the user wants a different host / port / endpoint or a
   // different transport.
 
-  static const String _flutterMcpUiRuntimeVersion = '^0.4.1';
+  static const String _flutterMcpUiRuntimeVersion =
+      kTemplateFlutterMcpUiRuntime;
 
   static String _flutterAppPubspec({
     required String slug,
@@ -1728,13 +1729,19 @@ class _NativeAppState extends State<NativeApp> {
     }
     final theme = _ui?['theme'];
     final mode = theme is Map ? theme['mode'] : null;
-    final brightness =
-        mode == 'dark' ? Brightness.dark : Brightness.light;
+    // Explicit light/dark honor the bundle; anything else follows the OS.
+    final themeMode = mode == 'dark'
+        ? ThemeMode.dark
+        : mode == 'light'
+            ? ThemeMode.light
+            : ThemeMode.system;
     final title =
         _ui?['title'] is String ? _ui!['title'] as String : 'App';
     return MaterialApp(
       title: title,
-      theme: ThemeData(brightness: brightness, useMaterial3: true),
+      themeMode: themeMode,
+      theme: ThemeData(brightness: Brightness.light, useMaterial3: true),
+      darkTheme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
       home: Scaffold(
         body: SafeArea(child: body),
         bottomNavigationBar: _ServerStatusBar(

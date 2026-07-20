@@ -382,7 +382,11 @@ class _ChatPanelState extends State<ChatPanel> {
                       widget.onAgentSwitch ??
                       (id) => widget.controller.selectedAgentId = id,
                 ),
-                _HealthBar(snapshot: widget.health),
+                // Bundle-edit health (lint/build grade) — only meaningful once
+                // there IS a snapshot. Domains without build health (Ops) never
+                // populate it, so a permanent "Health · —" pill read as broken
+                // (audit P3.9). Show progressively: hidden until data arrives.
+                if (widget.health != null) _HealthBar(snapshot: widget.health),
                 _QuickFixBar(
                   snapshot: widget.health,
                   onAction: widget.onQuickFix,
@@ -1450,7 +1454,16 @@ class _SystemNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = VibeTokens.colorOf(context);
     final isError = turn.role == 'error';
+    // A coloured LEADING accent carries the meaning (error = red, an
+    // out-of-band SYSTEM notice such as an auto-report / relay = muted grey —
+    // mint is reserved for normal / primary content, a system note is
+    // secondary), so the body no longer has to signal "system" by dimming +
+    // centring + italicising itself. Long completion reports were unreadable
+    // that way; keep the body LEFT-aligned at a readable contrast
+    // (textSecondary, upright) and let the accent bar + subtle tint set it apart.
+    final accent = isError ? VibeTokens.status.error : c.textTertiary;
     return _CopyOnHover(
       text: turn.text,
       onDelete: onDelete,
@@ -1461,28 +1474,43 @@ class _SystemNote extends StatelessWidget {
           24,
           VibeTokens.space1,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            if (isError) ...<Widget>[
-              Icon(
-                Icons.error_outline,
-                size: 12,
-                color: VibeTokens.status.error,
-              ),
-              const SizedBox(width: 4),
-            ],
-            Flexible(
-              child: SelectableText(
-                turn.text,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: VibeTokens.colorOf(context).textTertiary,
-                ),
-              ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: c.surface2,
+            border: Border(left: BorderSide(color: accent, width: 3)),
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(6),
+              bottomRight: Radius.circular(6),
             ),
-          ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (isError) ...<Widget>[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1, right: 6),
+                    child: Icon(
+                      Icons.error_outline,
+                      size: 13,
+                      color: accent,
+                    ),
+                  ),
+                ],
+                Expanded(
+                  child: SelectableText(
+                    turn.text,
+                    textAlign: TextAlign.left,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isError ? c.textPrimary : c.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

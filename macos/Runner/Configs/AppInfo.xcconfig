@@ -7,8 +7,14 @@
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = AppPlayer Studio
 
-// The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.makemind.vibeStudio
+// The application's bundle identifier.
+// DEBUG TREE ONLY — distinct from the release tree's `com.makemind.vibeStudio`
+// so the two instances never share macOS-level identity (Preferences plist,
+// LaunchServices registration, TCC privacy grants). The app never reads this
+// value at runtime; app state lives under `~/.config/<toolId>/`. Keep this
+// suffix here; the release tree must stay `com.makemind.vibeStudio`.
+// See docs/06_OPS/DEBUG-RELEASE-TOPOLOGY.md.
+PRODUCT_BUNDLE_IDENTIFIER = com.makemind.vibeStudio.debug
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.makemind. All rights reserved.

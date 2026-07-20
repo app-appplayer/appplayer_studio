@@ -128,6 +128,18 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   late Map<String, TextEditingController> _llmKeysByProvider;
   late String _themeMode;
   late bool _debugMode;
+  late bool _discoveryUsb;
+  late bool _discoveryMdns;
+  late bool _discoveryBle;
+  late bool _discoveryDirectory;
+  late bool _discoveryAutoConnect;
+  late bool _discoveryEnforceSignature;
+  late bool _dirSsl;
+  late final TextEditingController _dirHost;
+  late final TextEditingController _dirPort;
+  late final TextEditingController _dirBaseDN;
+  late final TextEditingController _dirBindDN;
+  late final TextEditingController _dirPassword;
   bool _showKey = false;
   late _SettingsTab _tab;
   // Inner tab inside the API providers section — picks one of the 3
@@ -156,6 +168,23 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     _autosaveDelaySec = widget.initial.autosaveDelaySec;
     _themeMode = widget.initial.themeMode;
     _debugMode = widget.initial.debugMode;
+    _discoveryUsb = widget.initial.discoveryUsb;
+    _discoveryMdns = widget.initial.discoveryMdns;
+    _discoveryBle = widget.initial.discoveryBle;
+    _discoveryDirectory = widget.initial.discoveryDirectory;
+    _discoveryAutoConnect = widget.initial.discoveryAutoConnect;
+    _discoveryEnforceSignature = widget.initial.discoveryEnforceSignature;
+    final dir = widget.initial.discoveryDirectoryConfig ?? const {};
+    _dirSsl = dir['ssl'] == true;
+    _dirHost = TextEditingController(text: (dir['host'] as String?) ?? '');
+    _dirPort = TextEditingController(
+      text: dir['port'] == null ? '' : '${dir['port']}',
+    );
+    _dirBaseDN = TextEditingController(text: (dir['baseDN'] as String?) ?? '');
+    _dirBindDN = TextEditingController(text: (dir['bindDN'] as String?) ?? '');
+    _dirPassword = TextEditingController(
+      text: (dir['password'] as String?) ?? '',
+    );
     // One controller per distinct provider that appears in the model
     // catalog. Pre-fill from settings.llmProviders; legacy `llmApiKey`
     // is offered to whichever provider has no entry yet (best-effort
@@ -186,6 +215,11 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     _mcpUrl.dispose();
     _llmKey.dispose();
     _llmEndpoint.dispose();
+    _dirHost.dispose();
+    _dirPort.dispose();
+    _dirBaseDN.dispose();
+    _dirBindDN.dispose();
+    _dirPassword.dispose();
     for (final c in _llmKeysByProvider.values) {
       c.dispose();
     }
@@ -216,24 +250,55 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     final legacyKey =
         providersMap[active.provider] ??
         (_llmKey.text.trim().isEmpty ? null : _llmKey.text.trim());
-    Navigator.of(context).pop(
-      VibeSettings(
-        workspaceDir:
-            _workspaceDir == null || _workspaceDir!.isEmpty
-                ? null
-                : _workspaceDir,
-        mcpServerUrl: _mcpUrl.text.trim().isEmpty ? null : _mcpUrl.text.trim(),
-        mcpTransport: _mcpTransport,
-        llmApiKey: legacyKey,
-        llmModel: _llmModel,
-        llmEndpoint:
-            _llmEndpoint.text.trim().isEmpty ? null : _llmEndpoint.text.trim(),
-        llmProviders: providersMap,
-        autosaveDelaySec: _autosaveDelaySec,
-        themeMode: _themeMode,
-        debugMode: _debugMode,
-      ),
-    );
+    // Start from a full copy of the CURRENT settings and overwrite only the
+    // fields this dialog manages. Building a fresh VibeSettings here would
+    // silently wipe every non-dialog key on Save (recents, last project,
+    // chromiumPath/serverShellPath, browser*, discovery config, ...) —
+    // settings.json is one file, so the result must round-trip the rest.
+    final updated = VibeSettings.fromJson(widget.initial.toJson())
+      ..workspaceDir =
+          (_workspaceDir == null || _workspaceDir!.isEmpty)
+              ? null
+              : _workspaceDir
+      ..mcpServerUrl = _mcpUrl.text.trim().isEmpty ? null : _mcpUrl.text.trim()
+      ..mcpTransport = _mcpTransport
+      ..llmApiKey = legacyKey
+      ..llmModel = _llmModel
+      ..llmEndpoint =
+          _llmEndpoint.text.trim().isEmpty ? null : _llmEndpoint.text.trim()
+      ..autosaveDelaySec = _autosaveDelaySec
+      ..themeMode = _themeMode
+      ..debugMode = _debugMode
+      ..discoveryUsb = _discoveryUsb
+      ..discoveryMdns = _discoveryMdns
+      ..discoveryBle = _discoveryBle
+      ..discoveryDirectory = _discoveryDirectory
+      ..discoveryAutoConnect = _discoveryAutoConnect
+      ..discoveryEnforceSignature = _discoveryEnforceSignature
+      ..discoveryDirectoryConfig = _directoryConfigJson();
+    updated.llmProviders
+      ..clear()
+      ..addAll(providersMap);
+    Navigator.of(context).pop(updated);
+  }
+
+  /// Compose the directory-source config from the dialog fields; null when
+  /// the required fields (host, baseDN) are blank — the source stays idle.
+  Map<String, dynamic>? _directoryConfigJson() {
+    final host = _dirHost.text.trim();
+    final baseDN = _dirBaseDN.text.trim();
+    if (host.isEmpty || baseDN.isEmpty) return null;
+    final port = int.tryParse(_dirPort.text.trim());
+    final bindDN = _dirBindDN.text.trim();
+    final password = _dirPassword.text.trim();
+    return <String, dynamic>{
+      'host': host,
+      if (port != null) 'port': port,
+      'ssl': _dirSsl,
+      if (bindDN.isNotEmpty) 'bindDN': bindDN,
+      if (password.isNotEmpty) 'password': password,
+      'baseDN': baseDN,
+    };
   }
 
   @override
@@ -325,6 +390,41 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     );
   }
 
+  /// Compact switch sized for the settings idiom — the default Material 3
+  /// switch reserves a 48px tap target and a large thumb, which dominates
+  /// these dense rows. `shrinkWrap` drops the padding; the scale trims the
+  /// control itself so it reads as a settings toggle, not a hero control.
+  Widget _compactSwitch(bool value, ValueChanged<bool>? onChanged) {
+    return Transform.scale(
+      scale: 0.72,
+      child: Switch(
+        value: value,
+        onChanged: onChanged,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+
+  /// Compact label + switch row (settings-section idiom).
+  Widget _toggleRow(String label, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: VibeTokens.fontSans,
+              fontSize: 12,
+              color: VibeTokens.colorOf(context).textPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(width: VibeTokens.space2),
+        _compactSwitch(value, onChanged),
+      ],
+    );
+  }
+
   Widget _buildStudioBody(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     return Column(
@@ -368,9 +468,9 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   ),
                 ),
                 const SizedBox(width: VibeTokens.space2),
-                Switch(
-                  value: _debugMode,
-                  onChanged: (v) => setState(() => _debugMode = v),
+                _compactSwitch(
+                  _debugMode,
+                  (v) => setState(() => _debugMode = v),
                 ),
               ],
             ),
@@ -429,6 +529,79 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               },
               onChanged: (v) => setState(() => _autosaveDelaySec = v),
             ),
+          ],
+        ),
+        const SizedBox(height: VibeTokens.space3),
+        // Auto discovery — nearby MCP boards. Every toggle is backed by a
+        // real scanner (usb serial probe · mDNS · BLE UUID scan · LDAP
+        // labeledURI); sources default OFF and the sweep runs only when at
+        // least one is on. BLE note: first scan triggers the OS Bluetooth
+        // permission prompt.
+        VbuFormSection(
+          label: 'Auto discovery',
+          children: <Widget>[
+            _toggleRow(
+              'USB (serial)',
+              _discoveryUsb,
+              (v) => setState(() => _discoveryUsb = v),
+            ),
+            _toggleRow(
+              'Wi-Fi (mDNS)',
+              _discoveryMdns,
+              (v) => setState(() => _discoveryMdns = v),
+            ),
+            _toggleRow(
+              'Bluetooth',
+              _discoveryBle,
+              (v) => setState(() => _discoveryBle = v),
+            ),
+            _toggleRow(
+              'Organization directory (LDAP)',
+              _discoveryDirectory,
+              (v) => setState(() => _discoveryDirectory = v),
+            ),
+            const SizedBox(height: VibeTokens.space2),
+            _toggleRow(
+              'Auto-connect confirmed boards',
+              _discoveryAutoConnect,
+              (v) => setState(() => _discoveryAutoConnect = v),
+            ),
+            _toggleRow(
+              'Require signed boards',
+              _discoveryEnforceSignature,
+              (v) => setState(() => _discoveryEnforceSignature = v),
+            ),
+            if (_discoveryDirectory) ...<Widget>[
+              const SizedBox(height: VibeTokens.space2),
+              VbuLabelledField(
+                label: 'Directory host',
+                controller: _dirHost,
+                hint: 'ldap.example.org',
+              ),
+              VbuLabelledField(
+                label: 'Port',
+                controller: _dirPort,
+                hint: 'blank = 389 (636 with LDAPS)',
+              ),
+              _toggleRow('LDAPS (TLS)', _dirSsl, (v) {
+                setState(() => _dirSsl = v);
+              }),
+              VbuLabelledField(
+                label: 'Base DN',
+                controller: _dirBaseDN,
+                hint: 'ou=devices,dc=example,dc=org',
+              ),
+              VbuLabelledField(
+                label: 'Bind DN',
+                controller: _dirBindDN,
+                hint: 'blank = anonymous bind',
+              ),
+              VbuLabelledField(
+                label: 'Password',
+                controller: _dirPassword,
+                hint: '',
+              ),
+            ],
           ],
         ),
         const SizedBox(height: VibeTokens.space3),

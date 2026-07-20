@@ -22,7 +22,11 @@ dependencies:
   file_picker: ^8.0.0
   flutter_markdown: ^0.7.0
   path: ^1.9.0
-  mcp_bundle: ^0.4.5
+  mcp_bundle: ^0.4.8
+  # Direct dep to pin the EthosStoreDelete-capable adapter (KvEthosStoreAdapter,
+  # re-exported via mcp_knowledge) — transitive resolution can pick an older
+  # 0.1.2 that lacks it. Used by ops workspace purge (charter ethos cleanup).
+  mcp_philosophy: ^0.1.3
   google_fonts: ^6.2.1
   video_player: ^2.9.1
   meta: ^1.15.0
@@ -30,20 +34,20 @@ dependencies:
   archive: ^3.6.1
   crypto: ^3.0.3
   shelf: ^1.4.0
-  mcp_server: ^2.0.0
-  mcp_client: ^2.0.0
+  mcp_server: ^2.1.0
+  mcp_client: ^2.1.0
   mcp_llm: ^2.1.1
-  flutter_mcp_ui_runtime: ^0.5.1
-  flutter_mcp_ui_core: ^0.4.1
+  flutter_mcp_ui_runtime: ^0.5.2
+  flutter_mcp_ui_core: ^0.4.2
   json_schema: ^5.1.1
   flutter_js: ^0.8.7
   ffmpeg_kit_flutter_new: ^3.0.0
   file_selector: ^1.0.3
-  flowbrain_core: ^0.1.7
+  flowbrain_core: ^0.1.8
   flutter_riverpod: ^2.5.1
   mcp_browser: ^0.1.3
   mcp_channel: ^0.2.1
-  mcp_form: ^0.1.1
+  mcp_form: ^0.2.0
   mcp_ingest: ^0.1.1
   mcp_io: ^0.2.2
   mcp_io_process: ^0.1.1
@@ -55,7 +59,7 @@ dependencies:
   # (canvas / analysis / datastore fs+db). All published (datastore contract
   # lives in mcp_bundle ^0.4.5); resolves hosted-clean, no override.
   mcp_canvas: ^0.1.0
-  mcp_analysis: ^0.1.1
+  mcp_analysis: ^0.1.4
   mcp_datastore: ^0.1.0
   mcp_datastore_sqlite: ^0.1.0
   flutter_mcp_ui_generator: ^0.4.1
@@ -79,12 +83,22 @@ dependencies:
   appplayer_ui_view: ^0.1.0
   appplayer_claude_code_provider: ^0.1.0
   appplayer_secure: ^0.1.1
-  brain_kernel: ^0.1.6
+  brain_kernel: ^0.1.8
   # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
   # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the
-  # studio host builds these transports and injects them via the kernel
-  # seam (`mcp.connect_extension` -> backbone.connectExtensionTransport).
+  # `mcp.connect_extension` tool (vendored extension_transport recipe) builds
+  # these transports and injects them via the kernel seam (`connectExtension`
+  # helper off the abstract client host, spec 08 §4).
   mcp_bridge: ^0.2.0-rc.2
+  # Board discovery (vendored ble_transport / device_discovery recipes,
+  # spec 16/17): BLE scan+GATT transport, mDNS `_mcp._tcp` browse, LDAP
+  # directory scan. mcp_client above carries the probe.
+  universal_ble: ^2.1.0
+  multicast_dns: ^0.3.3
+  dartdap: ^0.11.0
+  # Serial port enumeration for the usb discovery source (same package
+  # mcp_bridge's serial transport rides on).
+  clib_serialport_dart: ^1.1.0
 
   device_info_plus: ^10.1.2
   http: ^1.6.0
@@ -103,6 +117,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/google_fonts/
+    # Board-discovery trust anchors (spec 17 §6) — dev partner / marketplace
+    # root CAs the signature evaluator validates against.
+    - assets/root_cas/
     # App Builder seed templates. Flutter does not recurse into asset
     # directories, so each one is declared explicitly.
     - lib/src/apps/app_builder/seed/app_player_app/
@@ -111,6 +128,10 @@ flutter:
     - lib/src/apps/app_builder/seed/studio_package/
     - lib/src/apps/app_builder/seed/studio_package/ui/
     - lib/src/apps/app_builder/seed/studio_package/ui/pages/
+    - lib/src/apps/app_builder/seed/cloud_server_app/
+    - lib/src/apps/app_builder/seed/cloud_server_app/ui/
+    - lib/src/apps/app_builder/seed/cloud_server_app/ui/pages/
+    - lib/src/apps/app_builder/seed/cloud_server_app/tools/
     - lib/src/apps/ops/seed/project/
     - lib/src/apps/ops/seed/project/project.mbd/
     - lib/src/apps/ops/seed/workspace/

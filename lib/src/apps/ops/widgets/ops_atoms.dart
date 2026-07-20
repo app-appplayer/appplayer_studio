@@ -278,27 +278,49 @@ class OpsCardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontFamily: OpsType.sans,
-            fontSize: OpsType.lg,
-            fontWeight: OpsType.semibold,
+        // Title + sub share the remaining width and ellipsize — without the
+        // Expanded/Flexible a long title (e.g. "Process · host wiring / publish
+        // cascade (H1)") laid out at its full intrinsic width and pushed the
+        // trailing action ("Open") off the card's right edge.
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: OpsType.sans,
+                    fontSize: OpsType.lg,
+                    fontWeight: OpsType.semibold,
+                  ),
+                ),
+              ),
+              if (sub != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    sub!,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: OpsType.mono,
+                      fontSize: 10,
+                      color: OpsColors.text3,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (sub != null) ...[
+        if (trailing != null) ...[
           const SizedBox(width: 8),
-          Text(
-            sub!,
-            style: TextStyle(
-              fontFamily: OpsType.mono,
-              fontSize: 10,
-              color: OpsColors.text3,
-            ),
-          ),
+          trailing!,
         ],
-        const Spacer(),
-        if (trailing != null) trailing!,
       ],
     );
   }

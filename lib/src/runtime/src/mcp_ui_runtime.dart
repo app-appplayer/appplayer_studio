@@ -392,6 +392,40 @@ class MCPUIRuntime {
     _engine.actionHandler.registerToolExecutor(toolName, executor);
   }
 
+  /// Registered `client.mcpStream` source openers, keyed by uri scheme.
+  final Map<String, Stream<dynamic> Function(String uri, Map<String, dynamic> params)>
+      _streamSources = {};
+
+  /// Register a stream source for `client.mcpStream` channels.
+  ///
+  /// [scheme] is the uri scheme a channel's `uri` must start with (e.g. `ble`
+  /// for `ble://scan`); [open] returns a live stream for a matching uri and
+  /// its subscribe params. The host wires real transports here (a BLE scan
+  /// hub, a sensor bus) while the runtime stays transport-agnostic. Every
+  /// registered scheme shares one resolver on the channel manager, so calling
+  /// this repeatedly for different schemes composes.
+  void registerStreamSource(
+    String scheme,
+    Stream<dynamic> Function(String uri, Map<String, dynamic> params) open,
+  ) {
+    if (!_isInitialized) {
+      throw StateError(
+          'Runtime must be initialized before registering stream sources');
+    }
+    _streamSources[scheme] = open;
+    _engine.channelManager.streamSourceResolver = _resolveStreamSource;
+  }
+
+  /// Dispatches a `client.mcpStream` uri to the opener registered for its
+  /// scheme, or `null` when no scheme matches (the channel then reports an
+  /// unregistered-source error rather than silently hanging).
+  Stream<dynamic>? _resolveStreamSource(
+      String uri, Map<String, dynamic> params) {
+    final scheme = uri.contains('://') ? uri.split('://').first : '';
+    final open = _streamSources[scheme];
+    return open?.call(uri, params);
+  }
+
   /// Register a custom widget factory
   void registerWidget(String type, WidgetFactory factory) {
     if (!_isInitialized) {

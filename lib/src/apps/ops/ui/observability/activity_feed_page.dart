@@ -163,7 +163,7 @@ class _Filters extends StatelessWidget {
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        for (final k in ActivityKind.values)
+        for (final k in kFilterableActivityKinds)
           FilterChip(
             label: Text(k.name, style: const TextStyle(fontSize: 11)),
             selected: selected.contains(k),

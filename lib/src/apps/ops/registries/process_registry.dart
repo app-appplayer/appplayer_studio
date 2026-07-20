@@ -2,10 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:appplayer_studio/builtin_api.dart';
+import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart' as kops
+    show KvStateStore;
 import 'package:uuid/uuid.dart';
 import 'package:yaml/yaml.dart';
 
 import '../infra/ws_paths.dart';
+import '../observability/activity_bus.dart';
+import '../observability/activity_event.dart';
+import '../triggers/trigger_events.dart';
 import '../util/atomic_write.dart';
 
 /// See `SRS §2.10 FR-OPS-006` for the design specification.
@@ -212,12 +217,36 @@ class ProcessRegistry {
   final String rootDir;
   SkillDispatch? dispatch;
 
+  /// Injected after bootstrap — emits a completion event when a run finishes so
+  /// the trigger bus can wake subscribers (R2) / relay it (R3), complementing
+  /// the process→process [_fireCompletionChain]. Null → runs complete silently.
+  void Function(AgentWorkCompleted event)? onWorkCompleted;
+
+  /// Injected after bootstrap — the Live Activity feed's bus. Every run
+  /// state transition (running / waitingApproval / blocked / completed /
+  /// cancelled) emits so a running process is visible in real time (the
+  /// waitingApproval transition is the `philosophyGate` signal). Null (stdio
+  /// CLI, no UI) → silent. See [_emitRunActivity].
+  ActivityBus? activityBus;
+
+  /// Last activity state emitted per run so a re-saved checkpoint at the same
+  /// state (e.g. a `running` re-persist) does not double-log the feed.
+  final Map<String, ProcessRunState> _lastActivityState =
+      <String, ProcessRunState>{};
+
   /// Resolves a workspace's org-ancestor chain (nearest parent first) for
   /// approval escalation. Host-wired to `WorkspaceRegistry.ancestors`. When
   /// the gate's designated approver is a workspace/org-unit id, any ancestor
   /// of it may approve on their behalf (escalation up the org tree). Null
   /// (unwired) ⇒ strict exact-match approval only.
   Future<List<String>> Function(String workspaceId)? ancestorsOf;
+
+  /// Reads a raw value from the ORG-level KV — where the behavior engine
+  /// persists each run's working state (step outputs). The scoped `kv` cannot
+  /// see it: runs span workspaces, so the store is wired to `orgKv` on purpose
+  /// (see `knowledge_init` behaviorStore). Injected at boot where `orgKv` is in
+  /// scope; null-safe (run `outcomes` stay empty if left unwired).
+  Future<String?> Function(String key)? readOrgKv;
 
   final Map<String, Map<String, Process>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -329,6 +358,7 @@ class ProcessRegistry {
   Future<ProcessRun> start(
     String id, {
     Map<String, dynamic>? initialInputs,
+    bool background = false,
   }) async {
     final p = await get(id);
     if (p == null) throw StateError('Process not found: $id');
@@ -340,12 +370,63 @@ class ProcessRegistry {
     // record (runId → processId) for the UI. Called on the host `OpsFacade`
     // directly (the `bk.behavior.*` MCP tools live on the host endpoint, not
     // the ops inbound server `dispatch` reaches).
-    final res = await knowledgeSystem.ops.runBehavior(
+    Future<Map<String, dynamic>> drive() => knowledgeSystem.ops.runBehavior(
       _behaviorIdFor(p),
       runId: runId,
       input: initialInputs ?? const <String, dynamic>{},
     );
+    if (background) {
+      // A long process dispatches agent steps that each take a full LLM turn,
+      // so a synchronous drive blocks the caller's transport for the whole run
+      // (HTTP timeout) and lets an eager `process_approve` race a run that has
+      // not suspended at its gate yet. Background mode persists a `running`
+      // checkpoint, returns immediately, and drives off the request path — the
+      // caller polls `process_get` / `process_runs` for the gate / completion.
+      final running = ProcessRun(
+        runId: runId,
+        processId: p.id,
+        workspaceId: p.workspaceId,
+        startedAt: DateTime.now(),
+        currentStep: '',
+        state: ProcessRunState.running,
+      );
+      await _saveCheckpoint(running);
+      unawaited(_driveInBackground(p, runId, drive));
+      return running;
+    }
+    final res = await drive();
     return _runFromResult(p, (res['runId'] ?? runId).toString(), res);
+  }
+
+  /// Drive a behavior run to its next suspend / completion OFF the caller's
+  /// request path (background mode for [start] / [approve]). A thrown error
+  /// persists a `blocked` checkpoint so a poller sees the run stop instead of
+  /// it hanging on `running` forever; the synchronous path still surfaces the
+  /// throw to its own caller.
+  Future<void> _driveInBackground(
+    Process p,
+    String runId,
+    Future<Map<String, dynamic>> Function() drive,
+  ) async {
+    try {
+      final res = await drive();
+      await _runFromResult(p, (res['runId'] ?? runId).toString(), res);
+    } catch (_) {
+      try {
+        await _saveCheckpoint(
+          ProcessRun(
+            runId: runId,
+            processId: p.id,
+            workspaceId: p.workspaceId,
+            startedAt: DateTime.now(),
+            currentStep: '',
+            state: ProcessRunState.blocked,
+          ),
+        );
+      } catch (_) {
+        // Best-effort — nothing else to do if even the checkpoint write fails.
+      }
+    }
   }
 
   Future<ProcessRun> resume(String runId) async {
@@ -389,7 +470,11 @@ class ProcessRegistry {
   /// approver means an open gate (any approver proceeds). Only the currently
   /// pending gate is flagged, so a later gate suspends again and must be
   /// approved by its own designated approver (per-gate authorization).
-  Future<ProcessRun> approve(String runId, {required String approverId}) async {
+  Future<ProcessRun> approve(
+    String runId, {
+    required String approverId,
+    bool background = false,
+  }) async {
     final run = await _loadRun(runId);
     if (run == null) throw StateError('No checkpoint: $runId');
     if (run.state != ProcessRunState.waitingApproval) {
@@ -429,6 +514,24 @@ class ProcessRegistry {
           patch['approved_${g.afterStep}'] = true;
         }
       }
+    }
+    if (background) {
+      // The approved step and everything up to the next gate may dispatch
+      // agent turns; drive them off the request path (same rationale as
+      // `start`). The run stays visible as `running` until it re-suspends /
+      // completes — poll `process_get` / `process_runs`.
+      unawaited(
+        _driveInBackground(
+          p,
+          runId,
+          () => knowledgeSystem.ops.resumeBehavior(
+            _behaviorIdFor(p),
+            runId,
+            statePatch: patch,
+          ),
+        ),
+      );
+      return run.copyWith(state: ProcessRunState.running);
     }
     final res = await knowledgeSystem.ops.resumeBehavior(
       _behaviorIdFor(p),
@@ -476,6 +579,32 @@ class ProcessRegistry {
   String _behaviorIdFor(Process p) {
     final name = rootDir.split(Platform.pathSeparator).last;
     return '$name.project.${p.id}';
+  }
+
+  /// The behavior engine records each step's output into a durable working
+  /// state (`BehaviorRunState.state`), but the facade result only surfaces
+  /// status / waitingStepId — so a run's per-step outcomes are invisible to the
+  /// ops layer unless read back from the store. This reads that state via the
+  /// store's own public `load()` (ops owns the store + its key prefix — no
+  /// package reach-in) so a run record can expose step outputs (`run.outcomes`)
+  /// for output↔step correlation. Best-effort: empty when unwired or on any
+  /// read/parse failure — never fails the run record.
+  Future<Map<String, dynamic>> _loadRunOutcomes(String runId) async {
+    final read = readOrgKv;
+    if (read == null) return const <String, dynamic>{};
+    try {
+      final bundleId = '${rootDir.split(Platform.pathSeparator).last}.project';
+      final store = kops.KvStateStore(
+        writeKv: (_, _) async {},
+        readKv: read,
+        removeKv: (_) async {},
+        prefix: 'behavior/run/$bundleId/',
+      );
+      final run = await store.load(runId);
+      return run?.state ?? const <String, dynamic>{};
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
   }
 
   ProcessRunState _stateFromBehavior(String status) => switch (status) {
@@ -528,12 +657,38 @@ class ProcessRegistry {
       currentStep: cur,
       state: state,
       pendingApproval: pending,
+      // Surface per-step outputs the behavior engine recorded, so a run
+      // exposes what its agents actually produced (output↔step correlation)
+      // instead of an empty `{}`.
+      outcomes: await _loadRunOutcomes(runId),
     );
     await _saveCheckpoint(run);
     if (state == ProcessRunState.completed) {
       // G-event: this run reached the end — auto-start any process whose
       // `triggerSource` names it, so A → B chains without a manual re-start.
       unawaited(_fireCompletionChain(p.id, p.workspaceId));
+      // Trigger bus (R1): surface the run completion so agent subscriptions
+      // wake and the live chat can relay it. Best-effort — a bad listener must
+      // not fail the run. A process is not a single agent, so `sourceAgentId`
+      // is empty (subscriptions match it as "any source").
+      final cb = onWorkCompleted;
+      if (cb != null) {
+        try {
+          cb(
+            AgentWorkCompleted(
+              sourceAgentId: '',
+              workspaceId: p.workspaceId,
+              kind: WorkKind.step,
+              refId: run.runId,
+              state: 'completed',
+              at: DateTime.now(),
+              summary: 'Process "${p.title}" (${p.id}) completed',
+            ),
+          );
+        } catch (_) {
+          // Emission is best-effort; the run already persisted its outcome.
+        }
+      }
     }
     return run;
   }
@@ -637,6 +792,42 @@ class ProcessRegistry {
     // completed) — fire the changes stream so live views (the Inbox, the
     // Processes page) refresh without a manual reload.
     _notify();
+    _emitRunActivity(run);
+  }
+
+  /// Publish a run's state transition to the Live Activity feed. De-duped per
+  /// run so an idempotent checkpoint re-save is not logged twice. The
+  /// waitingApproval transition carries the `philosophyGate` kind (an approval
+  /// gate is the platform's charter/approval checkpoint).
+  void _emitRunActivity(ProcessRun run) {
+    final bus = activityBus;
+    if (bus == null) return;
+    if (_lastActivityState[run.runId] == run.state) return;
+    _lastActivityState[run.runId] = run.state;
+    final label = 'Process ${run.processId}';
+    switch (run.state) {
+      case ProcessRunState.running:
+        bus.info(run.processId, '$label started', kind: ActivityKind.info,
+            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+      case ProcessRunState.waitingApproval:
+        final who = run.pendingApproval?.approverId ?? '';
+        bus.warn(
+          run.processId,
+          '$label awaiting approval${who.isEmpty ? '' : ' · $who'}',
+          kind: ActivityKind.philosophyGate,
+          workspaceId: run.workspaceId,
+          meta: {'runId': run.runId, if (who.isNotEmpty) 'approver': who},
+        );
+      case ProcessRunState.blocked:
+        bus.error(run.processId, '$label blocked', kind: ActivityKind.error,
+            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+      case ProcessRunState.completed:
+        bus.info(run.processId, '$label completed', kind: ActivityKind.info,
+            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+      case ProcessRunState.cancelled:
+        bus.info(run.processId, '$label cancelled', kind: ActivityKind.info,
+            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+    }
   }
 
   Future<void> _ensureLoaded(String wsId) async {

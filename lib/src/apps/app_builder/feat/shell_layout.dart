@@ -39,6 +39,7 @@ import 'package:mcp_bundle/mcp_bundle.dart'
 import 'package:path/path.dart' as p;
 
 import '../theme/tokens.dart';
+import '../../../base/boot/claude_cli_resolver.dart';
 import '../conv/dart_converter.dart';
 import '../conv/self_ui_converter.dart';
 import '../core/layer_projection.dart';
@@ -53,6 +54,7 @@ import '../infra/project_seed.dart' show applyProjectSeed;
 import '../infra/vibe_project_prefs.dart' show BuildConfig;
 import '../infra/vibe_server_bridge.dart';
 import '../infra/vibe_settings.dart';
+import 'package:appplayer_studio/src/base/widgets/server_shell_launch.dart';
 import '../infra/workspace_fs_port.dart';
 import 'build_dialog.dart';
 import 'build_tools.dart';
@@ -897,7 +899,7 @@ class VibeShellState extends State<VibeShell> {
       widget.chat.onTurnPersisted = (turn) => next.chatLog.append(turn);
       // Clear must also reset the LLM history — otherwise the coordinator
       // keeps reusing prior thread precedent after a Clear (D7a).
-      widget.chat.onClearLog = () async {
+      widget.chat.onClearLog = (_) async {
         await next.chatLog.clear();
         widget.llm?.resetHistory();
       };
@@ -1375,6 +1377,43 @@ class VibeShellState extends State<VibeShell> {
     if (proj == null) {
       return <String, dynamic>{'ok': false, 'error': 'no project open'};
     }
+    // Cloud Server variant: pack + tsc + boot the real marketplace
+    // serving shell locally (same path the panel's ▶ card drives).
+    if (slug == 'server') {
+      final ServerShellLaunch launch;
+      try {
+        launch = await prepareServerShellLaunch(
+          projectPath: proj,
+          serverShellPath: _settings.serverShellPath,
+        );
+      } on ServerShellLaunchException catch (e) {
+        return <String, dynamic>{'ok': false, 'error': e.message};
+      } catch (e) {
+        return <String, dynamic>{'ok': false, 'error': 'prepare failed: $e'};
+      }
+      try {
+        await _inspectorSessions.connect(
+          slug: slug,
+          binary: launch.nodeBinary,
+          transport: InspectorTransport.http,
+          port: launch.port,
+          launchArgs: <String>[launch.indexJs],
+          environment: launch.environment,
+        );
+      } catch (e) {
+        return <String, dynamic>{'ok': false, 'error': 'connect failed: $e'};
+      }
+      final session = _inspectorSessions[slug];
+      return <String, dynamic>{
+        'ok': true,
+        'slug': slug,
+        'status': session?.status.name ?? 'unknown',
+        'transport': 'http',
+        'binary': launch.nodeBinary,
+        'mcpb': launch.mcpbPath,
+        'port': launch.port,
+      };
+    }
     // slug → isNative (mirror inspector_panel's _variants table).
     const known = <String, bool>{
       'inline': false,
@@ -1387,7 +1426,7 @@ class VibeShellState extends State<VibeShell> {
         'ok': false,
         'error':
             'unknown variant "$slug" — one of '
-            'inline / bundle / native_inline / native_bundle',
+            'inline / bundle / native_inline / native_bundle / server',
       };
     }
     final dir = p.join(proj, 'build', slug);
@@ -1636,7 +1675,7 @@ class VibeShellState extends State<VibeShell> {
     widget.chat.onTurnPersisted = (turn) => proj.chatLog.append(turn);
     // Clear must also reset the LLM history — otherwise the coordinator keeps
     // reusing prior thread precedent after a Clear (D7a).
-    widget.chat.onClearLog = () async {
+    widget.chat.onClearLog = (_) async {
       await proj.chatLog.clear();
       widget.llm?.resetHistory();
     };
@@ -2315,7 +2354,7 @@ class VibeShellState extends State<VibeShell> {
       widget.chat.onTurnPersisted = (turn) => next.chatLog.append(turn);
       // Clear must also reset the LLM history — otherwise the coordinator
       // keeps reusing prior thread precedent after a Clear (D7a).
-      widget.chat.onClearLog = () async {
+      widget.chat.onClearLog = (_) async {
         await next.chatLog.clear();
         widget.llm?.resetHistory();
       };
@@ -3302,20 +3341,43 @@ class VibeShellState extends State<VibeShell> {
         }
       }
       var artifacts = List<String>.from(result.writtenFiles);
-      String? flutterMessage;
-      if (request.runFlutterCreate &&
-          (request.target == BuildTarget.nativeBundle ||
-              request.target == BuildTarget.nativeInline)) {
-        final flutterOutcome = await _runFlutterCreate(
-          outDir: outDir.path,
-          projectName: _flutterProjectNameFor(
-            target: request.target,
-            project: proj,
-          ),
+      final footerParts = <String>[];
+      final isNative =
+          request.target == BuildTarget.nativeBundle ||
+          request.target == BuildTarget.nativeInline;
+      // When the user opted to build a runnable app (runFlutterCreate), carry
+      // the emitted reference code through to an executable: native targets
+      // scaffold platform folders then `flutter build macos`, serving (Dart)
+      // targets run `dart pub get` + `dart compile exe`. Both are best-effort —
+      // a scaffold/compile failure is surfaced in the summary but never fails
+      // the emit, since the reference sources are already valid and the LLM
+      // customization step (`vibe_customize_target`) runs on them afterwards.
+      if (request.runFlutterCreate) {
+        final projectName = _flutterProjectNameFor(
+          target: request.target,
+          project: proj,
         );
-        flutterMessage = flutterOutcome.message;
-        if (flutterOutcome.scaffoldedDirs.isNotEmpty) {
-          artifacts = <String>[...artifacts, ...flutterOutcome.scaffoldedDirs];
+        if (isNative) {
+          final flutterOutcome = await _runFlutterCreate(
+            outDir: outDir.path,
+            projectName: projectName,
+          );
+          footerParts.add(flutterOutcome.message);
+          if (flutterOutcome.scaffoldedDirs.isNotEmpty) {
+            artifacts = <String>[
+              ...artifacts,
+              ...flutterOutcome.scaffoldedDirs,
+            ];
+          }
+        }
+        final compileOutcome = await _runCompile(
+          outDir: outDir.path,
+          target: request.target,
+          projectName: projectName,
+        );
+        footerParts.add(compileOutcome.message);
+        if (compileOutcome.artifact != null) {
+          artifacts = <String>[...artifacts, compileOutcome.artifact!];
         }
       }
       if (!mounted) return;
@@ -3323,7 +3385,7 @@ class VibeShellState extends State<VibeShell> {
         target: dartTarget.name,
         artifacts: artifacts,
         sizeBytes: totalBytes,
-        footer: flutterMessage,
+        footer: footerParts.isEmpty ? null : footerParts.join('\n\n'),
       );
     } catch (e) {
       _toast('Build failed: $e');
@@ -3525,11 +3587,15 @@ class VibeShellState extends State<VibeShell> {
         scaffoldedDirs: const <String>[],
       );
     }
-    final resolved = await _resolveOnPath('flutter');
+    // Resolve `flutter` the same way the LLM's build.run_shell tool does —
+    // a GUI-launched app inherits only the minimal launchd PATH, so a bare
+    // PATH walk misses nvm / Homebrew / fvm installs. resolveCliExecutable
+    // probes the login shell + well-known dirs.
+    final resolved = resolveCliExecutable('flutter');
     if (resolved == null) {
       return const _FlutterCreateOutcome(
         message:
-            'flutter create skipped — `flutter` not on PATH. '
+            'flutter create skipped — `flutter` not found. '
             'Install Flutter and rerun, or run '
             '`flutter create --project-name <slug> .` '
             'manually inside the build folder.',
@@ -3589,31 +3655,110 @@ class VibeShellState extends State<VibeShell> {
     );
   }
 
-  /// Walk PATH for an executable, including bare names. Mirrors
-  /// `BuildToolsDispatcher._resolveExecutable` minus the project-root
-  /// scoping (flutter is a host-installed tool, not a project file).
-  static Future<String?> _resolveOnPath(String command) async {
-    if (p.isAbsolute(command)) {
-      return await File(command).exists() ? command : null;
-    }
-    final pathEnv = Platform.environment['PATH'] ?? '';
-    final separator = Platform.isWindows ? ';' : ':';
-    final exts =
-        Platform.isWindows
-            ? (Platform.environment['PATHEXT']?.split(';') ??
-                <String>['.EXE', '.BAT', '.CMD'])
-            : const <String>[''];
-    for (final dir in pathEnv.split(separator)) {
-      if (dir.isEmpty) continue;
-      for (final ext in exts) {
-        final candidate = p.join(dir, '$command$ext');
-        if (await File(candidate).exists()) return candidate;
+  static String _oneLine(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  /// Compile the emitted reference sources in [outDir] to a runnable
+  /// executable. Serving targets (bundle / inline) are Dart — `dart pub get`
+  /// then `dart compile exe bin/server.dart -o <name>`. Native targets
+  /// (native_bundle / native_inline) are Flutter — `flutter build macos
+  /// --debug`, which needs the platform folders `_runFlutterCreate` added.
+  /// Best-effort: returns a summary; a failure is reported, never thrown.
+  Future<_CompileOutcome> _runCompile({
+    required String outDir,
+    required BuildTarget target,
+    required String projectName,
+  }) async {
+    final isNative =
+        target == BuildTarget.nativeBundle ||
+        target == BuildTarget.nativeInline;
+    if (isNative) {
+      final flutter = resolveCliExecutable('flutter');
+      if (flutter == null) {
+        return const _CompileOutcome(
+          message:
+              'compile skipped — `flutter` not found. Install Flutter, then '
+              'run `flutter build macos --debug` inside the build folder.',
+        );
       }
+      final err = await _runCompileStep(
+        executable: flutter,
+        args: const <String>['build', 'macos', '--debug'],
+        outDir: outDir,
+        label: 'flutter build macos',
+      );
+      if (err != null) return _CompileOutcome(message: err);
+      return _CompileOutcome(
+        message: 'compiled — flutter build macos (debug).',
+        artifact: p.join(outDir, 'build', 'macos'),
+      );
+    }
+    // Serving (Dart) target — resolve deps then compile a single exe.
+    final dart = resolveCliExecutable('dart');
+    if (dart == null) {
+      return const _CompileOutcome(
+        message:
+            'compile skipped — `dart` not found. Install the Dart SDK, then '
+            'run `dart pub get && dart compile exe bin/server.dart -o <name>` '
+            'inside the build folder.',
+      );
+    }
+    final pubErr = await _runCompileStep(
+      executable: dart,
+      args: const <String>['pub', 'get'],
+      outDir: outDir,
+      label: 'dart pub get',
+    );
+    if (pubErr != null) return _CompileOutcome(message: pubErr);
+    final compileErr = await _runCompileStep(
+      executable: dart,
+      args: <String>['compile', 'exe', 'bin/server.dart', '-o', projectName],
+      outDir: outDir,
+      label: 'dart compile exe',
+    );
+    if (compileErr != null) return _CompileOutcome(message: compileErr);
+    return _CompileOutcome(
+      message: 'compiled — dart compile exe → $projectName.',
+      artifact: p.join(outDir, projectName),
+    );
+  }
+
+  /// Run a single compile step in [outDir]. Returns null on success or a
+  /// one-line failure summary. Drains stdout/stderr so the pipes never
+  /// deadlock, and kills the process after a generous timeout.
+  Future<String?> _runCompileStep({
+    required String executable,
+    required List<String> args,
+    required String outDir,
+    required String label,
+  }) async {
+    Process process;
+    try {
+      process = await Process.start(
+        executable,
+        args,
+        workingDirectory: outDir,
+        runInShell: false,
+      );
+    } on ProcessException catch (e) {
+      return '$label failed to spawn: ${e.message}';
+    }
+    final stdoutFut = process.stdout.transform(utf8.decoder).join();
+    final stderrFut = process.stderr.transform(utf8.decoder).join();
+    final code = await process.exitCode.timeout(
+      const Duration(minutes: 10),
+      onTimeout: () {
+        process.kill();
+        return -1;
+      },
+    );
+    await stdoutFut;
+    final stderr = await stderrFut;
+    if (code != 0) {
+      final tail = _oneLine(stderr.trim());
+      return '$label exited $code${tail.isEmpty ? '' : ' — $tail'}';
     }
     return null;
   }
-
-  static String _oneLine(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   /// Replace the post-build toast with a dialog that summarises what
   /// was written and points the user (via their connected LLM host) at
@@ -5230,6 +5375,7 @@ class VibeShellState extends State<VibeShell> {
                                 'center:${_project?.projectPath ?? 'none'}:${_project?.activeChannel ?? 'none'}',
                               ),
                               projection: _projection,
+                              settings: _settings,
                               canonical: widget.canonical,
                               focused: _focused,
                               selfUiFramework: widget.selfUiFramework,
@@ -5479,6 +5625,7 @@ class _CenterColumn extends StatelessWidget {
     required this.projectPath,
     required this.inspectorSessions,
     required this.inspectorCaptureKey,
+    required this.settings,
     required this.assetBundlePath,
     required this.issuesPerPage,
     required this.issuesPerTemplate,
@@ -5533,6 +5680,7 @@ class _CenterColumn extends StatelessWidget {
   /// `recordedCallTool` survive when the panel itself unmounts.
   final InspectorSessionManager inspectorSessions;
   final GlobalKey inspectorCaptureKey;
+  final VibeSettings settings;
 
   /// `RepaintBoundary` key bound by the shell so MCP can capture the
   /// live preview surface for `vibe_preview_capture`.
@@ -5784,7 +5932,23 @@ class _CenterColumn extends StatelessWidget {
             children: <Widget>[
               Offstage(
                 offstage: centerMode != CenterMode.ui,
-                child: TickerMode(
+                // Debug mode UNMOUNTS the editor preview (exception to the
+                // keep-mounted rule above): the hosted flutter_mcp_ui_runtime
+                // routes every MaterialApp through its NavigationService
+                // SINGLETON navigatorKey, so the editor preview's app and the
+                // debug inspector's rendered app collide on the same
+                // GlobalKey<NavigatorState> — the second mount throws the
+                // GlobalKey-reparent error and the debug surface's gesture
+                // arena dies (buttons render but never fire; proven live
+                // 2026-07-13 by pointer probes + this unmount flipping the
+                // button back on). Round-trip debug→ui verified safe (the
+                // preview remounts cleanly from canonical). Root fix =
+                // runtime singleton removal (cherry
+                // runtime-singleton-removal-plan Phase 1); drop this
+                // exception when that lands.
+                child: centerMode == CenterMode.debug
+                    ? const SizedBox.shrink()
+                    : TickerMode(
                   enabled: centerMode == CenterMode.ui,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -5834,18 +5998,23 @@ class _CenterColumn extends StatelessWidget {
                   ),
                 ),
               ),
-              Offstage(
-                offstage: centerMode != CenterMode.debug,
-                child: TickerMode(
-                  enabled: centerMode == CenterMode.debug,
-                  child: _DebugCenter(
-                    projectPath: projectPath,
-                    inspectorSessions: inspectorSessions,
-                    inspectorCaptureKey: inspectorCaptureKey,
-                    chromeBridge: bundleChromeBridge,
-                  ),
+              // Debug is a SEPARATE live-server view — it must never be
+              // mounted (even offstage) alongside the design surface: the
+              // two are different worlds (design canvas vs. real server
+              // session) and simultaneous mounts both collide on the
+              // hosted runtime's singleton navigatorKey and visually
+              // shadow each other's state. The session itself (shell
+              // process + client + wire log) lives in the shell-owned
+              // InspectorSessionManager, so unmounting this VIEW loses
+              // nothing — reopening rebinds to the live session.
+              if (centerMode == CenterMode.debug)
+                _DebugCenter(
+                  projectPath: projectPath,
+                  inspectorSessions: inspectorSessions,
+                  inspectorCaptureKey: inspectorCaptureKey,
+                  chromeBridge: bundleChromeBridge,
+                  settings: settings,
                 ),
-              ),
             ],
           ),
         ),
@@ -5936,11 +6105,13 @@ class _DebugCenter extends StatefulWidget {
     required this.inspectorSessions,
     required this.inspectorCaptureKey,
     required this.chromeBridge,
+    required this.settings,
   });
 
   final String? projectPath;
   final InspectorSessionManager inspectorSessions;
   final GlobalKey inspectorCaptureKey;
+  final VibeSettings settings;
   // Studio chrome bridge (dynamic — `ChromeBridge` from
   // vibe_studio_base when running as a built-in app). Sub-panels
   // call `chromeBridge.callHostTool` to poll `studio.debug.*` tools.
@@ -5995,6 +6166,7 @@ class _DebugCenterState extends State<_DebugCenter> {
           projectPath: widget.projectPath,
           sessions: widget.inspectorSessions,
           captureKey: widget.inspectorCaptureKey,
+          settings: widget.settings,
         );
       case 1:
         return _DebugMcpPanel(
@@ -7235,6 +7407,8 @@ class _ChannelStrip extends StatelessWidget {
         return 'AppPlayer App';
       case ProjectKind.studioPackage:
         return 'Studio Package';
+      case ProjectKind.cloudServerApp:
+        return 'Cloud Server App';
     }
   }
 
@@ -7492,4 +7666,13 @@ class _FlutterCreateOutcome {
 
   final String message;
   final List<String> scaffoldedDirs;
+}
+
+/// Outcome of a post-emit compile step (`_runCompile`). [artifact] is the
+/// produced binary / build dir when the compile succeeded, else null.
+class _CompileOutcome {
+  const _CompileOutcome({required this.message, this.artifact});
+
+  final String message;
+  final String? artifact;
 }

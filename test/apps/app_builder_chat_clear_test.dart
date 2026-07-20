@@ -43,7 +43,7 @@ void main() {
     // Exactly the shell_layout wiring: onClearLog = () => chatLog.clear().
     final ctrl = VibeChatController(
       send: (_) async => ChatTurn(role: 'assistant', text: 'ok'),
-      onClearLog: () => log.clear(),
+      onClearLog: (_) => log.clear(),
     );
     await ctrl.clear();
 
@@ -67,7 +67,7 @@ void main() {
       var historyReset = false;
       final ctrl = VibeChatController(
         send: (_) async => ChatTurn(role: 'assistant', text: 'ok'),
-        onClearLog: () async {
+        onClearLog: (_) async {
           await log.clear();
           llmHistory.clear(); // stands in for llm.resetHistory()
           historyReset = true;

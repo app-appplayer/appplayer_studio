@@ -1554,11 +1554,15 @@ class ServerBootstrap {
           },
           'kind': <String, dynamic>{
             'type': 'string',
-            'enum': <String>['appPlayerApp', 'studioPackage'],
+            'enum': <String>['appPlayerApp', 'studioPackage', 'cloudServerApp'],
             'description':
                 'Project kind. `appPlayerApp` (default) = regular '
                 'end-user app (pure mcp_ui_dsl). `studioPackage` = '
-                'vibe_studio domain bundle (vbu_* atoms + dsl).',
+                'vibe_studio domain bundle (vbu_* atoms + dsl). '
+                '`cloudServerApp` = marketplace-hosted MCP server '
+                '(manifest type "server": bundle UI/knowledge + real '
+                'TypeScript tools under tools/, kind "ts") — authoring '
+                'contract in the `cloud_server_authoring` seed knowledge.',
           },
         },
         'required': <String>['name'],
@@ -2740,7 +2744,10 @@ class ServerBootstrap {
           'same `connect()` the Inspector panel\'s variant ▶ card '
           'drives, exposed for MCP so the live-debug workflow is '
           'fully automatable. `slug` ∈ inline / bundle / native_inline '
-          '/ native_bundle (the variant must be built under '
+          '/ native_bundle / server (server = cloud server app: packs + '
+          'compiles tools and boots the real marketplace serving shell '
+          'locally over HTTP — needs settings.serverShellPath; others '
+          'must be built under '
           '`build/<slug>/` via `vibe_build_run_build` AND compiled to '
           'an executable — native: `flutter build macos`; bundle/inline: '
           '`dart compile exe bin/server.dart -o server` via '
@@ -2758,6 +2765,7 @@ class ServerBootstrap {
               'bundle',
               'native_inline',
               'native_bundle',
+              'server',
             ],
           },
           'transport': <String, dynamic>{

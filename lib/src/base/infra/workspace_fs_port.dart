@@ -112,6 +112,17 @@ class FileWorkspaceFsPort implements WorkspaceFsPort {
         overwrite: true,
       );
 
+      // Preserve bundle content the model does not own. The writer emits
+      // only the sections it knows (manifest + reserved ui/ + knowledge…);
+      // a bundle directory legitimately carries other top-level entries —
+      // `tools/` (cloud server app TS sources), `scenarios/`, `branding/`,
+      // arbitrary assets. A whole-directory swap would silently delete
+      // them on every save, so copy over every top-level entry of the
+      // existing bundle that the fresh temp does not already contain.
+      // (Model-owned entries collide by name and are therefore skipped —
+      // page deletions etc. still stick.)
+      await _preserveUnmanagedEntries(from: target, into: temp);
+
       if (await target.exists()) {
         await target.delete(recursive: true);
       }
@@ -188,6 +199,41 @@ class FileWorkspaceFsPort implements WorkspaceFsPort {
       json.remove('ui');
     }
     return json;
+  }
+
+  /// Copy every top-level entry of [from] that [into] does not already
+  /// contain (see the call site in [writeAtomicJson] for the rationale —
+  /// bundle sections the model does not own must survive a save).
+  static Future<void> _preserveUnmanagedEntries({
+    required Directory from,
+    required Directory into,
+  }) async {
+    if (!await from.exists()) return;
+    await for (final entity in from.list(followLinks: false)) {
+      final name = p.basename(entity.path);
+      final destPath = p.join(into.path, name);
+      if (FileSystemEntity.typeSync(destPath) !=
+          FileSystemEntityType.notFound) {
+        continue; // model-owned (written into temp) — writer wins
+      }
+      if (entity is File) {
+        await entity.copy(destPath);
+      } else if (entity is Directory) {
+        await _copyDirRecursive(entity, Directory(destPath));
+      }
+    }
+  }
+
+  static Future<void> _copyDirRecursive(Directory src, Directory dest) async {
+    await dest.create(recursive: true);
+    await for (final entity in src.list(followLinks: false)) {
+      final destPath = p.join(dest.path, p.basename(entity.path));
+      if (entity is File) {
+        await entity.copy(destPath);
+      } else if (entity is Directory) {
+        await _copyDirRecursive(entity, Directory(destPath));
+      }
+    }
   }
 
   /// Unzip [archive] into a fresh temporary directory and return it.

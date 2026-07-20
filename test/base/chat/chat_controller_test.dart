@@ -46,7 +46,7 @@ VibeChatController _ctrl({
     onClearLog:
         clearLog == null
             ? null
-            : () async {
+            : (_) async {
               clearLog.add(null);
             },
     onRemoveTurn:
@@ -301,7 +301,7 @@ void main() {
     test('onClearLog throwing is swallowed (best-effort)', () async {
       final c = VibeChatController(
         send: (_) async => _reply('x'),
-        onClearLog: () async {
+        onClearLog: (_) async {
           throw Exception('disk error');
         },
       );

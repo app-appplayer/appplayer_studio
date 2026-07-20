@@ -124,6 +124,21 @@ void main() {
     await ws.create(type: WorkspaceType.org, slug: 'dev', title: 'Dev');
 
     final now = DateTime.now();
+    // The "stale but still today" fact must be OLDER than the 120s working
+    // window yet fall on today's date. In the first ~2.5min after midnight no
+    // such instant exists (10min ago would be yesterday), so skip that
+    // degenerate sliver rather than flake — this test used to assume it never
+    // ran across a midnight boundary.
+    final midnight = DateTime(now.year, now.month, now.day);
+    final sinceMidnight = now.difference(midnight);
+    if (sinceMidnight <= kOrgWorkingWindow + const Duration(seconds: 30)) {
+      markTestSkipped('within ~2.5min of midnight — no stale-but-today instant');
+      return;
+    }
+    // Age the stale fact so it stays today: 10min normally, clamped to just
+    // inside today (minus 15s slack) when the day is younger than that.
+    final staleSecs = sinceMidnight.inSeconds - 15;
+    final staleAge = Duration(seconds: staleSecs > 600 ? 600 : staleSecs);
     final facts = init.registries.knowledge.knowledgeSystem.facts;
     Future<void> fact(String type, Map<String, dynamic> content, DateTime at,
         String id) {
@@ -144,7 +159,7 @@ void main() {
     await fact('agent.invoked', {'agentId': 'a-fresh'},
         now.subtract(const Duration(seconds: 30)), 'inv/1');
     await fact('agent.invoked', {'agentId': 'a-stale'},
-        now.subtract(const Duration(minutes: 10)), 'inv/2');
+        now.subtract(staleAge), 'inv/2');
     // Yesterday: neither working nor today's output.
     await fact('agent.invoked', {'agentId': 'a-old'},
         now.subtract(const Duration(days: 1)), 'inv/3');
@@ -165,8 +180,8 @@ void main() {
     expect(data.workingAgentIds, contains('a-fresh'));
     expect(data.workingAgentIds, isNot(contains('a-stale')));
     expect(data.workingAgentIds, isNot(contains('a-old')));
-    // Both non-yesterday invocations happened today (10min < a day and the
-    // test never runs across midnight boundaries long enough to matter).
+    // Both non-yesterday invocations happened today (a-fresh + a-stale; the
+    // stale one is aged to stay within today even near a midnight boundary).
     expect(data.outputTodayByUnit['org/dev'], 2);
     expect(data.routes, hasLength(1));
     expect(data.routes.single.toId, 'a-fresh');

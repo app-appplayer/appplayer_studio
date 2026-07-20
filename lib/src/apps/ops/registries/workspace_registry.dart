@@ -43,6 +43,8 @@ class Workspace {
     this.shares = const [],
     this.parentId,
     this.leadMemberId,
+    this.unitRole = WorkspaceUnitRole.line,
+    this.sortOrder = 0,
     this.tags = const {},
   });
 
@@ -63,12 +65,12 @@ class Workspace {
 
   /// Organization hierarchy: the parent workspace this one reports to
   /// (`null` = top of its tree). Builds the org axis of the matrix — e.g.
-  /// `개발본부` ← `프론트팀` ← a member's workspace. The ancestor chain is
+  /// `Dev-Division` ← `Front-Team` ← a member's workspace. The ancestor chain is
   /// the approval escalation path (G2/G3). Distinct from the workspace
   /// type/slug (a flat id) — hierarchy is overlay metadata, not nesting.
   final String? parentId;
 
-  /// The member id of this org unit's **lead** (팀장 / unit head) — the head
+  /// The member id of this org unit's **lead** (unit head) — the head
   /// of the team that this workspace represents. Renders as the top of the
   /// unit's hierarchy in the org chart (lead → members) and is the natural
   /// default approver/escalation target for the unit. `null` = no designated
@@ -76,7 +78,55 @@ class Workspace {
   /// `specs/platform/12-flowbrain-runtime.md §roles` (workspace = recursive
   /// org unit per `07-knowledge-access.md §182`).
   final String? leadMemberId;
+
+  /// Whether this org unit is a **line** (operational / business) or a
+  /// **staff** (support: management support, legal, finance, HR) unit. Drives
+  /// the org chart's placement convention: a staff unit hangs off its parent
+  /// as a direct side-branch, line units sit in the main child row below. Also
+  /// orders listings — staff units sort before line siblings. Defaults to
+  /// [WorkspaceUnitRole.line].
+  final WorkspaceUnitRole unitRole;
+
+  /// Explicit sibling ordering hint for the org chart / listings. Siblings are
+  /// sorted by this ascending; `0` = **unset**, sorting after any explicitly
+  /// ordered sibling and falling back to the default (staff-before-line, then
+  /// id). Lets an operator lay out units in management-logic order (support
+  /// staff first, then R&D, IT ops, business, …) without renaming slugs —
+  /// slugs stay stable so agent ids / knowledge / tasks keyed on them don't
+  /// break.
+  final int sortOrder;
   final Map<String, String> tags;
+
+  /// Tag key marking a workspace as archived (deactivated but retained). Its
+  /// value is the ISO-8601 archive timestamp.
+  static const String archivedTag = 'ops:archived';
+
+  /// Whether this workspace is archived — deactivated and hidden from the
+  /// default [WorkspaceRegistry.list], yet fully retained on disk (`.mbd`
+  /// bundle, members/agents, owned knowledge, skills, KV) and restorable. An
+  /// org's accumulated history is institutional memory; a plain delete
+  /// archives it, and only an explicit purge wipes it.
+  bool get archived => tags.containsKey(archivedTag);
+
+  /// ISO-8601 timestamp this workspace was archived, or null when active.
+  String? get archivedAt => tags[archivedTag];
+
+  Workspace copyWith({Map<String, String>? tags}) => Workspace(
+    id: id,
+    type: type,
+    title: title,
+    locale: locale,
+    timezone: timezone,
+    createdAt: createdAt,
+    members: members,
+    sharedWith: sharedWith,
+    shares: shares,
+    parentId: parentId,
+    leadMemberId: leadMemberId,
+    unitRole: unitRole,
+    sortOrder: sortOrder,
+    tags: tags ?? this.tags,
+  );
 
   Map<String, dynamic> toYamlMap() => {
     'id': id,
@@ -90,6 +140,8 @@ class Workspace {
     'shares': shares.map((s) => s.toMap()).toList(),
     if (parentId != null) 'parentId': parentId,
     if (leadMemberId != null) 'leadMemberId': leadMemberId,
+    if (unitRole != WorkspaceUnitRole.line) 'unitRole': unitRole.name,
+    if (sortOrder != 0) 'sortOrder': sortOrder,
     'tags': tags,
   };
 
@@ -124,6 +176,11 @@ class Workspace {
       ],
       parentId: (y['parentId'] as String?),
       leadMemberId: (y['leadMemberId'] as String?),
+      unitRole: WorkspaceUnitRole.values.firstWhere(
+        (r) => r.name == (y['unitRole'] as String? ?? 'line'),
+        orElse: () => WorkspaceUnitRole.line,
+      ),
+      sortOrder: (y['sortOrder'] as num?)?.toInt() ?? 0,
       tags:
           (y['tags'] as Map?)?.map(
             (k, v) => MapEntry(k.toString(), v.toString()),
@@ -134,6 +191,77 @@ class Workspace {
 }
 
 enum WorkspaceType { org, personal, project }
+
+/// Line (operational / business) vs staff (support) classification of an org
+/// unit — drives org-chart placement (staff = direct side-branch off the
+/// parent) and listing order (staff sorts before line siblings).
+enum WorkspaceUnitRole { line, staff }
+
+/// Orders workspaces the way the org chart reads — a depth-first walk of the
+/// `parentId` tree (roots first, each parent immediately followed by its
+/// children). Siblings sort by explicit `sortOrder` first (ascending; `0` =
+/// unset, sorted last), then **staff before line**, then by id — so an
+/// operator-set order wins, otherwise a support unit sits directly under its
+/// parent ahead of the operational row.
+///
+/// Total by construction: a workspace unreachable from any root (a cycle with
+/// no external entry, or a dangling parent) still appears exactly once — the
+/// listing is a headcount/roster source and must never silently drop a unit.
+/// Returns each workspace with its tree `depth` (root = 0) for indenting.
+List<({Workspace ws, int depth})> orderWorkspacesHierarchical(
+  List<Workspace> all,
+) {
+  final byId = {for (final w in all) w.id: w};
+  final children = <String, List<String>>{};
+  final roots = <String>[];
+  for (final w in all) {
+    final pid = w.parentId;
+    if (pid != null && pid.isNotEmpty && byId.containsKey(pid)) {
+      (children[pid] ??= []).add(w.id);
+    } else {
+      roots.add(w.id);
+    }
+  }
+  int cmp(String a, String b) {
+    final wa = byId[a]!;
+    final wb = byId[b]!;
+    // Explicit sortOrder wins (ascending); 0 = unset, sorted last.
+    final oa = wa.sortOrder == 0 ? 1 << 30 : wa.sortOrder;
+    final ob = wb.sortOrder == 0 ? 1 << 30 : wb.sortOrder;
+    if (oa != ob) return oa - ob;
+    // Tie / both unset: staff before line (index 0 = staff), then id.
+    final ra = wa.unitRole == WorkspaceUnitRole.staff ? 0 : 1;
+    final rb = wb.unitRole == WorkspaceUnitRole.staff ? 0 : 1;
+    return ra != rb ? ra - rb : a.compareTo(b);
+  }
+
+  roots.sort(cmp);
+  for (final l in children.values) {
+    l.sort(cmp);
+  }
+  final ordered = <({Workspace ws, int depth})>[];
+  final seen = <String>{};
+  void walk(String id, int depth) {
+    if (!seen.add(id)) {
+      return; // cycle guard
+    }
+    ordered.add((ws: byId[id]!, depth: depth));
+    for (final c in (children[id] ?? const [])) {
+      walk(c, depth + 1);
+    }
+  }
+
+  for (final r in roots) {
+    walk(r, 0);
+  }
+  // Safety net — unreachable units still surface exactly once.
+  final rest = all.map((w) => w.id).where((id) => !seen.contains(id)).toList()
+    ..sort(cmp);
+  for (final id in rest) {
+    walk(id, 0);
+  }
+  return ordered;
+}
 
 class WorkspaceRegistry {
   WorkspaceRegistry({required this.kv, required this.rootDir});
@@ -164,15 +292,61 @@ class WorkspaceRegistry {
 
   /// Workspace list. Reserved ids (starting with `_`, e.g. `_system`) are
   /// excluded by default — set [includeReserved] true for boot diagnostics
-  /// or admin tooling.
-  Future<List<Workspace>> list({bool includeReserved = false}) async {
+  /// or admin tooling. Archived (deactivated-but-retained) workspaces are also
+  /// excluded by default — set [includeArchived] true to surface them (e.g. a
+  /// restore picker).
+  Future<List<Workspace>> list({
+    bool includeReserved = false,
+    bool includeArchived = false,
+  }) async {
     await _ensureLoaded();
     final copy =
         _cache.values
             .where((w) => includeReserved || !w.id.startsWith('_'))
+            .where((w) => includeArchived || !w.archived)
             .toList();
     copy.sort((a, b) => a.id.compareTo(b.id));
     return copy;
+  }
+
+  /// Deactivate a workspace: mark it archived and hide it from the default
+  /// [list], while **retaining every on-disk trace** — the `.mbd` content
+  /// bundle, members/agents, each agent's owned knowledge/skill axes, KV, and
+  /// charter. This is the DEFAULT for the `workspace_delete` tool: deleting an
+  /// org unit must not destroy its accumulated institutional memory. Restore
+  /// with [reactivate]; hard-wipe only via the explicit [delete] (purge).
+  /// Idempotent — a no-op on an already-archived workspace.
+  Future<Workspace> deactivate(String id) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    if (ws.archived) return ws;
+    final updated = ws.copyWith(
+      tags: {
+        ...ws.tags,
+        Workspace.archivedTag: DateTime.now().toIso8601String(),
+      },
+    );
+    await _writeYaml('$rootDir/$id/config.yaml', updated.toYamlMap());
+    _cache[id] = updated;
+    if (_activeId == id) _activeId = null;
+    _notify();
+    return updated;
+  }
+
+  /// Reactivate an archived workspace (clear its archived marker). Inverse of
+  /// [deactivate]; a no-op on an already-active workspace.
+  Future<Workspace> reactivate(String id) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    if (!ws.archived) return ws;
+    final tags = {...ws.tags}..remove(Workspace.archivedTag);
+    final updated = ws.copyWith(tags: tags);
+    await _writeYaml('$rootDir/$id/config.yaml', updated.toYamlMap());
+    _cache[id] = updated;
+    _notify();
+    return updated;
   }
 
   Future<Workspace?> get(String id) async {
@@ -239,6 +413,8 @@ class WorkspaceRegistry {
     required String title,
     String locale = 'ko',
     String timezone = 'Asia/Seoul',
+    WorkspaceUnitRole unitRole = WorkspaceUnitRole.line,
+    int sortOrder = 0,
     Map<String, String> tags = const {},
   }) async {
     await _ensureLoaded();
@@ -280,6 +456,8 @@ class WorkspaceRegistry {
       title: title,
       locale: locale,
       timezone: timezone,
+      unitRole: unitRole,
+      sortOrder: sortOrder,
       createdAt: DateTime.now(),
       tags: tags,
     );
@@ -545,7 +723,7 @@ class WorkspaceRegistry {
   }
 
   /// Ancestor chain (nearest parent first) — the organization escalation
-  /// path. `개발본부 ← 프론트팀 ← ws` returns `[프론트팀, 개발본부]` for `ws`.
+  /// path. `Dev-Division ← Front-Team ← ws` returns `[Front-Team, Dev-Division]` for `ws`.
   Future<List<String>> ancestors(String id) async {
     await _ensureLoaded();
     final out = <String>[];
@@ -568,13 +746,37 @@ class WorkspaceRegistry {
   }
 
   /// Set (or clear, when [memberId] is null/empty) this org unit's **lead**
-  /// (팀장 / unit head). The lead member must belong to the workspace.
+  /// (unit head). The lead member must belong to the workspace.
   Future<Workspace> setLead(String id, String? memberId) async {
     await _ensureLoaded();
     final ws = _cache[id];
     if (ws == null) throw StateError('workspace not found: $id');
     final lead = (memberId == null || memberId.isEmpty) ? null : memberId;
     final updated = _copyWith(ws, leadMemberId: lead, clearLead: lead == null);
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
+  /// Set this workspace's line/staff classification.
+  Future<Workspace> setUnitRole(String id, WorkspaceUnitRole unitRole) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    final updated = _copyWith(ws, unitRole: unitRole);
+    await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
+    _cache[updated.id] = updated;
+    _notify();
+    return updated;
+  }
+
+  /// Set this workspace's explicit sibling ordering hint (`0` = unset).
+  Future<Workspace> setSortOrder(String id, int sortOrder) async {
+    await _ensureLoaded();
+    final ws = _cache[id];
+    if (ws == null) throw StateError('workspace not found: $id');
+    final updated = _copyWith(ws, sortOrder: sortOrder);
     await _writeYaml('$rootDir/${updated.id}/config.yaml', updated.toYamlMap());
     _cache[updated.id] = updated;
     _notify();
@@ -588,6 +790,8 @@ class WorkspaceRegistry {
     bool clearParent = false,
     String? leadMemberId,
     bool clearLead = false,
+    WorkspaceUnitRole? unitRole,
+    int? sortOrder,
   }) => Workspace(
     id: ws.id,
     type: ws.type,
@@ -600,6 +804,8 @@ class WorkspaceRegistry {
     shares: shares ?? ws.shares,
     parentId: clearParent ? null : (parentId ?? ws.parentId),
     leadMemberId: clearLead ? null : (leadMemberId ?? ws.leadMemberId),
+    unitRole: unitRole ?? ws.unitRole,
+    sortOrder: sortOrder ?? ws.sortOrder,
     tags: ws.tags,
   );
 

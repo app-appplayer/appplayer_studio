@@ -13,6 +13,9 @@ import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart';
 import 'package:flutter_mcp_ui_runtime/src/optimization/widget_cache.dart';
 import 'package:appplayer_ui_view/appplayer_ui_view.dart';
 
+import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
+    show ThemeDefinition;
+
 import 'package:appplayer_studio/base.dart';
 import 'package:brain_kernel/brain_kernel.dart' show CanonicalChange;
 
@@ -225,7 +228,17 @@ class McpUiRuntimePort implements UiRuntimePort {
     this.onToolCall,
     this.pageLoader,
     this.onRuntimeReady,
+    this.hostBrightnessOf,
   });
+
+  /// Resolves the host surface's effective brightness at render time —
+  /// what `theme.mode: system` should inherit inside the Studio. Also
+  /// drives the per-render [ThemeManager.setHostBrightness] re-pin: the
+  /// runtime's ThemeManager is a process singleton, so without the pin a
+  /// previous surface's explicit mode survives into a definition that
+  /// declares none. Null = legacy caller; resolution falls back to the
+  /// ambient [Theme] at build time and the singleton is left untouched.
+  final Brightness Function()? hostBrightnessOf;
 
   /// Optional canonical reference. When set, the runtime gets a
   /// `pageLoader` callback that resolves `ui://<id>` URIs (and the
@@ -294,18 +307,52 @@ class McpUiRuntimePort implements UiRuntimePort {
       );
       onRuntimeReady?.call(snapshot.target, runtime);
       // Resolve the brightness the rendered runtime should operate under.
-      // Driven entirely by the tab-bar toggle (which mutates the snapshot's
-      // `theme.mode` for `light` / `dark`). When the toggle is `System`
-      // and the bundle's mode is `system`/null, default to LIGHT — vibe
-      // intentionally does NOT read the host OS brightness so the preview
-      // stays deterministic and never inherits the vibe shell's dark
-      // chrome.
+      // `light` / `dark` (from the tab-bar toggle's snapshot override or the
+      // bundle's own theme.mode) are explicit. `system`/null inherits the
+      // Studio chrome's effective theme — inside Studio, "system" means the
+      // host the preview lives in, so a dark Studio previews dark and flips
+      // when the Studio theme setting flips. (On a real device the same
+      // bundle resolves "system" against the OS.)
       final mode = _modeOf(snapshot.data);
-      final Brightness brightness =
-          mode == 'dark' ? Brightness.dark : Brightness.light;
-      return Builder(
+      // Rebaseline BEFORE the brightness pin: the singleton ThemeManager
+      // also leaks the previous definition's PALETTE (a themeless
+      // definition rendered after a themed one inherits foreign colors —
+      // brightness pinning can't cover that axis), and its stock default
+      // has no dark token set (dark pin + empty default = broken dark).
+      // A definition that declares no palette of its own therefore resets
+      // the singleton to a content-ful neutral baseline (M3 light + real
+      // dark variant), keeping any declared/overridden mode. A definition
+      // WITH its own palette re-asserts that palette (identical to what
+      // engine init applied) so the guard below has one canonical map to
+      // restore either way.
+      final declared = snapshot.data['theme'];
+      final hasOwnPalette =
+          declared is Map && declared.keys.any((k) => k != 'mode');
+      final Map<String, dynamic> assertTheme =
+          hasOwnPalette
+              ? (declared as Map).cast<String, dynamic>()
+              : <String, dynamic>{
+                ..._systemBaselineTheme,
+                if (declared is Map && declared['mode'] is String)
+                  'mode': declared['mode'] as String,
+              };
+      runtime.themeManager.setTheme(assertTheme);
+      final Brightness? pinned = switch (mode) {
+        'dark' => Brightness.dark,
+        'light' => Brightness.light,
+        _ => hostBrightnessOf?.call(),
+      };
+      if (pinned != null) {
+        // Re-pin on EVERY render (not just mode changes): each runtime
+        // instance shares the singleton ThemeManager, so redrawing a
+        // surface must re-assert its own resolution or it inherits
+        // whatever the previous render left behind.
+        runtime.themeManager.setHostBrightness(pinned);
+      }
+      final rendered = Builder(
         builder: (context) {
           final base = Theme.of(context);
+          final Brightness brightness = pinned ?? base.brightness;
           final mq = MediaQuery.of(context);
           return MediaQuery(
             data: mq.copyWith(platformBrightness: brightness),
@@ -322,10 +369,33 @@ class McpUiRuntimePort implements UiRuntimePort {
           );
         },
       );
+      // Liveness guard: an input-based gate alone lies — another runtime's
+      // `destroy()` calls `ThemeManager.instance.reset()` behind the host's
+      // back (no hook), wiping palette+mode+pin between renders of the SAME
+      // definition. The guard remembers the applied state's fingerprint and
+      // re-asserts on divergence — but only while its surface is the ACTIVE
+      // one, so co-mounted surfaces never ping-pong the singleton.
+      return _ThemeLivenessGuard(
+        themeManager: runtime.themeManager,
+        theme: assertTheme,
+        pinned: pinned,
+        child: rendered,
+      );
     } catch (e) {
       return _Fallback(snapshot: snapshot, error: e);
     }
   }
+
+  /// Content-ful neutral baseline for definitions that declare no palette
+  /// of their own — M3 default light PLUS a real dark token set, so a dark
+  /// resolution renders actual dark tokens instead of the stock empty
+  /// default (rebaseline discipline; mirrors appplayer core
+  /// `_systemBaselineTheme`).
+  static final Map<String, dynamic> _systemBaselineTheme = <String, dynamic>{
+    ...ThemeDefinition.defaultLight().toJson(),
+    'mode': 'system',
+    'dark': ThemeDefinition.defaultDark().toJson(),
+  };
 
   /// Resolve the effective `theme.mode` on a definition. App definitions
   /// carry it at the top level; pages get an injected `theme` (see
@@ -367,13 +437,14 @@ class McpUiRuntimePort implements UiRuntimePort {
         final templates = ui is Map ? ui['templates'] : null;
         final tpl = templates is Map ? templates[id] : null;
         final body = tpl is Map ? tpl['content'] : null;
-        if (body is Map<String, dynamic>) {
-          return <String, dynamic>{'type': 'page', 'content': body};
-        }
         if (body is Map) {
           return <String, dynamic>{
             'type': 'page',
-            'content': Map<String, dynamic>.from(body),
+            'content': revealConditionalsForDesign(
+              body is Map<String, dynamic>
+                  ? body
+                  : Map<String, dynamic>.from(body),
+            ),
           };
         }
         throw StateError(
@@ -386,13 +457,14 @@ class McpUiRuntimePort implements UiRuntimePort {
         final ui = canonical.currentJson['ui'];
         final dash = ui is Map ? ui['dashboard'] : null;
         final content = dash is Map ? dash['content'] : null;
-        if (content is Map<String, dynamic>) {
-          return <String, dynamic>{'type': 'page', 'content': content};
-        }
         if (content is Map) {
           return <String, dynamic>{
             'type': 'page',
-            'content': Map<String, dynamic>.from(content),
+            'content': revealConditionalsForDesign(
+              content is Map<String, dynamic>
+                  ? content
+                  : Map<String, dynamic>.from(content),
+            ),
           };
         }
         throw StateError('mcp_ui pageLoader: dashboard content missing');
@@ -410,14 +482,98 @@ class McpUiRuntimePort implements UiRuntimePort {
       final ui = canonical.currentJson['ui'];
       final pages = ui is Map ? ui['pages'] : null;
       final page = pages is Map ? pages[id] : null;
-      if (page is Map<String, dynamic>) return page;
-      if (page is Map) return Map<String, dynamic>.from(page);
+      if (page is Map) {
+        return revealConditionalsForDesign(
+          page is Map<String, dynamic>
+              ? page
+              : Map<String, dynamic>.from(page),
+        ) as Map<String, dynamic>;
+      }
       throw StateError('mcp_ui pageLoader: page not found for "$uri"');
     };
   }
 
   @override
   Future<void> dispose() async {}
+}
+
+
+/// DESIGN-canvas transform: authored content that the RUNTIME would hide
+/// must still be VISIBLE and CLICK-SELECTABLE in the editor preview — a
+/// canvas that hides it can neither show nor select it for editing.
+///
+///  * `conditional` — rendered with its condition forced TRUE so the
+///    `then` branch shows. The node itself stays in the rendered chain
+///    (shallow copy, original `then` subtree identity), so tap-select
+///    resolves the real canonical path (`…/then/…`).
+///  * `list` with a BINDING `items` (e.g. `"{{items}}"`) — state is
+///    empty at design time, so zero rows would render. A single SAMPLE
+///    item is injected whose fields echo the bindings referenced by the
+///    `itemTemplate` (`{{item.name}}` → `name`), making one template row
+///    visible and selectable. The original `itemTemplate` identity is
+///    kept for path resolution.
+///
+/// Debug/inspector rendering does NOT go through this (it uses the
+/// session's served resources), so runtime behaviour stays real there.
+/// Containers are shallow-copied; every untouched submap keeps its
+/// ORIGINAL identity so the inspect-select chain still resolves.
+dynamic revealConditionalsForDesign(dynamic node) {
+  if (node is Map) {
+    Map<String, dynamic>? copy;
+    void put(String key, Object? value) {
+      copy ??= Map<String, dynamic>.from(node);
+      copy![key] = value;
+    }
+
+    if (node['type'] == 'conditional' && node['then'] != null) {
+      put('condition', true);
+    }
+    if (node['type'] == 'list' &&
+        node['items'] is String &&
+        node['itemTemplate'] is Map) {
+      put('items', <dynamic>[
+        _sampleItemFor(node['itemTemplate'] as Map),
+      ]);
+    }
+    node.forEach((key, value) {
+      // The forced-true condition / sample items are design values —
+      // do not descend into the keys we just replaced.
+      if (copy != null && identical(copy![key], value) == false && (key == 'condition' || key == 'items')) {
+        return;
+      }
+      final transformed = revealConditionalsForDesign(value);
+      if (!identical(transformed, value)) put(key as String, transformed);
+    });
+    return copy ?? node;
+  }
+  if (node is List) {
+    List<dynamic>? copy;
+    for (var i = 0; i < node.length; i++) {
+      final transformed = revealConditionalsForDesign(node[i]);
+      if (!identical(transformed, node[i])) {
+        copy ??= List<dynamic>.from(node);
+        copy[i] = transformed;
+      }
+    }
+    return copy ?? node;
+  }
+  return node;
+}
+
+/// Build a sample item for a design-time list row: every `{{item.<f>}}`
+/// binding the template references resolves to its own field name, so
+/// the row reads like a labelled placeholder ("name · amount") instead
+/// of collapsing to zero-height empty texts.
+Map<String, dynamic> _sampleItemFor(Map itemTemplate) {
+  final refs = RegExp(r'\{\{item\.([A-Za-z0-9_]+)').allMatches(
+    jsonEncode(itemTemplate),
+  );
+  final sample = <String, dynamic>{};
+  for (final m in refs) {
+    final f = m.group(1)!;
+    sample[f] = f;
+  }
+  return sample.isEmpty ? <String, dynamic>{'value': 'item'} : sample;
 }
 
 class _Fallback extends StatelessWidget {
@@ -457,6 +613,97 @@ class _Fallback extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Keeps a rendered runtime surface's theme ALIVE on the process-singleton
+/// [ThemeManager], not merely applied once: `MCPUIRuntime.destroy()` (a tab
+/// closing, a preview unmounting) resets the singleton behind the host's
+/// back, so a surface that stays mounted — or re-shows without re-rendering
+/// (memoized futures, IndexedStack re-entry) — would silently drop to the
+/// empty stock default ("same thing re-opened looks wrong; visiting another
+/// app fixes it"). The guard stores the fingerprint of the state it applied
+/// and re-asserts theme+pin whenever the live fingerprint diverges — gated
+/// on [WorkspaceTabActiveScope] so only the active surface writes (multiple
+/// mounted guards must not ping-pong the shared singleton).
+class _ThemeLivenessGuard extends StatefulWidget {
+  const _ThemeLivenessGuard({
+    required this.themeManager,
+    required this.theme,
+    required this.pinned,
+    required this.child,
+  });
+
+  final ThemeManager themeManager;
+  final Map<String, dynamic> theme;
+  final Brightness? pinned;
+  final Widget child;
+
+  @override
+  State<_ThemeLivenessGuard> createState() => _ThemeLivenessGuardState();
+}
+
+class _ThemeLivenessGuardState extends State<_ThemeLivenessGuard> {
+  late String _appliedFingerprint;
+  bool _reasserting = false;
+
+  /// `ThemeManager.reset()` (runtime destroy) wipes WITHOUT notifying, so
+  /// a listener alone cannot see it. A cheap periodic fingerprint compare
+  /// (string equality, no-op while intact) catches the silent case even
+  /// when nothing rebuilds this subtree.
+  Timer? _livenessTicker;
+
+  @override
+  void initState() {
+    super.initState();
+    _appliedFingerprint = widget.themeManager.fingerprint;
+    widget.themeManager.addListener(_onThemeManagerChanged);
+    _livenessTicker = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      _reassertIfActive();
+    });
+  }
+
+  @override
+  void dispose() {
+    _livenessTicker?.cancel();
+    widget.themeManager.removeListener(_onThemeManagerChanged);
+    super.dispose();
+  }
+
+  void _onThemeManagerChanged() {
+    if (!mounted || _reasserting) return;
+    if (widget.themeManager.fingerprint == _appliedFingerprint) return;
+    // Divergence — someone else wrote/reset the singleton. Re-assert on
+    // the next frame (a notify can land mid-build) if still the active
+    // surface by then.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _reassertIfActive();
+    });
+  }
+
+  void _reassertIfActive() {
+    if (widget.themeManager.fingerprint == _appliedFingerprint) return;
+    if (!WorkspaceTabActiveScope.isActiveOf(context)) return;
+    _reasserting = true;
+    try {
+      widget.themeManager.setTheme(widget.theme);
+      if (widget.pinned != null) {
+        widget.themeManager.setHostBrightness(widget.pinned);
+      }
+      _appliedFingerprint = widget.themeManager.fingerprint;
+    } finally {
+      _reasserting = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Build-time check covers divergence windows where no notification
+    // reached us while inactive — re-entry (tab switch rebuilds) heals.
+    _reassertIfActive();
+    return widget.child;
   }
 }
 
@@ -727,11 +974,23 @@ class _PreviewMcpUiState extends State<PreviewMcpUi> {
     return MatrixUtils.transformRect(transform, Offset.zero & box.size);
   }
 
+  /// Studio chrome brightness the preview's `theme.mode: system` inherits.
+  /// Cached from [didChangeDependencies] so the port's render-time callback
+  /// never touches a possibly-unmounted context.
+  Brightness _hostBrightness = Brightness.dark;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _hostBrightness = Theme.of(context).brightness;
+  }
+
   UiRuntimeRegistry _buildRegistry() {
     return UiRuntimeRegistry()..register(
       McpUiRuntimePort(
         canonical: widget.canonical,
         inspector: widget.inspectMode ? _inspectorWrapper : null,
+        hostBrightnessOf: () => _hostBrightness,
       ),
     );
   }
@@ -851,8 +1110,10 @@ class _PreviewMcpUiState extends State<PreviewMcpUi> {
     // Key on (target, frame.id, mode-override) so changing any of them
     // tears down the previous UiView state cleanly and the FutureBuilder
     // refetches with the new snapshot data.
+    // `_hostBrightness` is part of the key so a Studio theme flip while
+    // the preview is open remounts and re-resolves `system` mode.
     final keyTag =
-        '$target|${frame?.id ?? 'default'}|${widget.previewMode ?? 'auto'}|${widget.resetEpoch}|${widget.inspectMode ? 'inspect' : 'live'}';
+        '$target|${frame?.id ?? 'default'}|${widget.previewMode ?? 'auto'}|${widget.resetEpoch}|${widget.inspectMode ? 'inspect' : 'live'}|${_hostBrightness.name}';
     // (target picked above; dashboardMode forces mcp-ui:dashboard.)
     final view = UiView(
       key: ValueKey<String>('vibe.preview.mcp_ui:$keyTag'),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,6 +23,7 @@ import '../../../base/install/capability_recipes/capability_recipes.dart'
 import '../../../base/install/knowledge_persistence/knowledge_persistence.dart'
     show exportProject, importProject, purgeProject;
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart' show BuiltinToolRegistry;
 import 'package:appplayer_studio/builtin_api.dart'
@@ -35,8 +37,10 @@ import '../../../base/agent/agent_host.dart' show AgentHost;
 import '../../../base/agent/agent_invoke_queue.dart';
 import '../core/inbox_query.dart';
 import '../init/knowledge_init.dart';
+import '../triggers/trigger_events.dart';
 import '../init/workspace_context.dart';
 import '../ops_builtin.dart' show OpsBuiltInApp;
+import '../observability/activity_event.dart';
 import '../observability/diagnostic_export.dart';
 import '../portability/html_report.dart';
 import '../portability/opspack.dart';
@@ -45,6 +49,92 @@ import '../registries/process_registry.dart';
 import '../registries/task_registry.dart';
 import '../registries/workspace_registry.dart';
 import '../skills/skill_definition.dart';
+
+/// Orders a workspace's members for display: persons (the principals —
+/// owner / CEO) first, then agents by orchestration role — manager (the
+/// unit's lead / department head) ahead of reviewer ahead of worker — then by
+/// id.
+/// Shared by `member_list` (single workspace) and `member_global_list`
+/// (cross-workspace) so both read the same way: the human principals on top,
+/// each unit's manager leading its roster, then the rest.
+@visibleForTesting
+List<Member> membersInListingOrder(List<Member> members) {
+  int rank(Member m) {
+    if (m.kind == MemberKind.person) return 0;
+    if (m is AgentMember) {
+      return switch (m.role) {
+        AgentRole.manager => 1,
+        AgentRole.reviewer => 2,
+        AgentRole.worker => 3,
+      };
+    }
+    return 3;
+  }
+
+  return [...members]..sort((a, b) {
+    final ra = rank(a);
+    final rb = rank(b);
+    return ra != rb ? ra - rb : a.id.compareTo(b.id);
+  });
+}
+
+/// Aggregates per-workspace member lists into the `member_global_list` rows.
+///
+/// Keyed by `(workspaceId, id)` — member ids are unique only WITHIN a
+/// workspace (every department owns its own `lead`, `qa`, …), so deduping on
+/// the short id alone silently merges distinct members (10 different
+/// department `lead`s collapse into one row, undercounting the org). The
+/// composite key keeps every workspace membership as its own entry, so the
+/// total equals the sum of the per-workspace `member_list` counts.
+///
+/// The caller passes workspaces in org-tree order (see
+/// [orderWorkspacesHierarchical]); within each workspace, persons (the
+/// principals — owner / CEO) sort above agents, then by id. Combined, the
+/// listing reads hierarchically: the root's owner on top, each department's
+/// members following their unit. Each row carries `depth` +
+/// `parentWorkspaceId` so a consumer can indent the tree.
+@visibleForTesting
+Map<String, dynamic> buildGlobalMemberList(
+  List<({String wsId, String? parentId, int depth, List<Member> members})>
+      perWorkspace, {
+  String? kindFilter,
+  String? query,
+}) {
+  final q = query?.toLowerCase();
+  final byKey = <String, Map<String, dynamic>>{};
+  for (final ws in perWorkspace) {
+    final sorted = membersInListingOrder(ws.members);
+    for (final m in sorted) {
+      if (kindFilter != null && m.kind.name != kindFilter) continue;
+      if (q != null &&
+          !m.id.toLowerCase().contains(q) &&
+          !m.displayName.toLowerCase().contains(q)) {
+        continue;
+      }
+      final base = <String, dynamic>{
+        'id': m.id,
+        'workspaceId': ws.wsId,
+        if (ws.parentId != null && ws.parentId!.isNotEmpty)
+          'parentWorkspaceId': ws.parentId,
+        'depth': ws.depth,
+        'kind': m.kind.name,
+        'displayName': m.displayName,
+        'tags': m.tags,
+      };
+      if (m is AgentMember) {
+        base['agentId'] = m.agentId;
+        base['profileRef'] = m.profileRef;
+        base['philosophyRef'] = m.philosophyRef;
+        base['skillIds'] = m.skillIds;
+      } else if (m is PersonMember) {
+        base['email'] = m.email;
+        base['roleLabels'] = m.roleLabels;
+      }
+      byKey['${ws.wsId} ${m.id}'] = base;
+    }
+  }
+  return {'members': byKey.values.toList(), 'total': byKey.length};
+}
 
 /// Exposes every UI-available app operation as an MCP tool so internal
 /// (built-in) and external LLMs can drive the app over MCP on equal footing.
@@ -74,6 +164,78 @@ class SystemTools {
       args,
       execWorkspaceId: WorkspaceExecutionContext.current,
       activeWorkspaceId: init.registries.workspace.activeId,
+    );
+  }
+
+  /// The workspace that OWNS a fully-qualified agentId, or null for a bare id
+  /// (`lead`) or an unknown agentId. Authoritative: scans every workspace for
+  /// a member whose `.agentId` matches exactly — no fragile decode of the
+  /// `<ns>.<wsEncoded>.<member>` string. Used so `agent_ask` routes to the
+  /// department NAMED by the agentId rather than the active-lens workspace,
+  /// which would silently mis-deliver a cross-department ask to a same-named
+  /// member (every division has a `lead`).
+  Future<String?> _workspaceOfAgentId(
+    KnowledgeInit init,
+    String agentId,
+  ) async {
+    if (!agentId.contains('.')) return null; // bare member id — no encoded ws
+    for (final ws in await init.registries.workspace.list()) {
+      final members = await init.registries.member.listForWorkspace(ws.id);
+      if (members.any((m) => m is AgentMember && m.agentId == agentId)) {
+        return ws.id;
+      }
+    }
+    return null;
+  }
+
+  /// Fire an [AgentWorkCompleted] on the trigger bus, best-effort (a bad
+  /// listener must not fail the tool). Fire-and-forget — the bus's seams are
+  /// internally guarded.
+  void _emitWork({
+    required String source,
+    required String workspaceId,
+    required WorkKind kind,
+    required String refId,
+    String? summary,
+    String state = 'completed',
+  }) {
+    try {
+      init.triggerBus.emit(
+        AgentWorkCompleted(
+          sourceAgentId: source,
+          workspaceId: workspaceId,
+          kind: kind,
+          refId: refId,
+          state: state,
+          at: DateTime.now(),
+          summary: summary,
+        ),
+      );
+    } catch (_) {
+      // Best-effort — the tool result stands regardless.
+    }
+  }
+
+  /// Emit an agent-turn activity event (`agentAsk` / `agentReply`) so the Live
+  /// Activity feed shows the conversation traffic the generic `mcpInbound`
+  /// wrapper deliberately skips for these tools. Best-effort. [headline] is
+  /// truncated to keep the feed row scannable.
+  void _emitAgentTurn(
+    String actor,
+    String prefix,
+    String body,
+    ActivityKind kind, {
+    String? workspaceId,
+  }) {
+    final bus = init.observability?.bus;
+    if (bus == null) return;
+    final one = body.replaceAll('\n', ' ').trim();
+    final clipped = one.length > 120 ? '${one.substring(0, 117)}…' : one;
+    bus.info(
+      actor,
+      '$prefix$clipped',
+      kind: kind,
+      workspaceId: workspaceId,
     );
   }
 
@@ -239,24 +401,40 @@ class SystemTools {
 
     // --- Workspace ---
 
-    _register(server, 'workspace_list', 'List all workspaces', const {}, (
-      _,
-    ) async {
-      final list = await init.registries.workspace.list();
-      return {
-        'activeId': init.registries.workspace.activeId,
-        'workspaces': [
-          for (final w in list)
-            {
-              'id': w.id,
-              'type': w.type.name,
-              'title': w.title,
-              'members': w.members,
-              'tags': w.tags,
-            },
-        ],
-      };
-    });
+    _register(
+      server,
+      'workspace_list',
+      'List workspaces. Archived (deactivated-but-retained) ones are hidden '
+          'unless `includeArchived` is true; each entry carries an `archived` '
+          'flag so a restore picker can surface them.',
+      const {
+        'type': 'object',
+        'properties': {
+          'includeArchived': {'type': 'boolean'},
+        },
+      },
+      (args) async {
+        final includeArchived = args['includeArchived'] == true;
+        final list = await init.registries.workspace.list(
+          includeArchived: includeArchived,
+        );
+        return {
+          'activeId': init.registries.workspace.activeId,
+          'workspaces': [
+            for (final w in list)
+              {
+                'id': w.id,
+                'type': w.type.name,
+                'title': w.title,
+                'members': w.members,
+                'tags': w.tags,
+                'archived': w.archived,
+                if (w.archivedAt != null) 'archivedAt': w.archivedAt,
+              },
+          ],
+        };
+      },
+    );
 
     _register(
       server,
@@ -365,7 +543,113 @@ class SystemTools {
     _register(
       server,
       'workspace_delete',
-      'Delete a workspace',
+      'Deactivate (archive) or purge a workspace. Default `archive` RETAINS '
+          'all data (members/agents, owned knowledge, skills, charter, KV) and '
+          'only hides the workspace from listings — an org\'s history survives '
+          'and is restorable via `workspace_restore`. `mode:purge` '
+          'hard-deletes the workspace and cascades its agents (irreversible).',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'mode': {
+            'type': 'string',
+            'enum': ['archive', 'purge'],
+            'description':
+                'archive (default) = deactivate + retain all data; '
+                'purge = irreversible hard delete + agent cascade.',
+          },
+        },
+        'required': ['id'],
+      },
+      (args) async {
+        final id = args['id'] as String;
+        final mode = (args['mode'] as String?) ?? 'archive';
+        final wasActive = init.registries.workspace.activeId == id;
+        int? agentsPurged;
+        if (mode == 'purge') {
+          // PURGE (explicit, irreversible) — cascade the members' kernel-owned
+          // knowledge BEFORE dropping the workspace. `workspace.delete` clears
+          // the registry, the `.mbd` bundle, and the agent registry entries —
+          // but each agent's OWNED axis stores
+          // (`agent_owned_skill|philosophy|index/<agentId>/…`) are keyed by
+          // agent id OUTSIDE the workspace partition, so they orphan. The
+          // coordinator's knowledge query then surfaces a DELETED org's skills
+          // / charter as the current org (stale recall — live-caught
+          // 2026-07-08). `deleteAgent` removes the agent's conversation + every
+          // owned axis via its index. Snapshot members FIRST — after
+          // `workspace.delete` they no longer resolve. Best-effort per agent:
+          // one already-gone member must not block the rest or the delete.
+          var purged = 0;
+          if (init.system.isAgentSubsystemActivated) {
+            try {
+              final members =
+                  await init.registries.member.listForWorkspace(id);
+              for (final m in members) {
+                if (m is AgentMember && m.agentId.isNotEmpty) {
+                  try {
+                    await init.system.agents.deleteAgent(m.agentId);
+                    purged++;
+                  } catch (_) {
+                    /* agent already absent — nothing to cascade */
+                  }
+                }
+              }
+            } catch (_) {
+              /* member enumeration failed — still drop the workspace below */
+            }
+          }
+          agentsPurged = purged;
+          await init.registries.workspace.delete(id);
+          // workspace.delete clears the on-disk `.mbd` bundle, but the member
+          // registry caches members per-workspace — evict so the purge is
+          // consistent in-session (no members resolvable by a deleted id).
+          init.registries.member.evictWorkspace(id);
+          // Purge the org's CHARTER ethos too. It lives in the per-project
+          // ethos store keyed `charter.<wsId>` (see `workspace_set_charter`),
+          // OUTSIDE the `.mbd` bundle + KV `ws/<id>/` partition that
+          // `workspace.delete` clears — so it would otherwise orphan and the
+          // coordinator keeps loading a deleted org's charter (stale recall).
+          // Delete is an optional port capability (`EthosStoreDelete`); skip
+          // cleanly when the wired adapter lacks it.
+          final ethosStore = init.ethosStore;
+          if (ethosStore is bundle.EthosStoreDelete) {
+            final deletable = ethosStore as bundle.EthosStoreDelete;
+            try {
+              await deletable.deleteEthos('charter.$id');
+            } catch (_) {
+              /* best-effort — record may be absent */
+            }
+          }
+        } else {
+          // ARCHIVE (default) — deactivate + RETAIN everything. An org's
+          // accumulated agents / knowledge / skills are institutional memory
+          // and must survive a delete; nothing is wiped and no agent is
+          // cascaded. Restore with `workspace_restore`.
+          await init.registries.workspace.deactivate(id);
+        }
+        // Removing the ACTIVE lens (either mode) leaves nothing selected (Home
+        // goes empty) — reselect the first remaining (non-archived) workspace
+        // so a sensible default shows (falls back to the reserved `_system`
+        // slot when the last one is gone). switchWorkspace persists the new
+        // pointer, so it survives a reboot.
+        if (wasActive) {
+          final remaining = await init.registries.workspace.list();
+          await init.switchWorkspace(
+            remaining.isNotEmpty ? remaining.first.id : systemWorkspaceSlot,
+          );
+        }
+        return mode == 'purge'
+            ? {'purged': true, 'agentsPurged': agentsPurged}
+            : {'archived': true, 'id': id};
+      },
+    );
+
+    _register(
+      server,
+      'workspace_restore',
+      'Reactivate an archived workspace — the inverse of `workspace_delete` '
+          '(archive mode). Restores it to listings with all data intact.',
       const {
         'type': 'object',
         'properties': {
@@ -375,23 +659,8 @@ class SystemTools {
       },
       (args) async {
         final id = args['id'] as String;
-        final wasActive = init.registries.workspace.activeId == id;
-        await init.registries.workspace.delete(id);
-        // Cascade: workspace.delete clears the on-disk `.mbd` bundle, but the
-        // member registry caches members per-workspace — evict so the delete is
-        // consistent in-session (no members resolvable by a deleted id).
-        init.registries.member.evictWorkspace(id);
-        // Deleting the ACTIVE lens leaves nothing selected (Home goes empty) —
-        // reselect the first remaining workspace so a sensible default shows
-        // (falls back to the reserved `_system` slot when the last one is gone).
-        // switchWorkspace persists the new pointer, so it survives a reboot.
-        if (wasActive) {
-          final remaining = await init.registries.workspace.list();
-          await init.switchWorkspace(
-            remaining.isNotEmpty ? remaining.first.id : systemWorkspaceSlot,
-          );
-        }
-        return {'deleted': true};
+        final ws = await init.registries.workspace.reactivate(id);
+        return {'restored': true, 'id': ws.id};
       },
     );
 
@@ -637,6 +906,71 @@ class SystemTools {
     );
     _register(
       server,
+      'workspace_set_unit_role',
+      'Classify a workspace as a **line** (operational/business) or **staff** '
+          '(support: management support, legal, finance, HR) org unit. The org '
+          'chart hangs a staff unit off its parent as a direct side-branch '
+          'while line units sit in the main child row; listings sort staff '
+          'siblings before line. Defaults to line.',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'unitRole': {
+            'type': 'string',
+            'enum': ['line', 'staff'],
+          },
+        },
+        'required': ['id', 'unitRole'],
+      },
+      (args) async {
+        final role = WorkspaceUnitRole.values.firstWhere(
+          (r) => r.name == (args['unitRole'] as String? ?? 'line'),
+          orElse: () => WorkspaceUnitRole.line,
+        );
+        try {
+          final ws = await init.registries.workspace.setUnitRole(
+            args['id'] as String,
+            role,
+          );
+          return {'id': ws.id, 'unitRole': ws.unitRole.name};
+        } on StateError catch (e) {
+          return {'error': e.message};
+        }
+      },
+    );
+    _register(
+      server,
+      'workspace_set_order',
+      'Set a workspace\'s explicit sibling ordering hint. Siblings in the org '
+          'chart / listings sort by this ascending; `0` = unset, sorting after '
+          'any explicitly ordered sibling (then staff-before-line, then id). '
+          'Lets an operator lay units out in management-logic order without '
+          'renaming slugs (slugs stay stable so agent ids / knowledge / tasks '
+          'keyed on them keep working).',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'order': {'type': 'integer'},
+        },
+        'required': ['id', 'order'],
+      },
+      (args) async {
+        final order = (args['order'] as num?)?.toInt() ?? 0;
+        try {
+          final ws = await init.registries.workspace.setSortOrder(
+            args['id'] as String,
+            order,
+          );
+          return {'id': ws.id, 'sortOrder': ws.sortOrder};
+        } on StateError catch (e) {
+          return {'error': e.message};
+        }
+      },
+    );
+    _register(
+      server,
       'workspace_tree',
       'Organization view for a workspace: `ancestors` (escalation chain, '
           'nearest parent first) and `children` (direct reports). Defaults to '
@@ -676,12 +1010,30 @@ class SystemTools {
       (args) async {
         final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
-        final members = await init.registries.member.listForWorkspace(wsId);
+        final members = membersInListingOrder(
+          await init.registries.member.listForWorkspace(wsId),
+        );
         return {
           'workspace': wsId,
           'members': [
+            // Mirror member_get's projection so the identity axes (profileRef /
+            // philosophyRef / skillIds) that write tools persist are actually
+            // visible on read — a bare {id,kind,displayName} list hid the
+            // per-agent individuation and read as "unset".
             for (final m in members)
-              {'id': m.id, 'kind': m.kind.name, 'displayName': m.displayName},
+              {
+                'id': m.id,
+                'kind': m.kind.name,
+                'displayName': m.displayName,
+                if (m is AgentMember) 'agentId': m.agentId,
+                if (m is AgentMember) 'profileRef': m.profileRef,
+                if (m is AgentMember) 'skillIds': m.skillIds,
+                if (m is AgentMember) 'philosophyRef': m.philosophyRef,
+                if (m is AgentMember && m.model != null) 'model': m.model!.toJson(),
+                if (m is PersonMember) 'email': m.email,
+                if (m is PersonMember) 'roleLabels': m.roleLabels,
+                'tags': m.tags,
+              },
           ],
         };
       },
@@ -702,12 +1054,20 @@ class SystemTools {
       (args) async {
         final wsId = _wsId(args);
         if (wsId == null) return {'error': 'no active workspace'};
-        final m = await init.registries.member.get(args['id'] as String);
+        // Scope by workspace — org member ids collide across departments
+        // (every division has a `lead`), so an unscoped lookup returns the
+        // global first match (wrong member). Pass wsId so `id` resolves within
+        // the requested workspace.
+        final m = await init.registries.member.get(
+          args['id'] as String,
+          wsId: wsId,
+        );
         if (m == null) return {'error': 'member not found', 'id': args['id']};
         return {
           'id': m.id,
           'kind': m.kind.name,
           'displayName': m.displayName,
+          if (m is AgentMember) 'agentId': m.agentId,
           if (m is AgentMember) 'profileRef': m.profileRef,
           if (m is AgentMember) 'skillIds': m.skillIds,
           if (m is AgentMember) 'philosophyRef': m.philosophyRef,
@@ -722,7 +1082,8 @@ class SystemTools {
     _register(
       server,
       'member_create_agent',
-      'Create an AI agent in the active workspace. `provider` + `model` '
+      'Create an AI agent in the target workspace (`workspaceId`, defaults to '
+          'the active workspace). `provider` + `model` '
           'select the per-agent ModelSpec (catalog ids in '
           'lib/util/llm_model_catalog.dart). When omitted, the agent is '
           'created without an explicit ModelSpec — boot resolves to '
@@ -731,6 +1092,7 @@ class SystemTools {
         'type': 'object',
         'properties': {
           'id': {'type': 'string'},
+          'workspaceId': {'type': 'string'},
           'displayName': {'type': 'string'},
           'profileRef': {'type': 'string'},
           'skillIds': {
@@ -761,7 +1123,12 @@ class SystemTools {
         'required': ['id', 'displayName'],
       },
       (args) async {
-        final wsId = init.registries.workspace.activeId;
+        // Target the requested workspace (defaults to active) so callers can
+        // create into a specific department without workspace_switch — matches
+        // member_get / member_update / member_delete scoping.
+        final wsId =
+            (args['workspaceId'] as String?) ??
+            init.registries.workspace.activeId;
         if (wsId == null) return {'error': 'no active workspace'};
         // Single-call path: MemberRegistry.createAgent persists the yaml,
         // mirrors into flowbrain, and runs the 4-axis tryAssign* sweep —
@@ -848,6 +1215,15 @@ class SystemTools {
             // Best-effort — see note above.
           }
         }
+        // Live Activity feed: a new agent was provisioned (forkAssigned).
+        // Richer than the generic mcpInbound the wrapper skips for this tool.
+        init.observability?.bus.info(
+          agent.displayName,
+          'provisioned in $wsId',
+          kind: ActivityKind.forkAssigned,
+          workspaceId: wsId,
+          meta: {'agentId': agent.agentId},
+        );
         return {
           'id': agent.id,
           if (modelSpec != null) 'model': modelSpec.toJson(),
@@ -858,12 +1234,23 @@ class SystemTools {
     _register(
       server,
       'agent_ask',
-      'Send one user-turn message to an agent and get its reply.',
+      'Send one user-turn message to an agent and get its reply. Pass '
+          '`background:true` to hand it off as an async task instead of waiting '
+          '— use this for long work that would otherwise block / time out; the '
+          'agent still runs it, and its completion is announced through the '
+          'trigger bus (live-chat relay + feed notice) so you are pinged when '
+          'it lands.',
       {
         'type': 'object',
         'properties': {
           'agentId': {'type': 'string'},
           'message': {'type': 'string'},
+          'background': {
+            'type': 'boolean',
+            'description':
+                'Run asynchronously as a tracked task (no synchronous wait). '
+                'Returns a taskId; completion notifies via the trigger bus.',
+          },
           'workspaceId': _workspaceIdParam,
         },
         'required': ['agentId', 'message'],
@@ -872,17 +1259,151 @@ class SystemTools {
         if (!init.system.isAgentSubsystemActivated) {
           return {'error': 'Agent Subsystem not activated'};
         }
-        // Pin the agent run to a stable workspace (explicit arg → inherited
-        // execution pin → active snapshot at ask-time), so the agent's own
-        // tool calls during the run don't drift when another actor flips the
-        // UI lens mid-run. Resolve the member WITHIN this workspace so an
-        // explicit, not-yet-opened workspaceId hydrates before the lookup
-        // (bare resolve only scans already-loaded workspaces → AgentNotFound).
-        final wsId = _wsId(args);
+        // Pin the agent run to a stable workspace (explicit arg → workspace
+        // ENCODED in a fully-qualified agentId → inherited execution pin →
+        // active snapshot at ask-time), so the agent's own tool calls during
+        // the run don't drift when another actor flips the UI lens mid-run.
+        // Resolve the member WITHIN this workspace so an explicit,
+        // not-yet-opened workspaceId hydrates before the lookup (bare resolve
+        // only scans already-loaded workspaces → AgentNotFound).
+        //
+        // A fully-qualified agentId (`<ns>.<wsEncoded>.<member>`) names its OWN
+        // workspace. When the caller omits `workspaceId`, honor that encoded
+        // workspace instead of the active lens — otherwise a cross-department
+        // ask like `<ns>.org_content.lead` from an org/packages lens would file
+        // the task under org/packages and resolve the bare `lead` to a
+        // DIFFERENT person (org/packages lead), i.e. mis-deliver to the wrong
+        // department. Explicit `workspaceId` still wins.
+        final explicitWs = (args['workspaceId'] as String?)?.trim();
+        final hasExplicitWs = explicitWs != null && explicitWs.isNotEmpty;
+        final agentIdArg = args['agentId'] as String;
+        final derivedWs = (!hasExplicitWs && agentIdArg.contains('.'))
+            ? await _workspaceOfAgentId(init, agentIdArg)
+            : null;
+        // A qualified agentId (`<ns>.<wsEncoded>.<member>`) that matches NO
+        // member's `.agentId` in any workspace is a typo'd / unknown id. With
+        // `workspaceId` omitted it would otherwise trailing-dot fall back to a
+        // bare `lead` in the ACTIVE lens — silently mis-delivering to a
+        // same-named member in the wrong department. Fail loud instead. (Bare
+        // ids and explicit-workspace calls are unaffected.)
+        if (!hasExplicitWs && agentIdArg.contains('.') && derivedWs == null) {
+          return {
+            'error':
+                'unknown agent "$agentIdArg" — no member has this qualified '
+                'agentId in any workspace; pass a bare member id or an '
+                'explicit workspaceId',
+          };
+        }
+        final wsId = _wsId(args, explicit: derivedWs);
         final resolvedId = await _resolveAgentId(
           init,
           args['agentId'] as String,
           wsId: wsId,
+        );
+        // R6 — opt-in async delegation: instead of blocking the caller on a
+        // synchronous turn (which can time out on long work), create a tracked
+        // task assigned to the SAME agent and return immediately. The task's
+        // assignee run drives the agent (the `agentRun` seam = the same
+        // `agents.ask`), and its completion flows back through the trigger bus
+        // (R1 → live-chat relay / feed notice), so the caller is pinged when it
+        // lands rather than polling.
+        if (args['background'] == true) {
+          if (wsId == null || wsId.isEmpty) {
+            return {'error': 'no workspace resolved for background delegation'};
+          }
+          final message = args['message'] as String;
+          // Canonicalize the assignee to the BARE member id BEFORE creating the
+          // task. The caller (often a manager LLM) may pass either the bare id
+          // (`proto`) or the full scoped agentId (`<ns>.<ws>.proto`); storing
+          // the raw scoped form made the assignee run miss `member.get` and the
+          // task silently blocked ("not a runnable agent") → no completion →
+          // no report-back. Resolving up front also lets us fail LOUD here
+          // (explicit error) instead of creating a doomed task that dies
+          // invisibly. The bare id keeps the completion event's sourceAgentId
+          // consistent with the once-sub filter below.
+          final delegate =
+              await init.registries.member.resolve(
+                args['agentId'] as String,
+                wsId: wsId,
+              );
+          if (delegate is! AgentMember) {
+            return {
+              'error':
+                  'assignee "${args['agentId']}" is not a runnable agent '
+                  'member in workspace "$wsId" — cannot delegate in background',
+            };
+          }
+          final assigneeId = delegate.id;
+          final taskId = 'ask-async-${DateTime.now().microsecondsSinceEpoch}';
+          await init.registries.task.create(
+            Task(
+              id: taskId,
+              workspaceId: wsId,
+              kind: TaskKind.oneOff,
+              title: message.length > 60
+                  ? '${message.substring(0, 60)}…'
+                  : message,
+              description: message,
+              assigneeIds: [assigneeId],
+              skillIds: const [],
+              createdAt: DateTime.now(),
+            ),
+          );
+          // Auto report-back: if this delegation was issued from a live chat
+          // (the user talking to a coordinator), wire a ONE-SHOT subscription
+          // so the completion wakes that coordinator to report in the chat
+          // window the user is watching — without the coordinator having to
+          // know its own scoped id or hand-write a subscription. Skipped for
+          // headless/MCP delegations with no active chat, and never targets the
+          // delegated agent itself.
+          final coordinator = OpsBuiltInApp.activeCoordinatorId;
+          var reportBack = false;
+          // Filter the once-sub on the SAME bare id the completion event will
+          // carry as sourceAgentId (`_emitCompleted` uses the task assignee),
+          // so the report-back reliably matches. Never wire a self-report if
+          // the coordinator is itself the delegate.
+          if (coordinator != null &&
+              coordinator != assigneeId &&
+              coordinator != delegate.agentId) {
+            await init.triggers.subscribe(
+              workspaceId: wsId,
+              targetAgentId: coordinator,
+              sourceAgentId: assigneeId,
+              kind: WorkKind.task,
+              once: true,
+              requestTemplate:
+                  'The background task you delegated just completed: {summary} '
+                  '(from {sourceAgentId}). Report the result to the user.',
+            );
+            reportBack = true;
+          }
+          unawaited(init.registries.task.run(taskId));
+          return {
+            'agentId': resolvedId,
+            'assigneeResolved': assigneeId,
+            'background': true,
+            'taskId': taskId,
+            'reportBackTo': reportBack ? coordinator : null,
+            'note': reportBack
+                ? 'Delegated as async task; on completion the active chat '
+                    'coordinator is woken to report back.'
+                : 'Delegated as async task; completion notifies via the '
+                    'trigger bus.',
+          };
+        }
+        // Resolve the feed actor to a displayName — never the raw qualified
+        // agentId (audit P1.3; the Activity feed renders `event.actor` as-is).
+        final askMembers = (wsId == null || wsId.isEmpty)
+            ? const <Member>[]
+            : await init.registries.member.listForWorkspace(wsId);
+        // Live Activity feed: the incoming user turn (agentAsk). Paired with
+        // the agentReply below so the feed shows both sides of the exchange.
+        _emitAgentTurn(
+          memberDisplayNameFor(askMembers, resolvedId),
+          'asked: ',
+          args['message'] as String,
+          ActivityKind.agentAsk,
+          workspaceId: wsId,
         );
         // Serialize per agent — concurrent requests to the same agent queue
         // and run one at a time (worker model + conversation race-free).
@@ -892,6 +1413,24 @@ class SystemTools {
             wsId,
             () => init.system.agents.ask(resolvedId, args['message'] as String),
           ),
+        );
+        // Live Activity feed: the agent's reply (agentReply).
+        _emitAgentTurn(
+          memberDisplayNameFor(askMembers, reply.agentId),
+          'replied · ',
+          reply.content,
+          ActivityKind.agentReply,
+          workspaceId: wsId,
+        );
+        // Trigger bus (R1): the answering agent completed an ask. Emitted for
+        // subscriptions / observability; a synchronous ask is not relayed to
+        // the live chat (the caller already has the reply — see the R3 seam).
+        _emitWork(
+          source: reply.agentId,
+          workspaceId: wsId ?? '',
+          kind: WorkKind.ask,
+          refId: 'ask:${reply.agentId}:${DateTime.now().microsecondsSinceEpoch}',
+          summary: reply.content,
         );
         return {
           'agentId': reply.agentId,
@@ -1004,6 +1543,32 @@ class SystemTools {
           if (reply.finishReason != null) {
             result['finishReason'] = reply.finishReason;
           }
+          // Live Activity feed: the routed member's deliverable (agentReply) —
+          // actor resolved to displayName, never the raw agentId (audit P1.3).
+          final routeMembers = (routedWs == null || routedWs.isEmpty)
+              ? const <Member>[]
+              : await init.registries.member.listForWorkspace(routedWs);
+          _emitAgentTurn(
+            memberDisplayNameFor(
+              routeMembers,
+              scopedToBare[target] ?? reply.agentId,
+            ),
+            'delivered · ',
+            reply.content,
+            ActivityKind.agentReply,
+            workspaceId: routedWs,
+          );
+          // Trigger bus (R1): the routed member completed the delegated work.
+          // Emitted for subscriptions / observability; synchronous, so not
+          // relayed to the live chat (the manager already holds the result).
+          _emitWork(
+            source: scopedToBare[target] ?? reply.agentId,
+            workspaceId: routedWs ?? '',
+            kind: WorkKind.route,
+            refId:
+                'route:${args['managerId']}->${scopedToBare[target] ?? target}',
+            summary: reply.content,
+          );
         }
         return result;
       },
@@ -1737,8 +2302,16 @@ class SystemTools {
     _register(
       server,
       'member_global_list',
-      'Global list of members across all workspaces. '
-          'If the same id is attached to multiple workspaces, all are listed in the workspaces array.',
+      'Global list of members across all workspaces — every workspace member '
+          'is a distinct row. Member ids are unique only WITHIN a workspace '
+          '(each department has its own `lead`, `qa`, …), so the same id in '
+          'two workspaces are two different members and are keyed by '
+          '`(workspaceId, id)`. The total equals the sum of the per-workspace '
+          'member_list counts. Rows are ordered hierarchically like the org '
+          'chart: workspaces in org-tree order (root first, each parent '
+          'followed by its children), and within a workspace persons '
+          '(owner / CEO) above agents. Each row carries `depth` and '
+          '`parentWorkspaceId` for rendering the tree.',
       const {
         'type': 'object',
         'properties': {
@@ -1754,40 +2327,27 @@ class SystemTools {
       },
       (args) async {
         final kindFilter = args['kind'] as String?;
-        final q = (args['query'] as String?)?.toLowerCase();
-        final wsList = await init.registries.workspace.list();
-        final byId = <String, Map<String, dynamic>>{};
-        for (final ws in wsList) {
-          final members = await init.registries.member.listForWorkspace(ws.id);
-          for (final m in members) {
-            if (kindFilter != null && m.kind.name != kindFilter) continue;
-            if (q != null &&
-                !m.id.toLowerCase().contains(q) &&
-                !m.displayName.toLowerCase().contains(q)) {
-              continue;
-            }
-            final entry = byId.putIfAbsent(m.id, () {
-              final base = <String, dynamic>{
-                'id': m.id,
-                'kind': m.kind.name,
-                'displayName': m.displayName,
-                'tags': m.tags,
-                'workspaces': <String>[],
-              };
-              if (m is AgentMember) {
-                base['profileRef'] = m.profileRef;
-                base['philosophyRef'] = m.philosophyRef;
-                base['skillIds'] = m.skillIds;
-              } else if (m is PersonMember) {
-                base['email'] = m.email;
-                base['roleLabels'] = m.roleLabels;
-              }
-              return base;
-            });
-            (entry['workspaces'] as List).add(ws.id);
-          }
+        final q = args['query'] as String?;
+        // Order workspaces by the org tree (root → children) so the flat list
+        // reads hierarchically, matching the visual org chart.
+        final ordered = orderWorkspacesHierarchical(
+          await init.registries.workspace.list(),
+        );
+        final perWorkspace =
+            <({String wsId, String? parentId, int depth, List<Member> members})>[];
+        for (final e in ordered) {
+          perWorkspace.add((
+            wsId: e.ws.id,
+            parentId: e.ws.parentId,
+            depth: e.depth,
+            members: await init.registries.member.listForWorkspace(e.ws.id),
+          ));
         }
-        return {'members': byId.values.toList(), 'total': byId.length};
+        return buildGlobalMemberList(
+          perWorkspace,
+          kindFilter: kindFilter,
+          query: q,
+        );
       },
     );
 
@@ -2061,20 +2621,28 @@ class SystemTools {
       final wsId = _wsId(args);
       if (wsId == null) return {'error': 'no active workspace'};
       final list = await init.registries.process.list(wsId: wsId);
-      return {
-        'processes': [
-          for (final p in list)
-            {
-              'id': p.id,
-              'title': p.title,
-              'steps': p.steps.length,
-              'trigger': p.trigger.name,
-              'gates': p.gates.length,
-              'runs': p.runs.length,
-              if (p.runs.isNotEmpty) 'lastRunState': p.runs.last.state.name,
-            },
-        ],
-      };
+      final processes = <Map<String, dynamic>>[];
+      for (final p in list) {
+        // Runs live in the `process_runs` checkpoint partition (read via
+        // listRuns), NOT the in-memory `Process.runs` field — that field is
+        // never populated on a YAML-loaded process, so `p.runs.length` was
+        // always 0 and disagreed with the Board's live count (konpi live
+        // re-verify). Count the real checkpoints.
+        final runs = await init.registries.process.listRuns(
+          p.id,
+          workspaceId: wsId,
+        );
+        processes.add({
+          'id': p.id,
+          'title': p.title,
+          'steps': p.steps.length,
+          'trigger': p.trigger.name,
+          'gates': p.gates.length,
+          'runs': runs.length,
+          if (runs.isNotEmpty) 'lastRunState': runs.last.state.name,
+        });
+      }
+      return {'processes': processes};
     });
 
     _register(
@@ -2091,6 +2659,9 @@ class SystemTools {
       (args) async {
         final p = await init.registries.process.get(args['id'] as String);
         if (p == null) return {'error': 'process not found', 'id': args['id']};
+        // Run count from the checkpoint partition, not the always-empty
+        // in-memory `Process.runs` field (see process_list note).
+        final runs = await init.registries.process.listRuns(p.id);
         return {
           'id': p.id,
           'title': p.title,
@@ -2120,7 +2691,8 @@ class SystemTools {
                 'params': g.params,
               },
           ],
-          'runs': p.runs.length,
+          'runs': runs.length,
+          if (runs.isNotEmpty) 'lastRunState': runs.last.state.name,
         };
       },
     );
@@ -2175,19 +2747,44 @@ class SystemTools {
     _register(
       server,
       'process_start',
-      'Start a process',
+      'Start a process. Pass async:true to return immediately with a running '
+          'run and drive it in the background — use for long pipelines whose '
+          'agent steps each take an LLM turn (a synchronous start would block '
+          'the caller for the whole run). Then poll process_get / process_runs '
+          'for the gate / completion.',
       const {
         'type': 'object',
         'properties': {
           'id': {'type': 'string'},
           'inputs': {'type': 'object'},
+          'async': {'type': 'boolean'},
         },
         'required': ['id'],
       },
       (args) async {
+        final pid = args['id'] as String;
+        // Re-mirror the process from its current YAML into the LIVE behavior
+        // engine before running, so the engine executes the latest
+        // `_processToBehavior` compilation. The on-disk `project.mbd` mirror is
+        // only refreshed by `process_save`; without this just-in-time re-mirror
+        // a compiler improvement (or a process edited outside the tool) would
+        // run a STALE behavior until a manual re-save. Live registration only
+        // (no disk write / no `.history` churn) — best-effort.
+        try {
+          final p = await init.registries.process.get(pid);
+          if (p != null) {
+            final behaviorJson = await _processToBehavior(p);
+            init.registerProjectBehavior(
+              bundle.BehaviorDefinition.fromJson(behaviorJson),
+            );
+          }
+        } catch (_) {
+          // Fall back to whatever behavior is already registered.
+        }
         final run = await init.registries.process.start(
-          args['id'] as String,
+          pid,
           initialInputs: (args['inputs'] as Map?)?.cast<String, dynamic>(),
+          background: args['async'] == true,
         );
         return {
           'runId': run.runId,
@@ -2222,12 +2819,16 @@ class SystemTools {
       'process_approve',
       'Approve a process waiting for approval. approverId defaults to the '
           'gate\'s configured approver (params.approverId in the YAML); pass it '
-          'explicitly only when an alternate identity needs to be asserted.',
+          'explicitly only when an alternate identity needs to be asserted. '
+          'Pass async:true to return immediately (running) and drive the '
+          'approved steps in the background when they dispatch agent turns — '
+          'then poll process_get / process_runs.',
       const {
         'type': 'object',
         'properties': {
           'runId': {'type': 'string'},
           'approverId': {'type': 'string'},
+          'async': {'type': 'boolean'},
         },
         'required': ['runId'],
       },
@@ -2258,6 +2859,7 @@ class SystemTools {
           final run = await init.registries.process.approve(
             runId,
             approverId: approverId,
+            background: args['async'] == true,
           );
           return {'state': run.state.name, 'approverId': approverId};
         } on ApproverMismatch catch (e) {
@@ -2396,7 +2998,7 @@ class SystemTools {
           // `<projectBundleId>.<processId>` for `bk.behavior.run` (same rule
           // as the skill pool mirror).
           final targetMbd = '$projRoot/project.mbd';
-          final behaviorJson = _processToBehavior(p);
+          final behaviorJson = await _processToBehavior(p);
           try {
             await server.callTool('studio.builder.addBehavior', {
               'mbdPath': targetMbd,
@@ -2666,6 +3268,105 @@ class SystemTools {
           'notificationId': nid,
           'status': result.isError == true ? 'failed' : 'delivered',
         };
+      },
+    );
+
+    // --- Trigger subscriptions (agent↔agent completion wakes, R2) ---
+
+    _register(
+      server,
+      'trigger_subscribe',
+      'Wake an agent when another agent completes work. When a completion '
+          'matches the filters (sourceAgentId / kind / onState, each optional = '
+          'any), the target agent is asked with the rendered request — the '
+          'event-driven "A finished → B continues" chaining the process '
+          'completion chain does for processes. Placeholders in requestTemplate: '
+          '{summary} {sourceAgentId} {refId} {kind} {state} {artifactRef}.',
+      const {
+        'type': 'object',
+        'properties': {
+          'targetAgentId': {
+            'type': 'string',
+            'description': 'Member id of the agent to wake.',
+          },
+          'sourceAgentId': {
+            'type': 'string',
+            'description': 'Only when THIS agent completes (default: any).',
+          },
+          'kind': {
+            'type': 'string',
+            'enum': ['task', 'route', 'ask', 'step'],
+            'description': 'Only this work kind (default: any).',
+          },
+          'onState': {
+            'type': 'string',
+            'enum': ['completed', 'blocked', 'any'],
+            'description': 'React to this completion state (default: completed).',
+          },
+          'requestTemplate': {
+            'type': 'string',
+            'description': 'Request handed to the target agent when fired.',
+          },
+          'workspaceId': _workspaceIdParam,
+        },
+        'required': ['targetAgentId'],
+      },
+      (args) async {
+        final wsId = _wsId(args);
+        if (wsId == null || wsId.isEmpty) {
+          return {'ok': false, 'error': 'no workspace resolved'};
+        }
+        final kindName = args['kind'] as String?;
+        final sub = await init.triggers.subscribe(
+          workspaceId: wsId,
+          targetAgentId: args['targetAgentId'] as String,
+          sourceAgentId: args['sourceAgentId'] as String?,
+          kind: kindName == null
+              ? null
+              : WorkKind.values.firstWhere(
+                  (k) => k.name == kindName,
+                  orElse: () => WorkKind.task,
+                ),
+          onState: (args['onState'] as String?) ?? 'completed',
+          requestTemplate: args['requestTemplate'] as String?,
+        );
+        return {'ok': true, 'id': sub.id, 'workspaceId': wsId, ...sub.toJson()};
+      },
+    );
+
+    _register(
+      server,
+      'trigger_list',
+      'List the agent-completion trigger subscriptions in a workspace.',
+      const {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args);
+        final subs = await init.triggers.list(wsId: wsId);
+        return {
+          'triggers': subs
+              .map((s) => {'workspaceId': s.workspaceId, ...s.toJson()})
+              .toList(),
+        };
+      },
+    );
+
+    _register(
+      server,
+      'trigger_unsubscribe',
+      'Remove an agent-completion trigger subscription by id.',
+      const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+        },
+        'required': ['id'],
+      },
+      (args) async {
+        final ok = await init.triggers.unsubscribe(args['id'] as String);
+        return {'ok': ok};
       },
     );
 
@@ -3802,7 +4503,18 @@ class SystemTools {
           // `kind: llm` steps borrow the client's LLM via spec
           // `sampling/createMessage`.
           'samplingFallback': init.skillExecutor.samplingProvider != null,
-          'anyLlm': init.skillExecutor.hasAnyLlm,
+          // Whether AGENT turns (agent_ask / member work) can actually run.
+          // The agent subsystem is LLM-backed via the claude-code KEYLESS
+          // kernel fallback (agentLlmSessions, wired at host boot) even when
+          // NO internal provider is configured — so a status report must NOT
+          // read `internalLlm=false` as "no LLM, config required". This is the
+          // signal that reflects reality: agents are backed and running.
+          'agentLlm': init.system.isAgentSubsystemActivated,
+          // Any LLM path reachable at all — internal provider OR MCP sampling
+          // OR the keyless agent kernel. Union so a configured-provider-only
+          // check can't report `false` while agents run fine on the fallback.
+          'anyLlm': init.skillExecutor.hasAnyLlm ||
+              init.system.isAgentSubsystemActivated,
         };
       },
     );
@@ -4153,8 +4865,10 @@ class SystemTools {
             isError: true,
           );
         }
+        final sw = Stopwatch()..start();
         try {
           final result = await handler(Map<String, dynamic>.from(args));
+          _emitInbound(name, sw.elapsedMilliseconds, error: false);
           return KernelToolResult(
             content: [KernelTextContent(text: jsonEncode(result))],
           );
@@ -4167,6 +4881,7 @@ class SystemTools {
           for (final prefix in const <String>['Bad state: ', 'Exception: ']) {
             if (msg.startsWith(prefix)) msg = msg.substring(prefix.length);
           }
+          _emitInbound(name, sw.elapsedMilliseconds, error: true, detail: msg);
           return KernelToolResult(
             content: [
               KernelTextContent(
@@ -4178,6 +4893,47 @@ class SystemTools {
         }
       },
     );
+  }
+
+  /// Tools that publish their OWN richer activity event (`agent_ask` /
+  /// `agent_route` emit `agentAsk` / `agentReply`). The generic `_register`
+  /// wrapper skips them so a single call is not double-logged.
+  static const Set<String> _selfReportingTools = <String>{
+    'agent_ask',
+    'agent_route',
+    'member_create_agent',
+  };
+
+  /// Emit an [ActivityKind.mcpInbound] event so the Live Activity feed reflects
+  /// control-plane traffic — every system-tool call an external client or an
+  /// acting agent makes lands here. UI reads go straight through
+  /// `init.registries.*` (not these handlers), so this is genuine inbound
+  /// traffic, not the boards' own polling. Best-effort — observability is
+  /// optional (a stdio CLI runs without it).
+  void _emitInbound(
+    String tool,
+    int ms, {
+    required bool error,
+    String? detail,
+  }) {
+    if (_selfReportingTools.contains(tool)) return;
+    final bus = init.observability?.bus;
+    if (bus == null) return;
+    if (error) {
+      bus.error(
+        'mcp',
+        'Tool $tool failed · ${ms}ms',
+        kind: ActivityKind.mcpInbound,
+        meta: {'tool': tool, if (detail != null) 'detail': detail},
+      );
+    } else {
+      bus.info(
+        'mcp',
+        'Tool $tool · ${ms}ms',
+        kind: ActivityKind.mcpInbound,
+        meta: {'tool': tool},
+      );
+    }
   }
 
   Future<Map<String, dynamic>> _saveInternal(
@@ -4230,7 +4986,7 @@ class SystemTools {
   ///     (which binds `backbone.app`); the behavior dispatcher merges its
   ///     `hasHardViolation` result into run state so the gate's `when` can
   ///     read it and route to `stop` on a hard violation.
-  Map<String, dynamic> _processToBehavior(Process p) {
+  Future<Map<String, dynamic>> _processToBehavior(Process p) async {
     final gatesByStep = <String, List<ProcessGate>>{};
     for (final g in p.gates) {
       (gatesByStep[g.afterStep] ??= <ProcessGate>[]).add(g);
@@ -4297,28 +5053,51 @@ class SystemTools {
           if (stepDeps.isNotEmpty) 'dependsOn': stepDeps,
         });
       } else {
+        // A work step drives its assignee the SAME way `task_run` does (the
+        // documented assignee-aware contract): when the assignee is an AGENT
+        // member, run that agent for a turn — it applies its own skill /
+        // accumulated expertise — through the host `agent_ask` tool; a person /
+        // unknown / empty assignee falls back to headless skill dispatch.
+        // Without this, an agent-assigned step ran the skill BODY headless, and
+        // a body-less skill (the common case — skills are declared while the
+        // agent does the thinking) then no-ops, so the run reached `completed`
+        // with zero agent work. Assignee kind is resolved at mirror time (the
+        // member exists when the process is saved); cross-workspace assignees
+        // resolve via the registry's global scan.
         final isDelegate = s.skillId == 'agent_ask' || s.skillId == 'delegate';
-        final Map<String, dynamic> action =
-            isDelegate
-                ? <String, dynamic>{
-                  'tool': 'agent_ask',
-                  'args': <String, dynamic>{
-                    'agentId': s.assigneeId,
-                    'message':
-                        (s.inputs['task'] ??
-                                s.inputs['message'] ??
-                                s.inputs['prompt'] ??
-                                p.title)
-                            .toString(),
-                  },
-                }
-                : <String, dynamic>{
-                  'skill': s.skillId,
-                  'inputs': <String, dynamic>{
-                    ...s.inputs,
-                    if (s.assigneeId.isNotEmpty) 'actor': s.assigneeId,
-                  },
-                };
+        final assignee = s.assigneeId;
+        final assigneeIsAgent =
+            !isDelegate &&
+            assignee.isNotEmpty &&
+            (await init.registries.member.get(
+                  assignee,
+                  wsId: p.workspaceId,
+                ))?.kind ==
+                MemberKind.agent;
+        final Map<String, dynamic> action;
+        if (isDelegate || assigneeIsAgent) {
+          final directive =
+              (s.inputs['task'] ?? s.inputs['message'] ?? s.inputs['prompt'])
+                  ?.toString();
+          final message =
+              isDelegate
+                  ? (directive ?? p.title)
+                  : (directive ??
+                          'Carry out your "${s.skillId}" responsibility for this step.') +
+                      (s.inputs.isEmpty ? '' : '\nContext: ${s.inputs}');
+          action = <String, dynamic>{
+            'tool': 'agent_ask',
+            'args': <String, dynamic>{'agentId': assignee, 'message': message},
+          };
+        } else {
+          action = <String, dynamic>{
+            'skill': s.skillId,
+            'inputs': <String, dynamic>{
+              ...s.inputs,
+              if (assignee.isNotEmpty) 'actor': assignee,
+            },
+          };
+        }
         steps.add(<String, dynamic>{
           'id': s.stepId,
           'do': action,

@@ -19,6 +19,8 @@
 ///   r15 Workspace.fromYaml — round-trip through toYamlMap
 ///   r16 _ensureLoaded — scans disk on first access (fresh registry)
 ///   r17 WorkspaceType slug derivation in id (`type.name/slug`)
+///   r18 deactivate / reactivate — archive-and-retain default (hide from list,
+///       keep on disk, clear activeId, idempotent, reactivate restores)
 library;
 
 import 'dart:async';
@@ -445,6 +447,69 @@ void main() {
           WorkspaceType.project,
         ]),
       );
+    });
+
+    // --- r18: deactivate / reactivate (archive-and-retain default, WS3) ---
+    test(
+      'r18a deactivate marks archived, hides from list, retains on disk',
+      () async {
+        await reg.create(
+          type: WorkspaceType.org,
+          slug: 'sunset',
+          title: 'Sunset Org',
+        );
+        final archived = await reg.deactivate('org/sunset');
+        expect(archived.archived, isTrue);
+        expect(archived.archivedAt, isNotNull);
+        // Hidden from the default list, visible with includeArchived.
+        final live = await reg.list();
+        expect(live.map((w) => w.id), isNot(contains('org/sunset')));
+        final all = await reg.list(includeArchived: true);
+        expect(all.map((w) => w.id), contains('org/sunset'));
+        // Data retained — get() still resolves the archived workspace.
+        final got = await reg.get('org/sunset');
+        expect(got, isNotNull);
+        expect(got!.archived, isTrue);
+      },
+    );
+
+    test(
+      'r18b deactivate clears activeId when the archived ws was active',
+      () async {
+        await reg.create(
+          type: WorkspaceType.org,
+          slug: 'active-org',
+          title: 'Active',
+        );
+        await reg.setActive('org/active-org');
+        expect(reg.activeId, 'org/active-org');
+        await reg.deactivate('org/active-org');
+        expect(reg.activeId, isNull);
+      },
+    );
+
+    test('r18c reactivate restores a deactivated ws to live', () async {
+      await reg.create(
+        type: WorkspaceType.org,
+        slug: 'revive',
+        title: 'Revive',
+      );
+      await reg.deactivate('org/revive');
+      final live = await reg.reactivate('org/revive');
+      expect(live.archived, isFalse);
+      expect(live.archivedAt, isNull);
+      expect((await reg.list()).map((w) => w.id), contains('org/revive'));
+    });
+
+    test('r18d deactivate is idempotent (double call stays archived)', () async {
+      await reg.create(
+        type: WorkspaceType.org,
+        slug: 'twice',
+        title: 'Twice',
+      );
+      await reg.deactivate('org/twice');
+      final again = await reg.deactivate('org/twice');
+      expect(again.archived, isTrue);
     });
   });
 }

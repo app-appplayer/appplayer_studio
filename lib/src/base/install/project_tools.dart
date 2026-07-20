@@ -121,6 +121,17 @@ void registerProjectTools(
         );
       }
       final result = await fn(name: name, parent: parent);
+      // Record the MRU here — the choke point for EVERY app. The chrome
+      // slot (`newProjectInActive`) is overridden per active built-in
+      // (app_builder / ops / form / scene); only the base `_doNewProject`
+      // bumps recents, so an MCP `project.new` while a built-in tab is
+      // active would otherwise never touch the MRU (MCP↔UI mirror gap).
+      // `bumpRecent` dedupes, so a double-record via the base slot is a
+      // no-op.
+      if (result['ok'] == true && result['projectPath'] is String) {
+        // ignore: unawaited_futures
+        bridge.recordRecentProject?.call(result['projectPath'] as String);
+      }
       return mk.KernelToolResult(
         content: <mk.KernelContent>[
           mk.KernelTextContent(text: jsonEncode(result)),
@@ -158,6 +169,17 @@ void registerProjectTools(
           );
         }
         final result = await fn(path);
+        // Record the MRU at the MCP choke point (see project.new). The
+        // per-built-in `openProjectInActive` overrides do not all bump
+        // recents; recording here keeps MCP `project.open` at parity
+        // with the UI dialog path regardless of the active app.
+        if (result['ok'] == true) {
+          final recorded = result['projectPath'] is String
+              ? result['projectPath'] as String
+              : path;
+          // ignore: unawaited_futures
+          bridge.recordRecentProject?.call(recorded);
+        }
         return mk.KernelToolResult(
           content: <mk.KernelContent>[
             mk.KernelTextContent(text: jsonEncode(result)),
@@ -540,10 +562,19 @@ void registerProjectTools(
             ],
           );
         }
-        final settings = await VibeSettings.load(
-          VibeSettings.defaultPath(toolId),
-        );
-        final json = settings.toJson();
+        // Read the RAW file map — a schema round-trip (VibeSettings.load →
+        // toJson) hides every key this binary's schema does not know, so
+        // keys written by a newer build / hand-edits would read as null.
+        final systemFile = File(VibeSettings.defaultPath(toolId));
+        Map<String, dynamic> json = <String, dynamic>{};
+        if (systemFile.existsSync()) {
+          try {
+            final raw = jsonDecode(systemFile.readAsStringSync());
+            if (raw is Map<String, dynamic>) json = raw;
+          } catch (_) {
+            /* corrupt — read as empty; set() owns backup-and-rewrite */
+          }
+        }
         return mk.KernelToolResult(
           content: <mk.KernelContent>[
             mk.KernelTextContent(
@@ -716,8 +747,20 @@ void registerProjectTools(
             }
           }
         }
-        final settings = await VibeSettings.load(path);
-        final json = Map<String, dynamic>.from(settings.toJson());
+        // Merge into the RAW file map — never round-trip through the
+        // schema (VibeSettings.load → toJson drops every key this binary
+        // does not know, so a set() from an older build would silently
+        // wipe keys a newer build wrote; live incident 2026-07-15:
+        // `discoveryMdns` eaten by the previous binary's settings.set).
+        Map<String, dynamic> json = <String, dynamic>{};
+        if (systemFile.existsSync()) {
+          try {
+            final raw = jsonDecode(systemFile.readAsStringSync());
+            if (raw is Map<String, dynamic>) json = raw;
+          } catch (_) {
+            /* corrupt — backed up above, start fresh */
+          }
+        }
         if (value == null) {
           json.remove(key);
         } else {

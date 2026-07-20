@@ -240,6 +240,87 @@ void main() {
     });
   });
 
+  // Assignee resolution must tolerate BOTH the bare member id and the full
+  // scoped agentId (an LLM-authored delegation fills the assignee from the
+  // roster with the full id) — else a background task silently blocks with
+  // "not a runnable agent" and no report-back ever fires.
+  group('MemberRegistry — resolve (bare id vs scoped agentId)', () {
+    late MemberRegistry reg;
+    late Directory tmp;
+
+    setUp(() async {
+      (reg, tmp) = await _makeRegistry();
+      addTearDown(() async {
+        if (await tmp.exists()) await tmp.delete(recursive: true);
+      });
+      await reg.createAgent(
+        id: 'proto',
+        displayName: 'Proto',
+        agentId: 'makemind_ops.org_packages.proto',
+        profileRef: 'p1',
+        skillIds: const [],
+        philosophyRef: 'ph1',
+        workspaceId: 'org/packages',
+      );
+    });
+
+    test('mr1 bare member id resolves', () async {
+      final m = await reg.resolve('proto');
+      expect(m, isNotNull);
+      expect(m!.id, 'proto');
+    });
+
+    test('mr2 full scoped agentId resolves to the same member', () async {
+      final m = await reg.resolve('makemind_ops.org_packages.proto');
+      expect(m, isNotNull);
+      expect(m!.id, 'proto');
+    });
+
+    test('mr3 trailing-segment fallback resolves an unknown scoped prefix',
+        () async {
+      // agentId doesn't match, but the trailing segment is the bare id.
+      final m = await reg.resolve('some.other.scope.proto');
+      expect(m, isNotNull);
+      expect(m!.id, 'proto');
+    });
+
+    test('mr4 genuinely unknown assignee returns null (loud-fail upstream)',
+        () async {
+      expect(await reg.resolve('ghost'), isNull);
+      expect(await reg.resolve('a.b.ghost'), isNull);
+    });
+
+    test('mr5 a bare id shared across departments resolves to the WSID scope, '
+        'not the first same-named member by scan order (cross-dept '
+        'mis-delivery guard)', () async {
+      // Every division has a `lead`. Without a wsId, `resolve('lead')` returns
+      // whichever workspace is scanned first — the mis-delivery bug.
+      await reg.createAgent(
+        id: 'lead',
+        displayName: 'Kai',
+        agentId: 'makemind_ops.org_packages.lead',
+        profileRef: 'p1',
+        skillIds: const [],
+        philosophyRef: 'ph1',
+        workspaceId: 'org/packages',
+      );
+      await reg.createAgent(
+        id: 'lead',
+        displayName: 'Iris',
+        agentId: 'makemind_ops.org_content.lead',
+        profileRef: 'p1',
+        skillIds: const [],
+        philosophyRef: 'ph1',
+        workspaceId: 'org/content',
+      );
+      final content = await reg.resolve('lead', wsId: 'org/content');
+      expect(content, isNotNull);
+      expect(content!.displayName, 'Iris');
+      final packages = await reg.resolve('lead', wsId: 'org/packages');
+      expect(packages!.displayName, 'Kai');
+    });
+  });
+
   group('MemberRegistry — update', () {
     late MemberRegistry reg;
     late Directory tmp;

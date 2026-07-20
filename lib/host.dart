@@ -7,3 +7,4 @@ library;
 
 export 'src/main/vibe_studio_host_app.dart'
     show VibeStudioHostApp, StudioExtensionContext;
+export 'src/base/main/studio_workspace.dart' show HomeInstalledTile;

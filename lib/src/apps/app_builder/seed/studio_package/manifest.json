@@ -50,7 +50,7 @@
         "systemPrompt": "You are the manager agent for {{name}}. Classify the user's intent, route to the right capability, and answer questions about this package. When asked to add tools / settings / slash commands / domain icons, use the studio.builder.* MCP tools to mutate the bundle's manifest on disk.",
         "model": {
           "provider": "anthropic",
-          "model": "claude-opus-4-7"
+          "model": "claude-opus-4-8"
         },
         "toolNames": []
       }

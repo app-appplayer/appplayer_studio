@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 OrgWsInput _ws({
   required String id,
   String? parentId,
+  String unitRole = 'line',
   List<OrgAgentInput> agents = const [],
   List<OrgProcessInput> processes = const [],
 }) => OrgWsInput(
@@ -26,6 +27,7 @@ OrgWsInput _ws({
   title: id,
   type: 'org',
   parentId: parentId,
+  unitRole: unitRole,
   agents: agents,
   processes: processes,
 );
@@ -406,6 +408,68 @@ void main() {
     );
   });
 
+  test('t13b structure lens — line is the centered spine; staff steps aside to'
+      ' the RIGHT of the stem, in the band above the line row', () {
+    final m = buildOrgChartModel([
+      _ws(id: 'org', agents: [OrgAgentInput(agentId: 'boss', displayName: 'Boss')]),
+      _ws(id: 'org/support', parentId: 'org', unitRole: 'staff'),
+      _ws(id: 'org/eng', parentId: 'org'),
+    ], mode: OrgViewMode.structure);
+    Rect unit(String id) => m.nodes.firstWhere((n) => n.id == 'ws:$id').rect;
+    final root = unit('org');
+    final support = unit('org/support');
+    final eng = unit('org/eng');
+    // Staff (support) is in the band below the parent — not the far-left edge.
+    expect(support.top, greaterThan(root.bottom));
+    // ...and offset to the RIGHT of the central stem (not centered on it).
+    expect(support.left, greaterThan(root.center.dx));
+    // Line (operational) is the centered spine, below the staff band.
+    expect(eng.center.dx, moreOrLessEquals(root.center.dx, epsilon: 1.0));
+    expect(eng.top, greaterThan(support.bottom));
+    // Staff is wired with a sideStub edge, line with a hierarchy edge.
+    expect(
+      m.edges.any((e) => e.kind == OrgEdgeKind.sideStub &&
+          e.fromId == 'ws:org' && e.toId == 'ws:org/support'),
+      isTrue,
+    );
+    expect(
+      m.edges.any((e) => e.kind == OrgEdgeKind.hierarchy &&
+          e.fromId == 'ws:org' && e.toId == 'ws:org/eng'),
+      isTrue,
+    );
+  });
+
+  test('t13c structure lens — the central stem stays clear: staff sits right'
+      ' of it and the line row (centered) is pushed below the staff band', () {
+    // Two staff units + two line units, mirroring the HQ shape in the report.
+    final m = buildOrgChartModel([
+      _ws(id: 'org', agents: [OrgAgentInput(agentId: 'boss', displayName: 'Boss')]),
+      _ws(id: 'org/s1', parentId: 'org', unitRole: 'staff'),
+      _ws(id: 'org/s2', parentId: 'org', unitRole: 'staff'),
+      _ws(id: 'org/l1', parentId: 'org'),
+      _ws(id: 'org/l2', parentId: 'org'),
+    ], mode: OrgViewMode.structure);
+    Rect unit(String id) => m.nodes.firstWhere((n) => n.id == 'ws:$id').rect;
+    final root = unit('org');
+    final staffBottom =
+        [unit('org/s1').bottom, unit('org/s2').bottom].reduce((a, b) => a > b ? a : b);
+    final lineTop =
+        [unit('org/l1').top, unit('org/l2').top].reduce((a, b) => a < b ? a : b);
+    // The entire line tier starts below the entire staff band.
+    expect(lineTop, greaterThan(staffBottom));
+    // The whole staff row sits to the RIGHT of the central stem.
+    final staffLeft =
+        [unit('org/s1').left, unit('org/s2').left].reduce((a, b) => a < b ? a : b);
+    expect(staffLeft, greaterThan(root.center.dx));
+    // Staff siblings sit side by side in one row (same top), no overlap.
+    expect(unit('org/s1').top, moreOrLessEquals(unit('org/s2').top, epsilon: 1.0));
+    final s1 = unit('org/s1'), s2 = unit('org/s2');
+    expect(s1.right <= s2.left || s2.right <= s1.left, isTrue);
+    // The line row is centered on the stem (span center ≈ parent center).
+    final lineSpan = unit('org/l1').expandToInclude(unit('org/l2'));
+    expect(lineSpan.center.dx, moreOrLessEquals(root.center.dx, epsilon: 1.0));
+  });
+
   test('t8 deterministic geometry', () {
     List<OrgWsInput> input() => [
       _ws(id: 'a', processes: [
@@ -430,5 +494,58 @@ void main() {
       expect(m1.nodes[i].rect, m2.nodes[i].rect);
       expect(m1.nodes[i].id, m2.nodes[i].id);
     }
+  });
+
+  // Canonical sibling ordering — shared by chart layout, directory nav, and
+  // card tree so every lens reads the same order as the Home switcher.
+  group('orgWsSiblingCompare', () {
+    OrgWsInput ws(String id, {int sortOrder = 0, String unitRole = 'line'}) =>
+        OrgWsInput(
+          id: id,
+          title: id,
+          type: 'org',
+          sortOrder: sortOrder,
+          unitRole: unitRole,
+        );
+
+    List<String> ordered(List<OrgWsInput> ws) =>
+        ([...ws]..sort(orgWsSiblingCompare)).map((w) => w.id).toList();
+
+    test('explicit sortOrder ascending wins; 0 (unset) sorts last', () {
+      expect(
+        ordered([ws('z', sortOrder: 1), ws('a'), ws('m', sortOrder: 2)]),
+        ['z', 'm', 'a'],
+      );
+    });
+
+    test('staff before line when sortOrder is unset, then by id', () {
+      expect(
+        ordered([
+          ws('org/tech-group'),
+          ws('org/staff', unitRole: 'staff'),
+          ws('org/backoffice', unitRole: 'staff'),
+        ]),
+        ['org/backoffice', 'org/staff', 'org/tech-group'],
+      );
+    });
+
+    test('does not fall back to raw id order (the reported bug)', () {
+      // Operator intent via sortOrder must beat alphabetical-by-id.
+      final byOrder = ordered([
+        ws('org/content', sortOrder: 7),
+        ws('org/backoffice', sortOrder: 1),
+        ws('org/biz-group', sortOrder: 5),
+      ]);
+      expect(byOrder, ['org/backoffice', 'org/biz-group', 'org/content']);
+      // Sanity: a pure id sort would have kept backoffice/biz-group/content by
+      // coincidence here, so flip one to prove sortOrder is the key.
+      expect(
+        ordered([
+          ws('org/backoffice', sortOrder: 9),
+          ws('org/biz-group', sortOrder: 1),
+        ]),
+        ['org/biz-group', 'org/backoffice'],
+      );
+    });
   });
 }

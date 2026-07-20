@@ -3,7 +3,7 @@
 /// live `mcp_channel` connector.
 ///
 /// A representative set — `slack` · `telegram` · `email` · `kakao` — covering
-/// the platforms named by the goal (카톡 · 메일) plus two common bots. The
+/// the platforms named by the goal (KakaoTalk · Mail) plus two common bots. The
 /// remaining `mcp_channel` connectors (`discord` · `teams` · `webhook` ·
 /// `wecom` · `youtube`) plug in under the identical pattern; see README.
 ///

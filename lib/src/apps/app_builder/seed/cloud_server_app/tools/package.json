@@ -1,0 +1,6 @@
+{
+  "name": "{{id}}-tools",
+  "private": true,
+  "description": "Tool dependencies for the {{name}} cloud server app. Any npm package is allowed; node_modules must NOT be included in the uploaded archive.",
+  "dependencies": {}
+}

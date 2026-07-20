@@ -3,7 +3,8 @@ import 'dart:io';
 
 // Builtin = OS-level app — uses host wrapper API.
 // Direct `package:brain_kernel` import removed (cleanup Phase 2 — 2026-05-28).
-import 'package:appplayer_studio/builtin_api.dart' as mk show BundleActivation;
+import 'package:appplayer_studio/builtin_api.dart' as mk
+    show BundleActivation, BundleActivationRegistry;
 import 'package:appplayer_studio/builtin_api.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
 import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart' as kops
@@ -31,6 +32,7 @@ import '../../../base/install/knowledge_persistence/knowledge_persistence.dart'
 import '../adapters/llm_adapter.dart';
 import '../config/ops_config.dart';
 import '../observability/observability_module.dart';
+import '../observability/recording_llm_port.dart';
 import '../registries/bundle_installer.dart';
 import '../registries/bundle_registry.dart';
 import '../registries/knowledge_registry.dart';
@@ -41,6 +43,8 @@ import '../registries/workspace_registry.dart';
 import '../skills/skill_executor.dart';
 import '../skills/skill_registry.dart';
 import '../skills/skill_resolver.dart';
+import '../triggers/trigger_bus.dart';
+import '../triggers/trigger_subscription.dart';
 import '../util/log.dart';
 import 'task_scheduler.dart';
 import 'workspace_loader.dart';
@@ -55,6 +59,8 @@ class KnowledgeInit {
     required this.skillResolver,
     required this.skillExecutor,
     required this.scheduler,
+    required this.triggers,
+    required this.triggerBus,
     required this.projectRoot,
     this.ethosStore,
     List<({mk.BundleActivation activation, mb.McpBundle bundle})> activations =
@@ -76,21 +82,28 @@ class KnowledgeInit {
     required SkillResolver skillResolver,
     required SkillExecutor skillExecutor,
     required TaskScheduler scheduler,
+    TriggerRegistry? triggers,
+    OpsTriggerBus? triggerBus,
     String projectRoot = '',
     EthosStorePort? ethosStore,
     ObservabilityModule? observability,
-  }) => KnowledgeInit._(
-    system: system,
-    registries: registries,
-    adapters: adapters,
-    skills: skills,
-    skillResolver: skillResolver,
-    skillExecutor: skillExecutor,
-    scheduler: scheduler,
-    projectRoot: projectRoot,
-    ethosStore: ethosStore,
-    observability: observability,
-  );
+  }) {
+    final trg = triggers ?? TriggerRegistry(rootDir: projectRoot);
+    return KnowledgeInit._(
+      system: system,
+      registries: registries,
+      adapters: adapters,
+      skills: skills,
+      skillResolver: skillResolver,
+      skillExecutor: skillExecutor,
+      scheduler: scheduler,
+      triggers: trg,
+      triggerBus: triggerBus ?? OpsTriggerBus(subscriptions: trg),
+      projectRoot: projectRoot,
+      ethosStore: ethosStore,
+      observability: observability,
+    );
+  }
 
   final KnowledgeSystem system;
   final Registries registries;
@@ -99,6 +112,13 @@ class KnowledgeInit {
   final SkillResolver skillResolver;
   final SkillExecutor skillExecutor;
   final TaskScheduler scheduler;
+
+  /// Persisted R2 trigger subscriptions ("when X completes, wake Y").
+  final TriggerRegistry triggers;
+
+  /// The agent-completion event bus. Its action seams are late-injected in
+  /// `ops_builtin` (where the agents + host channel are in scope).
+  final OpsTriggerBus triggerBus;
 
   /// Completes when the BACKGROUND workspace load finishes. `boot` gates the
   /// Ops tab render on the ACTIVE workspace only and streams the remaining
@@ -395,8 +415,27 @@ class KnowledgeInit {
         // what makes per-project agents (own subsystem, own registry)
         // resolve their model instead of returning empty content.
         llmProviders: () {
+          // Wrap the host's keyless shared providers (claude-code fallback) in
+          // a RecordingLlmPort so a bound project's agent turns emit `llmCall`
+          // to the Live Activity feed — without this the default keyless setup
+          // resolves through an UNwrapped shared port and the feed never sees
+          // any LLM traffic. `llm.providerPool` is already recording-wrapped
+          // (see `LlmAdapter.build`) and overlays on top, so a configured key
+          // still shadows the fallback with its own recorded port. A new map —
+          // the host's own pool is not mutated.
+          final rec = observability;
+          mb.LlmPort wrap(String name, mb.LlmPort inner) => rec == null
+              ? inner
+              : RecordingLlmPort(
+                  inner: inner,
+                  provider: name,
+                  bus: rec.bus,
+                  telemetry: rec.telemetry,
+                );
           final merged = <String, mb.LlmPort>{
-            if (sharedLlmProviders != null) ...sharedLlmProviders,
+            if (sharedLlmProviders != null)
+              for (final e in sharedLlmProviders.entries)
+                e.key: wrap(e.key, e.value),
             ...llm.providerPool,
           };
           return merged.isEmpty ? null : merged;
@@ -585,6 +624,28 @@ class KnowledgeInit {
     // lower unit's behalf. Wired here where the workspace registry is in
     // scope; null-safe (strict exact-match if left unwired).
     registries.process.ancestorsOf = workspaceRegistry.ancestors;
+    // Let the process registry read back a behavior run's working state (step
+    // outputs) so a run record exposes per-step outcomes. The behavior store
+    // writes to the ORG-level KV (runs span workspaces); the registry's scoped
+    // `kv` cannot see those keys, so hand it the org-level reader here where
+    // `orgKv` is in scope.
+    registries.process.readOrgKv = (key) async =>
+        (await orgKv.get(key)) as String?;
+
+    // Agent-completion trigger bus (R1/R2 — see ops-agent-trigger-bus.md). The
+    // bus fans a completion to subscribers / the live chat; its action seams
+    // (wakeAgent / injectIntoActiveChat / notify) are late-injected in
+    // `ops_builtin` where the agents + host channel are in scope. Task runs emit
+    // through the `onWorkCompleted` seam here so the registry never depends on
+    // the bus (layer-clean, same as dispatch / agentRun).
+    final triggers = TriggerRegistry(rootDir: config.workspacesRoot);
+    final triggerBus = OpsTriggerBus(subscriptions: triggers);
+    registries.task.onWorkCompleted = triggerBus.emit;
+    registries.process.onWorkCompleted = triggerBus.emit;
+    // Live Activity feed — publish every process run state transition (start /
+    // gate / completion) so a running process is visible in real time. Null on
+    // a headless CLI boot (no observability module).
+    registries.process.activityBus = observability?.bus;
 
     OpsLog.boot('init', 'system built');
     // 11. Build the app-level skill executor and attach capabilities.
@@ -671,6 +732,15 @@ class KnowledgeInit {
         );
         final result = await activation.activate(bundle);
         activations.add((activation: activation, bundle: bundle));
+        // Register into the process-singleton hub so this Ops org bundle
+        // joins the uniform backend lifecycle (design contract
+        // knowledge-operations.md §11.3: the hub is the canonical owner —
+        // tab switch keeps it running, tab close removes it). Without this
+        // the Ops backend was invisible to the host's uniform path,
+        // `studio.debug.activation`/`runtimes`, chat dispatch, and
+        // `findOwnerOf*`. `dispose` balances this with `remove` on tab
+        // close. `register` is idempotent on bundleId (multi-boot safe).
+        mk.BundleActivationRegistry.instance.register(activation);
         OpsLog.boot(
           'init',
           'bundle activated id=${bundle.manifest.id} '
@@ -765,6 +835,8 @@ class KnowledgeInit {
       skillResolver: skillResolver,
       skillExecutor: skillExecutor,
       scheduler: scheduler,
+      triggers: triggers,
+      triggerBus: triggerBus,
       projectRoot: config.workspacesRoot,
       ethosStore: ethosStore,
       activations: activations,
@@ -808,6 +880,13 @@ class KnowledgeInit {
         }
       }
       await activation.unregisterAll();
+      // Balance boot's hub register: drop this Ops org bundle from the
+      // process-singleton hub so tab-close teardown is uniform and
+      // visible to every hub consumer (`studio.debug.activation`, chat
+      // dispatch, `findOwnerOf*`). `remove` re-runs `unregisterAll` on
+      // the registered instance — idempotent (the call above already
+      // cleared this instance's catalog), so double teardown is safe.
+      await mk.BundleActivationRegistry.instance.remove(bundle.manifest.id);
     }
     _activations.clear();
   }

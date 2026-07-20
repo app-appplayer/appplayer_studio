@@ -239,10 +239,13 @@ String _req(Map<String, dynamic> args, String field) {
   return v;
 }
 
-/// Shared on-disk plugin registry — `~/.config/appplayer/plugins.json` (a
-/// neutral `appplayer` namespace, not Studio-specific, so any AppPlayer host on
-/// the machine reads the same list). Persists all kinds: server/hub re-connect
-/// from the endpoint, bundle re-activates from its local `.mbd` path on boot.
+/// Fallback on-disk plugin registry — `~/.config/appplayer/plugins.json`.
+/// Only used when the caller passes no [storePath] (e.g. tests). The Studio
+/// host ALWAYS overrides this with a per-instance, toolId-scoped path
+/// (`~/.config/<toolId>/plugins.json`) so the debug / release / pro instances
+/// never share plugin state — see `registerPluginTools` call in
+/// `vibe_studio_host_app.dart`. Persists all kinds: server/hub re-connect from
+/// the endpoint, bundle re-activates from its local `.mbd` path on boot.
 String _defaultStorePath() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';

@@ -9,6 +9,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.0"
+  appplayer_form_view:
+    dependency: "direct main"
+    description:
+      name: appplayer_form_view
+      sha256: fe07c6d90b166db05ae6bee1c10ed6508dca49eb446ef953dddfd0f8f4785b73
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   appplayer_secure:
     dependency: "direct main"
     description:
@@ -85,10 +93,10 @@ packages:
     dependency: "direct main"
     description:
       name: brain_kernel
-      sha256: a8a8b56c6182b7f1476997439e7e7abc31b00285f717d34fc7a8d948e446bd3a
+      sha256: "4ec398826b650ba1429abdb418d6c1c5416c5df2cb7b2b467f631886a06786b7"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.6"
+    version: "0.1.8"
   characters:
     dependency: transitive
     description:
@@ -98,7 +106,7 @@ packages:
     source: hosted
     version: "1.4.1"
   clib_serialport_dart:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: clib_serialport_dart
       sha256: "4a406c71fd69bd4766f932a86a74fd446fdb6c8138d1c02158b0dbe8754cb762"
@@ -177,6 +185,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
+  dartdap:
+    dependency: "direct main"
+    description:
+      name: dartdap
+      sha256: fc0ffab094bd4de892afa2078b15cc071fc59de6bcee800b639d94274ca8a7c4
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.11.4"
   dbus:
     dependency: transitive
     description:
@@ -333,10 +349,10 @@ packages:
     dependency: "direct main"
     description:
       name: flowbrain_core
-      sha256: "690b06a69b1494ab6e8ad3fa61ccca5ef69ecfbbe44046fa5dff2b38eab640ae"
+      sha256: "981af72cc85f9ef936909b8af34370ec89a2bbfbdf46cedfbbc048b1b7a44324"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.7"
+    version: "0.1.8"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -375,10 +391,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: f79b89a014a9a112285d58b7a17bd9bd33023715df8f589783869ee7777035c5
+      sha256: "1f1d6a61d30a4f865854d5a7f7ba303109cf3686ae7f65e991a8602d71b8a3cc"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.1"
+    version: "0.4.2"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
@@ -391,10 +407,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: "8ebe1cad9710f2979f861562b1bc0e426be1f9f662f45b373e17dc024091d76c"
+      sha256: "669dbe96cef5ac9c3107899c5436301fdda16e499a629e15fba37259a7688c6b"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1"
+    version: "0.5.2"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -464,6 +480,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_web_bluetooth:
+    dependency: transitive
+    description:
+      name: flutter_web_bluetooth
+      sha256: ad26a1b3fef95b86ea5f63793b9a0cdc1a33490f35d754e4e711046cae3ebbf8
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -517,6 +541,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  image:
+    dependency: transitive
+    description:
+      name: image
+      sha256: f31d52537dc417fdcde36088fdf11d191026fd5e4fae742491ebd40e5a8bea7d
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.3.0"
   intl:
     dependency: transitive
     description:
@@ -673,10 +705,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_analysis
-      sha256: "1ef5e738b8971b7d930d96d55b0739a0ebe571579e74090724b37b56a8f8fdfe"
+      sha256: "8844b0592c0333976cc27e0cb2911f3ca635bec6960d6cb6403f7a8a75bec3f6"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.1"
+    version: "0.1.4"
   mcp_bridge:
     dependency: "direct main"
     description:
@@ -697,10 +729,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_bundle
-      sha256: "328e6820bbd7e14108193cc51e0db8b4794dc404b802738563a74fc2d14b2fac"
+      sha256: "2ac3765a5f6001a9c686cf33797c1333ef537eb9a79a36c79187140048444afb"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.5"
+    version: "0.4.8"
   mcp_canvas:
     dependency: "direct main"
     description:
@@ -721,10 +753,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_client
-      sha256: "408f132db0e5f5d65ddca9cf7fcfba9b891e8e7c1bf72fe4e3caad4c022a6e35"
+      sha256: b5bcb0e7992f4733d9028d5221ec83f9f8cfaa36a638ba6af9aea679e78589a5
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.1.0"
   mcp_datastore:
     dependency: "direct main"
     description:
@@ -753,10 +785,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_form
-      sha256: "4412251479723de0d4f5c0bbc96292e9d46134dfc15f1608ab2d7b248cf06029"
+      sha256: a1df8e5f2aed20fcb976b685e01ffaed8ab6d85a27204c23aac2e46d4ea956d6
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.1"
+    version: "0.2.0"
   mcp_ingest:
     dependency: "direct main"
     description:
@@ -822,7 +854,7 @@ packages:
     source: hosted
     version: "0.2.5"
   mcp_knowledge_ops:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: mcp_knowledge_ops
       sha256: ca14d413bd7c0064376c9de7905e8e996eca8a60cd3a5cf4e2747107c0d6bdc8
@@ -838,13 +870,13 @@ packages:
     source: hosted
     version: "2.1.1"
   mcp_philosophy:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: mcp_philosophy
-      sha256: f933f5fb737feb70169cd6eed7e86e5f3ca8023dff32d57270f660ea2c184ffe
+      sha256: "5d7ce707020ed4cbe494ded36db7fe492248bd77613070774434739c4edb9b16"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.2"
+    version: "0.1.3"
   mcp_profile:
     dependency: "direct main"
     description:
@@ -857,10 +889,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_server
-      sha256: d5b2603a51b524c60753ea9031c52759f80b53dd6606f38ae70305b5eaa28d4d
+      sha256: "069faa5e8c726be2794600dc4ce03dc3ad23d30ee839a547d662d457dcc1c55c"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.1.0"
   mcp_skill:
     dependency: transitive
     description:
@@ -873,10 +905,10 @@ packages:
     dependency: "direct main"
     description:
       name: meta
-      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
+      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.0"
+    version: "1.18.0"
   mime:
     dependency: transitive
     description:
@@ -885,6 +917,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.6"
+  multicast_dns:
+    dependency: "direct main"
+    description:
+      name: multicast_dns
+      sha256: "134668a9605c747322d8c3eb0e89a4c0cbdedb29f8d2d5ae29d14daef724987b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.3+1"
   nested:
     dependency: transitive
     description:
@@ -1198,10 +1238,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "8161c84903fd860b26bfdefb7963b3f0b68fee7adea0f59ef805ecca346f0c7a"
+      sha256: "949a932224383300f01be9221c39180316445ecb8e7547f70a41a35bf421fb9e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.10"
+    version: "0.7.11"
   typed_data:
     dependency: transitive
     description:
@@ -1210,6 +1250,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  universal_ble:
+    dependency: "direct main"
+    description:
+      name: universal_ble
+      sha256: "85a111e89bf85b02010553fd1a8aa87e25a5898cd3cc38ad5c0186a71eb7d06c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   uri:
     dependency: transitive
     description:
@@ -1355,5 +1403,5 @@ packages:
     source: hosted
     version: "3.1.3"
 sdks:
-  dart: ">=3.11.0 <4.0.0"
+  dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.38.4"

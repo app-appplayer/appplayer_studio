@@ -33,6 +33,7 @@ import '../chat/chat_slash_hint.dart';
 import '../chat/chat_turn.dart';
 import '../chat/history_dialog.dart';
 import '../chat/model_option.dart';
+import '../servers/connect_server_dialog.dart';
 import '../settings/settings_dialog.dart';
 import '../settings/vibe_settings.dart';
 import '../shell/activity_bar.dart';
@@ -489,11 +490,11 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                     valueListenable:
                                         widget.chromeBridge?.homeActive ??
                                         ValueNotifier<bool>(false),
-                                    builder: (_, homeActive, __) {
+                                    builder: (ctx, homeActive, __) {
                                       final bridge = widget.chromeBridge;
                                       final newTip =
                                           homeActive
-                                              ? 'New package'
+                                              ? 'Connect server'
                                               : 'New project';
                                       final openTip =
                                           homeActive
@@ -512,9 +513,26 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
 
                                       void onNew() {
                                         if (homeActive) {
-                                          // Home — Studio Builder placeholder
-                                          // (no active domain to dispatch into).
-                                          bridge?.createNewPackage?.call();
+                                          // Home "+" — repurposed to connect a
+                                          // local MCP server (the New-package
+                                          // placeholder had no active domain to
+                                          // dispatch into). Show the dialog and
+                                          // hand the result to the host's
+                                          // local-server manager.
+                                          () async {
+                                            final req =
+                                                await showConnectServerDialog(
+                                                  ctx,
+                                                  scan: bridge?.scanServers,
+                                                  connectDiscovered:
+                                                      bridge?.connectDiscovered,
+                                                );
+                                            if (req != null) {
+                                              await bridge?.connectServer?.call(
+                                                req,
+                                              );
+                                            }
+                                          }();
                                         } else {
                                           // Every domain (built-in or manifest)
                                           // owns its New flow through the
@@ -563,8 +581,10 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   hasProject: life.hasProject,
                                                   newTooltip: newTip,
                                                   openTooltip: openTip,
-                                                  onNew:
-                                                      homeActive ? null : onNew,
+                                                  // Home "+" now connects a
+                                                  // local server (repurposed);
+                                                  // in a project it's New.
+                                                  onNew: onNew,
                                                   onOpen: onOpen,
                                                   onOpenRecent: (_) {},
                                                   onSave:
@@ -632,7 +652,14 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                             onModelChange: _onModelChange,
                                             layerColorBuilder:
                                                 widget.layerColorBuilder ??
-                                                ((_) => c.textTertiary),
+                                                // Pure-conversation chats (Ops
+                                                // coordinator etc.) carry no
+                                                // build layer — accent the reply
+                                                // stripe with mint (normal
+                                                // content), leaving grey for the
+                                                // system notes. Hosts with real
+                                                // build layers pass their own.
+                                                ((_) => c.mint),
                                             layerLabelBuilder:
                                                 widget.layerLabelBuilder ??
                                                 ((_) => null),
@@ -778,8 +805,14 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                         layerColorBuilder:
                                                             widget
                                                                 .layerColorBuilder ??
-                                                            ((_) =>
-                                                                c.textTertiary),
+                                                            // Pure-conversation
+                                                            // chats carry no
+                                                            // build layer — mint
+                                                            // accent for replies
+                                                            // (normal content),
+                                                            // grey for system
+                                                            // notes.
+                                                            ((_) => c.mint),
                                                         layerLabelBuilder:
                                                             widget
                                                                 .layerLabelBuilder ??

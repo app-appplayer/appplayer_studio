@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../registries/member_registry.dart' as reg show Member, AgentMember;
-import '../../registries/workspace_registry.dart' show Workspace, WorkspaceType;
+import '../../registries/workspace_registry.dart'
+    show
+        Workspace,
+        WorkspaceType,
+        WorkspaceUnitRole,
+        orderWorkspacesHierarchical;
 import '../../state/providers.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/ops_activity_row.dart';
@@ -213,24 +218,41 @@ class _WorkspaceSelector extends ConsumerWidget {
       },
       itemBuilder:
           (_) => [
-            for (final w in list)
+            // Hierarchical: org-tree order (staff before line siblings),
+            // indented by depth so the switcher reads like the org chart.
+            for (final entry in orderWorkspacesHierarchical(list))
               PopupMenuItem<String>(
-                value: w.id,
+                value: entry.ws.id,
                 height: 36,
                 child: Row(
                   children: [
-                    Icon(_iconFor(w.type), size: 15, color: OpsColors.text2),
+                    SizedBox(width: entry.depth * 14.0),
+                    Icon(
+                      _iconFor(entry.ws.type),
+                      size: 15,
+                      color: OpsColors.text2,
+                    ),
                     const SizedBox(width: 8),
-                    Text(w.title),
+                    Text(entry.ws.title),
+                    if (entry.ws.unitRole == WorkspaceUnitRole.staff) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        'staff',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: OpsColors.text3,
+                        ),
+                      ),
+                    ],
                     Text(
-                      '  ${w.id}',
+                      '  ${entry.ws.id}',
                       style: TextStyle(
                         fontFamily: OpsType.mono,
                         fontSize: 10,
                         color: OpsColors.text3,
                       ),
                     ),
-                    if (w.id == activeId) ...[
+                    if (entry.ws.id == activeId) ...[
                       const Spacer(),
                       Icon(Icons.check, size: 14, color: OpsColors.accent),
                     ],
@@ -547,7 +569,10 @@ MemberSummary _toMemberSummary(reg.Member m) {
       label: m.displayName,
     ),
     name: m.displayName,
-    subtitle: isAgent ? '${(m).skillIds.length} skills · ${m.id}' : m.id,
+    subtitle:
+        isAgent
+            ? '${(m).skillIds.length} skill${(m).skillIds.length == 1 ? '' : 's'} · ${m.id}'
+            : m.id,
     kind: isAgent ? MemberKind.ai : MemberKind.human,
     online: isAgent,
     layerProgress: const [1.0, 0.5, 0.2],

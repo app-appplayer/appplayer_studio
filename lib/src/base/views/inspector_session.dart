@@ -187,6 +187,13 @@ class InspectorSessionManager extends ChangeNotifier {
     String host = '127.0.0.1',
     int port = 8080,
     String endpoint = '/mcp',
+    // Optional launch overrides for servers that don't speak the vibe
+    // binary's `--http/--host/--port` CLI contract (e.g. the marketplace
+    // serving shell, which takes its config via environment variables).
+    // [launchArgs] replaces the default argv; [environment] entries are
+    // added on top of the parent environment. http/sse transports only.
+    List<String>? launchArgs,
+    Map<String, String>? environment,
   }) async {
     // Single-session model — but the user must stop the active
     // variant *explicitly* before starting another one. The panel
@@ -210,7 +217,12 @@ class InspectorSessionManager extends ChangeNotifier {
           break;
         case InspectorTransport.http:
         case InspectorTransport.sse:
-          await _connectNetwork(session, binary);
+          await _connectNetwork(
+            session,
+            binary,
+            launchArgs: launchArgs,
+            environment: environment,
+          );
           break;
       }
       // External kills, transport closes, peer-side errors all surface
@@ -251,17 +263,27 @@ class InspectorSessionManager extends ChangeNotifier {
     session.client = result.get();
   }
 
-  Future<void> _connectNetwork(InspectorSession session, String binary) async {
-    final args = <String>[
-      if (session.transport == InspectorTransport.http) '--http' else '--sse',
-      '--host',
-      session.host,
-      '--port',
-      session.port.toString(),
-      '--endpoint',
-      session.endpoint,
-    ];
-    final proc = await Process.start(binary, args);
+  Future<void> _connectNetwork(
+    InspectorSession session,
+    String binary, {
+    List<String>? launchArgs,
+    Map<String, String>? environment,
+  }) async {
+    final args =
+        launchArgs ??
+        <String>[
+          if (session.transport == InspectorTransport.http)
+            '--http'
+          else
+            '--sse',
+          '--host',
+          session.host,
+          '--port',
+          session.port.toString(),
+          '--endpoint',
+          session.endpoint,
+        ];
+    final proc = await Process.start(binary, args, environment: environment);
     session.proc = proc;
     session.endpointUrl =
         'http://${session.host}:${session.port}${session.endpoint}';

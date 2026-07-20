@@ -26,9 +26,15 @@ import 'package:brain_kernel/mcp_host.dart' as mh;
 import 'package:appplayer_studio/workspace.dart';
 import 'package:appplayer_studio/src/base/agent/agent_invoke_queue.dart';
 import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
+import 'package:appplayer_studio/src/base/install/provisioning_capability.dart'
+    show registerProvisioningCapability;
 import 'package:appplayer_studio/src/base/install/plugin_install.dart';
 import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
 import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
+import 'package:appplayer_studio/src/base/servers/local_server_store.dart';
+import 'package:appplayer_studio/src/base/servers/local_server_manager.dart';
+import 'package:appplayer_studio/src/base/servers/connect_server_dialog.dart'
+    show ConnectServerRequest, DiscoveredServer;
 import 'package:appplayer_secure/appplayer_secure.dart'
     show FlutterSecureStorageBackend;
 
@@ -48,10 +54,21 @@ class StudioExtensionContext {
     required this.clientHost,
     required this.addOverlay,
     required this.addHomeEntry,
+    required this.openExtensionTab,
+    required this.configRoot,
+    required this.registerInstalledTiles,
+    required this.refreshHome,
+    this.themeReinjectTick,
   });
 
   /// Kernel server host — register MCP tools (`boot.addTool`).
   final mk.KernelServerHost boot;
+
+  /// Cross-tab "the singleton runtime ThemeManager was reset" signal
+  /// (`ChromeBridge.themeReinjectTick`). An extension that mounts a served-app
+  /// runtime tab (e.g. the marketplace `ServedServiceBody`) passes this so an
+  /// active tab re-injects its theme when a sibling runtime tab tears down.
+  final ValueNotifier<int>? themeReinjectTick;
 
   /// Install a `.mbd` at [mbdPath] through the host's bundle base model.
   /// Returns the install surface result (`{ok, namespace, mbdPath}`).
@@ -65,6 +82,28 @@ class StudioExtensionContext {
 
   /// Add a widget to the shell overlay stack (shown over the body).
   final void Function(Widget overlay) addOverlay;
+
+  /// Open (or focus) a host-extension surface as a first-class tab —
+  /// session-scoped, never persisted (see `ChromeBridge.openExtensionTab`).
+  final void Function({
+    required String key,
+    required String label,
+    required WidgetBuilder builder,
+  })
+  openExtensionTab;
+
+  /// The host's resolved config root (`~/.config/<toolId>`) — for
+  /// extension-owned durable files (e.g. the market install ledger).
+  final String configRoot;
+
+  /// Register a provider for extension-owned Home INSTALLED APPS tiles
+  /// (re-queried on every Home refresh — see
+  /// [StudioWorkspace.extensionInstalledTiles]).
+  final void Function(Future<List<HomeInstalledTile>> Function() provider)
+  registerInstalledTiles;
+
+  /// Refresh the Home grid (re-query registry entries + extension tiles).
+  final void Function() refreshHome;
 
   /// Add an entry to the Home grid — an icon to the right of the BUILT-IN
   /// APPS section title. This is how an extension gives users a visible
@@ -191,6 +230,12 @@ class VibeStudioHostApp extends StudioApp {
   /// the BUILT-IN APPS title. Empty in the base build.
   final List<HomeExtensionEntry> _extensionHomeEntries = <HomeExtensionEntry>[];
 
+  /// Home INSTALLED APPS tile providers — accumulated so multiple sources
+  /// compose (base's local servers + pro's connected market services). Each
+  /// registration adds a provider; the Home gathers tiles from all of them.
+  final List<Future<List<HomeInstalledTile>> Function()> _extensionTileProviders =
+      <Future<List<HomeInstalledTile>> Function()>[];
+
   void _addExtensionHomeEntry({
     required String label,
     required IconData icon,
@@ -198,6 +243,46 @@ class VibeStudioHostApp extends StudioApp {
   }) => _extensionHomeEntries.add(
     HomeExtensionEntry(label: label, icon: icon, onTap: onTap),
   );
+
+  /// Map one raw discovery candidate (a `candidates` entry from
+  /// `StudioDiscovery.discover`) to a Connect-Server [DiscoveredServer]. A board
+  /// keeps its `connectHint` in [DiscoveredServer.raw] for the connect route;
+  /// a bare http(s) node gets a normalised `endpoint` stashed in `raw` so the
+  /// connect path can attach it as a streamable-HTTP server. [DiscoveredServer.detail]
+  /// is the human-readable connection subtitle for the list row.
+  static DiscoveredServer _discoveredServerFrom(Map<String, dynamic> c) {
+    final source = (c['source'] as String?) ?? 'mdns';
+    final raw = Map<String, dynamic>.from(c);
+    final hint = c['connectHint'];
+    String detail;
+    if (hint is! Map) {
+      // http(s) node — normalise the endpoint (mdns http carries host/port/
+      // path; directory http carries `endpoint` directly).
+      final endpoint = (c['endpoint'] as String?) ??
+          (c['host'] != null
+              ? 'http://${c['host']}:${c['port']}${c['path'] ?? ''}'
+              : '');
+      raw['endpoint'] = endpoint;
+      detail = endpoint.isEmpty ? source : endpoint;
+    } else if (hint['tool'] == 'mcp.connect_ble_board') {
+      detail = 'BLE ${c['deviceId'] ?? hint['deviceId'] ?? ''}'.trim();
+    } else if (hint['transport'] == 'serial') {
+      final opts = hint['options'];
+      detail = 'serial ${c['portName'] ?? (opts is Map ? opts['port'] : '')}';
+    } else if (hint['transport'] == 'tcp') {
+      final opts = hint['options'];
+      detail = opts is Map ? 'tcp://${opts['host']}:${opts['port']}' : 'tcp';
+    } else {
+      detail = source;
+    }
+    final name = (c['name'] as String?)?.trim();
+    return DiscoveredServer(
+      source: source,
+      name: (name != null && name.isNotEmpty) ? name : detail,
+      detail: detail,
+      raw: raw,
+    );
+  }
 
   /// Toggles the host-level Plugins surface (overlay). Opened from the
   /// Plugins Home entry — plugins are host-level (shared catalog), reached
@@ -272,6 +357,11 @@ class VibeStudioHostApp extends StudioApp {
   /// settings change). Lazily-booted host capabilities (browser) read
   /// `chromiumPath` from here fresh per call so a hot-swap takes effect.
   VibeSettings? _settings;
+
+  /// Memoized board-discovery trust evaluator (spec 17 §6) — built once from
+  /// the bundled root-CA anchor on first discovery, then reused. Null result =
+  /// anchor missing/malformed → discovery carries no signature evidence.
+  Future<Future<TrustEvidence?> Function(BoardIdentity)?>? _discoveryTrustEval;
 
   /// Config-root hint injected by `studio_main` before the first call
   /// to [agentProfiles]. Lets the getter resolve the host_agents.json
@@ -521,13 +611,13 @@ class VibeStudioHostApp extends StudioApp {
               (modelEntry['model'] as String?) ??
               (a['modelId'] as String?) ??
               defaultModelHint ??
-              'claude-opus-4-7';
+              'claude-opus-4-8';
           provider = (modelEntry['provider'] as String?) ?? 'anthropic';
         } else {
           modelId =
               (a['modelId'] as String?) ??
               defaultModelHint ??
-              'claude-opus-4-7';
+              'claude-opus-4-8';
           provider = 'anthropic';
         }
         final tools =
@@ -750,6 +840,9 @@ class VibeStudioHostApp extends StudioApp {
     // Kernel-owned impl (`system/host/client_tools.dart`); `clientHost`
     // was supplied at `KernelApp.boot` (studio_boot.dart).
     final clientHost = backbone.app.clientHost;
+    // Hoisted so the local-server block below can reach the discovery surface
+    // (the Connect Server dialog's Discover tab scans + connects through it).
+    StudioDiscovery? discovery;
     if (clientHost != null) {
       mk.registerClientTools(hostTools, clientHost);
       // `mcp.connect_extension` — host-side companion that builds serial /
@@ -757,7 +850,53 @@ class VibeStudioHostApp extends StudioApp {
       // and injects them via the kernel seam. The connection lands in the
       // same client host registry, so the kernel `mcp.*` verbs above drive
       // the board by id afterward (cherry `embedded-mcp-serving-base`).
-      registerExtensionConnectTool(hostTools, backbone);
+      registerExtensionConnectTool(hostTools, clientHost);
+      // `mcp.discover_boards` / `mcp.connect_ble_board` — nearby-board
+      // discovery over the vendored device_discovery (spec 17 mDNS
+      // two-stage) and ble_transport (spec 16 GATT) recipes. TCP finds
+      // connect through `mcp.connect_extension` above; BLE boards get the
+      // dedicated GATT connect. The directory (LDAP) source reads its
+      // config fresh from settings per call — a dialog save takes effect
+      // without a restart (chromiumPath precedent).
+      discovery = registerDiscoveryTools(
+        hostTools,
+        clientHost,
+        directoryConfig: () async {
+          final s = await VibeSettings.load(VibeSettings.defaultPath(toolId));
+          final json = s.discoveryDirectoryConfig;
+          return json == null ? null : DirectoryConfig.fromJson(json);
+        },
+        // Manifest signature verification (spec 17 §6). The evaluator is built
+        // once from the bundled root-CA anchor (dev partner / marketplace);
+        // enforcement is read fresh from settings per call so a dialog toggle
+        // takes effect without a restart (directoryConfig precedent).
+        trustEvaluator: (identity) async {
+          final fn =
+              await (_discoveryTrustEval ??= buildDiscoveryTrustEvaluator());
+          return fn == null ? null : fn(identity);
+        },
+        enforceSignature: () async =>
+            (await VibeSettings.load(VibeSettings.defaultPath(toolId)))
+                .discoveryEnforceSignature,
+      );
+      // Settings-driven boot sweep (Auto discovery section). All sources
+      // default OFF → no behavior on a fresh install. BLE never sweeps at
+      // boot (its first scan raises the OS permission prompt, which must
+      // come from a user action).
+      // ignore: unawaited_futures
+      final bootSweep = discovery;
+      () async {
+        final s = await VibeSettings.load(VibeSettings.defaultPath(toolId));
+        if (!(s.discoveryUsb || s.discoveryMdns || s.discoveryDirectory)) {
+          return;
+        }
+        await bootSweep.sweep(
+          usb: s.discoveryUsb,
+          mdns: s.discoveryMdns,
+          directory: s.discoveryDirectory,
+          autoConnect: s.discoveryAutoConnect,
+        );
+      }();
     }
     // `plugin.*` — register a plugin (server / hub / bundle) so its tools enter
     // the catalog as `<id>.<tool>` for any app/agent; persists (shared on-disk)
@@ -767,6 +906,21 @@ class VibeStudioHostApp extends StudioApp {
     registerPluginTools(
       hostTools,
       clientHost: clientHost,
+      // Scope the plugin registry to this instance's config root
+      // (`~/.config/<toolId>/plugins.json`, the same root as settings) so the
+      // debug / release / pro instances never share plugin state. Without this
+      // the recipe falls back to a machine-wide `~/.config/appplayer/` file.
+      storePath: p.join(
+        configRootHint ??
+            p.join(
+              Platform.environment['HOME'] ??
+                  Platform.environment['USERPROFILE'] ??
+                  '.',
+              '.config',
+              toolId,
+            ),
+        'plugins.json',
+      ),
       activateBundle: (source) async {
         // Plugin mode = activate the bundle's tools with no UI tab (tabKey:'').
         final bundle =
@@ -806,15 +960,136 @@ class VibeStudioHostApp extends StudioApp {
     registerExtensions(
       StudioExtensionContext(
         boot: boot,
-        installBundle: (mbdPath) => bundles.install(mbdPath),
+        installBundle: (mbdPath) async {
+          final r = await bundles.install(mbdPath);
+          // Refresh the Home INSTALLED APPS grid (home = tab 0, always) —
+          // a marketplace install must appear without a restart. Best
+          // effort; the workspace may not be mounted during boot installs.
+          try {
+            // ignore: unawaited_futures
+            _chromeBridge.reloadTab?.call(0);
+          } catch (_) {
+            /* best-effort */
+          }
+          return r;
+        },
         activatePackage: (mbdPath) async {
           await _chromeBridge.activatePackage?.call(mbdPath);
         },
         clientHost: backbone.app.clientHost,
         addOverlay: _addExtensionOverlay,
         addHomeEntry: _addExtensionHomeEntry,
+        openExtensionTab: ({
+          required String key,
+          required String label,
+          required WidgetBuilder builder,
+        }) {
+          _chromeBridge.openExtensionTab?.call(
+            key: key,
+            label: label,
+            builder: builder,
+          );
+        },
+        configRoot: backbone.configRoot,
+        registerInstalledTiles: (provider) {
+          _extensionTileProviders.add(provider);
+        },
+        refreshHome: () {
+          // Home is always tab 0; reloading it re-queries the registry
+          // AND the extension tile providers.
+          // ignore: unawaited_futures
+          _chromeBridge.reloadTab?.call(0);
+        },
+        themeReinjectTick: _chromeBridge.themeReinjectTick,
       ),
     );
+    // Local-server feature (base — standard + pro): the Home "+" (the
+    // repurposed New slot) connects a user-supplied MCP server. Endpoint +
+    // display name persist under the config root; the access token — a secret
+    // for an externally-exposed server — lives in the OS keychain vault (spec
+    // 14), the record keeping only a credentialRef. Its Home tiles compose
+    // with any extension tiles (e.g. pro's connected market services).
+    final localServerClientHost = backbone.app.clientHost;
+    if (localServerClientHost != null) {
+      final localServerStore = LocalServerStore(backbone.configRoot);
+      localServerStore.onChanged = () {
+        // ignore: unawaited_futures
+        _chromeBridge.reloadTab?.call(0);
+      };
+      final localServerManager = LocalServerManager(
+        clientHost: localServerClientHost,
+        store: localServerStore,
+        vault: LocalServerCredentialVault(FlutterSecureStorageBackend()),
+        openTab: ({
+          required String key,
+          required String label,
+          required WidgetBuilder builder,
+        }) {
+          _chromeBridge.openExtensionTab?.call(
+            key: key,
+            label: label,
+            builder: builder,
+          );
+        },
+        themeReinjectTick: _chromeBridge.themeReinjectTick,
+      );
+      _extensionTileProviders.add(() async => localServerManager.tiles());
+      _chromeBridge.connectServer = localServerManager.connect;
+
+      // Discover tab (Connect Server dialog) — scan the settings-enabled
+      // sources through the same StudioDiscovery the boot sweep uses, and
+      // connect a picked board. A board (connectHint present) goes through the
+      // extension / BLE seam and opens as a served tab; a bare http(s) node
+      // attaches as an ordinary streamable-HTTP server (recorded like a manual
+      // add). Only wired when discovery is up (clientHost present).
+      final disc = discovery;
+      if (disc != null) {
+        _chromeBridge.scanServers = () async {
+          final s = await VibeSettings.load(VibeSettings.defaultPath(toolId));
+          final sources = <String>[
+            if (s.discoveryMdns) 'mdns',
+            if (s.discoveryUsb) 'usb',
+            if (s.discoveryDirectory) 'directory',
+          ];
+          final results = await Future.wait(
+            sources.map(
+              (src) => disc.discover(src).catchError(
+                (_) => <String, dynamic>{'ok': false, 'candidates': const []},
+              ),
+            ),
+          );
+          final out = <DiscoveredServer>[];
+          for (final r in results) {
+            final list = r['candidates'];
+            if (list is! List) continue;
+            for (final c in list) {
+              if (c is Map<String, dynamic>) out.add(_discoveredServerFrom(c));
+            }
+          }
+          return out;
+        };
+        _chromeBridge.connectDiscovered = (server) async {
+          final raw = server.raw;
+          if (raw['connectHint'] == null) {
+            // http(s) node — attach as a remote streamable-HTTP server.
+            final endpoint = raw['endpoint'] as String?;
+            if (endpoint == null || endpoint.isEmpty) {
+              throw StateError('discovered node has no endpoint');
+            }
+            await localServerManager.connect(
+              ConnectServerRequest(
+                transport: mk.KernelTransportKind.streamableHttp,
+                endpoint: endpoint,
+                name: server.name,
+              ),
+            );
+            return;
+          }
+          final connId = await disc.connectCandidate(raw);
+          localServerManager.openServed(connId, title: server.name);
+        };
+      }
+    }
     // `plugin.*` host surface — a Home entry (right of the BUILT-IN APPS
     // title) opening an overlay to manage installed plugins, the same seam
     // the pro tier uses for Marketplace. Plugins are host-level (shared
@@ -872,6 +1147,12 @@ class VibeStudioHostApp extends StudioApp {
     // touching the registry type directly.
     FormCapabilityBinding.install(hostTools);
     registerIngestCapability(hostTools);
+    // `provision.*` — BLE device network commissioning (vendored
+    // ble_provisioning recipe, spec 18 sibling): candidates (on-demand scan for
+    // `mcp-prov` devices) + commission (send Wi-Fi creds, await the join over
+    // the status NOTIFY). Host-owned like the other capabilities so a
+    // provisioning bundle's `type:tool` calls reach it in-process.
+    registerProvisioningCapability(hostTools);
     // `channel.*` — bidirectional multi-connector messaging (mcp_channel). P1
     // = in-app feed connector over the active ops project's canonical KV. P2
     // (agentic inbound) = `askAgent` routes a `channel.receive` message to the
@@ -2374,7 +2655,32 @@ class VibeStudioHostApp extends StudioApp {
           );
         },
         onTurnPersisted: (turn) => appendStudioChatTurn(file, turn),
-        onClearLog: () => clearStudioChatLog(file),
+        onClearLog: (agentId) async {
+          await clearStudioChatLog(file);
+          // `clearStudioChatLog` only deletes the on-disk transcript. The
+          // agent's kernel-side conversation (ConversationStore
+          // `conv/<agentId>/turns`) — what the manager actually re-reads on its
+          // next turn — survives, so "clear chat" would leave the coordinator
+          // recalling the prior conversation (e.g. a since-deleted org). Also
+          // wipe that working memory for the conversing agent, resolving the
+          // per-unit scoped manager the same way the send path does. Long-term
+          // distilled expertise (owned axes) is untouched — only the running
+          // conversation resets.
+          final app = _backboneCached?.app;
+          if (app != null && app.system.isAgentSubsystemActivated) {
+            final effective =
+                (agentId == _chromeBridge.activeChatAgentId.value)
+                    ? (_chromeBridge.chatManagerOverride.value ?? agentId)
+                    : agentId;
+            if (effective.isNotEmpty && effective != 'manager') {
+              try {
+                await app.system.agents.clearHistory(effective);
+              } catch (_) {
+                /* best-effort — transcript already cleared */
+              }
+            }
+          }
+        },
       );
       // Initial selected agent = first manager-role entry in the
       // roster (or first entry if none has the role) so the chat
@@ -2728,6 +3034,19 @@ class VibeStudioHostApp extends StudioApp {
                     // Home entries from extensions (e.g. pro's Marketplace icon).
                     // Empty in the base build.
                     extensionEntries: _extensionHomeEntries,
+                    // Late-bound: extensions register after construction, so
+                    // wrap rather than passing the (possibly-null) provider.
+                    extensionInstalledTiles: () async {
+                      final all = <HomeInstalledTile>[];
+                      for (final provider in _extensionTileProviders) {
+                        try {
+                          all.addAll(await provider());
+                        } catch (_) {
+                          /* one source failing must not blank the grid */
+                        }
+                      }
+                      return all;
+                    },
                     seedPathByNamespace: <String, String>{
                       for (final s in seedBundles()) s.namespace: s.mbdPath,
                     },

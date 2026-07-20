@@ -7,6 +7,8 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/src/base/main/chrome_bridge.dart';
+import 'package:appplayer_studio/src/base/servers/connect_server_dialog.dart'
+    show DiscoveredServer;
 
 void main() {
   group('ChromeBridge default state', () {
@@ -21,6 +23,9 @@ void main() {
       expect(bridge.openAgents, isNull);
       expect(bridge.openSeed, isNull);
       expect(bridge.appendChatTurn, isNull);
+      expect(bridge.connectServer, isNull);
+      expect(bridge.scanServers, isNull);
+      expect(bridge.connectDiscovered, isNull);
     });
 
     test('inspectorEnabled defaults to false', () {
@@ -179,6 +184,40 @@ void main() {
       expect(lastRequest, isTrue);
       expect(bridge.setLeftPanelVisible!.call(false), isFalse);
       expect(lastRequest, isFalse);
+    });
+  });
+
+  group('Discovery seams (Connect Server → Discover tab)', () {
+    test('scanServers slot returns the host-supplied discovery list', () async {
+      final bridge = ChromeBridge();
+      const found = <DiscoveredServer>[
+        DiscoveredServer(
+          source: 'mdns',
+          name: 'Lab Board',
+          detail: 'host:6270',
+          raw: <String, dynamic>{'id': 'acme.lab'},
+        ),
+      ];
+      bridge.scanServers = () async => found;
+      final result = await bridge.scanServers!.call();
+      expect(result, hasLength(1));
+      expect(result.single.name, 'Lab Board');
+      expect(result.single.raw['id'], 'acme.lab');
+    });
+
+    test('connectDiscovered slot forwards the picked server to the host',
+        () async {
+      final bridge = ChromeBridge();
+      DiscoveredServer? routed;
+      bridge.connectDiscovered = (s) async => routed = s;
+      const picked = DiscoveredServer(
+        source: 'ble',
+        name: 'Wrist Sensor',
+        detail: 'dev-1',
+        raw: <String, dynamic>{},
+      );
+      await bridge.connectDiscovered!.call(picked);
+      expect(routed, same(picked));
     });
   });
 }

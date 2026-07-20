@@ -680,6 +680,10 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       );
       base.registerToolWidgets(runtime);
       base.registerVbuWidgets(runtime);
+      // Host stream sources for `client.mcpStream` channels (e.g. `ble://scan`
+      // → shared BLE advertisement hub, spec 18). Must run AFTER initialize —
+      // registerStreamSource asserts an initialized runtime.
+      base.registerStudioStreamSources(runtime);
       // Override the base-side `VbuBundleEmbed` placeholder factory
       // with the real one that mounts a nested DslWorkspaceView. Base
       // can't register it directly without an import cycle (base ←

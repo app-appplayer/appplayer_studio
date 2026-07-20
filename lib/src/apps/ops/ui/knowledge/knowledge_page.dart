@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../registries/knowledge_registry.dart';
 import '../../state/providers.dart';
 import '../../widgets/empty_state.dart';
+import '../_shared/fact_display.dart';
 import 'graph_tab.dart';
 
 class KnowledgePage extends ConsumerStatefulWidget {
@@ -83,6 +84,10 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
   String? _error;
   bool _loading = false;
   bool _initialLoaded = false;
+  // Agent-lifecycle bookkeeping (`agent.*` facts) is hidden by default so the
+  // Facts view reads as domain knowledge, not the 4-axis fork ledger (audit
+  // P1.1). Toggled on by the "system facts" affordance.
+  bool _showSystemFacts = false;
 
   @override
   void initState() {
@@ -141,10 +146,26 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     }
     final items = <Widget>[];
     final graph = _graphResults ?? const [];
-    if (graph.isNotEmpty) {
-      items.add(_sectionHeader('Fact graph (${graph.length})'));
-      for (final f in graph) {
+    // Partition domain knowledge from `agent.*` lifecycle bookkeeping (audit
+    // P1.1): the fork/growth ledger is not a "fact" the user searches — show
+    // it only behind an explicit toggle, with a readable label not the raw
+    // factId.
+    final domain =
+        graph.where((f) => !isAgentLifecycleFact(f.type.toString())).toList();
+    final system =
+        graph.where((f) => isAgentLifecycleFact(f.type.toString())).toList();
+    if (domain.isNotEmpty) {
+      items.add(_sectionHeader('Fact graph (${domain.length})'));
+      for (final f in domain) {
         items.add(_graphTile(f));
+      }
+    }
+    if (system.isNotEmpty) {
+      items.add(_systemFactsToggle(system.length));
+      if (_showSystemFacts) {
+        for (final f in system) {
+          items.add(_graphTile(f, system: true));
+        }
       }
     }
     final kv = _kvResults ?? const <KvFactEntry>[];
@@ -178,11 +199,72 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     ),
   );
 
-  Widget _graphTile(dynamic f) {
+  Widget _systemFactsToggle(int count) => Padding(
+    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    child: InkWell(
+      onTap: () => setState(() => _showSystemFacts = !_showSystemFacts),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(
+              _showSystemFacts ? Icons.expand_more : Icons.chevron_right,
+              size: 18,
+              color: Colors.grey[600],
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'System · agent lifecycle ($count)',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(color: Colors.grey[700]),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _showSystemFacts ? 'hide' : 'show',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _graphTile(dynamic f, {bool system = false}) {
     final id = f.id?.toString() ?? '';
     final content = f.content?.toString() ?? '';
     final preview =
         content.length > 120 ? '${content.substring(0, 120)}…' : content;
+    if (system) {
+      // Agent-lifecycle bookkeeping — readable "<agent> · <event>" label
+      // instead of the raw factId (`agent.fork.assigned/<id>/philosophy/...`),
+      // with the raw id demoted to the subtitle (audit P1.1).
+      final c = (f.content as Map?) ?? const <String, dynamic>{};
+      final agentId = (c['agentId'] ?? '').toString();
+      final agentLeaf = agentId.isEmpty ? '' : agentId.split('.').last;
+      final headline = agentFactHeadline(f);
+      final label = agentLeaf.isEmpty ? headline : '$agentLeaf · $headline';
+      return Card(
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        child: ListTile(
+          dense: true,
+          leading: const Icon(Icons.auto_awesome_outlined, size: 18),
+          title: Text(label, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.grey[600], fontSize: 11),
+          ),
+          trailing: const Icon(Icons.open_in_full, size: 16),
+          onTap: () => _showDetail(title: label, subtitle: id, body: content),
+        ),
+      );
+    }
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 2),
       child: ListTile(
@@ -234,7 +316,10 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     try {
       final init = ref.read(knowledgeInitProvider);
       final q = _queryCtrl.text.trim();
-      final graph = await init.registries.knowledge.query(q, limit: 20);
+      // Raised from 20: agent-lifecycle bookkeeping (hidden by default, audit
+      // P1.1) shares this window, so a low cap let system facts crowd domain
+      // facts out of the loaded set. Partitioning happens in `_body`.
+      final graph = await init.registries.knowledge.query(q, limit: 60);
       final kv = await init.registries.knowledge.listKvFacts(filter: q);
       if (!mounted) return;
       setState(() {

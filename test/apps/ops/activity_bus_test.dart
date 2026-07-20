@@ -132,6 +132,25 @@ void main() {
       expect(() => bus.emit(_mkEvent()), returnsNormally);
     });
 
+    test('ab11 info()/warn() preserve a caller-supplied kind', () {
+      // The Live Activity wiring emits domain kinds through the info()/warn()
+      // convenience emitters (mcpInbound / forkAssigned via info, philosophyGate
+      // via warn) — the kind must survive, not collapse to the default. If it
+      // did, every wired event would render under the wrong filter chip.
+      final bus = ActivityBus(bufferSize: 10);
+      bus.info('mcp', 'Tool member_list · 1ms', kind: ActivityKind.mcpInbound);
+      bus.info('QA Probe', 'provisioned', kind: ActivityKind.forkAssigned);
+      bus.warn('proc', 'awaiting approval', kind: ActivityKind.philosophyGate);
+      final k = bus.recent.map((e) => e.kind).toList();
+      expect(k, <ActivityKind>[
+        ActivityKind.mcpInbound,
+        ActivityKind.forkAssigned,
+        ActivityKind.philosophyGate,
+      ]);
+      // Severity still tracks the emitter (warn stays warn for the gate).
+      expect(bus.recent.last.severity, ActivitySeverity.warn);
+    });
+
     test('ab — meta map is forwarded onto events by info()', () {
       final bus = ActivityBus();
       bus.info('src', 'ok', meta: {'tool': 'bk.fact.get', 'latency': 42});

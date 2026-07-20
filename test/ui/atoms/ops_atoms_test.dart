@@ -213,6 +213,45 @@ void main() {
       await tester.pump();
       expect(find.byType(Divider), findsNothing);
     });
+
+    testWidgets(
+      'long header title ellipsizes and keeps trailing on-screen (no overflow)',
+      (tester) async {
+        // Regression: a long title (e.g. "Process · host wiring / 게시 cascade
+        // (H1)") laid out at full intrinsic width and pushed the trailing
+        // action off the card's right edge. Title/sub must ellipsize so the
+        // trailing stays visible in a narrow card.
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildOpsTheme(),
+            home: const Scaffold(
+              body: SizedBox(
+                width: 220,
+                child: OpsCard(
+                  header: OpsCardHeader(
+                    title: 'Process · host wiring / 게시 cascade (H1)',
+                    sub: '5 steps · manual',
+                    trailing: Text('Open', key: Key('open-action')),
+                  ),
+                  body: Text('content'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        // No RenderFlex overflow was thrown during layout.
+        expect(tester.takeException(), isNull);
+        // The trailing action is still laid out (not pushed off-screen).
+        expect(find.byKey(const Key('open-action')), findsOneWidget);
+        // Title uses ellipsis clipping rather than unbounded width.
+        final titleText = tester.widget<Text>(
+          find.text('Process · host wiring / 게시 cascade (H1)'),
+        );
+        expect(titleText.overflow, TextOverflow.ellipsis);
+        expect(titleText.softWrap, isFalse);
+      },
+    );
   });
 
   // ── OpsCrumb ─────────────────────────────────────────────────────────────

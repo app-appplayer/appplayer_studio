@@ -18,6 +18,8 @@ import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:appplayer_studio/base.dart';
+
+import 'server_shell_launch.dart';
 export 'inspector_render.dart' show InspectorSize, InspectorOrient;
 
 /// Variants vibe knows how to build, in display order. Each is a
@@ -51,6 +53,18 @@ const List<_VariantSpec> _variants = <_VariantSpec>[
     icon: Icons.dashboard_customize_outlined,
     isNative: true,
   ),
+  // Cloud server app (`manifest.type: "server"`): ▶ packs the bundle,
+  // compiles tools/*.ts, boots the REAL marketplace serving shell
+  // locally (settings.serverShellPath) and connects over streamable
+  // HTTP — the same run/connect loop the deployed listing gets.
+  // Discovered by bundle type, not by `build/server/` presence (the
+  // artifacts are produced on toggle).
+  _VariantSpec(
+    slug: 'server',
+    label: 'Cloud Server',
+    icon: Icons.cloud_outlined,
+    isNative: false,
+  ),
 ];
 
 class _VariantSpec {
@@ -77,10 +91,16 @@ class InspectorPanel extends StatefulWidget {
     required this.projectPath,
     this.sessions,
     this.captureKey,
+    this.settings,
   });
 
   /// Currently-open project root, or `null` when no project is open.
   final String? projectPath;
+
+  /// Host settings — the Cloud Server variant reads
+  /// [VibeSettings.serverShellPath]. Optional so legacy mounts keep
+  /// working; without it the server card explains the missing config.
+  final VibeSettings? settings;
 
   /// Shell-owned session manager. When non-null, the panel binds to
   /// it and skips `dispose` — connections + wire log survive an
@@ -125,7 +145,10 @@ class _InspectorPanelState extends State<InspectorPanel> {
   final GlobalKey _brightAnchorKey = GlobalKey();
 
   InspectorTransport _transportFor(String slug) =>
-      _transports[slug] ?? _defaultTransport;
+      // The marketplace serving shell is streamable-HTTP only.
+      slug == 'server'
+          ? InspectorTransport.http
+          : _transports[slug] ?? _defaultTransport;
 
   @override
   void initState() {
@@ -162,9 +185,32 @@ class _InspectorPanelState extends State<InspectorPanel> {
         body: 'Open a project to discover and debug its built variants.',
       );
     }
+    // Kind-scoped variant set — only what APPLIES to the project shows
+    // up at all (present OR absent). A cloud server app is served by the
+    // marketplace shell and never converts to a Dart/Flutter artifact,
+    // so it gets exactly one card; conversely app projects never boot
+    // the serving shell, so the server card is absent from their strip.
+    final isServerProject =
+        projectKindNameOf(projectPath) == 'cloudServerApp';
     final present = <_DiscoveredVariant>[];
     final absent = <_VariantSpec>[];
     for (final spec in _variants) {
+      if (spec.slug == 'server') {
+        if (!isServerProject) continue;
+        // Availability = the project IS a cloud server app; artifacts
+        // are produced on toggle (see the spec comment above).
+        final bundleDir = servingBundleDirOf(projectPath);
+        if (bundleDir != null && isServerBundleDir(bundleDir)) {
+          present.add(
+            _DiscoveredVariant(
+              spec: spec,
+              path: p.join(projectPath, 'build', spec.slug),
+            ),
+          );
+        }
+        continue;
+      }
+      if (isServerProject) continue; // conversion targets don't apply
       final dir = Directory(p.join(projectPath, 'build', spec.slug));
       if (dir.existsSync()) {
         present.add(_DiscoveredVariant(spec: spec, path: dir.path));
@@ -288,31 +334,31 @@ class _InspectorPanelState extends State<InspectorPanel> {
               customH: _customH,
               resetEpoch: _resetEpoch,
             );
+    // `renderBody` mounts the live UiView (semantics tree) once a variant
+    // is connected. A LayoutBuilder here would lay that subtree out during
+    // its own layout pass and throw "RenderSemanticsAnnotations was mutated
+    // in _RenderLayoutBuilder.performLayout" when the runtime streams an
+    // update mid-layout. Split with plain flex so the render surface is a
+    // normal Row child, never rebuilt inside an ancestor's layout.
+    final rFrac = _renderFraction.clamp(0.15, 0.85);
+    final renderFlex = ((rFrac * 1000).round()).clamp(1, 1000);
+    final logFlex = (((1 - rFrac) * 1000).round()).clamp(1, 1000);
     return ColoredBox(
       color: c.bg,
-      child: LayoutBuilder(
-        builder: (ctx, box) {
-          final renderW = (box.maxWidth * _renderFraction).clamp(
-            160.0,
-            box.maxWidth - 160,
-          );
-          final logW = box.maxWidth - renderW - 6;
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              SizedBox(width: renderW, child: renderBody),
-              _SplitHandle(
-                onDelta: (dx) {
-                  setState(() {
-                    final next = (renderW + dx) / box.maxWidth;
-                    _renderFraction = next.clamp(0.15, 0.85);
-                  });
-                },
-              ),
-              SizedBox(width: logW, child: _LoggerPanel(session: view)),
-            ],
-          );
-        },
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Expanded(flex: renderFlex, child: renderBody),
+          _SplitHandle(
+            onDelta: (dx) {
+              setState(() {
+                final w = context.size?.width ?? 1.0;
+                _renderFraction = (_renderFraction + dx / w).clamp(0.15, 0.85);
+              });
+            },
+          ),
+          Expanded(flex: logFlex, child: _LoggerPanel(session: view)),
+        ],
       ),
     );
   }
@@ -347,6 +393,10 @@ class _InspectorPanelState extends State<InspectorPanel> {
       );
       return;
     }
+    if (v.spec.slug == 'server') {
+      await _startServerShell(v);
+      return;
+    }
     final binary = _resolveBinary(v.spec, v.path);
     if (binary == null) {
       _toast('No executable found under ${v.path}');
@@ -356,6 +406,36 @@ class _InspectorPanelState extends State<InspectorPanel> {
       slug: v.spec.slug,
       binary: binary,
       transport: _transportFor(v.spec.slug),
+    );
+  }
+
+  /// Cloud Server variant: pack the bundle, compile tools, boot the
+  /// real marketplace serving shell locally and connect over
+  /// streamable HTTP (the shell's only transport — the stdio/sse
+  /// transport menu does not apply).
+  Future<void> _startServerShell(_DiscoveredVariant v) async {
+    final projectPath = widget.projectPath;
+    if (projectPath == null) return;
+    final ServerShellLaunch launch;
+    try {
+      launch = await prepareServerShellLaunch(
+        projectPath: projectPath,
+        serverShellPath: widget.settings?.serverShellPath,
+      );
+    } on ServerShellLaunchException catch (e) {
+      _toast(e.message);
+      return;
+    } catch (e) {
+      _toast('Cloud Server launch failed: $e');
+      return;
+    }
+    await _sessions.connect(
+      slug: v.spec.slug,
+      binary: launch.nodeBinary,
+      transport: InspectorTransport.http,
+      port: launch.port,
+      launchArgs: <String>[launch.indexJs],
+      environment: launch.environment,
     );
   }
 
@@ -463,6 +543,11 @@ class _InspectorPanelState extends State<InspectorPanel> {
     _DiscoveredVariant v,
     Offset globalOffset,
   ) async {
+    if (v.spec.slug == 'server') {
+      // The marketplace serving shell speaks streamable HTTP only.
+      _toast('Cloud Server runs over streamable HTTP (fixed).');
+      return;
+    }
     final c = VibeTokens.colorOf(context);
     final overlayBox =
         Overlay.of(context).context.findRenderObject() as RenderBox?;

@@ -1,0 +1,22 @@
+{
+  "name": "AppPlayer Studio",
+  "colors": {
+    "background": "#0B0E13",
+    "surface": "#11151C",
+    "surface2": "#161B24",
+    "border": "#232A38",
+    "textPrimary": "#E6EAF2",
+    "textSecondary": "#9AA3B2",
+    "mint": "#7DD3C0",
+    "amber": "#E9B873",
+    "violet": "#9B87F5",
+    "blue": "#5FA8FF",
+    "pink": "#E58FB7",
+    "coral": "#E78A7A"
+  },
+  "fonts": {
+    "sans": "Inter",
+    "mono": "JetBrainsMono"
+  },
+  "logo": "AppPlayer Studio"
+}

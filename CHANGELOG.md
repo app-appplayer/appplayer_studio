@@ -1,6 +1,139 @@
-## [0.1.4] - 2026-06-30
+## [0.1.4] - 2026-07-20
+
+### Fixed
+- Two connected-server (marketplace or local) tabs could render the SAME served
+  app. The workspace keeps every open tab alive in an IndexedStack, but the
+  served-app runtime's ThemeManager / WidgetCache / navigatorKey are process
+  singletons — two co-mounted served surfaces fought over them and showed each
+  other's UI. The served-app body is now active-tab gated (the same
+  single-runtime-at-a-time discipline the authoring workspace already uses):
+  only the active service tab mounts its runtime; inactive tabs hold a bare
+  surface (render future preserved for instant re-entry) and never touch the
+  singletons. Locked by a regression test that reproduces two co-mounted tabs
+  and asserts the inactive one never even reads its connection.
+- A connected-server tab could show a blank / wrong theme after switching to it
+  from another server tab (or after a sibling server tab closed). Switching
+  tears down the previous tab's runtime, which resets the process-singleton
+  ThemeManager; the newly-active tab now re-injects its own theme both
+  synchronously and after the frame (so it wins over the sibling's teardown),
+  and it also listens on the shared `themeReinjectTick` so a sibling *closing*
+  triggers the same re-inject — the exact mechanism the authoring workspace
+  already uses. Wired through both the marketplace and local-server surfaces.
+
+### Changed
+- Marketplace server connect (Pro tier) cut over to the per-user
+  `connectionToken` as the sole Bearer. With the marketplace server retiring
+  static-key verification (`SERVER_REQUIRE_TOKEN=true`), the static
+  `accessToken` is now dead — never consumed on connect — because a live legacy
+  key beside the standard flow would mask whether the standard path works and
+  keep a revocation-free credential alive (single-active-path rule). The connect
+  path resolves the Bearer from the `connectionToken` only; a missing or
+  near-expiry token triggers the silent, screenless re-grant
+  (`ServerRef.refresh`), and a grant with neither connects bare so the server
+  401s visibly and the next open retries. The dead browser-OAuth wiring
+  (loopback authorizer + OAuth token store) was removed rather than left
+  flag-gated, and the connect regression locks were flipped to assert the
+  static token is never sent (with a resurrection-guard case).
+- Marketplace requests (Pro tier) now carry a Firebase App Check attestation
+  token (`X-Firebase-AppCheck`) so the marketplace's "our apps only" enforce
+  flip does not cut the native app off — App Check is activated at boot (Play
+  Integrity / App Attest) and the token provider is wired into the market
+  config. Best-effort: on desktop, which has no attestation provider, the
+  token is null and requests proceed under the pre-enforce tolerance.
 
 ### Added
+- Device network provisioning for bundles and agents — a host `provision.*`
+  capability that onboards a nearby device onto Wi-Fi so it can serve MCP on
+  the LAN (spec 18 sibling of `ble_scan` / `ble_transport` / device discovery).
+  Four host-side methods over one "credentials in → terminal join status out"
+  contract, from the vendored `ble_provisioning` / `softap_provisioning` /
+  `serial_provisioning` / `smartconfig_provisioning` recipes:
+  - **BLE** (`provision.candidates` + `provision.commission`) — an on-demand
+    scan for devices in provisioning mode, then a GATT credentials write with
+    the join awaited over the status NOTIFY. Tolerates the BLE link dropping
+    mid-join (device Wi-Fi/BT coexistence): the outcome is re-probed over a
+    GATT status READ until terminal, and two consecutive unreachable probes are
+    read as the device rebooting into serving mode (`connected`).
+  - **SoftAP** (`provision.softap_commission`) — portal HTTP against a device
+    in SoftAP mode (the host must already be joined to the device AP).
+  - **Serial console** (`provision.serial_ports` + `provision.console`) — the
+    node's UART console (`#PROV ` line contract: scan / commission / forget /
+    status). The blocking serial I/O runs in a background isolate so it never
+    stalls the app or the MCP endpoint, termios is configured on the held-open
+    fds (raw / 115200 / `min 0 time 1`), and the command is sent only after a
+    boot delay (opening the port resets the board over DTR/RTS).
+  - **SmartConfig** (`provision.smartconfig`) — a pure-Dart ESP-Touch v1
+    broadcast sender (UDP :7001, ACK :18266); the host must sit on the target
+    2.4 GHz band. The tools live on the shared host registry, so a provisioning
+    bundle's `type:tool` calls reach them in-process (parity rule). Verified
+    end-to-end on a real ESP32: the full onboarding→serving loop (forget →
+    BLE candidates → commission → device joins Wi-Fi and reboots → rediscovered
+    over mDNS) driven entirely through the Studio tools. Candidate matching
+    falls back to the `mcp-prov` advertised name because macOS Core Bluetooth
+    does not reliably surface a 128-bit service UUID from a scan advertisement.
+- BLE advertisement observation for bundles (`client.mcpStream`, spec 18). The
+  vendored `ble_scan` recipe (a sensing capability distinct from a transport or
+  device discovery — one physical radio multiplexed across many filtered,
+  ref-counted subscriptions) is wired into every render runtime via
+  `registerStudioStreamSources`: a bundle's `client.mcpStream` channel with uri
+  `ble://scan` (+ serviceUuids/deviceIds/minRssi filters) receives live
+  advertisements it can accumulate and bind to lists/charts. The runtime
+  namespace-fork was synced to 0.5.2 to gain the `registerStreamSource` seam +
+  `mcp_stream_channel`. Radio idles until a channel subscribes; the hub is
+  process-shared. Verified end-to-end by an integration test that drives the
+  canonical live-monitor bundle through a real runtime over a fake radio
+  (initialize, registerStudioStreamSources, `ble://scan` channel, hub,
+  advertisement, `onMessage` append to state), plus the vendored recipe tests
+  (15). Live dogfood surfaced (and fixed) a missing
+  `NSBluetoothAlwaysUsageDescription` in the macOS `Info.plist` — without it the
+  BLE scan can't request the CoreBluetooth permission (the same class of gap as
+  the discovery `NSBonjourServices` fix); added across the standard/pro trees.
+  Real ESP32 render over the hardware radio is a user-present gate — the channel
+  runs only in a live app instance (the editing preview is a design canvas).
+
+### Changed
+- Ecosystem deps adopted at their published versions (local pre-test path
+  overrides removed): `mcp_client` / `mcp_server` **2.1.0** (OAuth 2.1 client
+  discovery), `flutter_mcp_ui_runtime` **0.5.2** / `flutter_mcp_ui_core`
+  **0.4.2** (the `client.mcpStream` channel type), `mcp_bundle` **0.4.8**. The
+  app-builder template seed versions were synced to match (guard test).
+
+### Added
+- Discovery manifest trust verification (spec 17 §6). The board-discovery
+  wiring gained a Studio-owned `ManifestTrustEvaluator` (over `appplayer_secure`
+  — Ed25519 signature over the canonical manifest bytes, validated against the
+  facade's root CAs; byte-identical to the recipe's `sign_manifest.dart` signer)
+  plus a `TrustEvidence` type. `mcp.discover_boards` now attaches signature
+  evidence (`{signed, verified, partnerChainValid}`) to probe-confirmed
+  candidates, and — when signature enforcement is on — the auto-connect sweep
+  and `connectCandidate` gate on it (fail-closed: an unsigned or unverified
+  board is `blocked`, never connected). The host wires the evaluator from a
+  bundled root-CA anchor (`assets/root_cas/dev.json` — the dev partner /
+  marketplace roots; a production build swaps the asset) and a
+  Settings → Auto discovery → "Require signed boards" toggle (default off ⇒
+  discovery behaves exactly as before, evidence surfaced either way). The
+  anchor loads tier-safe (bare key in the standard package, a
+  `packages/appplayer_studio/` prefix fallback in the pro overlay — the
+  `_loadSeedAsset` footgun). Verified live in BOTH tiers: the `posix-tcp` dev
+  node (which ships a partner-signed trust block) discovers as
+  `verified: true` against the wired dev root. Real-crypto
+  round-trip + fixture + gate coverage (`discovery_trust_test` 8 ·
+  `discovery_trust_fixture_test` 1 · `discovery_trust_gate_test` 5). The vendored
+  `device_discovery` / `ble_transport` recipes were re-synced to the canonical
+  source (BoardIdentity now carries the raw `manifest`, an mDNS-hostname
+  (not point-in-time IP) endpoint, `probeHttpCandidate`, and probe socket
+  unhandled-error hardening).
+- Standard OAuth 2.1 for marketplace server connect (Pro tier, FEAT-AUTHZ,
+  spec 08 §4). The market embed's `connectServer` is now a thin host override
+  that resolves the Bearer as static `accessToken` → `connectionToken` →
+  standard OAuth (SDK discovery → PKCE → Bearer, refresh persisted to the OS
+  keychain), so a token-less grant can authorize through the marketplace AS
+  once the static key is retired. `accessToken` stays primary and the connect
+  never pins a protocol version (`statelessMode` unset) so the JS-SDK serverapp
+  (max 2025-11-25) negotiates instead of 400-ing. New host seams
+  `LoopbackAuthorizer` (RFC 8252) + `VaultOAuthTokenStore`; the recipe stays
+  unmodified. Coverage `market_oauth_connect_test` (5 — token priority · OAuth
+  fallback · non-stateless).
 - Work-flow visibility completed (콘피 문의 B묶음 B2·B3·B4 — all renders
   over EXISTING records, no new collection): the Processes route gained a
   List↔Board toggle (B2 flow board — one swimlane per process, columns =
@@ -349,6 +482,24 @@
   MCP resources at boot, so the coordinator + members read it as a tool surface.
 
 ### Fixed
+- Organization chart (structure lens) now renders top-down with a clean
+  central spine. Staff (support) units used to hang off the parent in a
+  reserved far-LEFT column, which pushed the whole subtree right and left the
+  top unit cramped against its operational row. The line (operational) units
+  are now the centered spine — the unit box sits over them and a straight
+  stem drops to the line row — while staff units step aside into a band
+  offset to the RIGHT of that stem (drawn in the muted support color), above
+  the line row. So the chart reads top → (staff to the side) → execution,
+  and the reporting stem is never crossed. The parent→child connector's
+  horizontal bus was moved to just above the child row so the stem clears the
+  staff band; single-tier charts (no staff) are pixel-identical.
+- Organization Directory now orders units the same as the Home switcher.
+  The directory sorted siblings by raw id alphabetically, so its order
+  disagreed with the Home workspace tree (which honors the operator-set
+  `sortOrder`, then staff-before-line, then id). Extracted that ordering
+  into a single `orgWsSiblingCompare` source of truth in the org model —
+  the chart layout, the directory nav list, and the card tree all defer to
+  it, so every organization lens reads one order.
 - The form view is a PACKAGE now — `appplayer_form_view` (utils/, the
   appplayer_ui_view precedent; promotes the early `tools/core/view/form`
   try). It renders a typed `FormDocument` as the actual paper form and

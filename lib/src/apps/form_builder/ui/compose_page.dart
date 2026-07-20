@@ -704,7 +704,14 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
                 'correction of $_supersedes',
                 overflow: TextOverflow.ellipsis,
               ),
-              onDeleted: () => setState(() => _supersedes = null),
+              onDeleted:
+                  () => setState(() {
+                    _supersedes = null;
+                    // Clear the stale "will supersede …" line set for the
+                    // correction; issuing now creates a fresh document.
+                    _statusLine =
+                        'Correction cleared - issuing will create a new document.';
+                  }),
             ),
           ),
         Expanded(

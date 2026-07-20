@@ -169,6 +169,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart' show ZipDecoder;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/base.dart'
     show
@@ -1455,5 +1456,69 @@ void main() {
   test('r86: getBuildConfig returns success when no preset is saved', () {
     final r = _makeDispatcher().getBuildConfig();
     expect(r.success, isTrue);
+  });
+
+  // ── r87 packBundle: cloud server bundle value preservation ───────────────
+  // mcp_bundle ≥0.4.7 knows the `server` bundle type and `ts` tool kind, so
+  // the canonical packer must round-trip them losslessly (this test guarded
+  // the pre-0.4.7 plain-zip interim and now guards the model itself).
+  test('r87: packBundle preserves server/ts values through the packer',
+      () async {
+    final tmp = await Directory.systemTemp.createTemp('vibe_pack_srv_');
+    addTearDown(() async {
+      if (await tmp.exists()) await tmp.delete(recursive: true);
+    });
+    final src = Directory(
+      '${tmp.path}/bundles/serving.mbd',
+    );
+    await Directory('${src.path}/tools').create(recursive: true);
+    const manifest = <String, dynamic>{
+      'manifest': <String, dynamic>{
+        'id': 'com.example.srv',
+        'name': 'Srv',
+        'version': '0.1.0',
+        'type': 'server',
+      },
+      'tools': <String, dynamic>{
+        'tools': <dynamic>[
+          <String, dynamic>{
+            'name': 'server.ping',
+            'description': 'ping',
+            'inputSchema': <String, dynamic>{'type': 'object'},
+            'kind': 'ts',
+            'target': <String, dynamic>{
+              'entry': 'tools/main.ts',
+              'fn': 'ping',
+            },
+          },
+        ],
+      },
+    };
+    await File(
+      '${src.path}/manifest.json',
+    ).writeAsString(jsonEncode(manifest));
+    await File('${src.path}/tools/main.ts').writeAsString(
+      'export async function ping(args: Record<string, unknown>) '
+      '{ return { ok: true }; }\n',
+    );
+
+    final d = _makeDispatcher(projectPath: tmp.path);
+    final r = await d.packBundle(channel: 'serving', outPath: 'out/srv.mcpb');
+    expect(r.success, isTrue, reason: r.message);
+
+    // Unzip and assert the raw values survived (no model round-trip).
+    final bytes = await File('${tmp.path}/out/srv.mcpb').readAsBytes();
+    final zip = ZipDecoder().decodeBytes(bytes);
+    final entry = zip.files.firstWhere((f) => f.name == 'manifest.json');
+    final decoded =
+        jsonDecode(utf8.decode(entry.content as List<int>))
+            as Map<String, dynamic>;
+    expect((decoded['manifest'] as Map)['type'], 'server');
+    expect(
+      ((decoded['tools'] as Map)['tools'] as List).first['kind'],
+      'ts',
+    );
+    // The TS source ships alongside — the marketplace build needs it.
+    expect(zip.files.any((f) => f.name == 'tools/main.ts'), isTrue);
   });
 }

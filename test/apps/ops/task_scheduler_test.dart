@@ -85,6 +85,129 @@ void main() {
     );
   });
 
+  group('TaskScheduler R4 catchup — missed-slot logic', () {
+    test('daily 08:00: missed while closed → true; not-yet / already → false',
+        () async {
+      final (s, tmp) = await _makeScheduler();
+      const cron = '0 8 * * *';
+      // Closed since yesterday 09:00, now today 08:30 → today's 08:00 missed.
+      expect(
+        s.missedSlotSinceForTest(
+          cron,
+          DateTime(2026, 7, 9, 9),
+          DateTime(2026, 7, 10, 8, 30),
+        ),
+        isTrue,
+      );
+      // Since 07:00 today, now 07:30 — the 08:00 slot hasn't come yet.
+      expect(
+        s.missedSlotSinceForTest(
+          cron,
+          DateTime(2026, 7, 10, 7),
+          DateTime(2026, 7, 10, 7, 30),
+        ),
+        isFalse,
+      );
+      // Already fired at 08:00; now 08:30 — that slot is not "after" the fire.
+      expect(
+        s.missedSlotSinceForTest(
+          cron,
+          DateTime(2026, 7, 10, 8),
+          DateTime(2026, 7, 10, 8, 30),
+        ),
+        isFalse,
+      );
+      await tmp.delete(recursive: true);
+    });
+
+    test('long gap collapses to a single catch-up within the lookback window',
+        () async {
+      final (s, tmp) = await _makeScheduler();
+      // Closed 5 days; a daily 08:00 slot exists within the last 25h → true
+      // (one catch-up, not five).
+      expect(
+        s.missedSlotSinceForTest(
+          '0 8 * * *',
+          DateTime(2026, 7, 5, 8),
+          DateTime(2026, 7, 10, 8, 30),
+        ),
+        isTrue,
+      );
+      await tmp.delete(recursive: true);
+    });
+  });
+
+  group('TaskScheduler R4 catchup — firing', () {
+    Future<(TaskScheduler, TaskRegistry, Directory)> make() async {
+      final tmp = await Directory.systemTemp.createTemp('task_catchup_test_');
+      final kv = KvStoragePortAdapter(rootDir: p.join(tmp.path, 'kv'));
+      final tasks = TaskRegistry(
+        kv: kv,
+        knowledgeSystem: KnowledgeSystem.stub(),
+        rootDir: tmp.path,
+      );
+      final ws = WorkspaceRegistry(kv: kv, rootDir: tmp.path);
+      final s = TaskScheduler(
+        tasks: tasks,
+        workspaces: ws,
+        retryBackoff: Duration.zero,
+      );
+      return (s, tasks, tmp);
+    }
+
+    test('a recurring task with a stale lastFiredAt catches up once', () async {
+      final (s, tasks, tmp) = await make();
+      final ran = Completer<void>();
+      var calls = 0;
+      tasks.dispatch = (id, args) async {
+        calls++;
+        if (!ran.isCompleted) ran.complete();
+        return {'ok': true};
+      };
+      await tasks.create(Task(
+        id: 't-catchup',
+        workspaceId: 'wsA',
+        kind: TaskKind.recurring,
+        title: 'brief',
+        assigneeIds: const [],
+        skillIds: const ['sk_brief'],
+        schedule: TaskSchedule(cron: '* * * * *'),
+        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+        lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
+      ));
+
+      await s.catchUpForTest();
+      await ran.future.timeout(const Duration(seconds: 5));
+      expect(calls, 1);
+      await tmp.delete(recursive: true);
+    });
+
+    test('a one-off task is never caught up', () async {
+      final (s, tasks, tmp) = await make();
+      var calls = 0;
+      tasks.dispatch = (id, args) async {
+        calls++;
+        return {'ok': true};
+      };
+      await tasks.create(Task(
+        id: 't-oneoff',
+        workspaceId: 'wsA',
+        kind: TaskKind.oneOff,
+        title: 'once',
+        assigneeIds: const [],
+        skillIds: const ['sk_once'],
+        schedule: TaskSchedule(cron: '* * * * *'),
+        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+        lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
+      ));
+
+      await s.catchUpForTest();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(calls, 0);
+      await tmp.delete(recursive: true);
+    });
+  });
+
   group('TaskScheduler governance — concurrency', () {
     test('g4 in-flight runs count against the cap; clear on done', () async {
       final (s, tmp) = await _makeScheduler(maxConcurrent: 2);

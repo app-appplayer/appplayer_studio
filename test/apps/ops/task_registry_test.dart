@@ -37,6 +37,7 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' show KvStoragePortAdapter;
 import 'package:appplayer_studio/builtin_api.dart' show KnowledgeSystem;
 import 'package:appplayer_studio/src/apps/ops/registries/task_registry.dart';
+import 'package:appplayer_studio/src/apps/ops/triggers/trigger_events.dart';
 import 'package:appplayer_studio/src/apps/ops/infra/ws_paths.dart';
 
 // ---------------------------------------------------------------------------
@@ -504,6 +505,58 @@ createdAt: 2024-01-01T00:00:00.000Z
       expect(ref.errorCode, isNotNull);
     });
 
+    // --- t18c: R1 completion event emission ---
+    test('t18e run emits AgentWorkCompleted on success and on blocked',
+        () async {
+      final events = <AgentWorkCompleted>[];
+      reg.onWorkCompleted = events.add;
+
+      reg.dispatch = (skillId, args) async => {'status': 'ok'};
+      await reg.create(_makeTask(id: 'emit_ok', workspaceId: 'project/ws1'));
+      await reg.run('emit_ok');
+
+      expect(events, hasLength(1));
+      expect(events.single.kind, WorkKind.task);
+      expect(events.single.state, 'completed');
+      expect(events.single.workspaceId, 'project/ws1');
+      expect(events.single.sourceAgentId, 'ag1'); // the assignee
+      expect(events.single.refId, isNotEmpty);
+      expect(events.single.summary, isNotNull);
+
+      reg.dispatch = (skillId, args) async => throw Exception('boom');
+      await reg.create(_makeTask(id: 'emit_blocked'));
+      await reg.run('emit_blocked');
+
+      expect(events, hasLength(2));
+      expect(events.last.state, 'blocked');
+      expect(events.last.kind, WorkKind.task);
+    });
+
+    // --- t18d: lastFiredAt advances on run and persists through yaml ---
+    test('t18f run advances lastFiredAt and it round-trips through disk',
+        () async {
+      reg.dispatch = (skillId, args) async => {'status': 'ok'};
+      await reg.create(_makeTask(id: 'fired_task'));
+      expect((await reg.get('fired_task'))?.lastFiredAt, isNull);
+
+      await reg.run('fired_task');
+      final fired = (await reg.get('fired_task'))?.lastFiredAt;
+      expect(fired, isNotNull);
+
+      // A fresh registry over the same dir must read the persisted lastFiredAt
+      // (list() forces the workspace load).
+      final reg2 = TaskRegistry(
+        kv: reg.kv,
+        knowledgeSystem: KnowledgeSystem.stub(),
+        rootDir: reg.rootDir,
+      );
+      final reloaded =
+          (await reg2.list(wsId: 'project/ws1')).firstWhere(
+        (t) => t.id == 'fired_task',
+      );
+      expect(reloaded.lastFiredAt, isNotNull);
+    });
+
     // --- t18b: assignee-agent auto-run (assign + produce) ---
     test('t18b run drives the assignee agent when agentRun is wired', () async {
       // Skill dispatch would return this — it must NOT be used when the
@@ -511,9 +564,11 @@ createdAt: 2024-01-01T00:00:00.000Z
       reg.dispatch = (skillId, args) async => {'skill': 'should-not-run'};
       String? seenAssignee;
       String? seenRequest;
-      reg.agentRun = (assigneeId, request) async {
+      String? seenWorkspaceId;
+      reg.agentRun = (assigneeId, request, {workspaceId}) async {
         seenAssignee = assigneeId;
         seenRequest = request;
+        seenWorkspaceId = workspaceId;
         return 'agent deliverable';
       };
       await reg.create(_makeTask(id: 'agent_task'));
@@ -523,12 +578,16 @@ createdAt: 2024-01-01T00:00:00.000Z
       expect(ref.summary, 'agent deliverable'); // agent output, not the skill
       expect(seenAssignee, 'ag1');
       expect(seenRequest, contains('Task One')); // task title in the request
+      // The task's own workspace is threaded through so a bare assignee
+      // resolves within it (cross-department mis-delivery guard).
+      expect(seenWorkspaceId, 'project/ws1');
     });
 
     // --- t18c: agentRun declines (person/unknown) → skill fallback ---
     test('t18c agentRun returning null falls back to skill dispatch', () async {
       reg.dispatch = (skillId, args) async => {'skill': 'fallback-ran'};
-      reg.agentRun = (assigneeId, request) async => null; // not a runnable agent
+      reg.agentRun =
+          (assigneeId, request, {workspaceId}) async => null; // not runnable
       await reg.create(_makeTask(id: 'fallback_task'));
       final ref = await reg.run('fallback_task');
 

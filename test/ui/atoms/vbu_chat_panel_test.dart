@@ -87,7 +87,8 @@ void main() {
     addTearDown(() async => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('seeded system turn renders italic system note', (tester) async {
+  testWidgets('seeded system turn renders a LEFT-aligned, upright system note '
+      '(readable for long auto-reports — not centred/italic)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 600));
     final ctrl = _controller();
     addTearDown(ctrl.dispose);
@@ -104,6 +105,13 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Project saved.'), findsOneWidget);
+    final note = tester
+        .widgetList<SelectableText>(find.byType(SelectableText))
+        .firstWhere((w) => w.data == 'Project saved.');
+    // A long completion report was unreadable centred + italicised; the note
+    // is now left-aligned and upright, with meaning carried by a colour accent.
+    expect(note.textAlign, TextAlign.left);
+    expect(note.style?.fontStyle, isNot(FontStyle.italic));
     addTearDown(() async => tester.binding.setSurfaceSize(null));
   });
 
@@ -133,9 +141,7 @@ void main() {
     addTearDown(() async => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('health bar renders in neutral state when snapshot is null', (
-    tester,
-  ) async {
+  testWidgets('health bar is hidden when snapshot is null', (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 600));
     final ctrl = _controller();
     addTearDown(ctrl.dispose);
@@ -150,8 +156,11 @@ void main() {
       ),
     );
     await tester.pump();
-    // Neutral label "Health · —" present when no snapshot.
-    expect(find.textContaining('Health'), findsOneWidget);
+    // No snapshot → the health pill is suppressed entirely. A permanent
+    // "Health · —" pill read as broken for domains that never populate
+    // build health (e.g. Ops), so `ChatPanel` only mounts `_HealthBar`
+    // once `health != null` (ops-ux-audit P3.9).
+    expect(find.textContaining('Health'), findsNothing);
     addTearDown(() async => tester.binding.setSurfaceSize(null));
   });
 

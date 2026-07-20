@@ -17,6 +17,7 @@ import 'package:brain_kernel/brain_kernel.dart'
     show KernelApp, KvStoragePortAdapter, LlmPortAdapter, ModelSpec;
 import 'package:brain_kernel/mcp_host.dart'
     show McpClientKernelHost, ServerBootstrap;
+import 'claude_cli_resolver.dart';
 import 'package:appplayer_claude_code_provider/appplayer_claude_code_provider.dart'
     show ClaudeCodeInteractiveProvider, ProcessClaudeRunner;
 import 'package:mcp_llm/mcp_llm.dart' as mll;
@@ -103,7 +104,7 @@ class StudioBoot {
       );
       // Register under both keys — FlowBrain's `_resolveLlmFor` looks
       // up by `model.provider` (`anthropic` / `claude_code` / …) while
-      // host-side per-agent UI keys by `model.model` (`claude-opus-4-7`
+      // host-side per-agent UI keys by `model.model` (`claude-opus-4-8`
       // / `claude-code` / …). Wiring both makes the agent record's
       // `ModelSpec.provider` resolve to its real adapter instead of
       // sliding into `_defaultLlm` (which silently funnels every agent
@@ -123,7 +124,10 @@ class StudioBoot {
       // CodeForKernel()` is the host-side hook that replaces it.
       if (providerId == 'claude_code') {
         claudeCodeModelId = m.id;
-        claudeCodeExecutable = llmEndpoint;
+        // `llmEndpoint` is the kernel's MCP URL, NOT a CLI path — resolve
+        // the real `claude` binary so the subscription provider spawns
+        // under Finder/`open` launch (minimal launchd PATH).
+        claudeCodeExecutable = resolveClaudeCli();
       }
     }
 
@@ -155,11 +159,11 @@ class StudioBoot {
       );
     }
 
-    // Typed handle to the booted client host so the extension-transport
-    // seam (`connectWith`) stays reachable through the backbone —
-    // `app.clientHost` is the abstract `KernelClientHost` type. Mirrors
-    // AppPlayer's `_clientHost` capture (cherry `embedded-mcp-serving-base`,
-    // 2026-06-10). FFI-free: the host only ever receives an already-built
+    // Reference MCP-backed outbound client host injected into KernelApp.
+    // It implements the `ExtensionTransportConnect` seam (spec 08 §4), so
+    // the `mcp.connect_extension` tool reaches it via the `connectExtension`
+    // helper off the abstract `app.clientHost` — no concrete handle kept.
+    // FFI-free: the host only ever receives an already-built
     // `ClientTransport`; the transport's platform libs live in the caller.
     final clientHost = McpClientKernelHost();
 
@@ -299,7 +303,6 @@ class StudioBoot {
       toolId: toolId,
       configRoot: configRoot,
       app: app,
-      clientHost: clientHost,
       agentHost: agentHost,
       growth: growth,
       seedLoader: seedLoader,
@@ -365,8 +368,9 @@ class StudioBoot {
         return ClaudeCodeInteractiveProvider(
           name: modelId,
           runner: ProcessClaudeRunner(
-            executable:
-                (endpoint != null && endpoint.isNotEmpty) ? endpoint : 'claude',
+            // `endpoint` is overloaded (MCP URL for key-based providers);
+            // the resolver ignores non-path values and auto-finds the CLI.
+            executable: resolveClaudeCli(endpoint),
           ),
         );
       default:

@@ -236,6 +236,13 @@ class HostBundleActivationContext implements BundleActivationContext {
         return _registerJsTool(tool);
       case mb.ToolKind.mcp:
         return _registerMcpTool(tool);
+      case mb.ToolKind.ts:
+        // `type: server` bundle tool — compiled and executed by the
+        // marketplace serving runtime, never by this host (no local TS
+        // executor by design, spec 08 §5). Treat as a declaration: skip
+        // registration cleanly (ok, nothing exposed) rather than failing
+        // the activation.
+        return const RegistrationResult(ok: true, exposedName: '');
       default:
         return RegistrationResult(
           ok: false,
@@ -799,10 +806,23 @@ class HostBundleActivationContext implements BundleActivationContext {
           /* best-effort */
         }
       }
-      // EthosStorePort has no delete API (mcp_bundle port surface =
-      // get / put / list / activate). Philosophy entries written via
-      // registerPhilosophy stay in the store until a future store
-      // extension adds remove/delete. For now we drop tracking only.
+      // Delete the bundle's registered philosophy/ethos entries. The ethos
+      // store now exposes an optional delete capability (`EthosStoreDelete`,
+      // mcp_bundle >= 0.4.6); when the wired adapter supports it, remove each
+      // entry so a deactivated bundle leaves no ethos orphan. Falls back to
+      // drop-tracking-only when the adapter lacks delete.
+      final ethosStore = system.ethosStore;
+      if (ethosStore is mb.EthosStoreDelete &&
+          _registeredPhilosophyIds.isNotEmpty) {
+        final del = ethosStore as mb.EthosStoreDelete;
+        for (final pid in _registeredPhilosophyIds) {
+          try {
+            await del.deleteEthos(pid);
+          } catch (_) {
+            /* best-effort — entry may already be absent */
+          }
+        }
+      }
       if (_registeredFactIds.isNotEmpty) {
         try {
           await system.facts.deleteFacts(_registeredFactIds);

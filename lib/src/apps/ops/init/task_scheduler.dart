@@ -35,13 +35,69 @@ class TaskScheduler {
   final int maxRetries;
   final Duration retryBackoff;
 
+  /// How far back the boot catchup scans for a missed recurring slot. Bounds
+  /// the per-task minute scan (a daily/hourly task closed under this long still
+  /// catches up; a task whose only slot was longer ago is treated as expired).
+  static const Duration catchupLookback = Duration(hours: 25);
+
   Timer? _timer;
   DateTime? _lastTick;
   final Set<String> _firedThisMinute = {};
   final Set<String> _inFlight = {};
 
   void start() {
-    _timer ??= Timer.periodic(tickInterval, (_) => _tick());
+    if (_timer != null) return;
+    // R4 — before ticking, catch up any recurring fire missed while the app was
+    // closed (in-memory Timer only fires while running). One collapsed run per
+    // task, not one per missed slot.
+    unawaited(_catchUp());
+    _timer = Timer.periodic(tickInterval, (_) => _tick());
+  }
+
+  /// Fire a single catch-up run for every recurring task that had a scheduled
+  /// slot between its last fire (or creation) and now. Bounded by
+  /// [catchupLookback]; only sees currently-loaded workspaces (the active one
+  /// on the boot critical path — background departments catch up on their next
+  /// live tick).
+  Future<void> _catchUp() async {
+    final now = DateTime.now();
+    final List<Task> allTasks;
+    try {
+      allTasks = await tasks.list();
+    } catch (_) {
+      return; // registries not bound yet — nothing to catch up
+    }
+    for (final t in allTasks) {
+      if (t.kind != TaskKind.recurring) continue;
+      if (t.schedule == null) continue;
+      if (t.state == TaskState.cancelled) continue;
+      if (_firedThisMinute.contains(t.id)) continue;
+      if (_inFlight.contains(t.id)) continue;
+      final since = t.lastFiredAt ?? t.createdAt;
+      if (!_missedSlotSince(t.schedule!.cron, since, now)) continue;
+      if (_inFlight.length >= maxConcurrent) break;
+      _firedThisMinute.add(t.id);
+      unawaited(_runGoverned(t.id, () => tasks.run(t.id)));
+    }
+  }
+
+  /// True when at least one cron-matching minute falls in `(since, now]` within
+  /// [catchupLookback] — i.e. a scheduled fire was missed.
+  bool _missedSlotSince(String cron, DateTime since, DateTime now) {
+    var scanFrom = now.subtract(catchupLookback);
+    if (scanFrom.isBefore(since)) scanFrom = since;
+    var t = DateTime(
+      scanFrom.year,
+      scanFrom.month,
+      scanFrom.day,
+      scanFrom.hour,
+      scanFrom.minute,
+    ).add(const Duration(minutes: 1));
+    while (!t.isAfter(now)) {
+      if (t.isAfter(since) && testCronMatches(cron, t)) return true;
+      t = t.add(const Duration(minutes: 1));
+    }
+    return false;
   }
 
   void stop() {
@@ -99,6 +155,13 @@ class TaskScheduler {
       }
     }
   }
+
+  @visibleForTesting
+  Future<void> catchUpForTest() => _catchUp();
+
+  @visibleForTesting
+  bool missedSlotSinceForTest(String cron, DateTime since, DateTime now) =>
+      _missedSlotSince(cron, since, now);
 
   @visibleForTesting
   int get inFlightCount => _inFlight.length;

@@ -105,6 +105,9 @@ class _SceneShellState extends State<SceneShell> {
     if (identical(widget.chromeBridge.newProjectInActive, _newSceneProject)) {
       widget.chromeBridge.newProjectInActive = null;
     }
+    if (identical(widget.chromeBridge.closeProjectInActive, _closeProject)) {
+      widget.chromeBridge.closeProjectInActive = null;
+    }
     // Release the shared chat override if it's still ours — dispose-while-active
     // (tab closed while focused) doesn't go through the deactivate clear, so
     // without this the next tab's chat routes to this dead scene manager.
@@ -156,6 +159,7 @@ class _SceneShellState extends State<SceneShell> {
       // project (scene.json + subdirs) instead of the host's empty-dir
       // `_doNewProject`. Mirrors App Builder/Ops wiring this slot.
       widget.chromeBridge.newProjectInActive = _newSceneProject;
+      widget.chromeBridge.closeProjectInActive = _closeProject;
       // Keep the process-global scope tracking the ACTIVE scene tab (it's the
       // source of truth the scene tools / recorder read). Otherwise, with
       // multiple scene tabs open, last-opened wins instead of the active tab.
@@ -173,6 +177,9 @@ class _SceneShellState extends State<SceneShell> {
       }
       if (identical(widget.chromeBridge.newProjectInActive, _newSceneProject)) {
         widget.chromeBridge.newProjectInActive = null;
+      }
+      if (identical(widget.chromeBridge.closeProjectInActive, _closeProject)) {
+        widget.chromeBridge.closeProjectInActive = null;
       }
     }
     // Per-scene-project chat manager override lifecycle — mirror App Builder
@@ -234,6 +241,29 @@ class _SceneShellState extends State<SceneShell> {
 
   /// Active scene project path — owned minimally by this shell.
   String? _activeSceneProject() => _currentProject;
+
+  /// Close the active scene project (chrome `closeProjectInActive` slot —
+  /// invoked by `studio.project.close` and the header/activity-bar ✕).
+  /// Scene builder owns its project scope (`SceneProjectScope.activePath` +
+  /// `_currentProject`), so — like Ops/Form — it must wire this slot. Without
+  /// it the host's generic close no-ops on scene state, leaving the project
+  /// adopted while still reporting `{closed:true}` (the scene-close leak).
+  Map<String, dynamic> _closeProject() {
+    if (!mounted) return <String, dynamic>{'ok': true, 'closed': false};
+    // Release the process-global scope if it still points at our project.
+    if (SceneProjectScope.activePath == _currentProject) {
+      SceneProjectScope.activePath = null;
+    }
+    setState(() => _currentProject = null);
+    // Drop this tab's scoped chat manager override (mirrors dispose #23).
+    if (_scopedManagerId != null &&
+        widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
+      widget.chromeBridge.chatManagerOverride.value = null;
+    }
+    _scopedManagerId = null;
+    _refreshHeaderActions();
+    return <String, dynamic>{'ok': true, 'closed': true};
+  }
 
   /// Domain Settings — the per-domain Workspace folder override (where new
   /// scene projects land; `studio.scene.project.new` consumes it through
@@ -372,10 +402,13 @@ class _SceneShellState extends State<SceneShell> {
     final c = VbuTokens.colorOf(context);
     return Container(
       color: c.bg,
-      child: Column(
+      // Mode navigation lives in a left rail (mirrors Form Builder's
+      // NavigationRail) rather than a top tab strip.
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _ModeStrip(active: _mode, onSelect: _switchMode),
+          _ModeRail(active: _mode, onSelect: _switchMode),
+          const VerticalDivider(width: 1),
           Expanded(child: _body()),
         ],
       ),
@@ -421,8 +454,8 @@ class _SceneShellState extends State<SceneShell> {
   }
 }
 
-class _ModeStrip extends StatelessWidget {
-  const _ModeStrip({required this.active, required this.onSelect});
+class _ModeRail extends StatelessWidget {
+  const _ModeRail({required this.active, required this.onSelect});
 
   final SceneMode active;
   final void Function(SceneMode) onSelect;
@@ -449,14 +482,17 @@ class _ModeStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return VbuTabStrip(
-      tabs: <VbuTab>[
+    return NavigationRail(
+      selectedIndex: _order.indexOf(active),
+      labelType: NavigationRailLabelType.all,
+      onDestinationSelected: (i) => onSelect(_order[i]),
+      destinations: <NavigationRailDestination>[
         for (final m in _order)
-          VbuTab(label: _meta[m]!.label, icon: _meta[m]!.icon, closable: false),
+          NavigationRailDestination(
+            icon: Icon(_meta[m]!.icon),
+            label: Text(_meta[m]!.label),
+          ),
       ],
-      activeIndex: _order.indexOf(active),
-      onSelect: (i) => onSelect(_order[i]),
-      showActiveTopAccent: false,
     );
   }
 }

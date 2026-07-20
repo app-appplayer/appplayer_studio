@@ -88,6 +88,31 @@ class FormBuilderBuiltInApp extends BuiltInApp {
     if (previous != null) await previous.dispose();
   }
 
+  /// The project whose Form Builder core is currently booted, or null.
+  static String? get bootedProject => _bootedProject;
+
+  /// True when closing a tab bound to [tabProject] must tear the backend
+  /// down. Form Builder is single-instance (`_openOrFocusSeed` focuses the
+  /// one launchPath tab), so the closing tab owns whatever is booted:
+  /// teardown iff a boot exists (`_bootedProject != null`) AND this tab
+  /// didn't bind a DIFFERENT project — a project-less tab (`tabProject ==
+  /// null`) still tears the sole boot down. `_bootedProject == null` (no
+  /// boot, or the header button already closed it) → no teardown. Ops
+  /// parity ([OpsBuiltInApp.shouldTeardownOnClose]) — kept identical so a
+  /// future MCP-only boot path can't leak (form currently boots only
+  /// through the shell's `_bindProject`, so the null-tab case is defensive).
+  /// Guards `form_shell.dispose`; the keyed IndexedStack disposes only on
+  /// tab removal, never on switch (knowledge-operations.md §11.3).
+  static bool shouldTeardownOnClose(String? tabProject) =>
+      _bootedProject != null &&
+      (tabProject == null || tabProject == _bootedProject);
+
+  /// Test seam — set/clear the booted-project marker without a full boot.
+  @visibleForTesting
+  static void debugSetBootedProject(String? project) {
+    _bootedProject = project;
+  }
+
   @override
   bool canHandle(String bundlePath) {
     final dir = Directory(bundlePath);

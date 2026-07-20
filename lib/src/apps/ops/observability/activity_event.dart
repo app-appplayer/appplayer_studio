@@ -26,6 +26,24 @@ enum ActivityKind {
   info,
 }
 
+/// Kinds that actually have an emit site and so are worth offering as Live
+/// Feed filter chips — advertising a chip for a kind nothing emits reads as a
+/// broken filter. `toolResult` (folded into `toolDispatch`, which records the
+/// dispatch + latency in one event) and `forkEvolved` (a kernel-internal
+/// evolution with no ops-layer seam; it stays in the durable Home lifecycle
+/// view) are intentionally omitted. Order = rough control-plane → work flow.
+const List<ActivityKind> kFilterableActivityKinds = <ActivityKind>[
+  ActivityKind.mcpInbound,
+  ActivityKind.agentAsk,
+  ActivityKind.agentReply,
+  ActivityKind.llmCall,
+  ActivityKind.toolDispatch,
+  ActivityKind.forkAssigned,
+  ActivityKind.philosophyGate,
+  ActivityKind.info,
+  ActivityKind.error,
+];
+
 /// Severity for filtering — Live Feed shows all by default, Status Bar
 /// highlights warn/error.
 enum ActivitySeverity { info, warn, error }

@@ -127,6 +127,23 @@ class HomeExtensionEntry {
   final void Function() onTap;
 }
 
+/// An extension-owned entry in the Home INSTALLED APPS grid — e.g. the pro
+/// tier's connected market services. Rendered alongside registry-backed
+/// package tiles with the same launcher-tile chrome; the extension owns
+/// what open/remove mean (open a service tab, drop a ledger record, …).
+class HomeInstalledTile {
+  const HomeInstalledTile({
+    required this.label,
+    required this.onOpen,
+    this.onRemove,
+    this.icon,
+  });
+  final String label;
+  final void Function() onOpen;
+  final Future<void> Function()? onRemove;
+  final IconData? icon;
+}
+
 class StudioWorkspace extends StatefulWidget {
   const StudioWorkspace({
     super.key,
@@ -141,6 +158,7 @@ class StudioWorkspace extends StatefulWidget {
     required this.seedPathByNamespace,
     this.builtInLaunchers = const <BuiltInLauncher>[],
     this.extensionEntries = const <HomeExtensionEntry>[],
+    this.extensionInstalledTiles,
   });
 
   final BundleInstallSurface bundles;
@@ -196,12 +214,29 @@ class StudioWorkspace extends StatefulWidget {
   /// (open overlay) rather than activating a bundle. Empty in base build.
   final List<HomeExtensionEntry> extensionEntries;
 
+  /// Extension-owned Home INSTALLED APPS tiles (e.g. pro's connected
+  /// market services). Re-queried on every Home refresh — a provider
+  /// FUNCTION (not a static list) so late registrations and state
+  /// changes (install / remove) surface without a restart. Null in the
+  /// base build.
+  final Future<List<HomeInstalledTile>> Function()? extensionInstalledTiles;
+
   @override
   State<StudioWorkspace> createState() => _StudioWorkspaceState();
 }
 
 class _StudioWorkspaceState extends State<StudioWorkspace> {
   late Future<List<Map<String, dynamic>>> _entries;
+
+  /// Extension-owned INSTALLED APPS tiles (see
+  /// [StudioWorkspace.extensionInstalledTiles]) — refreshed together with
+  /// [_entries] so install/remove state changes land in the same repaint.
+  Future<List<HomeInstalledTile>> _extTiles =
+      Future.value(const <HomeInstalledTile>[]);
+
+  Future<List<HomeInstalledTile>> _queryExtTiles() =>
+      widget.extensionInstalledTiles?.call() ??
+      Future.value(const <HomeInstalledTile>[]);
   String? _installStatus;
   Timer? _installStatusTimer;
   bool _installing = false;
@@ -274,6 +309,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
   void initState() {
     super.initState();
     _entries = _enrichedEntries();
+    _extTiles = _queryExtTiles();
     // Tell the titlebar this host renders a tab strip — the show /
     // hide icon appears once this flips. Deferred to the post-frame
     // callback because the titlebar's `ValueListenableBuilder<bool>`
@@ -399,6 +435,24 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
             _doNewProject(name: name, parent: parent);
     widget.chromeBridge.openProjectInActive = _doOpenProject;
     widget.chromeBridge.closeProjectInActive = _doCloseProject;
+    widget.chromeBridge.openExtensionTab = ({
+      required String key,
+      required String label,
+      required WidgetBuilder builder,
+    }) {
+      // Focus-or-open by key — reopening the same extension surface
+      // (e.g. the same connected service) reuses its live tab.
+      for (var i = 0; i < _tabs.length; i++) {
+        if (_tabs[i].path == key) {
+          _selectTab(i);
+          return;
+        }
+      }
+      setState(() {
+        _tabs.add(StudioTab.extension(key, label, builder: builder));
+      });
+      _selectTab(_tabs.length - 1);
+    };
     widget.chromeBridge.activatePackage = (mbdPath) async {
       final friendly = readFriendlyLabel(mbdPath) ?? mbdPath;
       // _activateBundle (invoked inside _openPackageAsync) owns the
@@ -472,6 +526,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     widget.chromeBridge.openAgents = _showAgents;
     widget.chromeBridge.openSeed = _openOrFocusSeed;
     widget.chromeBridge.appendChatTurn = _appendActiveChatTurn;
+    widget.chromeBridge.deliverAgentChatTurn = _deliverAgentChatTurn;
     widget.chromeBridge.dispatchLifecycle = _dispatchLifecycle;
     _loadTabs();
     _syncHomeActive();
@@ -769,6 +824,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     widget.chromeBridge.openAgents = null;
     widget.chromeBridge.openSeed = null;
     widget.chromeBridge.appendChatTurn = null;
+    widget.chromeBridge.deliverAgentChatTurn = null;
     widget.chromeBridge.dispatchLifecycle = null;
     widget.chromeBridge.homeActive.value = false;
     widget.chromeBridge.chatSlashHints.value = const <ChatSlashHint>[];
@@ -1696,14 +1752,22 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       return <String, dynamic>{'ok': false, 'reason': 'no-active-tab'};
     }
     final t = _tabs[_active];
-    final chatKey = t.isHome ? 'home' : (t.path ?? '');
+    // Resolve the SAME key the send / append paths use — `_chatKeyForTab`
+    // includes the open project (`<pkg>::<project>`). Reading `t.path` alone
+    // pointed at the project-less base controller (always empty), which read
+    // turnCount 0 while the real conversation lived under the `::project`
+    // key (konpi's "another empty surface" — the active-tab chat identity
+    // mismatch). Report the effective coordinator (scoped override) too, as
+    // `_sendChat` does, so the debug surface names the agent actually talking.
+    final chatKey = t.isHome ? 'home' : _chatKeyForTab(t);
     final controller = widget.chatForKey(chatKey);
     final all = controller.turns;
     final tail = all.length > limit ? all.sublist(all.length - limit) : all;
     return <String, dynamic>{
       'ok': true,
       'tabKey': chatKey,
-      'agentId': t.chatAgentId,
+      'agentId':
+          widget.chromeBridge.chatManagerOverride.value ?? t.chatAgentId,
       'turnCount': all.length,
       'turns': <Map<String, dynamic>>[
         for (final turn in tail)
@@ -1961,7 +2025,12 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       for (final entry in installedSnap) entry['mbdPath'] as String? ?? '',
     };
     final pkgTabs = <Map<String, dynamic>>[
-      for (final t in _tabs.where((t) => !t.isHome))
+      // Extension tabs are session-scoped (their backing state — e.g. a
+      // live market-service connection — does not survive a restart), so
+      // they never persist.
+      for (final t in _tabs.where(
+        (t) => !t.isHome && t.extensionBuilder == null,
+      ))
         () {
           // TAB-LIFECYCLE.md §1: three kinds annotated explicitly.
           // Seed wins (host-internal); installed checks registry;
@@ -2298,7 +2367,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
                 )
                 : const mb.AgentModelConfig(
                   provider: 'anthropic',
-                  model: 'claude-opus-4-7',
+                  model: 'claude-opus-4-8',
                 ),
         tools: const <String>[
           'bk.knowledge.query',
@@ -2353,6 +2422,54 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     if (tab == null) return;
     final key = _chatKeyForTab(tab);
     widget.chatForKey(key).appendTurn(turn);
+  }
+
+  /// Deliver a coordinator's auto-report into the studio chat bound to
+  /// [agentId] (render + persist), even when the report reached the panel
+  /// mediated by a trigger-bus wake that only touched the coordinator's
+  /// KERNEL conversation. `appendTurn` renders it live (notifyListeners)
+  /// AND persists it to the studio transcript for that key (onTurnPersisted)
+  /// so a later rehydrate shows it too — closing the render-surface gap
+  /// (durable in conv but invisible in the open window). Returns false when
+  /// no studio chat is bound to this coordinator (headless / MCP-only run).
+  bool _deliverAgentChatTurn(String agentId, ChatTurn turn) {
+    final key = _chatKeyForCoordinator(agentId);
+    if (key == null) return false;
+    widget.chatForKey(key).appendTurn(turn);
+    return true;
+  }
+
+  /// Resolve the studio chat key whose bound coordinator is [agentId].
+  /// The active tab's scoped manager is the common case — the user is
+  /// watching the very chat they delegated from — so match the active
+  /// override first; fall back to any tab whose base manager id matches.
+  String? _chatKeyForCoordinator(String agentId) {
+    if (agentId.isEmpty) return null;
+    final bridge = widget.chromeBridge;
+    // Base-manager match: the coordinator IS a tab's own manager (e.g. the
+    // welcome-state `ops.manager`, or a Home/App Builder base manager). Its
+    // chat is a legitimate surface whether the tab is unbound (bare `<pkg>` —
+    // the welcome conversation where the user asks the app to create/open a
+    // project) or bound (`<pkg>::<project>`). Deliver to it as-keyed.
+    for (final t in _tabs) {
+      if (t.chatAgentId == agentId) return _chatKeyForTab(t);
+    }
+    // Scoped-override match: a per-project coordinator (`ops.manager.<project>`)
+    // the active tab currently routes to via `chatManagerOverride`. This can go
+    // STALE — the project may close while an async wake is in flight, leaving
+    // the override still naming the closed project but the tab now unbound. Only
+    // deliver while the tab still holds a project (`<pkg>::<project>`); a bare
+    // key here is a CLOSED project's report leaking onto the welcome-state chat
+    // (it would resurface as leftover content next time Ops opens unbound), so
+    // drop it — headless: the turn stays in the coordinator's KERNEL conv.
+    if (agentId == bridge.chatManagerOverride.value ||
+        agentId == bridge.activeChatAgentId.value) {
+      if (_active >= 0 && _active < _tabs.length) {
+        final key = _chatKeyForTab(_tabs[_active]);
+        if (key.contains('::')) return key;
+      }
+    }
+    return null;
   }
 
   void _syncChatAgent() {
@@ -2959,6 +3076,14 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
 
   Future<void> _reloadTab(int? indexOrNull) async {
     final i = indexOrNull ?? _active;
+    // Home reload = refresh the INSTALLED APPS grid from the registry.
+    // Install paths that don't run through this widget (marketplace
+    // install, `studio.bundle.install`) call `reloadTab` after the
+    // registry upsert so a new install appears without a restart.
+    if (i >= 0 && i < _tabs.length && _tabs[i].isHome) {
+      await _refresh();
+      return;
+    }
     if (i < 0 || i >= _tabs.length || _tabs[i].isHome) return;
     final t = _tabs[i];
     final path = t.path;
@@ -3334,6 +3459,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
   Future<void> _refresh() async {
     setState(() {
       _entries = _enrichedEntries();
+      _extTiles = _queryExtTiles();
     });
   }
 
@@ -3592,6 +3718,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
 
   Widget _bodyForTab(StudioTab t) {
     if (t.isHome) return _homeBody();
+    if (t.extensionBuilder != null) return Builder(builder: t.extensionBuilder!);
     return _bodyForBundleUI(t);
   }
 
@@ -3621,7 +3748,22 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
           return const Center(child: CircularProgressIndicator());
         }
         final list = snap.data!;
-        final hasInstalled = list.isNotEmpty;
+        return FutureBuilder<List<HomeInstalledTile>>(
+          future: _extTiles,
+          builder: (ctx, extSnap) {
+            final extTiles = extSnap.data ?? const <HomeInstalledTile>[];
+            return _homeBodyWith(list, extTiles);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _homeBodyWith(
+    List<Map<String, dynamic>> list,
+    List<HomeInstalledTile> extTiles,
+  ) {
+    final hasInstalled = list.isNotEmpty || extTiles.isNotEmpty;
         final hasBuiltIns = widget.builtInLaunchers.isNotEmpty;
         final Widget body =
             (!hasInstalled && !hasBuiltIns)
@@ -3631,6 +3773,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
                 )
                 : _PackagePickerView(
                   entries: list,
+                  serviceTiles: extTiles,
                   builtInLaunchers: widget.builtInLaunchers,
                   extensionEntries: widget.extensionEntries,
                   onActivate: _openPackage,
@@ -3653,8 +3796,6 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
               ),
           ],
         );
-      },
-    );
   }
 
   /// Focus an existing tab for the seed identified by [namespace], or
@@ -3983,6 +4124,7 @@ class _StatusPill extends StatelessWidget {
 class _PackagePickerView extends StatelessWidget {
   const _PackagePickerView({
     required this.entries,
+    required this.serviceTiles,
     required this.builtInLaunchers,
     required this.extensionEntries,
     required this.onActivate,
@@ -3990,6 +4132,11 @@ class _PackagePickerView extends StatelessWidget {
   });
 
   final List<Map<String, dynamic>> entries;
+
+  /// Extension-owned INSTALLED APPS tiles (e.g. connected market
+  /// services) — rendered with the same launcher-tile chrome after the
+  /// registry-backed package tiles.
+  final List<HomeInstalledTile> serviceTiles;
   final List<BuiltInLauncher> builtInLaunchers;
   final List<HomeExtensionEntry> extensionEntries;
   final void Function(String path, String name) onActivate;
@@ -4017,9 +4164,14 @@ class _PackagePickerView extends StatelessWidget {
                 children: <Widget>[
                   _sectionHeader('BUILT-IN APPS'),
                   const Spacer(),
-                  // Extension entries (e.g. pro's Marketplace) — icon
-                  // buttons to the right of the section title.
-                  for (final e in extensionEntries) _extensionHeaderIcon(e),
+                  // Extension entries (e.g. Plugins + pro's Marketplace) —
+                  // icon buttons to the right of the section title. Each is
+                  // separated by a small gap so adjacent icons (the compact,
+                  // zero-padding IconButtons) don't visually collide.
+                  for (final e in extensionEntries) ...<Widget>[
+                    const SizedBox(width: VbuTokens.space2),
+                    _extensionHeaderIcon(e),
+                  ],
                 ],
               ),
               const SizedBox(height: VbuTokens.space3),
@@ -4032,7 +4184,7 @@ class _PackagePickerView extends StatelessWidget {
               ),
               const SizedBox(height: VbuTokens.space5),
             ],
-            if (entries.isNotEmpty) ...<Widget>[
+            if (entries.isNotEmpty || serviceTiles.isNotEmpty) ...<Widget>[
               _sectionHeader('INSTALLED APPS'),
               const SizedBox(height: VbuTokens.space3),
               Wrap(
@@ -4040,6 +4192,15 @@ class _PackagePickerView extends StatelessWidget {
                 runSpacing: VbuTokens.space3,
                 children: <Widget>[
                   for (final entry in entries) _tileFor(entry),
+                  for (final t in serviceTiles)
+                    _LauncherTile(
+                      label: t.label,
+                      namespace: 'service',
+                      mbdPath: '',
+                      onActivate: t.onOpen,
+                      onUninstall: t.onRemove,
+                      iconOverride: t.icon ?? Icons.cloud_outlined,
+                    ),
                 ],
               ),
             ],

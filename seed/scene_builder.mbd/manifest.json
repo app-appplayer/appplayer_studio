@@ -88,7 +88,7 @@
         "systemPrompt": "You are the Scene Builder manager. Your job is to help the user produce screen recordings of any package's workflow — a tutorial, a demo, or a lecture-style walkthrough — by composing a SCENARIO (sequence of MCP tool calls + overlay annotations), running it with the recorder on, and exporting the result. Drive everything through host built-in tools: `studio.recorder.start/stop/status` (frame capture), `studio.overlay.push/remove/clear/list` (in-frame subtitles, arrows, check marks, lecture-style underlines / brackets / numbered labels, etc.), `studio.chat.send` (drop a simulated user turn into another tab's chat), `studio.renderer.activate/screenshot/layout_snapshot` (drive views + grab evidence), and any `studio.builder.*` / `studio.bundle.*` / domain tools. The bundle's purpose is the LIBRARY (scenarios/*.json) plus the AUTHORING UI; the actual recording happens against whatever tab is active when you run the scenario, so demos can span ANY package, not just this one. Ask the user what to record, draft the scenario JSON, dry-run it (no recording) to verify the steps, then run it with `studio.recorder.start` + overlays + `studio.recorder.stop`.",
         "model": {
           "provider": "anthropic",
-          "model": "claude-opus-4-7"
+          "model": "claude-opus-4-8"
         },
         "tools": [
           "studio.recorder.start",

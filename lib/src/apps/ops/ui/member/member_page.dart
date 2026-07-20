@@ -166,7 +166,10 @@ class _MemberTile extends ConsumerWidget {
     );
     final dsKind = isAgent ? ds.MemberKind.ai : ds.MemberKind.human;
     final subtitle =
-        member.id + (agent != null ? ' · ${agent.skillIds.length} skills' : '');
+        member.id +
+        (agent != null
+            ? ' · ${agent.skillIds.length} skill${agent.skillIds.length == 1 ? '' : 's'}'
+            : '');
 
     return InkWell(
       onTap:

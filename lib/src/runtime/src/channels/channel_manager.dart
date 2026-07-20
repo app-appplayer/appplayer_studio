@@ -10,6 +10,7 @@ import '../utils/mcp_logger.dart';
 import 'channel_message.dart';
 import 'channel_types/file_watch_channel.dart';
 import 'channel_types/directory_watch_channel.dart';
+import 'channel_types/mcp_stream_channel.dart';
 import 'channel_types/poll_channel.dart';
 import 'channel_types/system_monitor_channel.dart';
 import 'channel_types/websocket_channel.dart';
@@ -80,6 +81,12 @@ class ChannelManager {
   /// Callback fired when a channel transitions to `disconnected`
   /// (spec § 8.6.4 onDisconnect — graceful or error-driven stop).
   void Function(String channelId)? onDisconnect;
+
+  /// Resolves a `client.mcpStream` channel's `uri`/`params` to a live source
+  /// stream. Registered by the host via `MCPUIRuntime.registerStreamSource`;
+  /// `null` until a host wires at least one scheme. Keeps the manager
+  /// transport-agnostic — it never knows what a given uri scheme streams.
+  StreamSourceResolver? streamSourceResolver;
 
   /// Initialize channels from configuration
   Future<void> initializeChannels(Map<String, ChannelConfig>? configs) async {
@@ -370,6 +377,19 @@ class ChannelManager {
           metrics: (config.params?['metrics'] as List<dynamic>?)
               ?.cast<String>(),
           interval: config.params?['interval'] as int? ?? 5000,
+        );
+
+      case 'client.mcpStream':
+        // Late-bind the resolver: the channel is created at page init, but the
+        // host registers its stream source AFTER runtime init (registerStreamSource
+        // requires an initialized runtime). Resolution therefore happens at
+        // start() time, not here. If no source is registered by then,
+        // McpStreamChannel.start throws a StateError naming the uri.
+        return McpStreamChannel(
+          uri: config.params?['uri'] as String? ?? '',
+          params: (config.params?['params'] as Map<String, dynamic>?) ??
+              const {},
+          open: (uri, p) => streamSourceResolver?.call(uri, p),
         );
 
       case 'client.websocket':

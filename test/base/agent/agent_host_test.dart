@@ -165,4 +165,76 @@ void main() {
       expect(host.resolveId('builder.manager'), 'builder.manager');
     });
   });
+
+  // A seed systemPrompt change (e.g. a manager behavior rule added to
+  // `makemind_ops.mbd`) must reach the PERSISTED host agent on reboot — the
+  // stale-persisted-profile propagation bug: `createAgent` only ran the first
+  // time, so a later seed edit never landed and rebuild-only verification on a
+  // fresh scratch config structurally masked it. Both host-agent paths now
+  // promptDrift-refresh, mirroring `WorkspaceLoader._mirrorAgentMembers`.
+  group('seed systemPrompt promptDrift refresh (persisted host agents)', () {
+    VibeAgentProfile _mgr(String id, String prompt) => VibeAgentProfile(
+      id: id,
+      displayName: 'Ops Manager',
+      role: fb.AgentRole.manager,
+      modelId: 'claude-opus-4-7',
+      systemPrompt: prompt,
+      toolNames: const <String>[],
+    );
+
+    test('pd1 registerAgents re-applies an updated seed systemPrompt to an '
+        'already-persisted base host agent (not skipped as stale)', () async {
+      await _hostWith(<VibeAgentProfile>[
+        _mgr('ops.manager.pd1', 'SEED-A'),
+      ]).registerAgents();
+      expect(
+        (await app.system.agents.getAgent('ops.manager.pd1'))!.systemPrompt,
+        'SEED-A',
+      );
+      // A fresh host (new `_registered` guard) with the SAME id but an updated
+      // seed prompt — the persisted agent must be refreshed, not left stale.
+      await _hostWith(<VibeAgentProfile>[
+        _mgr('ops.manager.pd1', 'SEED-B'),
+      ]).registerAgents();
+      expect(
+        (await app.system.agents.getAgent('ops.manager.pd1'))!.systemPrompt,
+        'SEED-B',
+      );
+    });
+
+    test('pd2 ensureScopedManager re-applies an updated base seed systemPrompt '
+        'to an already-persisted scoped coordinator', () async {
+      const scope = '/tmp/proj/pd2';
+      final h1 = _hostWith(<VibeAgentProfile>[_mgr('ops.manager', 'SEED-A')]);
+      final scopedId = await h1.ensureScopedManager('ops.manager', scope);
+      expect(scopedId, isNot('ops.manager'));
+      expect(
+        (await app.system.agents.getAgent(scopedId))!.systemPrompt,
+        'SEED-A',
+      );
+      // A later boot with the updated base seed must refresh the persisted
+      // scoped coordinator (the agent the user's chat actually talks to).
+      final h2 = _hostWith(<VibeAgentProfile>[_mgr('ops.manager', 'SEED-B')]);
+      final scopedId2 = await h2.ensureScopedManager('ops.manager', scope);
+      expect(scopedId2, scopedId); // same deterministic scope hash
+      expect(
+        (await app.system.agents.getAgent(scopedId))!.systemPrompt,
+        'SEED-B',
+      );
+    });
+
+    test('pd3 an unchanged seed systemPrompt is left as-is (no needless '
+        'update churn)', () async {
+      await _hostWith(<VibeAgentProfile>[
+        _mgr('ops.manager.pd3', 'SEED-SAME'),
+      ]).registerAgents();
+      await _hostWith(<VibeAgentProfile>[
+        _mgr('ops.manager.pd3', 'SEED-SAME'),
+      ]).registerAgents();
+      expect(
+        (await app.system.agents.getAgent('ops.manager.pd3'))!.systemPrompt,
+        'SEED-SAME',
+      );
+    });
+  });
 }

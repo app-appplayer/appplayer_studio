@@ -20,15 +20,9 @@ library;
 import 'dart:io' show stderr;
 
 import 'package:brain_kernel/brain_kernel.dart' as fb;
-// Extension-transport seam — the outbound mcp_client host (`connectWith`)
-// and the transport type the host passes in. Mirrors AppPlayer's
-// `connectExtensionTransport` wiring (cherry `embedded-mcp-serving-base`,
-// 2026-06-10). The host stays FFI-free: the `ClientTransport` is built
-// outside (e.g. by mcp_bridge) and handed in already opened.
-import 'package:brain_kernel/mcp_host.dart' show McpClientKernelHost;
 import 'package:appplayer_claude_code_provider/appplayer_claude_code_provider.dart'
     show ClaudeCodeInteractiveProvider, ProcessClaudeRunner;
-import 'package:mcp_client/mcp_client.dart' show ClientTransport;
+import 'claude_cli_resolver.dart';
 
 import '../agent/agent_host.dart';
 import '../install/knowledge_seed_loader.dart';
@@ -39,7 +33,6 @@ class StudioBackbone {
     required this.toolId,
     required this.configRoot,
     required this.app,
-    required this.clientHost,
     required this.agentHost,
     required this.growth,
     required this.seedLoader,
@@ -84,12 +77,6 @@ class StudioBackbone {
   /// getters below for backward-compatible chrome cascade.
   final fb.KernelApp app;
 
-  /// Typed handle to the booted outbound client host. `app.clientHost`
-  /// exposes only the abstract `KernelClientHost`; the concrete
-  /// `McpClientKernelHost` carries the `connectWith` extension-transport
-  /// seam, so we keep the typed reference for [connectExtensionTransport].
-  final McpClientKernelHost clientHost;
-
   /// Agent registry — null while FlowBrain isn't booted (no API key,
   /// flowbrain init failure, ...).
   final AgentHost? agentHost;
@@ -114,21 +101,6 @@ class StudioBackbone {
   /// Retained for backward compatibility; callers can drop the guard
   /// where the KernelApp is guaranteed present.
   bool get isFlowBrainBooted => true;
-
-  /// Connect to an external MCP server (e.g. an embedded board) over a
-  /// host-supplied **extension transport** (serial / usb / ble / tcp / ws),
-  /// injected through the kernel seam (`McpClientKernelHost.connectWith`).
-  ///
-  /// The transport is built outside the backbone — desktop Studio builds
-  /// it through `mcp_bridge` (the opt-in FFI home), opens it, and hands it
-  /// in here; brain_kernel / mcp_client / mcp_server stay free of the
-  /// transport's platform / FFI dependencies. Returns a connection whose
-  /// `callTool` / `readResource` / `listTools` reach the remote server
-  /// (e.g. `led.set`, `ui://app`). See `specs/platform/08-extension.md` §4.
-  Future<fb.KernelClientConnection> connectExtensionTransport({
-    required String id,
-    required ClientTransport transport,
-  }) => clientHost.connectWith(id: id, transport: transport);
 
   /// Replace the `claude_code` LLM adapter (initially built without an
   /// MCP server spec since boot order forces it: `_buildProvider` runs
@@ -185,7 +157,7 @@ class StudioBackbone {
     final provider = ClaudeCodeInteractiveProvider.forKernel(
       app,
       name: modelId,
-      runner: ProcessClaudeRunner(executable: claudeCodeExecutable ?? 'claude'),
+      runner: ProcessClaudeRunner(executable: resolveClaudeCli(claudeCodeExecutable)),
     );
     final adapter = fb.LlmPortAdapter.fromInterface(
       modelId: modelId,

@@ -61,6 +61,7 @@ class StudioMain {
           ..addOption('project', abbr: 'p')
           ..addOption('workspace', abbr: 'w')
           ..addOption('transport', defaultsTo: null)
+          ..addOption('instance', abbr: 'i', defaultsTo: null)
           ..addOption('port', defaultsTo: null);
     final args = parser.parse(rawArgs);
 
@@ -99,7 +100,28 @@ class StudioMain {
       prevFlutterOnError?.call(details);
     };
 
-    final configRootName = app.configRootName ?? app.toolId;
+    final baseConfigRootName = app.configRootName ?? app.toolId;
+
+    // Instance profile — lets the same build run as several fully independent
+    // processes. `--instance N` pins a profile explicitly; absent the flag,
+    // the launcher auto-claims the first free slot (1, then 2, …) so a plain
+    // second launch lands on its OWN profile instead of colliding with
+    // instance 1 on config root + port. Each instance N routes to config root
+    // `<base>-N` (own settings / keys / tabs / plugins; N == 1 keeps the bare
+    // `<base>`, so a single launch is unchanged) and, absent `--port`, its own
+    // main port. Projects stay portable — any instance opens any project via
+    // `--project` or the UI; the profile is a window identity, not a project
+    // binding. Cross-platform: liveness uses Dart's `RandomAccessFile` advisory
+    // lock (fcntl / LockFileEx), released by the OS on exit so a crashed slot
+    // frees itself.
+    final explicitInstance = int.tryParse((args['instance'] as String?) ?? '');
+    final instance = _resolveInstance(baseConfigRootName, explicitInstance);
+
+    // Instance N routes to its own config root `<base>-N` and its own main-port
+    // band (`defaultPort + (N-1)*100`). See [instanceConfigRootName] /
+    // [instancePortOffset].
+    final portOffset = instancePortOffset(instance);
+    final configRootName = instanceConfigRootName(baseConfigRootName, instance);
     final configRoot = p.join(_homeDir(), '.config', configRootName);
     final settingsPath = p.join(configRoot, 'settings.json');
     final settings = await VibeSettings.load(settingsPath);
@@ -120,9 +142,10 @@ class StudioMain {
     }
 
     // Port resolution: CLI `--port` > Studio Settings `mcpServerUrl`
-    // (parse port from URL) > host's hard-coded
-    // [StudioApp.defaultPort]. The listen socket binds once at boot,
-    // so a Settings change requires a restart.
+    // (parse port from URL) > host's hard-coded [StudioApp.defaultPort]
+    // shifted by the instance offset (so instance N > 1 picks a distinct
+    // port without an explicit flag). The listen socket binds once at
+    // boot, so a Settings change requires a restart.
     int? portFromSettingsUrl;
     final settingsUrl = settings.mcpServerUrl;
     if (settingsUrl != null && settingsUrl.isNotEmpty) {
@@ -132,7 +155,7 @@ class StudioMain {
     final port =
         int.tryParse((args['port'] as String?) ?? '') ??
         portFromSettingsUrl ??
-        app.defaultPort;
+        (app.defaultPort + portOffset);
 
     final backbone = await StudioBoot.start(
       toolId: app.toolId,
@@ -217,6 +240,100 @@ class StudioMain {
     return Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         Directory.systemTemp.path;
+  }
+
+  /// Advisory lock held for the whole process lifetime to keep this instance's
+  /// slot claimed. Never closed — the OS releases it on exit (fcntl on POSIX,
+  /// LockFileEx on Windows), so a crashed instance's slot is reclaimed
+  /// automatically. Stored on a static field so it is not garbage-collected.
+  // ignore: unused_field
+  static RandomAccessFile? _instanceLock;
+
+  /// Resolve this launch's instance number. When [explicit] is set
+  /// (`--instance N`) it is honoured as-is. Otherwise auto-claim the first
+  /// FREE slot (1, then 2, …): for each candidate, take a cross-platform
+  /// advisory lock on `<base>.locks/instance-<n>.lock`; the first lock that
+  /// succeeds is this instance, and the handle is held for the process
+  /// lifetime so the slot stays claimed until exit. The coordination dir holds
+  /// only ephemeral locks — no user data. Falls back to [explicit] ?? 1 if the
+  /// dir is unusable or (implausibly) every slot is busy.
+  static int _resolveInstance(String baseConfigRootName, int? explicit) {
+    final lockDir = Directory(
+      p.join(_homeDir(), '.config', '$baseConfigRootName.locks'),
+    );
+    final claimed = claimInstanceSlot(lockDir, explicit);
+    _instanceLock = claimed.lock; // hold for the process lifetime
+    return claimed.instance;
+  }
+
+  /// Config-root directory NAME for [instance] — instance 1 keeps the bare
+  /// [base] (single-launch unchanged); N > 1 gets `<base>-N`.
+  @visibleForTesting
+  static String instanceConfigRootName(String base, int instance) =>
+      instance <= 1 ? base : '$base-$instance';
+
+  /// Per-instance main-port band stride. 100 (not 1) so an instance's
+  /// per-domain server sweep (`defaultPort + 1` upward, `DomainServerManager`)
+  /// stays inside its own band instead of colliding with the next instance's
+  /// main port.
+  @visibleForTesting
+  static const int kInstancePortStride = 100;
+
+  /// Main-port offset for [instance] — `defaultPort + offset` is the instance's
+  /// port. Instance 1 = 0 (default port unchanged); N > 1 = `(N-1) * stride`.
+  @visibleForTesting
+  static int instancePortOffset(int instance) =>
+      instance <= 1 ? 0 : (instance - 1) * kInstancePortStride;
+
+  /// Claim an instance slot under [lockDir] via a cross-platform advisory lock.
+  /// [explicit] is honoured as-is (best-effort lock); otherwise the first FREE
+  /// slot (1, 2, …) is chosen. Returns the slot number and the OPEN lock handle
+  /// — the caller MUST hold the handle for the process lifetime (never close
+  /// it) so the slot stays claimed; the OS releases it on exit. `lock` is null
+  /// when [lockDir] is unusable or (implausibly) every slot is busy.
+  @visibleForTesting
+  static ({int instance, RandomAccessFile? lock}) claimInstanceSlot(
+    Directory lockDir,
+    int? explicit,
+  ) {
+    try {
+      lockDir.createSync(recursive: true);
+    } catch (_) {
+      return (
+        instance: (explicit != null && explicit >= 1) ? explicit : 1,
+        lock: null,
+      );
+    }
+
+    ({int instance, RandomAccessFile? lock})? claim(int n) {
+      final f = File(p.join(lockDir.path, 'instance-$n.lock'));
+      RandomAccessFile raf;
+      try {
+        raf = f.openSync(mode: FileMode.write);
+      } catch (_) {
+        // On Windows a live holder can deny the open outright — treat as busy.
+        return null;
+      }
+      try {
+        // Non-blocking exclusive lock: throws if another live instance holds
+        // it. Do NOT close on success — the open handle keeps the slot.
+        raf.lockSync(FileLock.exclusive);
+        return (instance: n, lock: raf);
+      } on FileSystemException {
+        raf.closeSync();
+        return null;
+      }
+    }
+
+    if (explicit != null && explicit >= 1) {
+      // Honour the explicit number regardless; keep the lock if we got it.
+      return (instance: explicit, lock: claim(explicit)?.lock);
+    }
+    for (var n = 1; n <= 99; n++) {
+      final c = claim(n);
+      if (c != null) return c;
+    }
+    return (instance: 1, lock: null); // all busy (implausible) — proceed
   }
 }
 

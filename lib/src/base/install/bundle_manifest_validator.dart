@@ -175,6 +175,34 @@ class BundleManifestValidator {
             );
           }
           break;
+        case mb.ToolKind.ts:
+          // Compiled TypeScript tool of a `type: server` bundle — declaration
+          // shape mirrors js (`target: {entry, fn}`), but the code runs on
+          // the marketplace's serving runtime, never in this host, so no
+          // executability validation beyond the shape (spec 08 §5).
+          if (t.target['entry'] is! String ||
+              (t.target['entry'] as String).isEmpty) {
+            issues.add(
+              ManifestIssue(
+                severity: ManifestIssueSeverity.error,
+                code: 'TOOL_TS_ENTRY_MISSING',
+                pointer: '/tools/tools/$i/target/entry',
+                message:
+                    'Tool kind=ts requires target.entry pointing to a .ts file.',
+              ),
+            );
+          }
+          if (t.target['fn'] is! String || (t.target['fn'] as String).isEmpty) {
+            issues.add(
+              ManifestIssue(
+                severity: ManifestIssueSeverity.error,
+                code: 'TOOL_TS_FN_MISSING',
+                pointer: '/tools/tools/$i/target/fn',
+                message: 'Tool kind=ts requires target.fn (export name).',
+              ),
+            );
+          }
+          break;
         case mb.ToolKind.unknown:
           issues.add(
             ManifestIssue(

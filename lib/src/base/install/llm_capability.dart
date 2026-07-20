@@ -19,6 +19,7 @@ library;
 
 import 'package:appplayer_claude_code_provider/appplayer_claude_code_provider.dart'
     show ClaudeCodeInteractiveProvider, ProcessClaudeRunner;
+import '../boot/claude_cli_resolver.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 import 'package:mcp_llm/mcp_llm.dart';
 
@@ -94,7 +95,7 @@ LlmComposition composeLlm({
         // "no LLM provider" while chat actually responds through it.
         return ClaudeCodeInteractiveProvider(
           name: spec.model,
-          runner: ProcessClaudeRunner(executable: 'claude'),
+          runner: ProcessClaudeRunner(executable: resolveClaudeCli()),
         );
       default:
         throw StateError('Unsupported LLM provider: ${spec.name}');

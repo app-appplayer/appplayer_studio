@@ -1,22 +1,34 @@
-/// `mcp.connect_extension` — the host-side companion to the kernel's
-/// `mcp.connect`. The kernel surface only drives transports it can build
-/// itself (`stdio` / `streamableHttp` / `sse`, all FFI-free). Embedded
-/// boards (STM32, …) expose their MCP server over an **extension
-/// transport** (serial / usb / ble / tcp / ws) whose platform libraries
-/// live in `mcp_bridge` (the opt-in FFI home), not the kernel.
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/extension_transport/lib/extension_transport.dart
+// Regenerate with debug/tool/sync_extension_transport_fork.sh.
+//
+/// Reference host surface for the **extension-transport** standard
+/// (`specs/platform/08-extension.md` §4).
 ///
-/// This tool builds the chosen `mcp_bridge` transport, opens it, and
-/// injects it through the kernel seam (`StudioBackbone.connectExtension
-/// Transport` → `McpClientKernelHost.connectWith`). The connection lands
-/// in the same client host registry the kernel `mcp.*` tools resolve by
-/// `id`, so once connected the existing `mcp.list_tools` / `mcp.call_tool`
-/// / `mcp.read_resource` (e.g. `ui://app`) / `mcp.disconnect` drive the
-/// board with no further host wiring. See `specs/platform/08-extension.md`
-/// §4 + cherry `embedded-mcp-serving-base` (2026-06-10).
+/// The kernel exposes a pure injection seam — [ExtensionTransportConnect]
+/// (`connectWith`) on the reference [McpClientKernelHost], reached via the
+/// [connectExtension] helper. This recipe is the canonical host-facing
+/// surface on top of that seam: the `mcp.connect_extension` tool, companion
+/// to the kernel's `mcp.connect` (which only drives the FFI-free stdio /
+/// Streamable HTTP / SSE transports the kernel builds itself).
+///
+/// `mcp.connect_extension` builds the chosen **mcp_bridge** transport
+/// (serial / usb / ble / tcp / ws — the FFI lives in mcp_bridge, never the
+/// kernel), opens it, and injects it through the seam. The connection lands
+/// in the same client-host registry the kernel `mcp.*` tools resolve by
+/// `id`, so `mcp.list_tools` / `mcp.call_tool` / `mcp.read_resource`
+/// (e.g. `ui://app`) / `mcp.disconnect` drive the board with no further
+/// wiring.
+///
+/// Vendored reference (`publish_to: none`): a host that exposes board /
+/// device connect copies this file and registers the tool against its own
+/// [HostToolRegistry] and booted client host. Hosts that never connect to
+/// extension transports simply do not adopt it (and pull no mcp_bridge FFI).
 library;
 
 import 'package:brain_kernel/brain_kernel.dart'
-    show HostToolRegistry, wrapInProcess;
+    show HostToolRegistry, KernelClientHost, wrapInProcess;
+import 'package:brain_kernel/mcp_host.dart' show connectExtension;
 import 'package:mcp_bridge/mcp_bridge.dart'
     show
         BleClientTransport,
@@ -26,13 +38,13 @@ import 'package:mcp_bridge/mcp_bridge.dart'
         WebSocketClientTransport;
 import 'package:mcp_client/mcp_client.dart' show ClientTransport;
 
-import '../boot/studio_backbone.dart';
-
-/// Register `mcp.connect_extension` onto [registry], building transports
-/// through [backbone]'s client host seam. Returns the exposed name.
+/// Register `mcp.connect_extension` onto [registry], injecting through
+/// [clientHost] (the host's booted `KernelApp.clientHost` — the abstract
+/// [KernelClientHost] is enough; the [connectExtension] helper probes the
+/// seam). Returns the exposed tool name (`mcp.connect_extension`).
 String registerExtensionConnectTool(
   HostToolRegistry registry,
-  StudioBackbone backbone,
+  KernelClientHost? clientHost,
 ) {
   Future<Map<String, dynamic>> handler(Map<String, dynamic> args) async {
     final id = args['id'] as String?;
@@ -50,10 +62,10 @@ String registerExtensionConnectTool(
       };
     }
 
-    // Build the concrete mcp_bridge transport (FFI lives here, not in the
+    // Build the concrete mcp_bridge transport (FFI lives here, not the
     // kernel) and open it before injection. `options` flows straight to the
-    // transport's config map — keys are transport-specific (serial:
-    // port/baudRate · tcp: host/port · websocket: url · usb/ble: device).
+    // transport config — keys are transport-specific (serial: port/baudRate ·
+    // tcp: host/port · websocket: url · usb/ble: device).
     final ClientTransport transport;
     switch (kind) {
       case 'serial':
@@ -84,7 +96,10 @@ String registerExtensionConnectTool(
         };
     }
 
-    final conn = await backbone.connectExtensionTransport(
+    // Inject through the kernel seam — probes ExtensionTransportConnect off
+    // the (possibly abstract) client host; throws if it cannot inject.
+    final conn = await connectExtension(
+      clientHost,
       id: id,
       transport: transport,
     );

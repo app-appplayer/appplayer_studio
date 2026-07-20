@@ -3,10 +3,13 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+
 import 'package:mcp_bundle/mcp_bundle.dart'
     hide ValidationIssue, ValidationSeverity;
 import 'package:path/path.dart' as p;
 
+import '../../../base/boot/claude_cli_resolver.dart';
+import '../../../base/install/bundle_pack.dart';
 import '../conv/llm_server_guide.dart';
 import '../core/patch_pipeline.dart';
 import '../core/spec_validator.dart';
@@ -170,7 +173,13 @@ class BuildToolsDispatcher {
     }
     try {
       await Directory(p.dirname(dest)).create(recursive: true);
-      final bytes = await McpBundlePacker.packDirectory(src);
+      // Canonical packer via the distribution helper — mcp_bundle ≥0.4.7
+      // models `server`/`ts` natively, and the helper strips authoring
+      // metadata (`.history/` snapshots, dot-files) that must never ship:
+      // stale `.history/**/ui/pages/*.json` copies inside the archive can
+      // shadow the live page on loose-matching consumers (see
+      // base/install/bundle_pack.dart).
+      final bytes = await packBundleDirForDistribution(src);
       await File(dest).writeAsBytes(bytes, flush: true);
       return BuildToolResult.success(
         message: 'packed $channel → $outPath (${bytes.length} bytes)',
@@ -296,7 +305,11 @@ class BuildToolsDispatcher {
       final candidate = p.join(dir, command);
       if (await File(candidate).exists()) return candidate;
     }
-    return null;
+    // A GUI-launched host (Finder / `open`) inherits only the minimal
+    // launchd PATH, so `dart` / `flutter` / `pub` installed via
+    // nvm / Homebrew / fvm / asdf are absent above. Fall back to the
+    // login-shell lookup so the LLM's build tools actually find the SDK.
+    return resolveCliExecutable(command);
   }
 
   static String _truncate(String s, {int max = 8192}) {

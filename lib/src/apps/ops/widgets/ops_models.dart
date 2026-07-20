@@ -21,10 +21,21 @@ class ActivityActor {
   final AgentArchetype archetype;
 
   String get initials {
-    final parts = label.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first[0] + parts.last[0]).toUpperCase();
+    final parts =
+        label.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    // Grapheme-safe first letter (never a broken surrogate half).
+    final first = parts.first.characters.first;
+    if (parts.length == 1) return first.toUpperCase();
+    final last = parts.last.characters.first;
+    // A two-letter monogram only reads well for ASCII names ("John Doe" →
+    // "JD"). For CJK / mixed labels a single leading grapheme
+    // beats a Latin+CJK mash (audit P3.11).
+    final ascii = RegExp(r'^[A-Za-z]$');
+    if (ascii.hasMatch(first) && ascii.hasMatch(last)) {
+      return (first + last).toUpperCase();
+    }
+    return first.toUpperCase();
   }
 
   LinearGradient get gradient => switch ((kind, archetype)) {

@@ -303,6 +303,10 @@ void main() {
     test('studioPackage id resolves correctly', () {
       expect(projectKindFromId('studioPackage'), ProjectKind.studioPackage);
     });
+
+    test('cloudServerApp id resolves correctly', () {
+      expect(projectKindFromId('cloudServerApp'), ProjectKind.cloudServerApp);
+    });
   });
 
   // ── pm11 projectKindFromId unknown ──────────────────────────────────
@@ -325,8 +329,8 @@ void main() {
 
   // ── pm12 appBuilderProjectKinds ─────────────────────────────────────
   group('pm12 appBuilderProjectKinds', () {
-    test('has exactly 2 entries', () {
-      expect(appBuilderProjectKinds, hasLength(2));
+    test('has exactly 3 entries', () {
+      expect(appBuilderProjectKinds, hasLength(3));
     });
 
     test('ids are non-empty', () {
@@ -334,6 +338,42 @@ void main() {
         expect(k.id, isNotEmpty);
         expect(k.label, isNotEmpty);
       }
+    });
+
+    test('every option id maps back to a ProjectKind (dialog round-trip)',
+        () {
+      for (final k in appBuilderProjectKinds) {
+        expect(() => projectKindFromId(k.id), returnsNormally);
+      }
+    });
+  });
+
+  // ── pm2b ProjectMeta.defaults cloudServerApp ─────────────────────────
+  group('pm2b ProjectMeta.defaults cloudServerApp', () {
+    test('single serving channel named after project (portable <id>.mbd)',
+        () {
+      final meta = ProjectMeta.defaults(
+        name: 'my-server',
+        kind: ProjectKind.cloudServerApp,
+      );
+      expect(meta.channels.containsKey('serving'), isTrue);
+      expect(meta.channels['serving']!.subdir, contains('my-server'));
+    });
+
+    test('no native channel — a server app never converts to Flutter', () {
+      final meta = ProjectMeta.defaults(
+        name: 's',
+        kind: ProjectKind.cloudServerApp,
+      );
+      expect(meta.channels.containsKey('native'), isFalse);
+    });
+
+    test('kind is cloudServerApp', () {
+      final meta = ProjectMeta.defaults(
+        name: 's',
+        kind: ProjectKind.cloudServerApp,
+      );
+      expect(meta.kind, ProjectKind.cloudServerApp);
     });
   });
 

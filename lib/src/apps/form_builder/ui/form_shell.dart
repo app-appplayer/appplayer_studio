@@ -246,7 +246,7 @@ class _FormShellState extends State<FormShell> {
   }
 
   /// Single per-PROJECT coordinator (`form_builder.manager.<proj>_<hash>`) —
-  /// App Builder / Scene Builder / Ops(2026-07-03) 동형. Best-effort: without
+  /// App Builder / Scene Builder / Ops(2026-07-03) same shape. Best-effort: without
   /// the seed manager / agent host the chat stays on the base resolver.
   Future<void> _applyScopedManager(String projectDir) async {
     try {
@@ -400,6 +400,17 @@ class _FormShellState extends State<FormShell> {
   void dispose() {
     BuiltInAppRegistry.instance.unmount(widget.bundlePath);
     _releaseSlotsIfMine();
+    // Tab CLOSE = unbind the Form Builder core (design contract
+    // knowledge-operations.md §11.3). This State disposes ONLY on tab
+    // removal — the host renders tab bodies in a keyed IndexedStack, so a
+    // tab SWITCH keeps the mount alive and the core stays bound in the
+    // background. Guard on this tab owning the live boot so closing a
+    // stale Form tab (or one whose project was already closed via the
+    // header button) never unbinds another tab's core. Ops parity.
+    if (FormBuilderBuiltInApp.shouldTeardownOnClose(_currentProject)) {
+      // ignore: unawaited_futures
+      FormBuilderBuiltInApp.closeProject();
+    }
     super.dispose();
   }
 

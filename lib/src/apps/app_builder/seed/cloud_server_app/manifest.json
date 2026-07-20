@@ -1,0 +1,33 @@
+{
+  "manifest": {
+    "id": "{{id}}",
+    "name": "{{name}}",
+    "version": "0.1.0",
+    "description": "New cloud server app — edit UI and tools via chat.",
+    "type": "server",
+    "entryPoint": "ui.main"
+  },
+  "requires": {
+    "builtinAtoms": []
+  },
+  "ui": {
+    "kind": "mcp_ui_dsl",
+    "path": "ui/app.json"
+  },
+  "tools": {
+    "tools": [
+      {
+        "name": "server.ping",
+        "description": "Starter tool — replace with real server logic.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" }
+          }
+        },
+        "kind": "ts",
+        "target": { "entry": "tools/main.ts", "fn": "ping" }
+      }
+    ]
+  }
+}

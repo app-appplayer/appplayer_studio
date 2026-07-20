@@ -20,6 +20,7 @@ import 'package:appplayer_studio/src/apps/ops/tools/ui_debug_tools.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart'
     show
+        AgentHost,
         BuiltInApp,
         BuiltInLauncher,
         BuiltinToolRegistry,
@@ -33,9 +34,14 @@ import 'package:appplayer_studio/builtin_api.dart'
 // `BuiltinToolRegistry`.
 
 import 'infra/ws_paths.dart' show systemWorkspaceSlot, wsContentRoot;
+import '../../base/agent/agent_invoke_queue.dart' show serializePerAgent;
+import '../../base/chat/chat_turn.dart' show ChatTurn;
+import 'init/workspace_context.dart';
 import 'observability/observability_module.dart';
 import 'ops_shell.dart';
+import 'util/log.dart';
 import 'tools/tool_dispatcher.dart';
+import 'triggers/trigger_events.dart' show WorkKind;
 
 /// Shared boot result — `OpsConfig` + `KnowledgeInit`. Lazily booted
 /// once per host process via [OpsBuiltInApp.ensureBoot] so both the
@@ -78,6 +84,40 @@ class OpsBuiltInApp extends BuiltInApp {
   /// has been requested yet.
   static Future<OpsBootResult>? get currentBoot => _bootFuture;
 
+  /// Project root the live boot is bound to (null = unbound / no boot).
+  /// The shell reads this on tab-close teardown so it only tears the
+  /// backend down when THIS tab owns the current boot — closing a stale
+  /// Ops tab must not dispose another tab's live backend.
+  static String? get bootedProject => _bootedProject;
+
+  /// Whether an Ops tab bound to [tabProject] closing should tear the
+  /// backend down. Ops is single-instance (`_openOrFocusSeed` focuses the
+  /// one tab keyed to the built-in launchPath), so the closing tab owns
+  /// whatever is booted — teardown iff a boot exists AND this tab didn't
+  /// bind a DIFFERENT project:
+  ///   - `_bootedProject == null` → nothing booted (or the header button
+  ///     already closed it via `resetBootCache`) → no teardown.
+  ///   - `tabProject == _bootedProject` → this tab bound the boot → teardown.
+  ///   - `tabProject == null` → the shell never bound (e.g. the backend was
+  ///     booted MCP-only through `ensureBoot`, so `_currentProject` stayed
+  ///     null while `_bootedProject` is set) → still teardown: the sole Ops
+  ///     tab owns the sole boot. Without this the MCP-only boot leaked until
+  ///     the next bind's `resetBootCache`.
+  ///   - `tabProject != null && != _bootedProject` → the tab bound a
+  ///     different project than what's booted (a race) → leave it alone.
+  /// See `_OpsShellState.dispose`.
+  static bool shouldTeardownOnClose(String? tabProject) =>
+      _bootedProject != null &&
+      (tabProject == null || tabProject == _bootedProject);
+
+  /// Test seam — set the booted-project marker without running a full
+  /// [ensureBoot] (which needs live host infra). Only for exercising
+  /// [shouldTeardownOnClose] / [resetBootCache] in isolation.
+  @visibleForTesting
+  static void debugSetBootedProject(String? project) {
+    _bootedProject = project;
+  }
+
   /// Live [KnowledgeInit] of the most recent boot, sync-accessible. MCP
   /// tool handlers (`SystemTools`) read this so they always reach the
   /// project-bound init instead of the boot-time one captured at
@@ -94,6 +134,22 @@ class OpsBuiltInApp extends BuiltInApp {
   /// blocks otherwise).
   static Future<mk.KernelToolResult> Function(String, Map<String, dynamic>)?
   _hostCallTool;
+
+  /// The host chrome bridge, captured at `registerHostTools`. Read lazily by
+  /// the trigger bus's R3 seam to resolve the user's live chat target
+  /// (`activeChatAgentId`) at emit time.
+  static ChromeBridge? _chromeBridge;
+
+  /// The scoped id of the chat coordinator the user is currently talking to
+  /// (`ops.manager.<project>`), or null when no Ops chat is active. This is the
+  /// routing override the chat panel uses — the agent whose conversation IS the
+  /// visible chat window. `agent_ask(background)` reads it to wire a one-shot
+  /// "report this delegation back to me" so a manager delegating from chat gets
+  /// the completion in its own window without having to know its own id.
+  static String? get activeCoordinatorId {
+    final v = _chromeBridge?.chatManagerOverride.value;
+    return (v != null && v.isNotEmpty) ? v : null;
+  }
 
   /// Boot (or rebind) the Ops core to [currentProject].
   ///
@@ -162,6 +218,7 @@ class OpsBuiltInApp extends BuiltInApp {
   /// project's entries before the next bind rebinds them.
   static void resetBootCache() {
     final prev = _bootFuture;
+    OpsLog.info('lifecycle', 'resetBootCache: disposing bound init (prev=${prev != null})');
     _bootFuture = null;
     _bootedProject = null;
     // Explicit close → drop the published bound init so the next boot (and
@@ -267,9 +324,19 @@ class OpsBuiltInApp extends BuiltInApp {
     // agent_ask does; returns null for persons / unknown ids / off subsystem so
     // TaskRegistry.run falls back to skill dispatch. Wired once here so both
     // manual `task_run` and the recurring scheduler wake the assignee.
-    init.registries.task.agentRun ??= (assigneeId, request) async {
+    init.registries.task.agentRun ??= (assigneeId, request, {workspaceId}) async {
       if (!init.system.isAgentSubsystemActivated) return null;
-      final m = await init.registries.member.get(assigneeId);
+      // Canonicalize the assignee: a task may carry the bare member id OR a
+      // full scoped agentId (an LLM-authored delegation fills it from the
+      // roster). `resolve` maps both to the runnable member so the task is
+      // not silently blocked ("not a runnable agent") on id form alone.
+      // Scope to the task's workspace so a bare `lead` resolves to THIS
+      // department's lead, not a same-named lead in another workspace found
+      // first by scan order (cross-department mis-delivery).
+      final m = await init.registries.member.resolve(
+        assigneeId,
+        wsId: workspaceId,
+      );
       if (m is! AgentMember) return null;
       try {
         final reply = await init.system.agents.ask(m.agentId, request);
@@ -278,6 +345,11 @@ class OpsBuiltInApp extends BuiltInApp {
         return null; // not a runnable agent → skill-dispatch fallback
       }
     };
+    // Trigger bus action seams (R2 wake / R3 live-chat relay). Same
+    // late-injection shape as agentRun; the closures read the static host
+    // handles (`_hostCallTool` / `_chromeBridge`) lazily at emit time, so they
+    // resolve even when _doBoot ran ahead of registerHostTools.
+    _wireTriggerSeams(init);
     // Bind this init's skillExecutor to the host endpoint so the runner
     // dispatch resolves skill ids through it. On a re-boot `registerToolsOn`
     // does NOT re-run, so without this the new init's skillExecutor stays
@@ -314,6 +386,180 @@ class OpsBuiltInApp extends BuiltInApp {
       }
     }
     return OpsBootResult(cfg: cfg, init: init);
+  }
+
+  /// Wire the trigger bus's action seams (see ops-agent-trigger-bus.md). Same
+  /// late-injection shape as `agentRun`; closures read the static host handles
+  /// lazily so they resolve regardless of _doBoot / registerHostTools ordering.
+  static void _wireTriggerSeams(KnowledgeInit init) {
+    final bus = init.triggerBus;
+    // R2 — wake a subscribed target agent with the rendered request. A bare
+    // `agents.ask` is terminal (it does not re-emit), so ordinary A→B chains
+    // never recurse; the bus's hop cap backstops any emitting wake path.
+    bus.wakeAgent ??= (targetAgentId, request, cause) async {
+      if (!init.system.isAgentSubsystemActivated) {
+        OpsLog.info(
+          'trigger',
+          'wake $targetAgentId skipped — agent subsystem not activated',
+        );
+        return;
+      }
+      // Resolve the target WITHIN the completion's workspace — a bare
+      // `member.get` only scans already-loaded workspaces, so the target
+      // silently misses when its department was never opened in this session
+      // (the live-integration gap konpi caught: subscription persisted +
+      // event emitted, but wake no-op'd because `lead` sat in an unloaded
+      // workspace). The event carries the workspace; hand it through.
+      final ws = cause.workspaceId.isEmpty ? null : cause.workspaceId;
+      final m = await init.registries.member.get(targetAgentId, wsId: ws);
+      // Two kinds of wake target, living in two different agent systems:
+      //
+      //  (a) a workspace MEMBER — resolves to its scoped kernel id and runs in
+      //      `init.system` (for a project-bound Ops that is the PROJECT's
+      //      KnowledgeSystem; its conv lives under `<project>/.kv/conv`).
+      //
+      //  (b) a CHAT COORDINATOR (`ops.manager.<project>`) — the agent the user
+      //      actually converses with. It is NOT a workspace member; it is a
+      //      host-level agent owned by `AgentHost` (its conv is the chat
+      //      window, `~/.config/<tool>/conv/...`). For a project-bound Ops the
+      //      coordinator is NOT in `init.system` at all, so it must be resolved
+      //      and run through `AgentHost.shared.askAgent` — the same path the
+      //      chat panel uses — so its report lands in the conversation the user
+      //      is watching. (The live gap konpi caught: a subscription targeting
+      //      the coordinator matched, but wake no-op'd because `member.get`
+      //      AND `init.system` both miss the host-owned coordinator.)
+      if (m is AgentMember) {
+        OpsLog.info(
+          'trigger',
+          'waking member ${m.agentId} ($targetAgentId) in ws=${ws ?? '(none)'} '
+              'for ${cause.kind.name}(${cause.refId}) — reply lands in its '
+              'kernel conversation',
+        );
+        await serializePerAgent(
+          m.agentId,
+          () => ws == null
+              ? init.system.agents.ask(m.agentId, request)
+              : WorkspaceExecutionContext.run(
+                  ws,
+                  () => init.system.agents.ask(m.agentId, request),
+                ),
+        );
+        return;
+      }
+      if (m == null) {
+        final host = AgentHost.shared;
+        final coordinator =
+            host == null ? null : await host.flowbrain.system.agents.getAgent(targetAgentId);
+        if (host != null && coordinator != null) {
+          OpsLog.info(
+            'trigger',
+            'waking coordinator $targetAgentId for '
+                '${cause.kind.name}(${cause.refId}) — report lands in its chat '
+                'conversation',
+          );
+          // `askAgent` scopes the coordinator's own tools + runs it in the host
+          // system where its conversation lives; serialize so the wake can't
+          // race a concurrent chat turn for the same coordinator.
+          await serializePerAgent(targetAgentId, () async {
+            final reply = await host.askAgent(targetAgentId, request);
+            // `askAgent` updated the coordinator's KERNEL conversation (its
+            // working memory) but NOT the studio chat transcript the user's
+            // panel renders — so the report was durable yet invisible in the
+            // open window (konpi's render-surface P0). Push the assistant
+            // report into the coordinator's studio chat so it renders live
+            // AND persists for rehydrate.
+            final text = reply.content.trim();
+            if (text.isNotEmpty) {
+              final delivered =
+                  _chromeBridge?.deliverAgentChatTurn?.call(
+                    targetAgentId,
+                    ChatTurn(role: 'assistant', text: text),
+                  ) ??
+                  false;
+              OpsLog.info(
+                'trigger',
+                'coordinator $targetAgentId report ${delivered ? 'rendered + '
+                        'persisted in its live chat panel' : 'kernel-only — no '
+                    'studio chat bound (headless / MCP-only)'}',
+              );
+            }
+          });
+          return;
+        }
+      }
+      // Neither a runnable member nor a known coordinator → clean no-op.
+      OpsLog.info(
+        'trigger',
+        'wake $targetAgentId no-op — ${m == null ? 'no member or coordinator'
+            : 'not an agent (${m.kind.name})'} in ws=${ws ?? '(none)'}',
+      );
+    };
+    // R3 — surface a completion in the user's LIVE CHAT so a background result
+    // shows up without polling. The chat panel is a HOST surface, NOT the ops
+    // channel feed — pushing via `channel.send` (as this first did) only lands
+    // in the feed and never reaches the chat tab (the live-integration miss
+    // konpi caught). `chromeBridge.appendChatTurn` is the right hook (the same
+    // one `studio.agent.dispatch` uses to show its specialist chain inline): it
+    // appends a turn to whatever chat the user is on. Only OUT-OF-BAND kinds
+    // (task / step) are surfaced — a synchronous ask / route already returned
+    // to its caller. Skip the echo only when we KNOW the completer is the
+    // active agent (don't hard-skip on an empty activeChatAgentId — that is
+    // unset under an MCP-driven chat, which suppressed the relay entirely).
+    bus.injectIntoActiveChat ??= (event) async {
+      if (event.kind == WorkKind.ask || event.kind == WorkKind.route) return;
+      final append = _chromeBridge?.appendChatTurn;
+      if (append == null) {
+        // R3 surface trail: no chat panel mounted (headless / MCP-only run).
+        // This is why an MCP-driven session never sees the live-chat relay —
+        // the relay targets the host chat PANEL, not the kernel conversation.
+        OpsLog.info(
+          'trigger',
+          'relay ${event.kind.name}(${event.refId}) skipped — no chat panel '
+              'mounted (headless); durable record is the feed notice (R5)',
+        );
+        return;
+      }
+      final active = _chromeBridge?.activeChatAgentId.value ?? '';
+      OpsLog.info(
+        'trigger',
+        'relay ${event.kind.name}(${event.refId}) → active chat panel '
+            '(activeChatAgentId="$active"); appends a system turn to the '
+            'FOCUSED tab controller',
+      );
+      if (active.isNotEmpty && active == event.sourceAgentId) return;
+      final who =
+          event.sourceAgentId.isEmpty ? 'A background task' : event.sourceAgentId;
+      final verb = event.isBlocked ? 'was blocked on' : 'completed';
+      final digest = (event.summary ?? '').trim();
+      final tail = digest.isEmpty ? '' : ': $digest';
+      final artifact =
+          event.artifactRef == null ? '' : '\nArtifact: ${event.artifactRef}';
+      append(
+        ChatTurn(
+          role: 'system',
+          text: '$who $verb ${event.kind.name} (${event.refId})$tail$artifact',
+        ),
+      );
+    };
+    // R5 — a durable feed notice for out-of-band completions (task / step),
+    // posted to the completer's own conversation so a run leaves a record
+    // even when no one is watching a live chat. Skips synchronous kinds and
+    // sourceless (process) events. Best-effort with a hang guard.
+    bus.notify ??= (event) async {
+      if (event.kind == WorkKind.ask || event.kind == WorkKind.route) return;
+      if (event.sourceAgentId.isEmpty) return;
+      final call = _hostCallTool;
+      if (call == null) return;
+      final verb = event.isBlocked ? 'blocked' : 'done';
+      final digest = (event.summary ?? '').trim();
+      final tail = digest.isEmpty ? '' : ': $digest';
+      await call('channel.send', <String, dynamic>{
+        'channelId': 'in_app',
+        'conversationId': event.sourceAgentId,
+        'text': '[$verb] ${event.kind.name} (${event.refId})$tail',
+        'replyTo': 'trigger-feed-${event.refId}',
+      }).timeout(const Duration(seconds: 5));
+    };
   }
 
   /// Skill dispatcher shared by the Process and Task runners. Resolves a
@@ -493,6 +739,9 @@ class OpsBuiltInApp extends BuiltInApp {
       // Capture the host endpoint's callTool so `_doBoot` can bind it on
       // every (re-)booted init's skillExecutor — the runner dispatch needs it.
       _hostCallTool = server.callTool;
+      // Capture the chrome bridge so the trigger bus's R3 seam can resolve the
+      // user's live chat target at emit time.
+      _chromeBridge = chromeBridge;
       // All ops tool families (system / docs / prompts / skill / browser
       // primitives + ui_debug) register through the host API surface
       // (`server`, a `BuiltinToolRegistry` the host wraps before mount —

@@ -1,0 +1,17 @@
+{
+  "_comment": "Development trust anchors for board-discovery signature verification (spec 17 §6). The `partner` key is the recipe dev partner key (device_discovery/tool/dev_keys) that signs the posix-tcp dev node; `marketplace` mirrors AppPlayer Pro's dev root. These are DEV anchors — a production build replaces this asset with the real root CAs. Signature enforcement is off by default (Settings → Auto discovery → Require signed boards).",
+  "partner": {
+    "publicKeyBase64": "ncOXHhpEd2Qk/iEXoLtQyyql0OoOxbvvx30slJSjMU4=",
+    "serial": "dev-partner-2026",
+    "notBefore": "2026-01-01T00:00:00Z",
+    "notAfter": "2031-01-01T00:00:00Z",
+    "algorithm": "ed25519"
+  },
+  "marketplace": {
+    "publicKeyBase64": "QPkp5Ae2MyKvIeiYzMUjrXUss9HGoFSv43JrPfkXlS0=",
+    "serial": "root-pro-marketplace-2026",
+    "notBefore": "2026-01-01T00:00:00Z",
+    "notAfter": "2031-01-01T00:00:00Z",
+    "algorithm": "ed25519"
+  }
+}

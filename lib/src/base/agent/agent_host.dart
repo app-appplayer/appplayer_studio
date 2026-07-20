@@ -65,7 +65,24 @@ class AgentHost {
     final agents = flowbrain.system.agents;
     for (final profile in profiles) {
       final existing = await agents.getAgent(profile.id);
-      if (existing != null) continue;
+      if (existing != null) {
+        // Persisted across a `.kv` reboot. `createAgent` only ran the FIRST
+        // time this host agent was seeded, so a later seed systemPrompt
+        // change (e.g. a manager behavior rule added to `makemind_ops.mbd`)
+        // never reached the stale persisted profile — rebuild refreshes the
+        // seed ASSET but not the store. Re-apply the seed systemPrompt on
+        // drift, the same promptDrift refresh org members get in
+        // `WorkspaceLoader._mirrorAgentMembers`. `updateAgent` touches only
+        // the systemPrompt — conversation, model, and owned forks are
+        // preserved (only `deleteAgent` clears the conversation store).
+        if (existing.systemPrompt != profile.systemPrompt) {
+          await agents.updateAgent(
+            profile.id,
+            systemPrompt: profile.systemPrompt,
+          );
+        }
+        continue;
+      }
       await agents.createAgent(
         id: profile.id,
         displayName: profile.displayName,
@@ -155,7 +172,8 @@ class AgentHost {
       );
     }
     final agents = flowbrain.system.agents;
-    if (await agents.getAgent(qualifiedId) == null) {
+    final existingScoped = await agents.getAgent(qualifiedId);
+    if (existingScoped == null) {
       await agents.createAgent(
         id: qualifiedId,
         displayName: label,
@@ -169,6 +187,13 @@ class AgentHost {
           'base': baseId,
         },
       );
+    } else if (existingScoped.systemPrompt != base.systemPrompt) {
+      // The scoped clone (`<baseId>.<scopeHash>` — the actual chat coordinator
+      // the user talks to) persists per project. Re-apply the base seed
+      // systemPrompt on drift so a manager behavior-rule update in the seed
+      // reaches the persisted coordinator on reboot, not just fresh scopes.
+      // Conversation + owned forks are preserved (systemPrompt-only update).
+      await agents.updateAgent(qualifiedId, systemPrompt: base.systemPrompt);
     }
     return qualifiedId;
   }

@@ -532,7 +532,7 @@ class VibeLlmAdapter {
     final model =
         _settings.llmModel?.trim().isNotEmpty == true
             ? _settings.llmModel!.trim()
-            : 'claude-opus-4-7';
+            : 'claude-opus-4-8';
     final endpoint = _settings.llmEndpoint?.trim();
     final providerKey = '$apiKey|$model|${endpoint ?? ''}';
     if (_provider != null && _providerKey == providerKey) {

@@ -594,6 +594,9 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
         llmApiKey: inh['llmApiKey'] as String?,
         llmModel: inh['llmModel'] as String?,
         llmEndpoint: inh['llmEndpoint'] as String?,
+        // Marketplace serving-shell location (host-owned, like the LLM
+        // block) — powers the debug panel's Cloud Server variant.
+        serverShellPath: inh['serverShellPath'] as String?,
         // Project binding: per-host (built-in) or sidecar (standalone).
         lastProjectPath: boundProject,
         // App Builder UI session state from its own sidecar store.

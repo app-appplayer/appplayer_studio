@@ -95,5 +95,101 @@ List<CapabilityTool> analysisCapabilityTools(AnalysisPort port) {
         };
       },
     ),
+    CapabilityTool(
+      verb: 'get_artifacts',
+      description:
+          'Fetch result artifacts (metric/series/table/…) by job or spec.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'jobId': <String, dynamic>{'type': 'string'},
+          'specId': <String, dynamic>{'type': 'string'},
+          'limit': <String, dynamic>{'type': 'integer'},
+        },
+      },
+      invoke: (args) async {
+        final artifacts = await port.getArtifacts(
+          jobId: args['jobId'] as String?,
+          specId: args['specId'] as String?,
+          limit: args['limit'] as int?,
+        );
+        return <String, dynamic>{
+          'artifacts': <Map<String, dynamic>>[
+            for (final a in artifacts) a.toJson(),
+          ],
+        };
+      },
+    ),
+    CapabilityTool(
+      verb: 'create_spec',
+      description: 'Register an analysis spec (AnalysisSpec JSON).',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'spec': <String, dynamic>{'type': 'object'},
+        },
+        'required': <String>['spec'],
+      },
+      invoke: (args) async {
+        final raw = args['spec'];
+        if (raw is! Map) {
+          throw CapabilityToolError(
+            code: 'analysis.bad_input',
+            message: 'spec (AnalysisSpec JSON object) is required',
+          );
+        }
+        final created = await port
+            .createSpec(AnalysisSpec.fromJson(raw.cast<String, dynamic>()));
+        return <String, dynamic>{
+          'specId': created.specId,
+          'version': created.version,
+        };
+      },
+    ),
+    CapabilityTool(
+      verb: 'update_spec',
+      description: 'Update an existing analysis spec by id.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'specId': <String, dynamic>{'type': 'string'},
+          'spec': <String, dynamic>{'type': 'object'},
+        },
+        'required': <String>['specId', 'spec'],
+      },
+      invoke: (args) async {
+        final raw = args['spec'];
+        if (raw is! Map) {
+          throw CapabilityToolError(
+            code: 'analysis.bad_input',
+            message: 'spec (AnalysisSpec JSON object) is required',
+          );
+        }
+        final updated = await port.updateSpec(
+          requireString(args, 'specId'),
+          AnalysisSpec.fromJson(raw.cast<String, dynamic>()),
+        );
+        return <String, dynamic>{
+          'specId': updated.specId,
+          'version': updated.version,
+        };
+      },
+    ),
+    CapabilityTool(
+      verb: 'evaluate_alert',
+      description: 'Evaluate an alert rule by id.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'alertRuleId': <String, dynamic>{'type': 'string'},
+        },
+        'required': <String>['alertRuleId'],
+      },
+      invoke: (args) async {
+        final alert =
+            await port.evaluateAlert(requireString(args, 'alertRuleId'));
+        return alert.toJson();
+      },
+    ),
   ];
 }

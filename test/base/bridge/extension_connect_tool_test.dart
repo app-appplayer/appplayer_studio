@@ -9,20 +9,19 @@ library;
 import 'dart:io';
 
 import 'package:brain_kernel/brain_kernel.dart' as fb;
-import 'package:brain_kernel/mcp_host.dart' show McpClientKernelHost;
+import 'package:brain_kernel/mcp_host.dart'
+    show McpClientKernelHost, connectExtension;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mcp_bridge/mcp_bridge.dart'
     show TcpClientTransport, TcpServerTransport;
 import 'package:mcp_server/mcp_server.dart'
     show CallToolResult, Server, ServerCapabilities, TextContent;
-import 'package:appplayer_studio/base.dart'
-    show StudioBackbone, registerExtensionConnectTool;
+import 'package:appplayer_studio/base.dart' show registerExtensionConnectTool;
 
 void main() {
   late Directory tmpDir;
   late fb.KernelApp app;
   late McpClientKernelHost clientHost;
-  late StudioBackbone backbone;
 
   // A board-shaped MCP server stood up over mcp_bridge's tcp server
   // transport, advertising a single `led.set` tool.
@@ -62,15 +61,6 @@ void main() {
       bundleRegistryStorageDir: tmpDir.path,
       clientHost: clientHost,
     );
-    backbone = StudioBackbone(
-      toolId: 'vibe_studio_ext_test',
-      configRoot: tmpDir.path,
-      app: app,
-      clientHost: clientHost,
-      agentHost: null,
-      growth: null,
-      seedLoader: null,
-    );
   });
 
   tearDownAll(() async {
@@ -84,12 +74,16 @@ void main() {
   });
 
   test(
-    'connectExtensionTransport reaches the board and drives its tool',
+    'connectExtension helper reaches the board and drives its tool',
     () async {
       final transport = TcpClientTransport({'host': 'localhost', 'port': port});
       await transport.start();
 
-      final conn = await backbone.connectExtensionTransport(
+      // Canonical seam entry: probe ExtensionTransportConnect off the
+      // abstract client host + inject (spec 08 §4). Studio boots this same
+      // host, so `app.clientHost` would resolve identically.
+      final conn = await connectExtension(
+        clientHost,
         id: 'board-1',
         transport: transport,
       );
@@ -114,7 +108,7 @@ void main() {
       detachFromDispatcher: (_) {},
     );
 
-    final exposed = registerExtensionConnectTool(registry, backbone);
+    final exposed = registerExtensionConnectTool(registry, clientHost);
     // Registered under the `mcp.*` family (sibling to the kernel's
     // `mcp.connect`) on both the dispatcher and the endpoint. The
     // connect-by-id drive path is covered end-to-end by the first test.

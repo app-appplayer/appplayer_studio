@@ -26,6 +26,7 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../main/chrome_bridge.dart';
+import 'bundle_history.dart';
 
 /// Register the 14 `studio.builder.*` mutator tools onto [boot].
 /// Handlers route through [bridge] for post-mutation view activation
@@ -2005,14 +2006,17 @@ Future<mk.KernelToolResult> _runKnowledgeMutation(
   );
 }
 
-/// Snapshot the files [files] (relative to [mbdPath]) into
-/// `<mbdPath>/.history/<ts>-<label>/` before a mutator overwrites them.
-/// Cheap, best-effort, idempotent — failure here never blocks the
-/// mutation. The `.history/` directory accumulates one snapshot per
-/// mutation so the user can recover from accidental edits (LLM
-/// runaway, manual mistake) without losing the auto-save behaviour
-/// that makes chat-driven authoring fluid. Excluded from the bundle's
-/// shipped content by the install path (see `BundleInstallSurface`).
+/// Snapshot the files [files] (relative to [mbdPath]) into the bundle's
+/// SIBLING history root (`<parent>/.history-<mbd>/<ts>-<label>/`, see
+/// `bundle_history.dart`) before a mutator overwrites them. Cheap,
+/// best-effort, idempotent — failure here never blocks the mutation.
+/// One snapshot per mutation lets the user recover from accidental
+/// edits (LLM runaway, manual mistake) without losing the auto-save
+/// behaviour that makes chat-driven authoring fluid. History must NOT
+/// live inside the bundle dir: authoring snapshots are workspace state,
+/// and anything inside the artifact ships with it (packers, uploads,
+/// resource resolvers) — the in-bundle placement caused a live
+/// stale-page-served defect (2026-07-13).
 Future<void> _snapshotBundle(
   String mbdPath,
   String label, {
@@ -2026,7 +2030,9 @@ Future<void> _snapshotBundle(
             .replaceAll(':', '-')
             .split('.')
             .first;
-    final dir = Directory(p.join(mbdPath, '.history', '$ts-$label'));
+    final dir = Directory(
+      p.join(bundleHistoryRootFor(mbdPath), '$ts-$label'),
+    );
     await dir.create(recursive: true);
     for (final rel in files) {
       final src = File(p.join(mbdPath, rel));

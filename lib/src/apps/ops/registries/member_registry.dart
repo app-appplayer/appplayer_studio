@@ -95,6 +95,31 @@ class AuthProfileRef {
   final DateTime? expiresAt;
 }
 
+/// Resolve a member reference to its display name. Accepts EITHER a fully
+/// qualified agentId (`<ns>.<ws>.<member>`, e.g. a lifecycle-fact `content.agentId`
+/// or an emitted activity actor) OR a bare member id (`proto`, e.g. a task
+/// `assigneeId`). Falls back to the last id segment — never the raw qualified
+/// id — so a user-facing surface never shows an internal routing id (audit P1.3).
+///
+/// Lives here (not the UI layer) so both the tool layer (activity emit) and the
+/// UI layer (Home feed, Facts view) resolve identically; `ui/_shared/fact_display.dart`
+/// re-exports it for existing UI import sites.
+String memberDisplayNameFor(Iterable<Member> members, String ref) {
+  // Qualified agentId match first (lifecycle facts / emitted actors carry the
+  // qualified form).
+  for (final m in members) {
+    if (m is AgentMember && m.agentId == ref) return m.displayName;
+  }
+  // Bare member id match — task assignees carry the short id, not the qualified
+  // agentId, so without this they fell back to the last-segment id ("proto")
+  // instead of the displayName ("Leo"). Covers person members too.
+  for (final m in members) {
+    if (m.id == ref) return m.displayName;
+  }
+  final dot = ref.lastIndexOf('.');
+  return (dot >= 0 && dot < ref.length - 1) ? ref.substring(dot + 1) : ref;
+}
+
 class MemberRegistry {
   MemberRegistry({
     required this.kv,
@@ -144,6 +169,32 @@ class MemberRegistry {
       await _ensureLoaded(ws);
       final m = _byWorkspace[ws]?[memberId];
       if (m != null) return m;
+    }
+    return null;
+  }
+
+  /// Resolve [idOrAgentId] to a member whether the caller passed the bare
+  /// member id (`proto`) OR the scoped kernel agentId (`<ns>.<ws>.proto`).
+  /// Member records are keyed by the BARE id, so `get` alone misses a scoped
+  /// agentId — and an LLM-authored delegation routinely fills the assignee
+  /// with the full agentId exposed in the roster. Both forms must map to the
+  /// same runnable member, else a `task_run` silently blocks ("assignee is
+  /// not a runnable agent"). Bare lookup first (cheap, common); on a miss,
+  /// match by `.agentId`; then fall back to the trailing dot segment.
+  /// The single canonicalization point for assignee resolution.
+  Future<Member?> resolve(String idOrAgentId, {String? wsId}) async {
+    final direct = await get(idOrAgentId, wsId: wsId);
+    if (direct != null) return direct;
+    if (wsId != null) await _ensureLoaded(wsId);
+    for (final ws in _byWorkspace.keys) {
+      await _ensureLoaded(ws);
+      for (final m in _byWorkspace[ws]!.values) {
+        if (m is AgentMember && m.agentId == idOrAgentId) return m;
+      }
+    }
+    final dot = idOrAgentId.lastIndexOf('.');
+    if (dot > 0 && dot < idOrAgentId.length - 1) {
+      return get(idOrAgentId.substring(dot + 1), wsId: wsId);
     }
     return null;
   }

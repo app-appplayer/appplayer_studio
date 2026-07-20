@@ -51,6 +51,10 @@ Map<String, Object?> loadInheritedSettings(String toolId) {
       'workspaceDir': decoded['workspaceDir'],
       'mcpServerUrl': _normalizeMcpUrl(decoded['mcpServerUrl'] as String?),
       'mcpTransport': decoded['mcpTransport'],
+      // Marketplace serving-shell location — the App Builder debug
+      // panel's Cloud Server variant reads it off the mounted shell's
+      // settings (host-wide config, inherited like workspaceDir).
+      'serverShellPath': decoded['serverShellPath'],
     };
   } catch (_) {
     return const <String, Object?>{};

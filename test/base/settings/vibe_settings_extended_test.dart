@@ -4,7 +4,7 @@
 ///   s3  bumpRecent — dedup, MRU order, cap at recentProjectsLimit, sets lastProjectPath
 ///   s4  fromJson / toJson round-trip — transport, themeMode, llmProviders, browser fields
 ///   s5  _normalizeMcpUrl (via fromJson) — bare host gets /mcp appended, full path preserved
-///   s6  _validThemeMode — 'light' and 'dark' pass; anything else → 'system'
+///   s6  _validThemeMode — 'light'/'dark'/'system' pass; anything else → 'dark'
 ///   s7  defaultPath — composes ~/.config/<toolId>/settings.json
 ///   s8  save + load — atomic write, re-read equal fields
 ///   s9  load missing file → default instance
@@ -151,6 +151,34 @@ void main() {
       expect(s2.debugMode, isTrue);
     });
 
+    test('discovery fields survive the round-trip; all-off omits keys', () {
+      final s = VibeSettings(
+        discoveryUsb: true,
+        discoveryMdns: true,
+        discoveryBle: true,
+        discoveryDirectory: true,
+        discoveryAutoConnect: true,
+        discoveryEnforceSignature: true,
+        discoveryDirectoryConfig: {
+          'host': 'ldap.example.org',
+          'ssl': true,
+          'baseDN': 'ou=devices,dc=example,dc=org',
+        },
+      );
+      final s2 = VibeSettings.fromJson(s.toJson());
+      expect(s2.discoveryUsb, isTrue);
+      expect(s2.discoveryMdns, isTrue);
+      expect(s2.discoveryBle, isTrue);
+      expect(s2.discoveryDirectory, isTrue);
+      expect(s2.discoveryAutoConnect, isTrue);
+      expect(s2.discoveryEnforceSignature, isTrue);
+      expect(s2.discoveryDirectoryConfig?['host'], 'ldap.example.org');
+      expect(s2.discoveryDirectoryConfig?['ssl'], true);
+      // Defaults (all off) leave settings.json untouched — no stray keys.
+      final bare = VibeSettings().toJson();
+      expect(bare.keys.where((k) => k.startsWith('discovery')), isEmpty);
+    });
+
     test('llmProviders map survives round-trip', () {
       final s = VibeSettings(
         llmProviders: {'anthropic': 'sk-1', 'openai': 'sk-2'},
@@ -285,24 +313,24 @@ void main() {
       expect(s.themeMode, 'dark');
     });
 
-    test('"system" falls through to system default', () {
+    test('"system" is preserved (explicit choice)', () {
       final s = VibeSettings.fromJson({'themeMode': 'system'});
       expect(s.themeMode, 'system');
     });
 
-    test('unknown value falls back to "system"', () {
+    test('unknown value falls back to "dark"', () {
       final s = VibeSettings.fromJson({'themeMode': 'auto'});
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
     });
 
-    test('missing themeMode field falls back to "system"', () {
+    test('missing themeMode field falls back to "dark"', () {
       final s = VibeSettings.fromJson(<String, dynamic>{});
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
     });
 
-    test('null themeMode falls back to "system"', () {
+    test('null themeMode falls back to "dark"', () {
       final s = VibeSettings.fromJson({'themeMode': null});
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
     });
   });
 
@@ -387,9 +415,9 @@ void main() {
       final s = await VibeSettings.load(
         '/tmp/__vibe_settings_nonexistent__.json',
       );
-      // Default state: transport = 'http', themeMode = 'system'
+      // Default state: transport = 'http', themeMode = 'dark'
       expect(s.mcpTransport, 'http');
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
       expect(s.recentProjects, isEmpty);
     });
   });
@@ -411,7 +439,7 @@ void main() {
       await File(path).writeAsString('NOT JSON {{{');
       final s = await VibeSettings.load(path);
       expect(s.mcpTransport, 'http');
-      expect(s.themeMode, 'system');
+      expect(s.themeMode, 'dark');
     });
 
     test(

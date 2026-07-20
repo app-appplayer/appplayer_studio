@@ -73,7 +73,7 @@ class _OrgDirectoryState extends ConsumerState<OrgDirectory> {
       if (pid != null && pid.isNotEmpty) (m[pid] ??= []).add(w);
     }
     for (final l in m.values) {
-      l.sort((a, b) => a.id.compareTo(b.id));
+      l.sort(orgWsSiblingCompare);
     }
     return m;
   }
@@ -86,7 +86,7 @@ class _OrgDirectoryState extends ConsumerState<OrgDirectory> {
             w.parentId!.isEmpty ||
             !ids.contains(w.parentId))
           w,
-    ]..sort((a, b) => a.id.compareTo(b.id));
+    ]..sort(orgWsSiblingCompare);
   }
 
   int get _depth {

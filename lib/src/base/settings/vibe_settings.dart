@@ -25,9 +25,10 @@ class VibeSettings {
     this.propsPanelWidth,
     this.autosaveDelaySec = 5,
     List<String>? recentSearches,
-    this.themeMode = 'system',
+    this.themeMode = 'dark',
     this.debugMode = false,
     this.chromiumPath,
+    this.serverShellPath,
     this.maxBrowserContexts,
     this.browserUserAgent,
     this.browserLocale,
@@ -37,6 +38,13 @@ class VibeSettings {
     this.browserRespectRobots,
     this.browserAuthAttachEndpoint,
     this.browserAuthUserDataDir,
+    this.discoveryUsb = false,
+    this.discoveryMdns = false,
+    this.discoveryBle = false,
+    this.discoveryDirectory = false,
+    this.discoveryAutoConnect = false,
+    this.discoveryEnforceSignature = false,
+    this.discoveryDirectoryConfig,
   }) : llmProviders = Map<String, String>.from(
          llmProviders ?? const <String, String>{},
        ),
@@ -68,7 +76,7 @@ class VibeSettings {
   /// API key for the LLM the chat panel drives.
   String? llmApiKey;
 
-  /// Model id (e.g. `claude-opus-4-7`).
+  /// Model id (e.g. `claude-opus-4-8`).
   String? llmModel;
 
   /// Optional base URL override for self-hosted LLM gateways.
@@ -139,7 +147,7 @@ class VibeSettings {
   bool debugMode;
 
   /// `MaterialApp.themeMode` so the chrome flips light/dark with the
-  /// user's Settings choice. Defaults to `'system'`.
+  /// user's Settings choice. Defaults to `'dark'`.
   String themeMode;
 
   /// Absolute path to a Chromium/Chrome executable for the host browser
@@ -147,6 +155,15 @@ class VibeSettings {
   /// tools register but report disabled on call). Hot-swappable — the
   /// lazy engine re-boots when this changes.
   String? chromiumPath;
+
+  /// Absolute path to the marketplace serving-shell runtime directory
+  /// (the checkout/install containing `lib/index.js` — the same Node
+  /// shell Cloud Run uses). Powers the App Builder debug panel's
+  /// "Cloud Server" variant: pack → boot the REAL shell locally →
+  /// connect. Null/empty = the variant card explains how to configure.
+  /// (Interim hand-edited settings.json key, like [chromiumPath]; the
+  /// marketplace `mcp-serve` CLI will supersede the manual path.)
+  String? serverShellPath;
 
   /// Max concurrent browser contexts for the host `browser.*` engine
   /// (mcp_browser `BrowserResourceCaps.maxConcurrentContexts`). Null = the
@@ -173,6 +190,32 @@ class VibeSettings {
   /// default fresh-temp headful spawn.
   String? browserAuthAttachEndpoint;
   String? browserAuthUserDataDir;
+
+  /// Auto-discovery source toggles (settings "Auto discovery" section) —
+  /// which nearby-board sources the boot-time sweep scans. All default
+  /// OFF: a fresh install never scans on its own. The `mcp.discover_boards`
+  /// tool is independent of these (explicit source per call).
+  bool discoveryUsb;
+  bool discoveryMdns;
+  bool discoveryBle;
+  bool discoveryDirectory;
+
+  /// Sweep policy: when true, probe-confirmed boards found by the sweep
+  /// are auto-connected through the kernel seam (id `board:<manifest id>`).
+  /// When false the sweep only reports (log + tool surface).
+  bool discoveryAutoConnect;
+
+  /// Manifest signature enforcement (spec 17 §6). When true, a discovered
+  /// board is only connected (auto-connect sweep / connectCandidate) if its
+  /// probed manifest carries a `trust` block that verifies against a
+  /// registered root CA (fail-closed: unsigned / unverified boards are
+  /// blocked). Default off — discovery surfaces the evidence either way.
+  bool discoveryEnforceSignature;
+
+  /// Organization-directory (LDAP) source config — the vendored
+  /// `DirectoryConfig` JSON shape ({host, port?, ssl, bindDN?, password?,
+  /// baseDN}). Null/incomplete = the directory source stays idle.
+  Map<String, dynamic>? discoveryDirectoryConfig;
 
   /// Move [path] to the head of [recentProjects] (deduping any earlier
   /// entry) and trim the tail to [recentProjectsLimit]. Also updates
@@ -222,6 +265,8 @@ class VibeSettings {
     if (debugMode) 'debugMode': debugMode,
     if (chromiumPath != null && chromiumPath!.isNotEmpty)
       'chromiumPath': chromiumPath,
+    if (serverShellPath != null && serverShellPath!.isNotEmpty)
+      'serverShellPath': serverShellPath,
     if (maxBrowserContexts != null) 'maxBrowserContexts': maxBrowserContexts,
     if (browserUserAgent != null && browserUserAgent!.isNotEmpty)
       'browserUserAgent': browserUserAgent,
@@ -240,6 +285,14 @@ class VibeSettings {
       'browserAuthAttachEndpoint': browserAuthAttachEndpoint,
     if (browserAuthUserDataDir != null && browserAuthUserDataDir!.isNotEmpty)
       'browserAuthUserDataDir': browserAuthUserDataDir,
+    if (discoveryUsb) 'discoveryUsb': true,
+    if (discoveryMdns) 'discoveryMdns': true,
+    if (discoveryBle) 'discoveryBle': true,
+    if (discoveryDirectory) 'discoveryDirectory': true,
+    if (discoveryAutoConnect) 'discoveryAutoConnect': true,
+    if (discoveryEnforceSignature) 'discoveryEnforceSignature': true,
+    if (discoveryDirectoryConfig != null && discoveryDirectoryConfig!.isNotEmpty)
+      'discoveryDirectoryConfig': discoveryDirectoryConfig,
   };
 
   /// Normalize stored `mcpServerUrl` so the Streamable HTTP canonical
@@ -286,6 +339,7 @@ class VibeSettings {
     themeMode: _validThemeMode(json['themeMode']),
     debugMode: json['debugMode'] == true,
     chromiumPath: json['chromiumPath'] as String?,
+    serverShellPath: json['serverShellPath'] as String?,
     maxBrowserContexts: (json['maxBrowserContexts'] as num?)?.toInt(),
     browserUserAgent: json['browserUserAgent'] as String?,
     browserLocale: json['browserLocale'] as String?,
@@ -295,13 +349,28 @@ class VibeSettings {
     browserRespectRobots: json['browserRespectRobots'] as bool?,
     browserAuthAttachEndpoint: json['browserAuthAttachEndpoint'] as String?,
     browserAuthUserDataDir: json['browserAuthUserDataDir'] as String?,
+    discoveryUsb: json['discoveryUsb'] == true,
+    discoveryMdns: json['discoveryMdns'] == true,
+    discoveryBle: json['discoveryBle'] == true,
+    discoveryDirectory: json['discoveryDirectory'] == true,
+    discoveryAutoConnect: json['discoveryAutoConnect'] == true,
+    discoveryEnforceSignature: json['discoveryEnforceSignature'] == true,
+    discoveryDirectoryConfig:
+        (json['discoveryDirectoryConfig'] as Map?)?.map(
+          (k, v) => MapEntry('$k', v),
+        ),
   );
 
   /// Accepts `'system'` / `'light'` / `'dark'`; any other value (including
-  /// older configs without the field) falls back to `'system'`.
+  /// older configs without the field) falls back to `'dark'` — the studio
+  /// default theme, so a fresh config / new `--instance` profile boots dark
+  /// instead of following the OS. Explicit `'system'` / `'light'` choices
+  /// are preserved.
   static String _validThemeMode(Object? raw) {
-    if (raw is String && (raw == 'light' || raw == 'dark')) return raw;
-    return 'system';
+    if (raw is String && (raw == 'light' || raw == 'dark' || raw == 'system')) {
+      return raw;
+    }
+    return 'dark';
   }
 
   /// Compose `~/.config/<toolId>/settings.json`. Hosts pass their tool

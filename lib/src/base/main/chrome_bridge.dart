@@ -17,11 +17,13 @@ import 'dart:async';
 import '../session/session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart'
-    show BuildContext, GlobalKey, InheritedWidget, Rect;
+    show BuildContext, GlobalKey, InheritedWidget, Rect, WidgetBuilder;
 
 import '../chat/chat_slash_hint.dart';
 import '../chat/chat_turn.dart';
 import '../install/domain_servers/domain_server_manager.dart';
+import '../servers/connect_server_dialog.dart'
+    show ConnectServerRequest, DiscoveredServer;
 import '../shell/project_header.dart';
 
 /// Snapshot of the active domain's chrome-relevant lifecycle flags.
@@ -172,6 +174,26 @@ class ChromeBridge {
   })?
   createNewPackage;
 
+  /// Connect a local MCP server the user added via the Home "+" (the
+  /// repurposed New slot). The shell shows the connect dialog and hands the
+  /// result here; the host wires it into the local-server manager (connect +
+  /// metadata + keychain + record). Null while the local-server feature isn't
+  /// mounted.
+  Future<void> Function(ConnectServerRequest request)? connectServer;
+
+  /// Run one discovery scan across the enabled sources (mDNS / BLE / USB /
+  /// directory) and return the nearby MCP-serving boards, so the Connect Server
+  /// dialog's Discover tab can list them with their connection settings. The
+  /// host wires this to `StudioDiscovery`; null while discovery isn't mounted
+  /// (the dialog then hides the Discover tab and shows the manual form alone).
+  Future<List<DiscoveredServer>> Function()? scanServers;
+
+  /// Connect a picked discovered server through the host — a board with a
+  /// `connectHint` goes through the extension / BLE seam; a bare http(s) node
+  /// attaches as a remote streamable-HTTP server (recorded like a manual add).
+  /// Wired alongside [scanServers].
+  Future<void> Function(DiscoveredServer server)? connectDiscovered;
+
   /// Run the host's new-project flow inside the active package tab —
   /// prompts the user for name + parent directory, creates the project
   /// folder, and activates it. Different from
@@ -320,6 +342,17 @@ class ChromeBridge {
   /// Mounted by the host's centre widget.
   Future<Map<String, dynamic>> Function(String mbdPath)? activatePackage;
 
+  /// Open (or focus, when [key] is already open) a host-extension surface
+  /// as a first-class tab — e.g. the pro tier's connected market service.
+  /// Extension tabs are session-scoped: they never persist across restarts
+  /// (their backing state, such as a live connection, doesn't either).
+  void Function({
+    required String key,
+    required String label,
+    required WidgetBuilder builder,
+  })?
+  openExtensionTab;
+
   /// Dispatch a tool on the bundle activated for [mbdPath]. The host
   /// resolves the bundle's exposed namespace and calls the underlying
   /// MCP server with the prefixed name (`<exposedShortId>.<toolShort>`)
@@ -405,6 +438,20 @@ class ChromeBridge {
   /// without leaving the chat. Hosts wire this to push into their
   /// active VibeChatController.
   void Function(ChatTurn turn)? appendChatTurn;
+
+  /// Deliver an out-of-band agent turn into the STUDIO chat transcript
+  /// bound to [agentId] — used when a chat coordinator (`ops.manager.*`)
+  /// is woken by the trigger bus (a delegated background task completed)
+  /// and must report back into the conversation the user delegated from.
+  /// Unlike [appendChatTurn] (active tab, in-memory only), the host
+  /// resolves the controller for THIS SPECIFIC coordinator so the report
+  /// both renders and persists in the right chat even though
+  /// `AgentHost.askAgent` wrote only the kernel conversation (the agent's
+  /// working memory), not the studio transcript the panel renders — the
+  /// render-surface gap konpi caught (durable in conv, invisible in the
+  /// open window). Returns true if a matching studio chat took the turn
+  /// (false = headless / no chat bound). Wired by the workspace.
+  bool Function(String agentId, ChatTurn turn)? deliverAgentChatTurn;
 
   /// Marks the currently-active tab as modified — chat sent, a
   /// `studio.builder.*` mutator executed, or any other action whose

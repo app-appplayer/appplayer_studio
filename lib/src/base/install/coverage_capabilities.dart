@@ -59,13 +59,11 @@ CoverageCapabilities registerCoverageCapabilities(
       ),
     ),
   );
-  names.addAll(
-    registerCapabilityTools(
-      registry,
-      capabilityId: analysisCapabilityId,
-      tools: analysisCapabilityTools(standardAnalysisPort()),
-    ),
-  );
+  // Turnkey analysis adoption (recipe `analysis_standard`) — engine =
+  // the package's `AnalysisPortAdapter.inMemory()` (full builtin catalog
+  // + `synthetic` simulation source); spec define→run→artifact retrieval
+  // all happens through the 7 `analysis.*` verbs.
+  names.addAll(registerAnalysisCapability(registry));
 
   final dsReg =
       DatasourceRegistry()..register(FilesystemSource(id: 'ws', root: capRoot));

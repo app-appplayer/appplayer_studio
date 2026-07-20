@@ -10,13 +10,30 @@ import '../core/vibe_project.dart' show ProjectKind;
 /// the new bundle, with `{{id}}` and `{{name}}` placeholders replaced
 /// at copy time.
 ///
-/// The asset prefix is the package-relative path the bundle uses —
-/// this app is the host's own package (single-package R26 layout), so
-/// assets are listed directly in `pubspec.yaml`'s `flutter.assets`
-/// block without the `packages/<other_pkg>/` indirection Flutter adds
-/// for cross-package asset access. `rootBundle.loadString(<prefix>/<file>)`
-/// resolves at runtime against the build's `flutter_assets/` tree.
+/// The asset prefix is the package-relative path the bundle uses. In the
+/// open base (this package IS the host app) the assets resolve unprefixed —
+/// `rootBundle.loadString('lib/src/.../seed/<file>')`. In an overlay tier
+/// (e.g. pro: `appplayer_studio_pro` depends on `appplayer_studio`) Flutter
+/// bundles the SAME assets under the cross-package indirection
+/// `packages/appplayer_studio/<path>`, so the unprefixed key throws — see
+/// [_loadSeedAsset]'s fallback. (Found live: pro-tier project creation died
+/// mid-seed for every kind, leaving an empty bundle shell, 2026-07-13.)
 const String _assetPrefix = 'lib/src/apps/app_builder/seed';
+
+/// Cross-package asset prefix used when the host app is NOT this package
+/// (overlay tiers). Must match this package's pub name.
+const String _packageAssetPrefix = 'packages/appplayer_studio';
+
+/// Load a seed asset that works in both tiers: try the unprefixed key
+/// (open base = host app), fall back to the `packages/<pkg>/` key
+/// (overlay host such as the pro tier).
+Future<String> _loadSeedAsset(String assetPath) async {
+  try {
+    return await rootBundle.loadString(assetPath);
+  } on Object {
+    return rootBundle.loadString('$_packageAssetPrefix/$assetPath');
+  }
+}
 
 const Map<ProjectKind, List<String>> _seedFilesByKind =
     <ProjectKind, List<String>>{
@@ -30,6 +47,15 @@ const Map<ProjectKind, List<String>> _seedFilesByKind =
         'ui/app.json',
         'ui/pages/home.json',
       ],
+      // Cloud server app — normal bundle UI plus the tools/ directory
+      // holding real TypeScript tool sources (SERVER_AUTHORING contract).
+      ProjectKind.cloudServerApp: <String>[
+        'manifest.json',
+        'ui/app.json',
+        'ui/pages/home.json',
+        'tools/package.json',
+        'tools/main.ts',
+      ],
     };
 
 String _assetDirFor(ProjectKind kind) {
@@ -38,6 +64,8 @@ String _assetDirFor(ProjectKind kind) {
       return 'app_player_app';
     case ProjectKind.studioPackage:
       return 'studio_package';
+    case ProjectKind.cloudServerApp:
+      return 'cloud_server_app';
   }
 }
 
@@ -62,7 +90,7 @@ Future<void> applyProjectSeed(
   final dir = _assetDirFor(kind);
   for (final relPath in files) {
     final assetPath = '$_assetPrefix/$dir/$relPath';
-    final raw = await rootBundle.loadString(assetPath);
+    final raw = await _loadSeedAsset(assetPath);
     final substituted = raw
         .replaceAll('{{id}}', projectName)
         .replaceAll('{{name}}', projectName);

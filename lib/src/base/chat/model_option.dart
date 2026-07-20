@@ -13,7 +13,7 @@ class VibeModelOption {
   });
 
   /// Provider model id — must match the value the LLM client forwards
-  /// verbatim (e.g. `claude-opus-4-7`).
+  /// verbatim (e.g. `claude-opus-4-8`).
   final String id;
 
   /// Short UX label (e.g. `Opus 4.7`).

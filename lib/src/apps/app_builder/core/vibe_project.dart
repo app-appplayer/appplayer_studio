@@ -878,6 +878,16 @@ enum ProjectKind {
   /// preview mounts `DslWorkspaceView` so vbu_* atoms and domain widgets
   /// render through the namespaced `vibe_studio_runtime` fork.
   studioPackage,
+
+  /// Marketplace cloud server app (`manifest.type: "server"` bundle) —
+  /// UI/knowledge follow the normal bundle conventions (AppPlayer renders
+  /// them identically, so the editor preview mounts the same pure-DSL
+  /// panel as [appPlayerApp]); tools are real TypeScript modules under
+  /// `tools/` (`kind: "ts"`, `target: {entry, fn}`) that the marketplace
+  /// compiles and serves from a per-listing Cloud Run container. Authoring
+  /// contract: the `cloud_server_authoring` seed knowledge source
+  /// (mirror of marketplace `SERVER_AUTHORING.md`).
+  cloudServerApp,
 }
 
 /// App Builder's project kinds, declared for the platform's standard
@@ -895,6 +905,13 @@ const List<ProjectKindOption> appBuilderProjectKinds = <ProjectKindOption>[
     id: 'studioPackage',
     label: 'Studio Package',
     description: 'Studio domain bundle (vbu_* atoms + dsl).',
+  ),
+  ProjectKindOption(
+    id: 'cloudServerApp',
+    label: 'Cloud Server App',
+    description:
+        'Marketplace-hosted MCP server (type: "server" bundle — '
+        'DSL UI + real TypeScript tools).',
   ),
 ];
 
@@ -945,12 +962,14 @@ class ProjectMeta {
   }) {
     final now = DateTime.now().toUtc();
     // Channel layout differs by kind. AppPlayer App keeps the two-slot
-    // serving/native model. Studio Package is a single-slot bundle
-    // whose directory name is the package id (= project name) so the
-    // on-disk artefact is portable as `<id>.mbd` rather than the host's
-    // serving-channel placeholder.
+    // serving/native model. Studio Package and Cloud Server App are
+    // single-slot bundles whose directory name is the package id
+    // (= project name) so the on-disk artefact is portable as `<id>.mbd`
+    // rather than the host's serving-channel placeholder. (A server app
+    // has no native channel — it never converts to a Flutter app; the
+    // marketplace builds and serves it.)
     final Map<String, ChannelDef> channels =
-        kind == ProjectKind.studioPackage
+        kind == ProjectKind.studioPackage || kind == ProjectKind.cloudServerApp
             ? <String, ChannelDef>{
               'serving': ChannelDef(subdir: 'bundles/$name.mbd'),
             }

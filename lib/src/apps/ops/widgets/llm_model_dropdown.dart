@@ -79,7 +79,7 @@ class LlmModelDropdown extends StatelessWidget {
             controller: customController,
             decoration: const InputDecoration(
               labelText: 'Custom model id',
-              hintText: 'e.g. claude-opus-4-7-latest, gpt-4o-mini-2024-07-18',
+              hintText: 'e.g. claude-opus-4-8-latest, gpt-4o-mini-2024-07-18',
             ),
           ),
         ],

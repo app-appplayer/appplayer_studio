@@ -66,7 +66,7 @@ class _Swimlane extends StatelessWidget {
     List<ProcessRun> at(String stepId) => [
           for (final r in runs)
             if (!doneStates.contains(r.state) &&
-                boardColumnFor(r) == stepId)
+                placedBoardColumnFor(r, process) == stepId)
               r,
         ];
     final done = [
@@ -205,6 +205,17 @@ class _RunCard extends StatelessWidget {
     final hhmm =
         '${run.startedAt.hour.toString().padLeft(2, '0')}:'
         '${run.startedAt.minute.toString().padLeft(2, '0')}';
+    // In-flight runs show elapsed time (the board polls every 4s, so this
+    // ticks) with a stall warning past a threshold, so a run stuck on
+    // `running` reads as stuck rather than silently forever-running (audit
+    // P2.8). Terminal runs keep their start HH:MM.
+    final inflight =
+        run.state == ProcessRunState.running ||
+        run.state == ProcessRunState.waitingApproval;
+    final elapsed = DateTime.now().difference(run.startedAt);
+    final stalled = inflight && elapsed > const Duration(minutes: 10);
+    final timeLabel = inflight ? _fmtElapsed(elapsed) : hhmm;
+    final lineColor = stalled ? OpsColors.warn : color;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -226,15 +237,38 @@ class _RunCard extends StatelessWidget {
               color: OpsColors.text2,
             ),
           ),
-          Text(
-            '$label · $hhmm',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: OpsType.xs, color: color),
+          Row(
+            children: [
+              if (stalled) ...[
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 11,
+                  color: OpsColors.warn,
+                ),
+                const SizedBox(width: 3),
+              ],
+              Flexible(
+                child: Text(
+                  '$label · $timeLabel${stalled ? ' · stalled?' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: OpsType.xs, color: lineColor),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  /// Compact elapsed formatting: `45s` · `12m` · `2h5m`.
+  static String _fmtElapsed(Duration d) {
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    return m > 0 ? '${h}h${m}m' : '${h}h';
   }
 }
 
@@ -253,4 +287,19 @@ String boardColumnFor(ProcessRun run) {
     return run.currentStep.substring(gatePrefix.length);
   }
   return run.currentStep;
+}
+
+/// The step column a run is actually PLACED in on [process]'s board. A
+/// freshly-started background run persists its `running` checkpoint with an
+/// EMPTY currentStep (the behavior engine has not reported a node yet), so
+/// [boardColumnFor] yields '' — matching no column, which made the run vanish
+/// from the board (only the swimlane's "N runs" count betrayed it) and its
+/// elapsed/stall badge never render (audit P2.8, konpi live re-verify). Any
+/// non-terminal run whose raw column matches no real step is resolved to the
+/// FIRST step (it is at the start) so it lands somewhere and shows its elapsed.
+String placedBoardColumnFor(ProcessRun run, Process process) {
+  final raw = boardColumnFor(run);
+  final stepIds = {for (final s in process.steps) s.stepId};
+  if (stepIds.contains(raw)) return raw;
+  return process.steps.isNotEmpty ? process.steps.first.stepId : raw;
 }

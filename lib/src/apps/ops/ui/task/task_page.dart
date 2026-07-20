@@ -9,6 +9,35 @@ import '../../theme/tokens.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_with_action.dart';
 
+/// Task list state filter (audit P2.4) — curated tasks got lost among many
+/// states with no way to narrow. `active` = pending + inProgress.
+enum TaskFilter { all, active, blocked, done }
+
+extension _TaskFilterX on TaskFilter {
+  String get label => switch (this) {
+    TaskFilter.all => 'All',
+    TaskFilter.active => 'Active',
+    TaskFilter.blocked => 'Blocked',
+    TaskFilter.done => 'Done',
+  };
+
+  bool matches(TaskState s) => switch (this) {
+    TaskFilter.all => true,
+    TaskFilter.active =>
+      s == TaskState.pending || s == TaskState.inProgress,
+    TaskFilter.blocked => s == TaskState.blocked,
+    TaskFilter.done => s == TaskState.completed || s == TaskState.cancelled,
+  };
+}
+
+/// A background `agent_ask` delegation is a tracked task whose id is minted as
+/// `ask-async-<micros>` (see `system_tools`). These are transient hand-offs,
+/// not curated work — grouped separately so real tasks (T-*) stay findable
+/// (audit P2.4).
+bool _isDelegationTask(Task t) => t.id.startsWith('ask-async-');
+
+final taskFilterProvider = StateProvider<TaskFilter>((_) => TaskFilter.all);
+
 /// Task list. Scope is driven by [globalScopeProvider] (the shell-level
 /// globe toggle). The header chip mirrors and can also flip the same
 /// provider.
@@ -48,6 +77,7 @@ class TaskPage extends ConsumerWidget {
             ],
           ),
         ),
+        const _TaskFilterBar(),
         const Divider(height: 1),
         Expanded(
           child:
@@ -77,6 +107,129 @@ class _ScopeToggle extends StatelessWidget {
         label: Text(value ? 'All' : 'This workspace'),
         selected: value,
         onSelected: onChanged,
+      ),
+    );
+  }
+}
+
+/// State-filter chip row (audit P2.4).
+class _TaskFilterBar extends ConsumerWidget {
+  const _TaskFilterBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(taskFilterProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: [
+          for (final f in TaskFilter.values) ...[
+            ChoiceChip(
+              label: Text(f.label),
+              selected: current == f,
+              onSelected:
+                  (_) => ref.read(taskFilterProvider.notifier).state = f,
+            ),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Shared list body — applies the state filter and groups background
+/// `agent_ask` delegations (`ask-async-*`) into a collapsed section so curated
+/// tasks stay findable (audit P2.4).
+class _TaskListBody extends ConsumerStatefulWidget {
+  const _TaskListBody({required this.tasks, required this.showWorkspace});
+  final List<Task> tasks;
+  final bool showWorkspace;
+
+  @override
+  ConsumerState<_TaskListBody> createState() => _TaskListBodyState();
+}
+
+class _TaskListBodyState extends ConsumerState<_TaskListBody> {
+  bool _showDelegations = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final filter = ref.watch(taskFilterProvider);
+    final filtered =
+        widget.tasks.where((t) => filter.matches(t.state)).toList();
+    final curated = filtered.where((t) => !_isDelegationTask(t)).toList();
+    final delegations = filtered.where(_isDelegationTask).toList();
+
+    if (filtered.isEmpty) {
+      return EmptyState(
+        icon: Icons.filter_alt_off_outlined,
+        headline:
+            filter == TaskFilter.all
+                ? 'No tasks'
+                : 'No ${filter.label.toLowerCase()} tasks',
+        hint: 'Adjust the filter above to see other tasks.',
+      );
+    }
+
+    return ListView(
+      children: [
+        for (final t in curated)
+          _TaskTile(task: t, showWorkspace: widget.showWorkspace),
+        if (delegations.isNotEmpty) ...[
+          _DelegationsHeader(
+            count: delegations.length,
+            expanded: _showDelegations,
+            onTap: () => setState(() => _showDelegations = !_showDelegations),
+          ),
+          if (_showDelegations)
+            for (final t in delegations)
+              _TaskTile(task: t, showWorkspace: widget.showWorkspace),
+        ],
+      ],
+    );
+  }
+}
+
+class _DelegationsHeader extends StatelessWidget {
+  const _DelegationsHeader({
+    required this.count,
+    required this.expanded,
+    required this.onTap,
+  });
+  final int count;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+        child: Row(
+          children: [
+            Icon(
+              expanded ? Icons.expand_more : Icons.chevron_right,
+              size: 18,
+              color: OpsColors.text3,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Delegations · agent_ask ($count)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: OpsType.semibold,
+                color: OpsColors.text3,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              expanded ? 'hide' : 'show',
+              style: TextStyle(fontSize: 11, color: OpsColors.accent),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -125,11 +278,7 @@ class _WorkspaceTaskList extends ConsumerWidget {
                 'Create a task from the top-right button — once a task has a skill assigned, agents can pick it up.',
           );
         }
-        return ListView.builder(
-          itemCount: tasks.length,
-          itemBuilder:
-              (_, i) => _TaskTile(task: tasks[i], showWorkspace: false),
-        );
+        return _TaskListBody(tasks: tasks.cast<Task>(), showWorkspace: false);
       },
     );
   }
@@ -167,11 +316,7 @@ class _GlobalTaskList extends ConsumerWidget {
               }
               final tasks = snap.data ?? const <Task>[];
               if (tasks.isEmpty) return const Center(child: Text('No tasks'));
-              return ListView.builder(
-                itemCount: tasks.length,
-                itemBuilder:
-                    (_, i) => _TaskTile(task: tasks[i], showWorkspace: true),
-              );
+              return _TaskListBody(tasks: tasks, showWorkspace: true);
             },
           ),
     );
@@ -237,6 +382,35 @@ class _TaskTile extends ConsumerWidget {
                       color: OpsColors.text3,
                     ),
                   ),
+                  // Why a blocked task is blocked — last run's summary /
+                  // errorCode surfaced inline so the user need not open it
+                  // to see the cause (audit P2.5).
+                  if (task.state == TaskState.blocked)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 12,
+                            color: OpsColors.warn,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _blockedReason() ?? 'Blocked — no reason recorded',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: OpsColors.warn,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -324,6 +498,18 @@ class _TaskTile extends ConsumerWidget {
     TaskKind.recurring => Icons.autorenew,
     TaskKind.sustained => Icons.schedule,
   };
+
+  /// The most recent run's summary (else errorCode) — the recorded cause of a
+  /// blocked task. Null when there is no run or no recorded detail.
+  String? _blockedReason() {
+    if (task.runs.isEmpty) return null;
+    final r = task.runs.last;
+    final summary = r.summary?.trim();
+    if (summary != null && summary.isNotEmpty) return summary;
+    final code = r.errorCode?.trim();
+    if (code != null && code.isNotEmpty) return code;
+    return null;
+  }
 }
 
 // --- Create dialog -----------------------------------------------------

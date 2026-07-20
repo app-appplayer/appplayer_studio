@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:appplayer_studio/builtin_api.dart';
+import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
+import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 
 import '../config/ops_config.dart';
@@ -167,6 +169,15 @@ class WorkspaceLoader {
     // another persona from ambient context).
     final ws = await registries.workspace.get(wsId);
     final wsTitle = ws?.title ?? wsId;
+    // The workspace's effective HARD charter prohibitions, resolved ONCE along
+    // its own ancestor chain (company ∘ dept ∘ own). Seated into every member's
+    // resident self-identity prompt so the organization's non-negotiable rules
+    // fire even in an ungated direct `agent_ask` — not only when a process
+    // `philosophy_check` gate happens to run. (Injection-layer gap: a member
+    // knows its charter via the pull layer / a reactive gate, but does not
+    // re-read it at the moment it acts, so a "classify then refer" rule silently
+    // goes unapplied under a direct request.)
+    final charterRules = await effectiveHardProhibitions(wsId);
     // Fallback model for yaml agents without a per-agent ModelSpec:
     //   1. host-injected inherited default (configured `settings.llmModel`)
     //   2. explicit Ops yaml provider (`~/.makemind-ops/config.yaml` llm)
@@ -210,7 +221,7 @@ class WorkspaceLoader {
             role: m.role,
             model: modelSpec,
             workspaceId: wsId,
-            systemPrompt: _identityPrompt(m, wsId, wsTitle),
+            systemPrompt: _identityPrompt(m, wsId, wsTitle, charterRules),
             tags: m.tags,
           );
           mirrored++;
@@ -221,7 +232,7 @@ class WorkspaceLoader {
           // the self-identity prompt (composed fresh here — not persisted on
           // the member yaml, so an agent created before this wiring still
           // gains its identity on the next boot).
-          final identity = _identityPrompt(m, wsId, wsTitle);
+          final identity = _identityPrompt(m, wsId, wsTitle, charterRules);
           final modelDrift = m.model != null && existing.model != m.model;
           final promptDrift = existing.systemPrompt != identity;
           if (modelDrift || promptDrift) {
@@ -292,16 +303,78 @@ class WorkspaceLoader {
   }
 
   /// The ambient self-identity anchor for a worker agent: who it is and which
-  /// department it belongs to. Seeded as the kernel Agent `systemPrompt` at
-  /// mirror time; charter / role rules are layered on top by the kernel. The
-  /// operator's admin agent has its own system prompt — workers get this so
-  /// they stop answering with the operator's or another persona's identity
-  /// (test2 #3).
-  String _identityPrompt(AgentMember m, String wsId, String wsTitle) {
-    return 'You are ${m.displayName}, a ${m.role.name} in the "$wsTitle" '
+  /// department it belongs to, plus the non-negotiable HARD prohibitions of its
+  /// organization's charter. Seeded as the kernel Agent `systemPrompt` at mirror
+  /// time. The operator's admin agent has its own system prompt — workers get
+  /// this so they stop answering with the operator's or another persona's
+  /// identity (test2 #3), and so a charter's hard rule fires at the moment they
+  /// act (not only inside a process `philosophy_check` gate — [charterRules]).
+  String _identityPrompt(
+    AgentMember m,
+    String wsId,
+    String wsTitle,
+    List<String> charterRules,
+  ) {
+    final base =
+        'You are ${m.displayName}, a ${m.role.name} in the "$wsTitle" '
         'workspace ($wsId) of this makemind Ops organization. When asked who '
         'you are or which team/department you belong to, answer with this '
         'identity — never the operator or another persona.';
+    if (charterRules.isEmpty) return base;
+    final rules = charterRules.map((r) => '  • $r').join('\n');
+    return '$base\n\n'
+        'Charter — non-negotiable rules of your organization. These HARD '
+        'prohibitions ALWAYS apply, including to a direct request: honor them '
+        'at the moment you act — classify, refer, or refuse exactly as the rule '
+        'requires; never just proceed against one:\n$rules';
+  }
+
+  /// The HARD charter prohibition statements in force for [wsId], accumulated
+  /// along its own ancestor chain (self → parents; same line only, never a
+  /// sibling branch — mirrors [SystemTools._charterChain] but returns just the
+  /// hard statements to seat in a member's resident prompt). Empty when the
+  /// philosophy subsystem is unavailable or no charter is set anywhere on the
+  /// chain (backward compatible — the prompt then stays the bare identity).
+  /// Best-effort: a member's OWN-workspace charter is loaded before this runs
+  /// (`_loadPhilosophies` precedes `_mirrorAgentMembers`); an ancestor charter
+  /// not yet loaded this boot is picked up on the next boot via prompt-drift.
+  /// Effective HARD prohibition statements for [wsId] — its own charter plus
+  /// every LIVE ancestor's charter (archived ancestors are skipped; see the
+  /// in-loop rationale). Public only for tests (`org_delete_charter_semantics`);
+  /// production callers stay inside the loader.
+  @visibleForTesting
+  Future<List<String>> effectiveHardProhibitions(String wsId) async {
+    final phil = system.philosophy;
+    if (!phil.isAvailable) return const <String>[];
+    final out = <String>[];
+    final seen = <String>{};
+    final chain = <String>[
+      wsId,
+      ...await registries.workspace.ancestors(wsId),
+    ];
+    for (final id in chain) {
+      // Active context must load charter only for LIVE workspaces. An archived
+      // (deactivated-but-retained) ancestor's charter must NOT leak into a live
+      // descendant's effective prohibitions — the org was dissolved; its
+      // institutional memory is retained for history, not to keep governing.
+      final ws = await registries.workspace.get(id);
+      if (ws != null && ws.archived) continue;
+      final charterId = 'charter.$id';
+      try {
+        final e = await phil.getEthosById(charterId);
+        // getEthosById may fall back to the active ethos for an unknown id —
+        // only accept the ethos that is THIS level's own charter.
+        if (e.id != charterId) continue;
+        for (final pr in e.prohibitions) {
+          if (pr.severity != bundle.ProhibitionSeverity.hard) continue;
+          final s = pr.statement.trim();
+          if (s.isNotEmpty && seen.add(s)) out.add(s);
+        }
+      } catch (_) {
+        // A missing / malformed charter must not break member boot.
+      }
+    }
+    return out;
   }
 
   Future<void> _loadSkills(String dirPath, String wsId) async {

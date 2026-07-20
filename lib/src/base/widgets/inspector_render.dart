@@ -8,6 +8,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart';
@@ -86,6 +87,16 @@ class _InspectorRenderState extends State<InspectorRender> {
     super.dispose();
   }
 
+  /// Studio chrome brightness — what the rendered surface's
+  /// `theme.mode: system` inherits (see [McpUiRuntimePort.hostBrightnessOf]).
+  Brightness _hostBrightness = Brightness.dark;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _hostBrightness = Theme.of(context).brightness;
+  }
+
   void _initSources() {
     _adapter = InspectorUiViewAdapter(
       widget.session,
@@ -97,6 +108,7 @@ class _InspectorRenderState extends State<InspectorRender> {
             onToolCall: _onToolCall,
             pageLoader: _resolvePage,
             onRuntimeReady: _onRuntimeReady,
+            hostBrightnessOf: () => _hostBrightness,
             // Wrap every rendered widget with `MetaData(metaData: <json>)`
             // so `vibe_layout_snapshot` can walk this surface the same way
             // it walks the editor preview. Translucent hit behaviour keeps
@@ -222,46 +234,43 @@ class _InspectorRenderState extends State<InspectorRender> {
                 style: vibeMono(size: 11, color: c.textTertiary),
               ),
             );
+    // The APP surface (UiView) hosts a live semantics tree fed by the
+    // connected runtime. Building it inside a LayoutBuilder makes it a
+    // child that gets (re)laid-out during the builder's own layout pass,
+    // so the moment the runtime streams a state/semantics update it
+    // throws "RenderSemanticsAnnotations was mutated in
+    // _RenderLayoutBuilder.performLayout". Lay the panes out with plain
+    // flex instead — UiView is then a normal child, never rebuilt during
+    // an ancestor's layout (mirrors preview_panel's Center/Expanded host).
+    final frac = _dashboardFraction.clamp(0.1, 0.9);
+    final appFlex = (((1 - frac) * 1000).round()).clamp(1, 1000);
+    final dashFlex = ((frac * 1000).round()).clamp(1, 1000);
     return ColoredBox(
       color: c.bg,
-      child: LayoutBuilder(
-        builder: (ctx, box) {
-          // Some ancestors hand down an unbounded vertical constraint
-          // (Row cross-axis). Use a finite fallback so flex children
-          // never get an infinite tight height.
-          final h = box.maxHeight.isFinite ? box.maxHeight : 600.0;
-          const tabH = 22.0;
-          final body = (h - tabH).clamp(0.0, double.infinity);
-          final dashH =
-              !_dashboardOpen
-                  ? 0.0
-                  : (body * _dashboardFraction).clamp(0.0, body * 0.9);
-          return SizedBox(
-            height: h,
-            child: Column(
-              children: <Widget>[
-                Expanded(child: _SurfacePane(label: 'APP', child: appView)),
-                _DashboardTab(
-                  open: _dashboardOpen,
-                  onTap: () => setState(() => _dashboardOpen = !_dashboardOpen),
-                  onDragDelta:
-                      !_dashboardOpen
-                          ? null
-                          : (dy) {
-                            setState(() {
-                              final next = ((dashH - dy) / body).clamp(
-                                0.1,
-                                0.9,
-                              );
-                              _dashboardFraction = next;
-                            });
-                          },
-                ),
-                if (_dashboardOpen) SizedBox(height: dashH, child: dashView),
-              ],
-            ),
-          );
-        },
+      child: Column(
+        children: <Widget>[
+          Expanded(
+            flex: _dashboardOpen ? appFlex : 1,
+            child: _SurfacePane(label: 'APP', child: appView),
+          ),
+          _DashboardTab(
+            open: _dashboardOpen,
+            onTap: () => setState(() => _dashboardOpen = !_dashboardOpen),
+            onDragDelta:
+                !_dashboardOpen
+                    ? null
+                    : (dy) {
+                      setState(() {
+                        final h = context.size?.height ?? 600.0;
+                        _dashboardFraction = (_dashboardFraction - dy / h).clamp(
+                          0.1,
+                          0.9,
+                        );
+                      });
+                    },
+          ),
+          if (_dashboardOpen) Expanded(flex: dashFlex, child: dashView),
+        ],
       ),
     );
   }

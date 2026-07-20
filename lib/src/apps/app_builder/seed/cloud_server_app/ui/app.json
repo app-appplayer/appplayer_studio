@@ -1,0 +1,8 @@
+{
+  "type": "application",
+  "title": "{{name}}",
+  "initialRoute": "/home",
+  "routes": {
+    "/home": "ui://pages/home"
+  }
+}

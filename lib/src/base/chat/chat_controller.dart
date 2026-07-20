@@ -49,8 +49,11 @@ class VibeChatController extends ChangeNotifier {
   Future<void> Function(ChatTurn turn)? onTurnPersisted;
 
   /// Called when [clear] runs so the host can wipe the on-disk
-  /// chat.jsonl alongside the in-memory turns.
-  Future<void> Function()? onClearLog;
+  /// chat.jsonl alongside the in-memory turns. Receives the conversation's
+  /// [selectedAgentId] so the host can also clear that agent's kernel-side
+  /// working memory (ConversationStore) — deleting only the transcript file
+  /// leaves the agent recalling the prior conversation on its next turn.
+  Future<void> Function(String agentId)? onClearLog;
 
   /// Called when [removeTurn] runs so the host can drop a single
   /// turn from chat.jsonl.
@@ -79,7 +82,7 @@ class VibeChatController extends ChangeNotifier {
     final cb = onClearLog;
     if (cb != null) {
       try {
-        await cb();
+        await cb(_selectedAgentId);
       } catch (_) {
         /* swallowed — best effort */
       }

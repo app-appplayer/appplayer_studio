@@ -34,7 +34,16 @@ enum OrgNodeKind {
   more,
 }
 
-enum OrgEdgeKind { hierarchy, reports, event, dep, signoff, ownership, containment }
+enum OrgEdgeKind {
+  hierarchy,
+  reports,
+  event,
+  dep,
+  signoff,
+  ownership,
+  containment,
+  sideStub, // staff (support) unit — top-down drop drawn in the muted color
+}
 
 class OrgStepInput {
   const OrgStepInput({
@@ -147,19 +156,44 @@ class OrgWsInput {
     required this.type,
     this.parentId,
     this.leadMemberId,
+    this.unitRole = 'line',
+    this.sortOrder = 0,
     this.agents = const [],
     this.processes = const [],
   });
   final String id;
   final String title;
   final String type;
+
+  /// `'line'` or `'staff'` — staff units sort before line siblings (and, in
+  /// the structure lens, form the tier directly below the parent, above the
+  /// operational line row).
+  final String unitRole;
+
+  /// Explicit sibling ordering hint (`0` = unset). Siblings sort by this
+  /// ascending, then staff-before-line, then id.
+  final int sortOrder;
   final String? parentId;
 
-  /// Member id of this org unit's lead (팀장). Drawn at the top of the unit's
+  /// Member id of this org unit's lead (unit head). Drawn at the top of the unit's
   /// hierarchy in the structure lens, with reporting edges to its members.
   final String? leadMemberId;
   final List<OrgAgentInput> agents;
   final List<OrgProcessInput> processes;
+}
+
+/// Canonical sibling ordering for org units — the single source of truth so
+/// every lens (chart layout, directory nav, card tree) reads the same order:
+/// explicit [OrgWsInput.sortOrder] ascending (`0` = unset, sorted last), then
+/// staff before line, then by id. Mirrors `orderWorkspacesHierarchical` in the
+/// workspace registry (the Home switcher's order).
+int orgWsSiblingCompare(OrgWsInput a, OrgWsInput b) {
+  final oa = a.sortOrder == 0 ? 1 << 30 : a.sortOrder;
+  final ob = b.sortOrder == 0 ? 1 << 30 : b.sortOrder;
+  if (oa != ob) return oa - ob;
+  final sa = a.unitRole == 'staff' ? 0 : 1;
+  final sb = b.unitRole == 'staff' ? 0 : 1;
+  return sa != sb ? sa - sb : a.id.compareTo(b.id);
 }
 
 class OrgNode {
@@ -196,7 +230,7 @@ class OrgNode {
   /// agent nodes → AI (true) vs human (false), drawn as a 🤖 / 👤 icon.
   final bool isAgent;
 
-  /// agent nodes → this member is the org unit's lead (팀장).
+  /// agent nodes → this member is the org unit's lead (unit head).
   final bool isLead;
 
   /// workspace nodes → draw as a framing container enclosing its members
@@ -294,9 +328,14 @@ OrgChartModel buildOrgChartModel(
       roots.add(w.id);
     }
   }
-  roots.sort();
+  // Siblings: explicit sortOrder first (ascending; 0 = unset, sorted last),
+  // then staff before line, then by id — an operator-set order wins, otherwise
+  // a support unit sits directly under its parent ahead of the operational row.
+  int sibCmp(String a, String b) => orgWsSiblingCompare(byId[a]!, byId[b]!);
+
+  roots.sort(sibCmp);
   for (final l in children.values) {
-    l.sort();
+    l.sort(sibCmp);
   }
   final ordered = <({String id, int depth})>[];
   void walk(String id, int depth) {
@@ -332,24 +371,94 @@ OrgChartModel buildOrgChartModel(
             OrgChartMetrics.cardPad,
       );
     }
-    double subtreeW(String id) {
-      final own = unitSize[id]!.width;
-      final kids = children[id] ?? const [];
-      if (kids.isEmpty) return own;
+    // A unit's children split into staff (support) and line (operational).
+    // The line units form the main reporting spine: the unit box is centered
+    // over its line row and a clean central stem drops straight down to it.
+    // Staff units are the SECONDARY branch — a row offset to the RIGHT of that
+    // stem, in the band between the unit and its line row, so staff step aside
+    // instead of sitting on the spine. children[] is staff-first sorted.
+    List<String> staffOf(String id) => [
+      for (final k in (children[id] ?? const []))
+        if (byId[k]!.unitRole == 'staff') k,
+    ];
+    List<String> lineOf(String id) => [
+      for (final k in (children[id] ?? const []))
+        if (byId[k]!.unitRole != 'staff') k,
+    ];
+    // A subtree is asymmetric about its unit box center C: [leftExtent] is the
+    // distance from C to the subtree's left edge, [rightExtent] to the right.
+    // The own box and the (centered) line row straddle C symmetrically; the
+    // staff row only pushes the RIGHT edge out. These ↔ the row/height helpers
+    // are mutually recursive, so `late` bindings resolve forward references.
+    late final double Function(String) leftExtent;
+    late final double Function(String) rightExtent;
+    late final double Function(String) subtreeH;
+    double subtreeW(String id) => leftExtent(id) + rightExtent(id);
+
+    // Total width of a sibling row (subtrees laid side by side).
+    double rowW(List<String> kids) {
+      if (kids.isEmpty) return 0;
       var sum = -OrgChartMetrics.treeGapX;
       for (final k in kids) {
         sum += subtreeW(k) + OrgChartMetrics.treeGapX;
       }
-      return sum > own ? sum : own;
+      return sum;
     }
+
+    // Height of a tier = the tallest subtree in that sibling row.
+    double tierH(List<String> kids) {
+      var mx = 0.0;
+      for (final k in kids) {
+        final h = subtreeH(k);
+        if (h > mx) mx = h;
+      }
+      return mx;
+    }
+
+    // Left of C: the wider of the own-box half and the centered line-row half.
+    // (Staff never reach to the left of the stem.)
+    leftExtent = (id) {
+      final ownHalf = unitSize[id]!.width / 2;
+      final lineHalf = rowW(lineOf(id)) / 2;
+      return ownHalf > lineHalf ? ownHalf : lineHalf;
+    };
+    // Right of C: same, unless the staff row (offset just right of the stem)
+    // reaches further out. On real charts the line row is wide, so the staff
+    // row sits above its right half rather than sprawling past it.
+    rightExtent = (id) {
+      final ownHalf = unitSize[id]!.width / 2;
+      final lineHalf = rowW(lineOf(id)) / 2;
+      var r = ownHalf > lineHalf ? ownHalf : lineHalf;
+      if (staffOf(id).isNotEmpty) {
+        final staffRight = OrgChartMetrics.treeGapX + rowW(staffOf(id));
+        if (staffRight > r) r = staffRight;
+      }
+      return r;
+    };
+
+    subtreeH = (id) {
+      var h = unitSize[id]!.height;
+      final staff = staffOf(id);
+      final line = lineOf(id);
+      // Staff form a one-tier band below the unit; the line row is pushed
+      // below that band so the two never collide.
+      final staffBand =
+          staff.isEmpty ? 0.0 : OrgChartMetrics.treeGapY + tierH(staff);
+      h += staffBand;
+      if (line.isNotEmpty) h += OrgChartMetrics.treeGapY + tierH(line);
+      return h;
+    };
 
     var maxRight = 0.0;
     var maxBottom = 0.0;
     void place(String id, double left, double top) {
       final w = byId[id]!;
-      final stw = subtreeW(id);
       final us = unitSize[id]!;
-      final ux = left + (stw - us.width) / 2;
+      final staff = staffOf(id);
+      final line = lineOf(id);
+      // Unit box center = the spine the central stem drops from.
+      final cx0 = left + leftExtent(id);
+      final ux = cx0 - us.width / 2;
       _layoutStructure(
         w,
         ux + OrgChartMetrics.cardPad,
@@ -370,20 +479,44 @@ OrgChartModel buildOrgChartModel(
       );
       if (ux + us.width > maxRight) maxRight = ux + us.width;
       if (top + us.height > maxBottom) maxBottom = top + us.height;
-      final kids = children[id] ?? const [];
-      if (kids.isEmpty) return;
-      var kidsW = -OrgChartMetrics.treeGapX;
-      for (final k in kids) {
-        kidsW += subtreeW(k) + OrgChartMetrics.treeGapX;
+
+      // Lay a row of child subtrees starting at [rowLeft]; wire each to C.
+      void placeRow(
+        List<String> kids,
+        double rowLeft,
+        double rowTop,
+        OrgEdgeKind kind,
+      ) {
+        var cx = rowLeft;
+        for (final k in kids) {
+          edges.add(OrgEdge(fromId: 'ws:$id', toId: 'ws:$k', kind: kind));
+          place(k, cx, rowTop);
+          cx += subtreeW(k) + OrgChartMetrics.treeGapX;
+        }
       }
-      var cx = left + (stw - kidsW) / 2;
-      final ctop = top + us.height + OrgChartMetrics.treeGapY;
-      for (final k in kids) {
-        edges.add(
-          OrgEdge(fromId: 'ws:$id', toId: 'ws:$k', kind: OrgEdgeKind.hierarchy),
+
+      var bandTop = top + us.height;
+      // Staff band — a row offset to the RIGHT of the central stem, so the stem
+      // drops cleanly through the (now clear) center of the band to the line
+      // row: staff step aside, the spine stays clear.
+      if (staff.isNotEmpty) {
+        final sTop = bandTop + OrgChartMetrics.treeGapY;
+        placeRow(
+          staff,
+          cx0 + OrgChartMetrics.treeGapX,
+          sTop,
+          OrgEdgeKind.sideStub,
         );
-        place(k, cx, ctop);
-        cx += subtreeW(k) + OrgChartMetrics.treeGapX;
+        bandTop = sTop + tierH(staff);
+      }
+      // Line row — centered under the unit, below the staff band.
+      if (line.isNotEmpty) {
+        placeRow(
+          line,
+          cx0 - rowW(line) / 2,
+          bandTop + OrgChartMetrics.treeGapY,
+          OrgEdgeKind.hierarchy,
+        );
       }
     }
 
@@ -843,7 +976,7 @@ void _placeSteps(
   }
 }
 
-/// Structure lens — the org-unit's **hierarchy**: the lead (팀장) on top, the
+/// Structure lens — the org-unit's **hierarchy**: the lead (unit head) on top, the
 /// rest of the members in a grid below, joined by reporting edges (lead →
 /// member). The unit-of-units hierarchy itself is the workspace tree (drawn by
 /// the outer loop's ws boxes + hierarchy edges) — nesting workspaces composes

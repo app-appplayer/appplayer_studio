@@ -238,7 +238,7 @@ class _RecordingsViewState extends State<RecordingsView> {
   Future<void> _encode(String id) async {
     setState(() => _busy = 'encode::$id');
     final result = await _call('studio.recorder.encode', <String, dynamic>{
-      'id': id,
+      'recordingId': id,
     });
     if (!mounted) return;
     setState(() => _busy = null);
@@ -248,7 +248,7 @@ class _RecordingsViewState extends State<RecordingsView> {
       SnackBar(
         content: Text(
           ok
-              ? 'Encoded · ${body['mp4'] ?? id}'
+              ? 'Encoded · ${body['outputPath'] ?? id}'
               : 'Encode failed · ${body['error'] ?? 'unknown'}',
         ),
         duration: const Duration(seconds: 3),

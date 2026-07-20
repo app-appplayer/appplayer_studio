@@ -46,6 +46,8 @@ export 'src/actions/action_handler.dart'
 export 'src/core/constants/client_action_types.dart';
 export 'src/channels/channel_manager.dart';
 export 'src/channels/channel_message.dart';
+export 'src/channels/channel_types/mcp_stream_channel.dart'
+    show McpStreamChannel, StreamSourceResolver;
 export 'src/channels/rate_limiter.dart';
 export 'src/permissions/permission_manager.dart';
 export 'src/permissions/trust_level.dart' show TrustLevel, TrustLevelManager;

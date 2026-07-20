@@ -2,6 +2,8 @@
 /// Phase 4a so multiple studios share the same tab model.
 library;
 
+import 'package:flutter/widgets.dart' show WidgetBuilder;
+
 import '../install/host_bundle_activation.dart';
 
 /// One open tab in the universal-host strip. `path` null = the home
@@ -17,6 +19,22 @@ class StudioTab {
       activation = null;
   StudioTab.pkg(this.path, this.name, {this.currentProject})
     : activation = null;
+
+  /// A host-extension surface rendered as a first-class tab (e.g. the
+  /// pro tier's connected market service). [key] doubles as the tab's
+  /// `path` so focus/close/list plumbing works unchanged; it must be
+  /// non-null and never collide with a real package path. Extension
+  /// tabs are SESSION-SCOPED — `_saveTabs` skips them (their backing
+  /// state, e.g. a live connection, does not survive a restart).
+  StudioTab.extension(String key, this.name, {required WidgetBuilder builder})
+    : path = key,
+      currentProject = null,
+      activation = null,
+      extensionBuilder = builder;
+
+  /// Non-null on extension tabs — builds the tab body directly instead
+  /// of the bundle workspace path.
+  WidgetBuilder? extensionBuilder;
 
   // path + name are mutable so the Studio Builder tab can "adopt" a
   // draft (swap its working path / displayed name) without spawning a

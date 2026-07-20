@@ -15,7 +15,7 @@ library;
 class LlmModelOption {
   const LlmModelOption({required this.id, required this.label, this.note});
 
-  /// Provider model id forwarded to mcp_llm verbatim (e.g. `claude-opus-4-7`).
+  /// Provider model id forwarded to mcp_llm verbatim (e.g. `claude-opus-4-8`).
   final String id;
 
   /// Short label for the dropdown row (e.g. `Opus 4.7`).

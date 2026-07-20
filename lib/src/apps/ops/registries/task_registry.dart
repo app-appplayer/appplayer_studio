@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:yaml/yaml.dart';
 
 import '../infra/ws_paths.dart';
+import '../triggers/trigger_events.dart';
 import '../util/atomic_write.dart';
 
 /// See `SRS §2.10 FR-OPS-012` for the design specification.
@@ -61,6 +62,7 @@ class Task {
     this.state = TaskState.pending,
     this.runs = const [],
     required this.createdAt,
+    this.lastFiredAt,
   });
 
   final String id;
@@ -77,7 +79,16 @@ class Task {
   final List<TaskRunRef> runs;
   final DateTime createdAt;
 
-  Task copyWith({TaskState? state, List<TaskRunRef>? runs}) => Task(
+  /// When this task last ran — persisted (unlike the in-memory [runs]) so the
+  /// scheduler can catch up recurring fires missed while the app was closed.
+  /// See `TaskScheduler` R4 catchup.
+  final DateTime? lastFiredAt;
+
+  Task copyWith({
+    TaskState? state,
+    List<TaskRunRef>? runs,
+    DateTime? lastFiredAt,
+  }) => Task(
     id: id,
     workspaceId: workspaceId,
     kind: kind,
@@ -91,6 +102,7 @@ class Task {
     state: state ?? this.state,
     runs: runs ?? this.runs,
     createdAt: createdAt,
+    lastFiredAt: lastFiredAt ?? this.lastFiredAt,
   );
 }
 
@@ -107,7 +119,11 @@ typedef SkillDispatch =
 /// to its scoped kernel agent + calls the agent), so both manual `task_run`
 /// and the recurring scheduler actually wake the assignee.
 typedef AgentRun =
-    Future<String?> Function(String assigneeId, String request);
+    Future<String?> Function(
+      String assigneeId,
+      String request, {
+      String? workspaceId,
+    });
 
 class TaskRegistry {
   TaskRegistry({
@@ -127,6 +143,11 @@ class TaskRegistry {
   /// Injected after bootstrap — drives the assignee agent (assign + produce).
   /// Null / returns null → fall back to [dispatch] (headless skill run).
   AgentRun? agentRun;
+
+  /// Injected after bootstrap — emits a completion event when a run finishes
+  /// (success or blocked), so the trigger bus can wake subscribers / surface it
+  /// into the assignee's live chat. Null → runs complete silently (legacy).
+  void Function(AgentWorkCompleted event)? onWorkCompleted;
 
   final Map<String, Map<String, Task>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -198,8 +219,11 @@ class TaskRegistry {
     }
     final runId = _uuid.v4();
     final startedAt = DateTime.now();
+    // Advance lastFiredAt on every run (manual or scheduled) — it feeds the
+    // scheduler's catchup decision, and a manual run means "ran recently".
     final running = t.copyWith(
       state: TaskState.inProgress,
+      lastFiredAt: startedAt,
       runs: [
         ...t.runs,
         TaskRunRef(
@@ -219,7 +243,15 @@ class TaskRegistry {
       // recurring scheduler, since both call run().
       String? summary;
       if (canTryAgent) {
-        summary = await agentRun!(assignee!, _taskRequest(t));
+        // Pass the task's OWN workspace so a bare assignee (`lead`) resolves
+        // WITHIN it — every division has a `lead`, so an unscoped resolve
+        // returns the first match by scan order and could mis-deliver to a
+        // same-named member in another department.
+        summary = await agentRun!(
+          assignee!,
+          _taskRequest(t),
+          workspaceId: t.workspaceId,
+        );
       }
       if (summary == null) {
         // Agent path unavailable / declined (person, unknown id, subsystem
@@ -248,6 +280,7 @@ class TaskRegistry {
       await update(
         running.copyWith(state: TaskState.completed, runs: [...t.runs, ref]),
       );
+      _emitCompleted(t, assignee, runId, 'completed', summary);
       return ref;
     } catch (e) {
       final ref = TaskRunRef(
@@ -260,7 +293,37 @@ class TaskRegistry {
       await update(
         running.copyWith(state: TaskState.blocked, runs: [...t.runs, ref]),
       );
+      _emitCompleted(t, assignee, runId, 'blocked', e.toString());
       return ref;
+    }
+  }
+
+  /// Fire the R1 completion event (best-effort — a bad listener must not fail
+  /// the run). `sourceAgentId` is the assignee that performed the work (empty
+  /// when the run went through a headless skill with no agent assignee).
+  void _emitCompleted(
+    Task t,
+    String? assignee,
+    String runId,
+    String state,
+    String? summary,
+  ) {
+    final cb = onWorkCompleted;
+    if (cb == null) return;
+    try {
+      cb(
+        AgentWorkCompleted(
+          sourceAgentId: assignee ?? '',
+          workspaceId: t.workspaceId,
+          kind: WorkKind.task,
+          refId: runId,
+          state: state,
+          at: DateTime.now(),
+          summary: summary,
+        ),
+      );
+    } catch (_) {
+      // Emission is best-effort; the run already persisted its outcome.
     }
   }
 
@@ -353,6 +416,9 @@ class TaskRegistry {
       ),
       createdAt:
           DateTime.tryParse(y['createdAt'] as String? ?? '') ?? DateTime.now(),
+      lastFiredAt: y['lastFiredAt'] is String
+          ? DateTime.tryParse(y['lastFiredAt'] as String)
+          : null,
     );
   }
 
@@ -379,6 +445,9 @@ class TaskRegistry {
     }
     if (t.dueAt != null) buf.writeln('dueAt: ${t.dueAt!.toIso8601String()}');
     buf.writeln('state: ${t.state.name}');
+    if (t.lastFiredAt != null) {
+      buf.writeln('lastFiredAt: ${t.lastFiredAt!.toIso8601String()}');
+    }
     return buf.toString();
   }
 

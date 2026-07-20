@@ -70,12 +70,23 @@ export 'package:brain_kernel/brain_kernel.dart'
         McpClientOriginator,
         UserOriginator;
 
-// ── Bundle activation (read-only view) ───────────────────────────
+// ── Bundle activation ────────────────────────────────────────────
 //
-// Used only when a builtin reads its own activation info (exposed
-// namespace · bundleId · tools, etc.). activate/deactivate itself is
-// the host's responsibility.
-export 'package:brain_kernel/brain_kernel.dart' show BundleActivation;
+// `BundleActivation` — read-only view a builtin reads about its own
+// activation (exposed namespace · bundleId · tools, etc.).
+//
+// `BundleActivationRegistry` — the process-singleton lifecycle hub
+// (design contract knowledge-operations.md §11.3: canonical owner of
+// backend activations; tab switch keeps them running, tab close
+// removes them). Exposed because a host-level builtin that boots its
+// OWN backend (Ops / Form Builder each activate per-workspace org
+// bundles inside their KnowledgeInit) IS the host for those bundles —
+// it registers them at boot and removes them at teardown so the
+// uniform host path, `studio.debug.activation`/`runtimes`, chat
+// dispatch, and `findOwnerOf*` see them like any other activation.
+// Bundle-app activation stays the host's job (host_bundle_activation).
+export 'package:brain_kernel/brain_kernel.dart'
+    show BundleActivation, BundleActivationRegistry;
 
 // ── Tool response model ──────────────────────────────────────────
 //

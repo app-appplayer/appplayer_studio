@@ -21,6 +21,7 @@ import '../registries/process_registry.dart';
 import '../registries/task_registry.dart';
 import '../registries/workspace_registry.dart';
 import '../skills/skill_definition.dart';
+import '../ui/_shared/fact_display.dart';
 import '../ui/organization/org_chart_model.dart';
 import '../ui/organization/org_overlay.dart';
 import '../ui/home/today_flow_card.dart' show TodayFlowData, pollTodayFlow;
@@ -205,7 +206,11 @@ final visibleSkillsProvider = FutureProvider<List<SkillDefinition>>((ref) async 
   }
   defs.sort((a, b) => a.id.compareTo(b.id));
   return defs;
-}, dependencies: [knowledgeInitProvider]);
+}, dependencies: [
+  knowledgeInitProvider,
+  skillChangesProvider,
+  workspaceChangesProvider,
+]);
 
 final knowledgeChangesProvider = StreamProvider<void>((ref) {
   return ref.watch(knowledgeInitProvider).registries.knowledge.changes;
@@ -440,6 +445,8 @@ final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>((ref) async {
         type: ws.type.name,
         parentId: ws.parentId,
         leadMemberId: ws.leadMemberId,
+        unitRole: ws.unitRole.name,
+        sortOrder: ws.sortOrder,
         agents: agents,
         processes: processes,
       ),
@@ -613,25 +620,26 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
         workspaceId: wsId,
         limit: 30,
       );
-      for (final f in facts.where((f) => f.type.startsWith('agent.')).take(6)) {
+      // Agent lifecycle facts (evolution / transfer / invocation) carry real
+      // signal, but the initial 4-axis philosophy-pool provisioning is pure
+      // setup bookkeeping (one record per axis per agent) that floods the feed
+      // and buries actual work. Drop provisioning (audit P1.2); keep the rest,
+      // and label the actor with its displayName, never the raw qualified
+      // agentId (audit P1.3 — parity with Members / Organization).
+      final lifecycle = facts
+          .where(
+            (f) => isAgentLifecycleFact(f.type) && !isProvisioningFact(f),
+          )
+          .take(4);
+      for (final f in lifecycle) {
         final c = f.content;
         final agentId = (c['agentId'] ?? '—').toString();
-        final axis = (c['axis'] ?? '').toString();
         final source = (c['source'] ?? '').toString();
-        final isTransfer = source.startsWith('agent:');
-        final headline = switch (f.type) {
-          'agent.fork.assigned' =>
-            isTransfer ? 'received $axis' : 'forked $axis',
-          'agent.fork.evolved' => '$axis evolved',
-          'agent.invoked' => 'invoked',
-          'agent.deleted' => 'deleted',
-          _ => f.type,
-        };
         out.add(
           HomeActivityEntry(
             actorKind: 'agent',
-            actorLabel: agentId,
-            headline: headline,
+            actorLabel: memberDisplayNameFor(members, agentId),
+            headline: agentFactHeadline(f),
             meta: source.isEmpty ? 'lifecycle' : '← $source',
             route: 'members',
           ),
@@ -650,16 +658,32 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
           ),
         );
       }
-      for (final t in tasks.take(3)) {
+      // Background `agent_ask` delegations (`ask-async-*`) are curation-loop
+      // bookkeeping — they dominate the feed and bury real work, exactly as on
+      // the Tasks page (which folds them into a separate "Delegations" group).
+      // Drop them here so Home Recent activity surfaces actual task activity
+      // (audit P1.3 follow-up).
+      final feedTasks = tasks.where((t) => !t.id.startsWith('ask-async-'));
+      for (final t in feedTasks.take(3)) {
         final assignee =
             t.assigneeIds.isNotEmpty ? t.assigneeIds.first : 'unassigned';
+        // Match on BOTH the bare member id and the qualified agentId — a task
+        // assigneeId may be either form, and the old `m.id == assignee` check
+        // misclassified a qualified-id assignee as human.
         final isAgent = members.any(
-          (m) => m.id == assignee && m.runtimeType.toString().contains('Agent'),
+          (m) =>
+              m.runtimeType.toString().contains('Agent') &&
+              (m.id == assignee ||
+                  (m is AgentMember && m.agentId == assignee)),
         );
         out.add(
           HomeActivityEntry(
             actorKind: isAgent ? 'agent' : 'human',
-            actorLabel: assignee,
+            // Always the displayName, never the raw/qualified agentId (audit
+            // P1.3 — parity with the lifecycle rows above and Members/Tasks).
+            actorLabel: assignee == 'unassigned'
+                ? 'unassigned'
+                : memberDisplayNameFor(members, assignee),
             headline: '${t.kind.name} task · ${t.title}',
             meta:
                 'state: ${t.state.name}'

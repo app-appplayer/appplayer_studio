@@ -94,11 +94,11 @@ List<VibeAgentProfile> _readSeedAgents(
             (modelEntry['model'] as String?) ??
             (a['modelId'] as String?) ??
             defaultModelId ??
-            'claude-opus-4-7';
+            'claude-opus-4-8';
         provider = (modelEntry['provider'] as String?) ?? 'anthropic';
       } else {
         modelId =
-            (a['modelId'] as String?) ?? defaultModelId ?? 'claude-opus-4-7';
+            (a['modelId'] as String?) ?? defaultModelId ?? 'claude-opus-4-8';
         provider = 'anthropic';
       }
       final tools =

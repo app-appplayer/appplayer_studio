@@ -146,4 +146,56 @@ void main() {
       expect(ws.tags['key'], '2');
     });
   });
+
+  group('Workspace.unitRole (line/staff)', () {
+    test('wm — defaults to line when absent', () {
+      final ws = Workspace.fromYaml({'id': 'org/x'});
+      expect(ws.unitRole, WorkspaceUnitRole.line);
+    });
+
+    test('wm — staff round-trips through toYamlMap/fromYaml', () {
+      final ws = Workspace(
+        id: 'org/support',
+        type: WorkspaceType.org,
+        title: 'Support',
+        locale: 'en',
+        timezone: 'UTC',
+        createdAt: DateTime(2026),
+        unitRole: WorkspaceUnitRole.staff,
+      );
+      final back = Workspace.fromYaml(ws.toYamlMap());
+      expect(back.unitRole, WorkspaceUnitRole.staff);
+      // line stays the default and is omitted from yaml (no churn on existing).
+      final line = Workspace.fromYaml({'id': 'org/y'}).toYamlMap();
+      expect(line.containsKey('unitRole'), isFalse);
+    });
+
+    test('wm — unknown unitRole string falls back to line', () {
+      final ws = Workspace.fromYaml({'id': 'org/z', 'unitRole': 'bogus'});
+      expect(ws.unitRole, WorkspaceUnitRole.line);
+    });
+  });
+
+  group('Workspace.sortOrder (sibling ordering hint)', () {
+    test('wm — defaults to 0 (unset) when absent', () {
+      final ws = Workspace.fromYaml({'id': 'org/x'});
+      expect(ws.sortOrder, 0);
+    });
+
+    test('wm — non-zero round-trips; 0 omitted from yaml (no churn)', () {
+      final ws = Workspace(
+        id: 'org/eng',
+        type: WorkspaceType.org,
+        title: 'Eng',
+        locale: 'en',
+        timezone: 'UTC',
+        createdAt: DateTime(2026),
+        sortOrder: 2,
+      );
+      final back = Workspace.fromYaml(ws.toYamlMap());
+      expect(back.sortOrder, 2);
+      final unset = Workspace.fromYaml({'id': 'org/y'}).toYamlMap();
+      expect(unset.containsKey('sortOrder'), isFalse);
+    });
+  });
 }

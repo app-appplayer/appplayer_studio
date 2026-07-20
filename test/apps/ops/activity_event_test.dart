@@ -111,5 +111,41 @@ void main() {
       expect(ActivitySeverity.warn.name, 'warn');
       expect(ActivitySeverity.error.name, 'error');
     });
+
+    test('ae8 filterable kinds advertise only kinds with an emit site', () {
+      // The Live Feed filter chips iterate kFilterableActivityKinds, not the
+      // raw enum — advertising a chip for a kind nothing emits reads as a
+      // broken filter. toolResult (folded into toolDispatch) and forkEvolved
+      // (kernel-internal, no ops seam) have NO emit site and must be excluded.
+      expect(
+        kFilterableActivityKinds,
+        isNot(contains(ActivityKind.toolResult)),
+        reason: 'toolResult has no emit site — folded into toolDispatch',
+      );
+      expect(
+        kFilterableActivityKinds,
+        isNot(contains(ActivityKind.forkEvolved)),
+        reason: 'forkEvolved is kernel-internal — no ops emit seam',
+      );
+      // Every wired kind IS offered.
+      for (final wired in const [
+        ActivityKind.mcpInbound,
+        ActivityKind.agentAsk,
+        ActivityKind.agentReply,
+        ActivityKind.llmCall,
+        ActivityKind.toolDispatch,
+        ActivityKind.forkAssigned,
+        ActivityKind.philosophyGate,
+        ActivityKind.info,
+        ActivityKind.error,
+      ]) {
+        expect(kFilterableActivityKinds, contains(wired));
+      }
+      // No duplicates.
+      expect(
+        kFilterableActivityKinds.toSet().length,
+        kFilterableActivityKinds.length,
+      );
+    });
   });
 }

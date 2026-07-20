@@ -119,6 +119,11 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
   void initState() {
     super.initState();
     _templates = _load();
+    // Listener (not onChanged) so programmatic writes into the controller —
+    // studio.ui.type, the clear button — re-run the filter too.
+    _search.addListener(() {
+      if (mounted) setState(() {});
+    });
     _versionPoll = Timer.periodic(
       const Duration(seconds: 4),
       (_) => _checkVersion(),
@@ -439,7 +444,6 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TextField(
             controller: _search,
-            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
