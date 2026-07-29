@@ -84,9 +84,32 @@ class ClientActionHandler {
     // every executor.
     action = _flattenParams(action);
 
-    // Check permissions
+    // Check permissions. `_flattenParams` above is synchronous, but the render
+    // context this BuildContext came from can be torn down between the action
+    // being dispatched and reaching here (a page popped mid-action), so the
+    // surface is re-checked before a prompt can be raised on it.
+    // An embedded subtree cannot out-permission its embedder (spec §7.10.1:
+    // the effective set is the INTERSECTION, never the union). A device's own
+    // document is authored by whoever made the device, so a `view` that could
+    // prompt for — and receive — a permission the embedding app never held
+    // would let any embedded server escalate through the screen it was given.
+    //
+    // Enforced before the prompt, not after: a user who is asked already had
+    // the request put in front of them, and a denial afterwards is a worse
+    // experience than never asking.
+    if (context.origin != null) {
+      final required = ClientPermissions.getRequiredPermission(type);
+      if (required != null && !_permissionManager.isGranted(required)) {
+        return ActionResult.error(
+          'Permission "$required" is not held by the embedding app — an '
+          'embedded view cannot request more than its embedder holds',
+          errorCode: 'PERMISSION_DENIED',
+        );
+      }
+    }
+
     final buildContext = context.buildContext;
-    if (buildContext != null) {
+    if (buildContext != null && buildContext.mounted) {
       final permissionResult = await _permissionManager.checkAndPrompt(
         context: buildContext,
         actionType: type,

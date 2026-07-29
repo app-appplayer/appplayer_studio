@@ -42,7 +42,7 @@ import '../settings/vibe_settings.dart';
 import 'bundle_install_surface.dart';
 import 'shell_blueprint.dart';
 
-/// One seed bundle declaration. Per SDD §1.4 the host returns a single
+/// One seed bundle declaration. The host returns a single
 /// list of these; `studio_boot` reads each entry's manifest and wires
 /// whichever capability surfaces the manifest declares (knowledge →
 /// KB index, agents → FlowBrain ops baseline, tools/ui/chat → handled
@@ -93,7 +93,7 @@ abstract class StudioApp {
   /// Seed bundles registered automatically at boot. Each entry's
   /// manifest declaration drives which capability surfaces wire up
   /// (knowledge → KB index, agents → FlowBrain ops baseline, etc.).
-  /// Per SDD §1.4 the host does not pick channels — manifest decides.
+  /// The host does not pick channels — manifest decides.
   List<SeedBundleEntry> seedBundles() => const <SeedBundleEntry>[];
 
   /// Tool definitions FlowBrain's agent host fetches each turn. Each

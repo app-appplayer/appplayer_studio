@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'route_value.dart';
 import '../models/ui_definition.dart';
 import '../runtime/runtime_engine.dart';
 import 'page_state_scope.dart';
@@ -17,7 +18,18 @@ class RouteManager {
     required this.appDefinition,
     required this.pageLoader,
     required this.runtimeEngine,
+    this.launchRoute,
   });
+
+  /// Route requested by whatever opened this runtime — a scan entry, a deep
+  /// link, an app-to-app open (MCP UI DSL 8.9, platform spec 19 4.3).
+  ///
+  /// It overrides the document's own `initialRoute`, and only when the
+  /// document actually declares it: an entry that names a route the app no
+  /// longer has MUST NOT be honoured silently, because a stale binding would
+  /// then look exactly like a working one. [launchRouteMissing] reports that
+  /// case so the host can disclose it.
+  final String? launchRoute;
 
   /// Generate Flutter routes from application definition
   Map<String, WidgetBuilder> generateRoutes(BuildContext context) {
@@ -28,7 +40,7 @@ class RouteManager {
       final pageUri = entry.value;
 
       routes[routePath] = (context) => FutureBuilder<PageDefinition>(
-            future: _loadPage(pageUri),
+            future: _loadPage(pageUri, routePath: routePath),
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 return _buildPageWidget(snapshot.data!, routePath);
@@ -44,8 +56,22 @@ class RouteManager {
     return routes;
   }
 
-  /// Get initial route
-  String get initialRoute => appDefinition.initialRoute;
+  /// Get initial route — the launch route when one was requested and the
+  /// document declares it, the document's own initial route otherwise.
+  String get initialRoute {
+    final requested = launchRoute;
+    if (requested != null && appDefinition.routes.containsKey(requested)) {
+      return requested;
+    }
+    return appDefinition.initialRoute;
+  }
+
+  /// True when a launch route was requested but this document has no such
+  /// route. The host discloses it rather than pretending the request landed.
+  bool get launchRouteMissing {
+    final requested = launchRoute;
+    return requested != null && !appDefinition.routes.containsKey(requested);
+  }
 
   /// Navigate to a route with parameters
   ///
@@ -62,14 +88,15 @@ class RouteManager {
     // Execute pagePause on the current page (push) or leave (replace)
     if (_pageStack.isNotEmpty) {
       final currentRoute = _pageStack.last;
-      final currentPageUri = appDefinition.routes[currentRoute];
-      if (currentPageUri != null && _loadedPages.containsKey(currentPageUri)) {
-        final currentPage = _loadedPages[currentPageUri]!;
+      final currentKey = routeValueCacheKey(
+          currentRoute, appDefinition.routes[currentRoute]);
+      if (_loadedPages.containsKey(currentKey)) {
+        final currentPage = _loadedPages[currentKey]!;
         final lifecycle = currentPage.lifecycleDefinition;
         if (replace) {
-          if (lifecycle?.onLeave != null) {
-            runtimeEngine.lifecycle.executeOnLeave(lifecycle!.onLeave!);
-          }
+          // Unmount teardown belongs to the page widget's dispose — see
+          // RuntimeEngine.navigateToRoute. Running it here too fired the hook
+          // twice.
         } else {
           if (lifecycle?.onPause != null) {
             runtimeEngine.lifecycle.executeOnPagePause(lifecycle!.onPause!);
@@ -100,26 +127,19 @@ class RouteManager {
   ///
   /// Pop navigation: current page receives leave, previous page receives pageResume.
   void navigateBack<T>(BuildContext context, [T? result]) {
-    // Execute leave on the current page
+    // The outgoing page tears itself down from its widget's dispose; this only
+    // pops the stack.
     if (_pageStack.isNotEmpty) {
-      final currentRoute = _pageStack.last;
-      final currentPageUri = appDefinition.routes[currentRoute];
-      if (currentPageUri != null && _loadedPages.containsKey(currentPageUri)) {
-        final currentPage = _loadedPages[currentPageUri]!;
-        final lifecycle = currentPage.lifecycleDefinition;
-        if (lifecycle?.onLeave != null) {
-          runtimeEngine.lifecycle.executeOnLeave(lifecycle!.onLeave!);
-        }
-      }
       _pageStack.removeLast();
     }
 
     // Execute pageResume on the previous (now visible) page
     if (_pageStack.isNotEmpty) {
       final previousRoute = _pageStack.last;
-      final previousPageUri = appDefinition.routes[previousRoute];
-      if (previousPageUri != null && _loadedPages.containsKey(previousPageUri)) {
-        final previousPage = _loadedPages[previousPageUri]!;
+      final previousKey = routeValueCacheKey(
+          previousRoute, appDefinition.routes[previousRoute]);
+      if (_loadedPages.containsKey(previousKey)) {
+        final previousPage = _loadedPages[previousKey]!;
         final lifecycle = previousPage.lifecycleDefinition;
         if (lifecycle?.onResume != null) {
           runtimeEngine.lifecycle.executeOnPageResume(lifecycle!.onResume!);
@@ -139,21 +159,27 @@ class RouteManager {
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
-  /// Load a page definition
-  Future<PageDefinition> _loadPage(String pageUri) async {
-    // Check cache first
-    if (_loadedPages.containsKey(pageUri)) {
-      return _loadedPages[pageUri]!;
+  /// Load a page definition for any `RouteValue` (spec v1.4 §1.2.1).
+  ///
+  /// A plain resource URI goes through the host's [pageLoader] as before.
+  /// Every other form — inline page, transition wrapper, qualified `$ref` to
+  /// another origin, or a binding — is normalised locally by
+  /// [routeValueToPageJson]; the origin-carrying forms become a page whose
+  /// content is a single `view`, so route-level and widget-level composition
+  /// share one implementation.
+  Future<PageDefinition> _loadPage(dynamic routeValue,
+      {String routePath = ''}) async {
+    final cacheKey = routeValueCacheKey(routePath, routeValue);
+    if (_loadedPages.containsKey(cacheKey)) {
+      return _loadedPages[cacheKey]!;
     }
 
-    // Load from server
-    final pageJson = await pageLoader(pageUri);
+    final local = routeValueToPageJson(routeValue);
+    final pageJson = local ?? await pageLoader(routeValue as String);
     final uiDef = UIDefinition.fromJson(pageJson as Map<String, dynamic>);
     final pageDef = PageDefinition.fromUIDefinition(uiDef);
 
-    // Cache the loaded page
-    _loadedPages[pageUri] = pageDef;
-
+    _loadedPages[cacheKey] = pageDef;
     return pageDef;
   }
 
@@ -255,7 +281,7 @@ class RouteManager {
           route: appRoute,
           pathParams: pathParams,
           queryParams: queryParams,
-          pageUri: appDefinition.routes[appRoute]!,
+          pageUri: appDefinition.routes[appRoute],
         );
       }
     }
@@ -288,7 +314,12 @@ class RouteInfo {
   final String route;
   final Map<String, String> pathParams;
   final Map<String, String> queryParams;
-  final String pageUri;
+
+  /// The route's raw `RouteValue` (spec v1.4 §1.2.1). Typed `dynamic` because a
+  /// route may be a resource URI string, an inline page, a transition wrapper,
+  /// a qualified `{ $ref, from }` reference to another origin, or a binding.
+  /// Casting this to `String` would throw on every composed route.
+  final dynamic pageUri;
 
   RouteInfo({
     required this.route,

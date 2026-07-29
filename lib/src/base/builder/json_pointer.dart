@@ -6,7 +6,7 @@
 /// of being literal duplicates.
 ///
 /// All functions throw [FormatException] on malformed input — the
-/// caller should translate into the §4 diagnostic shape so external
+/// caller should translate into the diagnostic shape so external
 /// LLMs see `{code, path, expected, actual, message, suggestion}`
 /// instead of a raw stack trace.
 library;

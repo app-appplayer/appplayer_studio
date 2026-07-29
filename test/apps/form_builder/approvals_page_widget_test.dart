@@ -1,4 +1,4 @@
-/// Approvals route + approval gate — the 결재함 matrix over the REAL tool
+/// Approvals route + approval gate — the approval-inbox matrix over the REAL tool
 /// surface (no mocks): request → pending card renders → issue is REFUSED
 /// while pending → approve through the dialog → line completes → issue
 /// passes and freezes the line as provenance.
@@ -62,20 +62,20 @@ void main() {
     await call(tester, 'form.save_template', {'template': harnessTemplate()});
     final created = await call(tester, 'form.create_document', {
       'templateId': 'harness-quote',
-      'data': {'수신': '한울정공'},
+      'data': {'recipient': 'Hanul Precision'},
     });
     final documentId = created['documentId'] as String;
     await call(tester, 'form_builder.draft_save', {
       'documentId': documentId,
       'templateId': 'harness-quote',
-      'data': {'수신': '한울정공'},
+      'data': {'recipient': 'Hanul Precision'},
     });
     final requested = await call(tester, 'form_builder.approval_request', {
       'documentId': documentId,
       'requestedBy': 'nina',
-      'title': '지출 기안',
+      'title': 'Expense request',
       'line': [
-        {'approverId': 'dept-lead', 'roleLabel': '부서장'},
+        {'approverId': 'dept-lead', 'roleLabel': 'Dept head'},
       ],
     });
     expect(requested['state'], 'pending');
@@ -89,16 +89,16 @@ void main() {
 
     // The pending card renders: title, requester, current gate, line chip.
     await pumpPage(tester);
-    expect(find.text('지출 기안'), findsOneWidget);
+    expect(find.text('Expense request'), findsOneWidget);
     expect(find.textContaining('current gate dept-lead'), findsOneWidget);
-    expect(find.textContaining('dept-lead (부서장)'), findsOneWidget);
+    expect(find.textContaining('dept-lead (Dept head)'), findsOneWidget);
 
     // Approve through the dialog (button = tool).
     await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
     await settle(tester, 4);
     await tester.enterText(
       find.widgetWithText(TextField, 'Comment (optional)'),
-      '확인했음',
+      'Acknowledged',
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Approve').last);
     await settle(tester, 40);
@@ -127,33 +127,33 @@ void main() {
   });
 
   testWidgets('reject flow: comment required in dialog semantics, draft '
-      'returns to draft, 결재함 empties', (tester) async {
+      'returns to draft, approval inbox empties', (tester) async {
     final created = await call(tester, 'form.create_document', {
       'templateId': 'harness-quote',
-      'data': {'수신': '반려대상'},
+      'data': {'recipient': 'Reject target'},
     });
     final documentId = created['documentId'] as String;
     await call(tester, 'form_builder.draft_save', {
       'documentId': documentId,
       'templateId': 'harness-quote',
-      'data': {'수신': '반려대상'},
+      'data': {'recipient': 'Reject target'},
     });
     await call(tester, 'form_builder.approval_request', {
       'documentId': documentId,
       'requestedBy': 'nina',
-      'title': '반려 케이스',
+      'title': 'Reject case',
       'line': [
         {'approverId': 'owner'},
       ],
     });
 
     await pumpPage(tester);
-    expect(find.text('반려 케이스'), findsOneWidget);
+    expect(find.text('Reject case'), findsOneWidget);
     await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
     await settle(tester, 4);
     await tester.enterText(
       find.widgetWithText(TextField, 'Reason (required)'),
-      '금액 재검토',
+      'amount needs review',
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
     await settle(tester, 40);
@@ -175,18 +175,18 @@ void main() {
       'a pending gate and keeps provenance', (tester) async {
     final created = await call(tester, 'form.create_document', {
       'templateId': 'harness-quote',
-      'data': {'수신': '재키검증'},
+      'data': {'recipient': 'Jackie check'},
     });
     final docA = created['documentId'] as String;
     await call(tester, 'form_builder.draft_save', {
       'documentId': docA,
       'templateId': 'harness-quote',
-      'data': {'수신': '재키검증'},
+      'data': {'recipient': 'Jackie check'},
     });
     await call(tester, 'form_builder.approval_request', {
       'documentId': docA,
       'requestedBy': 'nina',
-      'title': '재키 기안',
+      'title': 'Jackie request',
       'line': [
         {'approverId': 'lead'},
       ],
@@ -195,13 +195,13 @@ void main() {
     // Editor reload: a NEW engine document replaces the draft.
     final again = await call(tester, 'form.create_document', {
       'templateId': 'harness-quote',
-      'data': {'수신': '재키검증'},
+      'data': {'recipient': 'Jackie check'},
     });
     final docB = again['documentId'] as String;
     await call(tester, 'form_builder.draft_save', {
       'documentId': docB,
       'templateId': 'harness-quote',
-      'data': {'수신': '재키검증'},
+      'data': {'recipient': 'Jackie check'},
       'previousDocumentId': docA,
     });
 

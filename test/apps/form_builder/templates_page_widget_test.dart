@@ -83,7 +83,7 @@ void main() {
     );
     expect(createBtn.onPressed, isNull);
     await tester.enterText(
-      find.widgetWithText(TextField, 'Name (e.g. 견적서)'),
+      find.widgetWithText(TextField, 'Name (e.g. Quotation)'),
       'Widget Made',
     );
     await tester.pump();
@@ -111,23 +111,23 @@ void main() {
       await tester.tap(find.text('Harness Quote'));
       await settle(tester);
       // Tap the heading block on the sheet → inspector.
-      await tester.tap(find.text('견적서'));
+      await tester.tap(find.text('Quotation'));
       await tester.pump();
       expect(find.text('CONTENT'), findsOneWidget);
       // Edit the content property.
       final contentField = find.descendant(
         of: find.byType(TextField),
-        matching: find.text('견적서'),
+        matching: find.text('Quotation'),
       );
       await tester.enterText(
         contentField.evaluate().isEmpty
-            ? find.widgetWithText(TextField, '견적서')
+            ? find.widgetWithText(TextField, 'Quotation')
             : contentField,
-        '수정된 제목',
+        'Edited title',
       );
       await tester.pump();
       // Sheet re-rendered + Save armed.
-      expect(find.text('수정된 제목'), findsWidgets);
+      expect(find.text('Edited title'), findsWidgets);
       final save = find.widgetWithText(FilledButton, 'Save v1.0.1');
       expect(save, findsOneWidget);
       await tester.tap(save);
@@ -140,7 +140,7 @@ void main() {
               as List;
       final title = blocks.firstWhere((b) => b['blockId'] == 'title');
       expect(tpl['template']['version'], '1.0.1');
-      expect(title['content'], '수정된 제목');
+      expect(title['content'], 'Edited title');
       await unmount(tester);
     },
   );
@@ -170,7 +170,7 @@ void main() {
         .toList();
     expect(types, contains('image'));
     // Delete the heading block via its inspector.
-    await tester.tap(find.text('견적서'));
+    await tester.tap(find.text('Quotation'));
     await tester.pump();
     await tester.tap(find.text('Delete block'));
     await tester.pump();
@@ -255,7 +255,7 @@ void main() {
         'blockId': 'company',
         'type': 'text',
         'index': 3,
-        'content': '(주) 메이크마인드',
+        'content': 'Makemind Inc.',
         'style': {
           'placement': {'anchor': 'bottom-center', 'y': 24},
         },
@@ -268,7 +268,7 @@ void main() {
       await settle(tester);
       // Tapping the LLM-placed block must open the inspector, not crash
       // the dropdown (live crash 2026-07-03: bottom-center had no item).
-      await tester.tap(find.text('(주) 메이크마인드'));
+      await tester.tap(find.text('Makemind Inc.'));
       await tester.pump();
       expect(tester.takeException(), isNull);
       expect(find.text('bottom-center'), findsWidgets);
@@ -319,7 +319,7 @@ void main() {
         'blockId': 'company',
         'type': 'text',
         'index': 3,
-        'content': '(주) 메이크마인드',
+        'content': 'Makemind Inc.',
         'style': {
           'placement': {'anchor': 'weird-spot', 'y': 24},
         },
@@ -337,7 +337,7 @@ void main() {
       // No off-spec data path via tools anymore — simulate by tapping the
       // in-spec block and checking the banner ISN'T shown (sanity), the
       // rejection path is covered by the tool-level test above.
-      await tester.tap(find.text('견적서'));
+      await tester.tap(find.text('Quotation'));
       await tester.pump();
       expect(find.textContaining('is not in the spec'), findsNothing);
     },

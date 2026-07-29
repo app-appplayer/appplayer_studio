@@ -3,8 +3,7 @@
 /// vibe_studio as a built-in app so it shares chrome / MCP server /
 /// backbone (`StudioBackbone.app.system` — KernelApp wrap) without standing up
 /// a parallel boot path. Phase A scaffold only — domain pages, tool
-/// registration, and knowledge fan-out land in later phases per
-/// `diora/design/ops-internalization-plan-2026-05-21.md`.
+/// registration, and knowledge fan-out land in later phases.
 library;
 
 import 'dart:async';
@@ -15,6 +14,8 @@ import 'package:appplayer_studio/src/apps/ops/config/ops_config.dart';
 import 'package:appplayer_studio/src/apps/ops/init/knowledge_init.dart';
 import 'package:appplayer_studio/src/apps/ops/registries/member_registry.dart'
     show AgentMember;
+import 'package:appplayer_studio/src/apps/ops/registries/task_registry.dart'
+    show AgentRun;
 import 'package:appplayer_studio/src/apps/ops/server/mcp_inbound.dart';
 import 'package:appplayer_studio/src/apps/ops/tools/ui_debug_tools.dart';
 import 'package:path/path.dart' as p;
@@ -281,8 +282,8 @@ class OpsBuiltInApp extends BuiltInApp {
     );
     // Phase A.3 — merge Ops's LlmPort provider pool (multi-provider
     // mcp_llm — Anthropic / OpenAI / Gemini) into the KernelApp's
-    // `agentLlmSessions` via the `addAll(Map)` helper (FR-LLM-008,
-    // 2026-05-24). The backbone's pool is empty by default
+    // `agentLlmSessions` via the `addAll(Map)` helper (2026-05-24).
+    // The backbone's pool is empty by default
     // (vibe_studio doesn't supply an llmApiKey), so without this
     // merge `kStudioAgentProfiles` agents (studio.manager,
     // builder.manager, scene.manager, ops.manager, ...) throw "No
@@ -295,7 +296,7 @@ class OpsBuiltInApp extends BuiltInApp {
         // `providerPool` carries `bundle.LlmPort` values but every
         // entry is a concrete `LlmPortAdapter` instance under the
         // hood (built by `LlmPortAdapterFactory` upstream).
-        // `AgentLlmSessions.addAll` (FR-LLM-008) accepts the narrower
+        // `AgentLlmSessions.addAll` accepts the narrower
         // adapter type — cast via the entries iterator so non-adapter
         // entries silently drop instead of throwing.
         final adapters = <String, mk.LlmPortAdapter>{
@@ -324,27 +325,7 @@ class OpsBuiltInApp extends BuiltInApp {
     // agent_ask does; returns null for persons / unknown ids / off subsystem so
     // TaskRegistry.run falls back to skill dispatch. Wired once here so both
     // manual `task_run` and the recurring scheduler wake the assignee.
-    init.registries.task.agentRun ??= (assigneeId, request, {workspaceId}) async {
-      if (!init.system.isAgentSubsystemActivated) return null;
-      // Canonicalize the assignee: a task may carry the bare member id OR a
-      // full scoped agentId (an LLM-authored delegation fills it from the
-      // roster). `resolve` maps both to the runnable member so the task is
-      // not silently blocked ("not a runnable agent") on id form alone.
-      // Scope to the task's workspace so a bare `lead` resolves to THIS
-      // department's lead, not a same-named lead in another workspace found
-      // first by scan order (cross-department mis-delivery).
-      final m = await init.registries.member.resolve(
-        assigneeId,
-        wsId: workspaceId,
-      );
-      if (m is! AgentMember) return null;
-      try {
-        final reply = await init.system.agents.ask(m.agentId, request);
-        return reply.content;
-      } catch (_) {
-        return null; // not a runnable agent → skill-dispatch fallback
-      }
-    };
+    init.registries.task.agentRun ??= buildAgentRun(init);
     // Trigger bus action seams (R2 wake / R3 live-chat relay). Same
     // late-injection shape as agentRun; the closures read the static host
     // handles (`_hostCallTool` / `_chromeBridge`) lazily at emit time, so they
@@ -388,7 +369,67 @@ class OpsBuiltInApp extends BuiltInApp {
     return OpsBootResult(cfg: cfg, init: init);
   }
 
-  /// Wire the trigger bus's action seams (see ops-agent-trigger-bus.md). Same
+  /// The task-assignee auto-run seam. Extracted from `_doBoot` so the three
+  /// outcomes below are unit-testable without a full host boot.
+  ///
+  /// Contract — the distinction the caller depends on:
+  ///   * `null`   = DECLINED. The assignee is not a runnable agent (a person,
+  ///                an unknown id, or the agent subsystem is off), so
+  ///                `TaskRegistry.run` falls back to headless skill dispatch.
+  ///   * throws   = FAILED. The agent ran and the run itself failed.
+  ///   * a string = the agent's deliverable.
+  ///
+  /// Collapsing "failed" into "declined" is what made every run failure report
+  /// as `assignee is not a runnable agent and has no skill to run`.
+  @visibleForTesting
+  static AgentRun buildAgentRun(KnowledgeInit init) {
+    return (assigneeId, request, {workspaceId}) async {
+      if (!init.system.isAgentSubsystemActivated) {
+        // Declined, not failed — the task falls back to headless skill
+        // dispatch. Logged because the caller can only see the generic
+        // "not a runnable agent" wording this null produces.
+        OpsLog.info(
+          'task',
+          'agentRun declined for $assigneeId — agent subsystem not activated; '
+              'falling back to skill dispatch',
+        );
+        return null;
+      }
+      // Canonicalize the assignee: a task may carry the bare member id OR a
+      // full scoped agentId (an LLM-authored delegation fills it from the
+      // roster). `resolve` maps both to the runnable member so the task is
+      // not silently blocked ("not a runnable agent") on id form alone.
+      // Scope to the task's workspace so a bare `lead` resolves to THIS
+      // department's lead, not a same-named lead in another workspace found
+      // first by scan order (cross-department mis-delivery).
+      final m = await init.registries.member.resolve(
+        assigneeId,
+        wsId: workspaceId,
+      );
+      if (m is! AgentMember) {
+        // A person / unknown id: genuinely not runnable → null is the
+        // skill-dispatch fallback signal. This is the ONLY resolution-shaped
+        // null left, so the "not a runnable agent" wording finally matches it.
+        OpsLog.info(
+          'task',
+          'agentRun declined for $assigneeId in ws=${workspaceId ?? '(none)'} '
+              '— resolves to ${m == null ? 'no member' : 'a non-agent member'}; '
+              'falling back to skill dispatch',
+        );
+        return null;
+      }
+      // Run failures must NOT be swallowed into null. A null here is read as
+      // "assignee is not a runnable agent", so a timeout / tool error / LLM
+      // failure used to be reported as an assignee-resolution problem and sent
+      // operators chasing the id form (konpi 2026-07-21, 2026-07-28). Let the
+      // real error propagate — `TaskRegistry.run` catches it and records the
+      // actual cause in the run's `errorCode`.
+      final reply = await init.system.agents.ask(m.agentId, request);
+      return reply.content;
+    };
+  }
+
+  /// Wire the trigger bus's action seams. Same
   /// late-injection shape as `agentRun`; closures read the static host handles
   /// lazily so they resolve regardless of _doBoot / registerHostTools ordering.
   static void _wireTriggerSeams(KnowledgeInit init) {

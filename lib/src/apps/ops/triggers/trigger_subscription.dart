@@ -1,7 +1,7 @@
 /// Persisted "when X completes, wake Y" rules — the R2 subscription store.
 /// Generalises the process→process completion chain
 /// (`ProcessRegistry._fireCompletionChain`) to agent/task completions waking an
-/// agent. See `docs/makemind_ops/ops-agent-trigger-bus.md`.
+/// agent.
 library;
 
 import 'dart:io';

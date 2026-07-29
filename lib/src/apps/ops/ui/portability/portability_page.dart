@@ -1,5 +1,4 @@
 // Workspace export/import page — `.opspack` round-trip surface.
-// PRD §FM-PORTABILITY.
 
 import 'dart:io';
 

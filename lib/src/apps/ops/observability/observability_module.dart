@@ -1,7 +1,5 @@
 // Aggregate handle for the observability subsystem. One instance per
 // process; bootstrapped in main.dart and exposed through Riverpod.
-//
-// PRD §FM-OBSERVE-01 / 02.
 
 import 'activity_bus.dart';
 import 'telemetry_store.dart';

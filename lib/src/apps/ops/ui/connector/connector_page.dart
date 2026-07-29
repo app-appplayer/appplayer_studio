@@ -1,5 +1,5 @@
 // MCP Connector Helper — surfaces ready-to-paste configuration snippets
-// for the major external MCP clients. Defined in PRD §FM-ONBOARD-03.
+// for the major external MCP clients.
 //
 // The helper reads the live OpsConfig so the host/port shown matches
 // whatever the running app is actually serving on. Each snippet has a

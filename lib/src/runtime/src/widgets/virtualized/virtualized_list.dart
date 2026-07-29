@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../../renderer/render_context.dart';
 import '../../utils/mcp_logger.dart';
 
@@ -8,7 +9,7 @@ class VirtualizedListWidget extends StatefulWidget {
   final List<dynamic> items;
   final Widget Function(BuildContext, dynamic, int) itemBuilder;
   final double? itemHeight;
-  final int cacheExtent;
+  final int scrollCacheExtent;
   final int virtualizeThreshold;
   final Axis scrollDirection;
   final ScrollPhysics? physics;
@@ -24,7 +25,7 @@ class VirtualizedListWidget extends StatefulWidget {
     required this.items,
     required this.itemBuilder,
     this.itemHeight,
-    this.cacheExtent = 250,
+    this.scrollCacheExtent = 250,
     this.virtualizeThreshold = 100,
     this.scrollDirection = Axis.vertical,
     this.physics,
@@ -85,7 +86,8 @@ class _VirtualizedListWidgetState extends State<VirtualizedListWidget> {
       padding: widget.padding,
       itemExtent: widget
           .itemHeight, // Improves performance if all items have same height
-      cacheExtent: widget.cacheExtent.toDouble(),
+      scrollCacheExtent:
+          ScrollCacheExtent.pixels(widget.scrollCacheExtent.toDouble()),
       restorationId: widget.restorationId,
       itemCount: widget.items.length,
       itemBuilder: (context, index) {
@@ -140,7 +142,7 @@ class VirtualizedGridWidget extends StatefulWidget {
   final double? childAspectRatio;
   final double? crossAxisSpacing;
   final double? mainAxisSpacing;
-  final int cacheExtent;
+  final int scrollCacheExtent;
   final int virtualizeThreshold;
   final Axis scrollDirection;
   final ScrollPhysics? physics;
@@ -158,7 +160,7 @@ class VirtualizedGridWidget extends StatefulWidget {
     this.childAspectRatio = 1.0,
     this.crossAxisSpacing = 0.0,
     this.mainAxisSpacing = 0.0,
-    this.cacheExtent = 250,
+    this.scrollCacheExtent = 250,
     this.virtualizeThreshold = 50,
     this.scrollDirection = Axis.vertical,
     this.physics,
@@ -216,7 +218,8 @@ class _VirtualizedGridWidgetState extends State<VirtualizedGridWidget> {
       physics: widget.physics,
       shrinkWrap: widget.shrinkWrap,
       padding: widget.padding,
-      cacheExtent: widget.cacheExtent.toDouble(),
+      scrollCacheExtent:
+          ScrollCacheExtent.pixels(widget.scrollCacheExtent.toDouble()),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: widget.crossAxisCount,
         childAspectRatio: widget.childAspectRatio ?? 1.0,
@@ -266,7 +269,7 @@ extension VirtualizationExtension on RenderContext {
     required List<dynamic> items,
     required Widget Function(BuildContext, dynamic, int) itemBuilder,
     double? itemHeight,
-    int cacheExtent = 250,
+    int scrollCacheExtent = 250,
     int virtualizeThreshold = 100,
     Axis scrollDirection = Axis.vertical,
     ScrollPhysics? physics,
@@ -280,7 +283,7 @@ extension VirtualizationExtension on RenderContext {
       items: items,
       itemBuilder: itemBuilder,
       itemHeight: itemHeight,
-      cacheExtent: cacheExtent,
+      scrollCacheExtent: scrollCacheExtent,
       virtualizeThreshold: virtualizeThreshold,
       scrollDirection: scrollDirection,
       physics: physics,
@@ -300,7 +303,7 @@ extension VirtualizationExtension on RenderContext {
     double? childAspectRatio,
     double? crossAxisSpacing,
     double? mainAxisSpacing,
-    int cacheExtent = 250,
+    int scrollCacheExtent = 250,
     int virtualizeThreshold = 50,
     Axis scrollDirection = Axis.vertical,
     ScrollPhysics? physics,
@@ -317,7 +320,7 @@ extension VirtualizationExtension on RenderContext {
       childAspectRatio: childAspectRatio,
       crossAxisSpacing: crossAxisSpacing,
       mainAxisSpacing: mainAxisSpacing,
-      cacheExtent: cacheExtent,
+      scrollCacheExtent: scrollCacheExtent,
       virtualizeThreshold: virtualizeThreshold,
       scrollDirection: scrollDirection,
       physics: physics,

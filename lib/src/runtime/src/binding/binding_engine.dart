@@ -653,6 +653,23 @@ class BindingEngine {
       return null;
     }
 
+    // Check for entry.* / identity.* prefixes (§8.9.2) - how this definition
+    // was entered, and who the viewer currently is. Both are read-only and
+    // both resolve to null on a host that wired neither (§8.9.6), which is
+    // why an unset root falls through to null rather than throwing.
+    //
+    // `entry.params` is deliberately NOT `route.params`: route parameters say
+    // where in the document the viewer is, entry parameters say what was
+    // scanned to get here, and only the latter survives navigation.
+    if (path.startsWith('entry.') || path.startsWith('identity.')) {
+      final dot = path.indexOf('.');
+      final root = context.stateManager.get<dynamic>(path.substring(0, dot));
+      if (root is Map<String, dynamic>) {
+        return _resolveNestedPath(root, path.substring(dot + 1));
+      }
+      return null;
+    }
+
     // Check for sync.* prefix - resolves sync operation status
     if (path.startsWith('sync.')) {
       return _resolveSyncBinding(path.substring(5), context);

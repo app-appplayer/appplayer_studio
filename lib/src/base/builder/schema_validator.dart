@@ -1,6 +1,6 @@
-/// Schema-driven validation for the atomic write mutators (P3.2 of
-/// studio-builder-rebuild). Looks every authored node / prop up
-/// against the catalogue's [WidgetSpec] and returns a §4-shaped
+/// Schema-driven validation for the atomic write mutators. Looks
+/// every authored node / prop up
+/// against the catalogue's [WidgetSpec] and returns a diagnostic-shaped
 /// rejection when the call would commit something the spec says is
 /// invalid.
 ///
@@ -88,7 +88,7 @@ class SchemaValidator {
     // structural slots, not props): content / child / children.
     const treeKeys = <String>{'content', 'child', 'children'};
     // Universal interaction keys — any widget may carry these per
-    // mcp_ui_dsl 1.3 §4. Catalog atoms rarely declare them, so the
+    // mcp_ui_dsl 1.3. Catalog atoms rarely declare them, so the
     // strict per-prop check would falsely reject otherwise valid
     // wiring like `box { click: { type:state, ... } }`.
     const universalActionKeys = <String>{'click', 'onTap'};
@@ -115,7 +115,7 @@ class SchemaValidator {
     }
     // 3: extra props rejected (strict). Tree-shape keys and universal
     // interaction keys (click / onTap — accepted on every widget per
-    // mcp_ui_dsl 1.3 §4 Actions) are exempt.
+    // mcp_ui_dsl 1.3 Actions) are exempt.
     final extras =
         providedKeys
             .difference(knownKeys)
@@ -167,7 +167,7 @@ class SchemaValidator {
     // must not trip extraProperty.
     const treeKeys = <String>{'content', 'child', 'children'};
     // Universal action keys — any widget may carry `click` / `onTap`
-    // per mcp_ui_dsl §4. Skip extraProperty when wiring runs through
+    // per mcp_ui_dsl. Skip extraProperty when wiring runs through
     // these slots even if the catalog atom doesn't declare them.
     const universalActionKeys = <String>{'click', 'onTap'};
     if (universalActionKeys.contains(key)) {

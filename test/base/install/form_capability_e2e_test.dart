@@ -169,7 +169,7 @@ void main() {
       'type': 'table',
       'index': 2,
       'columns': [
-        {'id': 'name', 'title': '품목', 'type': 'string'},
+        {'id': 'name', 'title': 'item', 'type': 'string'},
       ],
       'rows': [
         {
@@ -335,7 +335,7 @@ void main() {
     await cjkTools['save_template']!.invoke({'template': template()});
     final created = (await cjkTools['create_document']!.invoke({
           'templateId': 'quote',
-          'data': {'title': '한국어 견적서', 'total': '₩5,000,000'},
+          'data': {'title': 'Localized quotation', 'total': '₩5,000,000'},
         }))!
         as Map<String, dynamic>;
     final rendered = (await cjkTools['render']!.invoke({

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/lifecycle_host.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' as core show WidgetDefinition, PageDefinition;
 
@@ -183,7 +184,16 @@ class Renderer {
   /// returned. The null-check is the only added cost on the production path
   /// and folds into a single predicted branch.
   Widget renderWidget(Map<String, dynamic> definition, RenderContext context) {
-    final built = _renderWidgetCore(definition, context);
+    // Instance-level lifecycle (§6.8.2): a widget's own `lifecycle: {}` block.
+    // Nothing read it before, so a widget could declare hooks and have them
+    // silently dropped. Wrapping happens only when hooks are actually
+    // declared, so the tree is unchanged for every other widget.
+    final built = LifecycleHost.maybeWrap(
+      definition: definition,
+      context: context,
+      label: (definition['type'] as String?) ?? 'widget',
+      child: _renderWidgetCore(definition, context),
+    );
     final wrap = _widgetWrapper;
     if (wrap == null) return built;
     // ParentDataWidgets (Expanded / Flexible / Positioned) must remain a
@@ -351,8 +361,54 @@ class Renderer {
       engine: engine,
       navigationHandler: navigationHandler,
       resourceHandler: resourceHandler,
-    );
+    )..definitionResolver = definitionResolver;
   }
+
+  /// Resolver the `view` widget uses to fetch a definition from an origin
+  /// (spec v1.4 §6.11, Composition Profile). Held here rather than on a single
+  /// context because root contexts are created on demand — stamping it in
+  /// [createRootContext] is what makes it reach every tree, and
+  /// `RenderContext.createChildContext` carries it the rest of the way.
+  ///
+  /// `null` = this runtime does not implement the Composition Profile; `view`
+  /// then fails closed rather than resolving a foreign `\$ref` against the
+  /// host's own origin (§18.7.3).
+  Future<Map<String, dynamic>> Function(String ref, Map<String, dynamic> origin)?
+      definitionResolver;
+
+  /// Host hook for running a `tool` action against a named origin.
+  ///
+  /// A `view` that names an origin makes that origin ambient for its subtree,
+  /// and a tool call from inside it belongs to that device — not to the app's
+  /// own server (§1.9.5, §2.13.1, §7.10). Without this the subtree renders but
+  /// nothing in it works: the call takes the app's normal path and lands on a
+  /// session with no client for it.
+  Future<dynamic> Function(
+          Map<String, dynamic> origin, String tool, Map<String, dynamic> params)?
+      originToolCaller;
+
+  /// Host hook for watching a resource on a named origin.
+  ///
+  /// The live half. A device's changing value — an uptime, a temperature —
+  /// reaches a composed screen only through this; without it the subtree
+  /// renders the reading's label and never a number, which looks like a layout
+  /// bug rather than a missing capability.
+  ///
+  /// [onUpdate] fires with the resource's new contents each time the origin
+  /// reports it changed. Returns a disposer the runtime calls on unsubscribe.
+  Future<void Function()> Function(
+    Map<String, dynamic> origin,
+    String uri,
+    void Function(dynamic contents) onUpdate,
+  )? originResourceWatcher;
+
+  /// Host hook for a ONE-SHOT read on a named origin.
+  ///
+  /// Separate from the watcher because a read that leaves a subscription
+  /// behind keeps a device pushing to a view that asked once — and a view that
+  /// only ever reads should not make the device stream.
+  Future<Object?> Function(Map<String, dynamic> origin, String uri)?
+      originResourceReader;
 
   AppBar? _buildAppBar(
     Map<String, dynamic>? appBarDef,

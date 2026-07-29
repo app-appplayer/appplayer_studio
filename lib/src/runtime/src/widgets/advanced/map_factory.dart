@@ -14,15 +14,15 @@ class MapWidgetFactory extends WidgetFactory {
     // Numeric props are read via `num?` to accept either int or double (JSON
     // literals deserialize to whichever is narrower), then converted.
     final center = properties['center'] as Map<String, dynamic>?;
-    double? _asDouble(dynamic raw) =>
+    double? asDouble(dynamic raw) =>
         (context.resolve<num?>(raw))?.toDouble();
-    final latitude = _asDouble(
+    final latitude = asDouble(
             center?['latitude'] ?? center?['lat'] ?? properties['latitude']) ??
         0.0;
-    final longitude = _asDouble(
+    final longitude = asDouble(
             center?['longitude'] ?? center?['lng'] ?? properties['longitude']) ??
         0.0;
-    final zoom = _asDouble(properties['zoom']) ?? 10.0;
+    final zoom = asDouble(properties['zoom']) ?? 10.0;
     // Spec §10.5: `mapType`. Accepted by schema; the built-in stub renders a
     // schematic grid regardless of type.
     // ignore: unused_local_variable
@@ -35,8 +35,8 @@ class MapWidgetFactory extends WidgetFactory {
     final showGrid = context.resolve<bool>(properties['showGrid'] ?? true);
     final showCoordinates =
         context.resolve<bool>(properties['showCoordinates'] ?? true);
-    final width = _asDouble(properties['width']);
-    final height = _asDouble(properties['height']) ?? 400.0;
+    final width = asDouble(properties['width']);
+    final height = asDouble(properties['height']) ?? 400.0;
 
     // Extract colors — map tile placeholder remains the pale-green
     // cartography default, but authors can override via

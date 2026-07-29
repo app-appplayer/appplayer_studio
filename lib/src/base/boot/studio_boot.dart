@@ -64,8 +64,8 @@ class StudioBoot {
     // First catalog model that actually wires an adapter — the de-facto
     // default every agent rides through `_defaultLlm` when its own
     // ModelSpec.provider isn't in the pool. Captured so member/worker
-    // agents inherit a REAL model instead of the stub port (FR-OPS-001
-    // fix: created agents must default to the configured model, never
+    // agents inherit a REAL model instead of the stub port (created
+    // agents must default to the configured model, never
     // `stub/stub-1`). `(id, provider)` pair feeds [defaultAgentModel].
     String? firstWiredModelId;
     String? firstWiredProvider;
@@ -160,7 +160,7 @@ class StudioBoot {
     }
 
     // Reference MCP-backed outbound client host injected into KernelApp.
-    // It implements the `ExtensionTransportConnect` seam (spec 08 §4), so
+    // It implements the `ExtensionTransportConnect` seam, so
     // the `mcp.connect_extension` tool reaches it via the `connectExtension`
     // helper off the abstract `app.clientHost` — no concrete handle kept.
     // FFI-free: the host only ever receives an already-built
@@ -225,7 +225,7 @@ class StudioBoot {
         stderr.writeln('$toolId: bundle registry prune skipped — $e');
       }
 
-      // Seed registration — SDD §1.4. Single list; each entry's
+      // Seed registration. Single list; each entry's
       // manifest declaration drives which capability surfaces wire up.
       //   knowledge.sources non-empty → KB index invalidate.
       //   agents non-empty           → FlowBrain ops baseline load.

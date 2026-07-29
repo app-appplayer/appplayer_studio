@@ -136,7 +136,7 @@ class UiDebugTools {
     );
 
     // `ui_chat_send` / `ui_chat_history` retired — chat surface
-    // collapsed onto the host's shared chat panel (MOD-APPS-007
+    // collapsed onto the host's shared chat panel (
     // "Chat / Settings unified surface"). External LLM chat
     // automation routes through the host's
     // `chromeBridge.activeChatAgentId` + host

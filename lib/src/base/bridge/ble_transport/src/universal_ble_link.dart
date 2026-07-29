@@ -12,7 +12,7 @@ import 'ble_uuids.dart';
 
 /// [BleLink] over universal_ble (BSD-3-Clause) — the only file in this
 /// recipe that touches the radio plugin. Resolves the fixed MCP Serving
-/// GATT service (`specs/platform/16-ble-transport.md` §3) on the connected
+/// GATT service on the connected
 /// device. universal_ble covers Android / iOS / macOS / Windows / Linux /
 /// Web with one API.
 class UniversalBleLink implements BleLink {
@@ -78,10 +78,10 @@ class UniversalBleLink implements BleLink {
       await disconnect();
       throw StateError(
         'MCP Serving service on $_deviceId is missing its RX/TX '
-        'characteristics (spec 16 §3 conformance failure)',
+        'characteristics (conformance failure)',
       );
     }
-    // Spec §3: the server accepts both write modes; Write Without Response
+    // The server accepts both write modes; Write Without Response
     // is preferred for throughput when the characteristic offers it.
     _writeWithoutResponse =
         rx.properties.contains(CharacteristicProperty.writeWithoutResponse);
@@ -151,7 +151,7 @@ class UniversalBleLink implements BleLink {
     // Best-effort per platform (Android honors the request; iOS/macOS/
     // Windows/Linux auto-negotiate and only report). Returns the effective
     // MTU; if the platform cannot even report one this throws and the
-    // transport falls back to the default ATT MTU 23 (spec §4 MUST).
+    // transport falls back to the default ATT MTU 23.
     return UniversalBle.requestMtu(_deviceId, desired);
   }
 
@@ -160,7 +160,7 @@ class UniversalBleLink implements BleLink {
     if (!_resolved) {
       throw StateError('not connected — call connect() first');
     }
-    // CCCD write (spec §3: the server sends nothing before this).
+    // CCCD write (the server sends nothing before this).
     await UniversalBle.subscribeNotifications(
       _deviceId,
       mcpBleServiceUuid,

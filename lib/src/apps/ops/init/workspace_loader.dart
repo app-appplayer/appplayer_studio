@@ -36,7 +36,7 @@ class WorkspaceLoader {
   /// Host-injected inherited default model (from `settings.llmModel` via
   /// [StudioBackbone.defaultAgentModel]). Used as the mirror fallback for
   /// yaml-loaded agents that carry no per-agent ModelSpec, so reloaded
-  /// agents ride a REAL provider instead of the stub port. See FR-OPS-001.
+  /// agents ride a REAL provider instead of the stub port.
   final ModelSpec? defaultModel;
 
   Future<void> loadActive() async {

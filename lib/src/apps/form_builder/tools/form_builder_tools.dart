@@ -500,7 +500,7 @@ class FormBuilderTools {
     );
 
     // --- approvals (request → approval line → inbox) ----------------------
-    // Design: docs/form_builder/form-approval-line.md. Approval is OPT-IN
+    // Approval is OPT-IN
     // per document — a draft with no approval issues exactly as before.
 
     server.addTool(

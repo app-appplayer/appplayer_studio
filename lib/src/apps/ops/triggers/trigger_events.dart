@@ -1,7 +1,7 @@
 /// The semantic completion signal that lets ops agents wake each other instead
 /// of each running one-shot. Emitted when an agent finishes a unit of work —
 /// a task run, a delegated route, an ask, or a process step — onto the
-/// [OpsTriggerBus]. See `docs/makemind_ops/ops-agent-trigger-bus.md`.
+/// [OpsTriggerBus].
 library;
 
 /// The kind of work unit that produced a completion.

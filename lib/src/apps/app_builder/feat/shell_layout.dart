@@ -76,7 +76,7 @@ import 'properties_panel.dart';
 import 'widget_schema_catalog.dart';
 import 'vibe_llm.dart';
 
-/// Top-level shell. Per `handoff/HANDOFF.md`:
+/// Top-level shell:
 ///
 ///   ┌ Titlebar (28) ──────────────────────────────────────┐
 ///   │ Chat (280) │ [Strip + Preview]  │ Properties (320) │
@@ -5776,7 +5776,7 @@ class _CenterColumn extends StatelessWidget {
   }
 
   bool _showsInstanceStrip() {
-    // Dashboard is single-instance (spec §11.9) — no strip. Only Pages
+    // Dashboard is single-instance — no strip. Only Pages
     // and Components have multiple instances to navigate between.
     return focused == LayerId.pages || focused == LayerId.components;
   }

@@ -148,8 +148,8 @@ class BuiltInAppContext {
   /// `manifest.projectKinds[]`.
   List<ProjectKindOption>? Function()? projectKindsProvider;
 
-  /// Deep-link landing (the `studio.app.open` contract,
-  /// `docs/03_DDD/app-open-deeplink.md`): land on an in-app route,
+  /// Deep-link landing (the `studio.app.open` contract): land on
+  /// an in-app route,
   /// optionally focused on one entity (an issue, an approval's document,
   /// a template). Route vocabulary and entity resolution are the APP's —
   /// return false for an unknown route/entity so the caller can surface
@@ -187,7 +187,7 @@ class BuiltInAppContext {
 /// [domainSettings], [slashCommands]) let the app surface its actions
 /// through the same host chrome paths the manifest-driven domains use
 /// (`wiring.domainActions[]`, `wiring.lifecycle[]`, `settings.sections[]`,
-/// `chat.slashCommands[]`). See `docs/builtin_apps/INTEGRATION.md`.
+/// `chat.slashCommands[]`).
 ///
 /// Hooks return null when the app has nothing to contribute for that
 /// axis — the host then falls back to the manifest path (no-op when
@@ -256,7 +256,7 @@ abstract class BuiltInApp {
   /// (after the MCP server bootstrap exists). Default = no tools;
   /// apps that expose verbs (newProject / convert / build / …) override.
   ///
-  /// Per `studio-builder-runtime-model.md §8.5`, every button / action
+  /// Every button / action
   /// is a 1:1 MCP tool. Dialog vs headless is discriminated by the
   /// tool's `inputSchema` (named optional args present = programmatic,
   /// absent = open the dialog).

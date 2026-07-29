@@ -1,5 +1,5 @@
 /// Builds the board-discovery trust evaluator from Studio's bundled root-CA
-/// anchor (`assets/root_cas/dev.json`, spec 17 §6).
+/// anchor (`assets/root_cas/dev.json`).
 ///
 /// The evaluator needs an `AppPlayerSecure` for three things only —
 /// `validateChain` (trust), `crypto.verifySignature`, and `audit.record`.

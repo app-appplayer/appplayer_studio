@@ -1,4 +1,4 @@
-/// MOD-INFRA-011 — KnowledgeBundleRegistry.
+/// KnowledgeBundleRegistry.
 ///
 /// Persistent list of installed knowledge bundle paths, kept independent
 /// of FlowBrain's runtime layer so the retrieval surface

@@ -149,14 +149,14 @@ class AnimatedContainerWidgetFactory extends WidgetFactory {
       switch (type) {
         case 'scale':
           final scale = transform['scale']?.toDouble() ?? 1.0;
-          return Matrix4.identity()..scale(scale);
+          return Matrix4.identity()..scaleByDouble(scale, scale, scale, 1.0);
         case 'rotate':
           final angle = transform['angle']?.toDouble() ?? 0.0;
           return Matrix4.identity()..rotateZ(angle);
         case 'translate':
           final x = transform['x']?.toDouble() ?? 0.0;
           final y = transform['y']?.toDouble() ?? 0.0;
-          return Matrix4.identity()..translate(x, y);
+          return Matrix4.identity()..translateByDouble(x, y, 0.0, 1.0);
         default:
           return null;
       }

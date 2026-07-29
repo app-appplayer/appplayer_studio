@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
@@ -22,7 +23,12 @@ class ListViewWidgetFactory extends WidgetFactory {
         properties['spacing'] ?? properties['itemSpacing']) ?? 0.0;
     final emptyMessage = context.resolve<String?>(properties['emptyMessage']);
     final virtual = properties['virtual'] as bool? ?? false;
-    final cacheExtent = parseDimension(properties['cacheExtent']);
+    // `cacheExtent` was deprecated in favour of the typed `ScrollCacheExtent`;
+    // the DSL still expresses it as a plain pixel number.
+    final cacheExtentPx = parseDimension(properties['scrollCacheExtent']);
+    final scrollCacheExtent = cacheExtentPx == null
+        ? null
+        : ScrollCacheExtent.pixels(cacheExtentPx);
     final itemExtent = parseDimension(properties['itemExtent']);
 
     // Get data source - support both static children and dynamic items
@@ -56,7 +62,7 @@ class ListViewWidgetFactory extends WidgetFactory {
         shrinkWrap: shrinkWrap,
         physics: physics,
         padding: padding,
-        cacheExtent: cacheExtent,
+        scrollCacheExtent: scrollCacheExtent,
         itemCount: itemCount,
         separatorBuilder: itemSpacing > 0
             ? (context, index) => scrollDirection == Axis.horizontal
@@ -102,7 +108,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           shrinkWrap: shrinkWrap,
           physics: physics,
           padding: padding,
-          cacheExtent: cacheExtent,
+          scrollCacheExtent: scrollCacheExtent,
           itemExtent: itemExtent,
           itemCount: items.length,
           itemBuilder: (buildContext, index) {
@@ -126,7 +132,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           shrinkWrap: shrinkWrap,
           physics: physics,
           padding: padding,
-          cacheExtent: cacheExtent,
+          scrollCacheExtent: scrollCacheExtent,
           itemCount: items.length,
           separatorBuilder: itemSpacing > 0
               ? (context, index) => scrollDirection == Axis.horizontal
@@ -160,7 +166,7 @@ class ListViewWidgetFactory extends WidgetFactory {
         shrinkWrap: shrinkWrap,
         physics: physics,
         padding: padding,
-        cacheExtent: cacheExtent,
+        scrollCacheExtent: scrollCacheExtent,
         itemCount: items.length,
         separatorBuilder: itemSpacing > 0
             ? (buildContext, index) => scrollDirection == Axis.horizontal
@@ -186,7 +192,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           shrinkWrap: shrinkWrap,
           physics: physics,
           padding: padding,
-          cacheExtent: cacheExtent,
+          scrollCacheExtent: scrollCacheExtent,
           itemCount: children.length,
           separatorBuilder: (context, index) =>
               scrollDirection == Axis.horizontal
@@ -202,7 +208,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           shrinkWrap: shrinkWrap,
           physics: physics,
           padding: padding,
-          cacheExtent: cacheExtent,
+          scrollCacheExtent: scrollCacheExtent,
           itemExtent: itemExtent,
           children: children,
         );

@@ -4,9 +4,8 @@
 //
 /// Recipe — Flutter BLE extension `ClientTransport` for MCP-serving boards.
 ///
-/// Layer 2 (transport impl) of the extension-transport standard
-/// (`specs/platform/08-extension.md` §4), realizing the BLE GATT binding of
-/// `specs/platform/16-ble-transport.md`: fixed MCP Serving service, write
+/// Layer 2 (transport impl) of the extension-transport standard,
+/// realizing the BLE GATT binding: fixed MCP Serving service, write
 /// RX characteristic + notify TX characteristic as a pure byte pipe, and
 /// newline-delimited JSON-RPC on the reassembled stream — the MCP layer
 /// never knows it is on BLE.

@@ -1,12 +1,12 @@
 /// Unit tests for `ActivityActor.initials` (UX audit P3.11) — the avatar
-/// monogram rule. A Latin+CJK mash like "Z담" (first letter of "Zara", first
-/// syllable of role "담당") read as broken; the rule now builds a two-letter
+/// monogram rule. A Latin+CJK mash (first letter of a Latin name plus the first
+/// syllable of a CJK role) read as broken; the rule now builds a two-letter
 /// monogram only from ASCII names and otherwise uses one grapheme.
 ///
 /// Scenarios:
 ///   ai1  single word → first letter, upper-cased
 ///   ai2  two ASCII words → two-letter monogram ("John Doe" → "JD")
-///   ai3  Latin + CJK → single leading grapheme (no "Z담")
+///   ai3  Latin + CJK -> single leading grapheme (no mixed-script pair)
 ///   ai4  CJK only → first syllable
 ///   ai5  empty / whitespace → "?"
 library;

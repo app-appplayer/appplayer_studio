@@ -217,7 +217,7 @@ void main() {
     testWidgets(
       'long header title ellipsizes and keeps trailing on-screen (no overflow)',
       (tester) async {
-        // Regression: a long title (e.g. "Process · host wiring / 게시 cascade
+        // Regression: a long title (e.g. "Process - host wiring / publish cascade
         // (H1)") laid out at full intrinsic width and pushed the trailing
         // action off the card's right edge. Title/sub must ellipsize so the
         // trailing stays visible in a narrow card.
@@ -229,7 +229,7 @@ void main() {
                 width: 220,
                 child: OpsCard(
                   header: OpsCardHeader(
-                    title: 'Process · host wiring / 게시 cascade (H1)',
+                    title: 'Process - host wiring / publish cascade (H1)',
                     sub: '5 steps · manual',
                     trailing: Text('Open', key: Key('open-action')),
                   ),
@@ -246,7 +246,7 @@ void main() {
         expect(find.byKey(const Key('open-action')), findsOneWidget);
         // Title uses ellipsis clipping rather than unbounded width.
         final titleText = tester.widget<Text>(
-          find.text('Process · host wiring / 게시 cascade (H1)'),
+          find.text('Process - host wiring / publish cascade (H1)'),
         );
         expect(titleText.overflow, TextOverflow.ellipsis);
         expect(titleText.softWrap, isFalse);

@@ -106,10 +106,15 @@ class IconWidgetFactory extends WidgetFactory {
     if (value is Map<String, dynamic>) {
       final codepoint = value['codepoint'];
       if (codepoint is int) {
+        // Runtime codepoint: the const-inferring context cannot apply here.
+        // ignore: prefer_const_constructors
         return IconData(
+          // ignore: non_const_argument_for_const_parameter
           codepoint,
+          // ignore: non_const_argument_for_const_parameter
           fontFamily:
               (value['fontFamily'] as String?) ?? 'MaterialIcons',
+          // ignore: non_const_argument_for_const_parameter
           fontPackage: value['fontPackage'] as String?,
         );
       }

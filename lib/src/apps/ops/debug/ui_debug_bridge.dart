@@ -227,8 +227,8 @@ class UiDebugBridge {
 }
 
 // `ChatSendRequest` / `chatRequestProvider` / `chatHistoryProvider`
-// retired — chat surface collapsed onto the host's shared chat panel
-// (MOD-APPS-007). Ops's own `ChatPane` widget and its automation
+// retired — chat surface collapsed onto the host's shared chat panel.
+// Ops's own `ChatPane` widget and its automation
 // providers were removed together with the `ui_chat_send` /
 // `ui_chat_history` MCP tools.
 

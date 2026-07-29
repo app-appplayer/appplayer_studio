@@ -25,7 +25,7 @@ class PermissionStorage {
   /// Get the effective storage key (includes server ID if set)
   String get _effectiveDecisionsKey {
     if (_serverId != null && _serverId!.isNotEmpty) {
-      return '${_keyPrefix}${_serverId!}_decisions';
+      return '$_keyPrefix${_serverId!}_decisions';
     }
     return _decisionsKey;
   }

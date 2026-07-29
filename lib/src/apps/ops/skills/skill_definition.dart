@@ -1,6 +1,5 @@
 /// Parsed representation of a Skill YAML definition.
 ///
-/// See `SRS §2.10 FR-OPS-011` for the YAML schema.
 class SkillDefinition {
   SkillDefinition({
     required this.id,

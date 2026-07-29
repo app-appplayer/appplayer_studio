@@ -1,5 +1,5 @@
 // Diagnostics page — telemetry overview + recent activity + diagnostic
-// bundle export. PRD §FM-OBSERVE-04 / 05.
+// bundle export.
 
 import 'dart:io';
 

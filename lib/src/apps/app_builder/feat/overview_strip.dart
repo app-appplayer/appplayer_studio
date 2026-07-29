@@ -5,7 +5,7 @@ import '../theme/tokens.dart';
 import '../core/layer_projection.dart';
 import '../core/types.dart';
 
-/// Per `handoff/widgets/overview_strip.md` — always-visible map of the six
+/// Always-visible map of the six
 /// layers. Six 168×80 cards with a layer-color left stripe, layer name,
 /// patch badge, and a mini visual signature.
 class OverviewStrip extends StatefulWidget {

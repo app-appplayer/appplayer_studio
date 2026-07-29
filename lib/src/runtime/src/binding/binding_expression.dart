@@ -94,7 +94,9 @@ class BindingExpression {
       for (int i = 0; i < baseExpr.length - 1; i++) {
         if (baseExpr[i] == '(') {
           depth++;
-        } else if (baseExpr[i] == ')') depth--;
+        } else if (baseExpr[i] == ')') {
+          depth--;
+        }
         if (depth == 0 && i < baseExpr.length - 2) {
           wrapsEntireExpression = false;
           break;

@@ -30,6 +30,22 @@ class UIDefinition {
   final Map<String, dynamic>? state;
   final Map<String, dynamic>? navigation;
   final Map<String, dynamic>? lifecycle;
+
+  /// Parsed definition-level hooks, read from BOTH placements §1.5.3 allows —
+  /// top-level fields on the definition and a grouped `lifecycle` object.
+  /// [lifecycle] above is the raw grouped map only, kept for callers that
+  /// still read it; it cannot see the top-level placement §6.8.1 shows.
+  final LifecycleDefinition? lifecycleHooks;
+
+  /// Hooks to use. Prefers the merged set parsed from the whole definition;
+  /// falls back to the raw grouped map for a [UIDefinition] built directly
+  /// rather than through [fromJson].
+  LifecycleDefinition? get effectiveLifecycle =>
+      lifecycleHooks ??
+      (lifecycle != null
+          ? LifecycleDefinition.fromDefinition(
+              <String, dynamic>{'lifecycle': lifecycle!})
+          : null);
   final Map<String, dynamic>? services;
   final Map<String, dynamic>? content;
 
@@ -51,6 +67,7 @@ class UIDefinition {
     this.state,
     this.navigation,
     this.lifecycle,
+    this.lifecycleHooks,
     this.services,
     this.content,
     this.dslVersion = core.MCPUIDSLVersion.current,
@@ -77,8 +94,9 @@ class UIDefinition {
       // Add application-specific properties
       if (json['title'] != null) properties['title'] = json['title'];
       if (json['version'] != null) properties['version'] = json['version'];
-      if (json['initialRoute'] != null)
+      if (json['initialRoute'] != null) {
         properties['initialRoute'] = json['initialRoute'];
+      }
       if (json['theme'] != null) properties['theme'] = json['theme'];
       // Spec §11 bundle metadata + §11.9 dashboard + §9 templates —
       // passed through verbatim so ApplicationDefinition can materialise
@@ -102,8 +120,9 @@ class UIDefinition {
       // Add page-specific properties
       if (json['title'] != null) properties['title'] = json['title'];
       if (json['route'] != null) properties['route'] = json['route'];
-      if (json['themeOverride'] != null)
+      if (json['themeOverride'] != null) {
         properties['themeOverride'] = json['themeOverride'];
+      }
     }
 
     // Merge with explicit properties if any
@@ -142,6 +161,7 @@ class UIDefinition {
       lifecycle: json['lifecycle'] != null
           ? Map<String, dynamic>.from(json['lifecycle'] as Map)
           : null,
+      lifecycleHooks: LifecycleDefinition.fromDefinition(json),
       services: json['services'] != null
           ? Map<String, dynamic>.from(json['services'] as Map)
           : null,
@@ -183,6 +203,10 @@ class UIDefinition {
 }
 
 /// Application definition according to spec
+// Legacy-form adapter: it reads the deprecated inline fields precisely so
+// bundles that still carry them keep working. The replacement path
+// (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+// ignore: deprecated_member_use
 class ApplicationDefinition extends core.ApplicationConfig {
   final NavigationDefinition? navigationDef;
   final LifecycleDefinition? lifecycleDef;
@@ -239,7 +263,12 @@ class ApplicationDefinition extends core.ApplicationConfig {
       title: props['title'] as String? ?? 'MCP Application',
       version: props['version'] as String? ?? '1.0.0',
       initialRoute: props['initialRoute'] as String? ?? '/',
-      routes: Map<String, String>.from(routes),
+      // NOT Map<String, String>: since v1.4 a route value may be a
+      // DefinitionSource object (`{$ref, from}`) naming another origin, not
+      // only a `ui://` string. Narrowing here threw before the application
+      // could open at all — a composed app failed as "cannot open", with
+      // nothing pointing at its routes.
+      routes: Map<String, dynamic>.from(routes),
       theme: props['theme'] as Map<String, dynamic>?,
       initialState: definition.state?['initial'] != null
           ? Map<String, dynamic>.from(definition.state!['initial'] as Map)
@@ -247,9 +276,7 @@ class ApplicationDefinition extends core.ApplicationConfig {
       navigationDef: definition.navigation != null
           ? NavigationDefinition.fromJson(definition.navigation!)
           : null,
-      lifecycleDef: definition.lifecycle != null
-          ? LifecycleDefinition.fromJson(definition.lifecycle!)
-          : null,
+      lifecycleDef: definition.effectiveLifecycle,
       servicesDef: definition.services != null
           ? ServicesDefinition.fromJson(definition.services!)
           : null,
@@ -294,6 +321,10 @@ class ApplicationDefinition extends core.ApplicationConfig {
 }
 
 /// Page definition according to spec
+// Legacy-form adapter: it reads the deprecated inline fields precisely so
+// bundles that still carry them keep working. The replacement path
+// (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+// ignore: deprecated_member_use
 class PageDefinition extends core.PageConfig {
   final LifecycleDefinition? lifecycleDef;
 
@@ -336,9 +367,7 @@ class PageDefinition extends core.PageConfig {
       initialState: definition.state?['initial'] != null
           ? Map<String, dynamic>.from(definition.state!['initial'] as Map)
           : null,
-      lifecycleDef: definition.lifecycle != null
-          ? LifecycleDefinition.fromJson(definition.lifecycle!)
-          : null,
+      lifecycleDef: definition.effectiveLifecycle,
       channels: definition.channels,
     );
   }
@@ -412,60 +441,154 @@ class NavigationItem {
 }
 
 /// Lifecycle definition
+/// Definition-level lifecycle hooks (spec §1.5, §6.8).
+///
+/// Canonical hook names are the seven of §1.5.1: `onInit`, `onMount`,
+/// `onReady`, `onPause`, `onResume`, `onUnmount`, `onDestroy`.
+///
+/// Two things this parser accepts that the spec allows and the previous one
+/// silently dropped — each was a hook that never ran, with nothing in any log
+/// to say so:
+///
+///  - **Both placements.** §1.5.3: hooks may be top-level fields on the
+///    definition OR grouped under `lifecycle`, and the two sets merge. Only the
+///    grouped form used to be read, so a page written the way §6.8.1 shows it
+///    parsed as a page with no hooks at all.
+///  - **A single Action.** §1.5.1: a hook value is "a single Action or an
+///    Action array". Only arrays used to be read.
+///
+/// Aliases are accepted for one release and warned about (see [aliasWarnings]):
+/// `onInitialize` → `onInit`, and the route-only `onEnter` / `onLeave` →
+/// `onMount` / `onUnmount`. `onEnter`/`onLeave` are not spec hooks; §6.8.3
+/// already routes a page through `onMount`/`onUnmount` on navigation, so they
+/// name a moment that already has a name.
 class LifecycleDefinition {
-  final List<Map<String, dynamic>>? onInitialize;
+  final List<Map<String, dynamic>>? onInit;
   final List<Map<String, dynamic>>? onReady;
   final List<Map<String, dynamic>>? onMount;
   final List<Map<String, dynamic>>? onUnmount;
   final List<Map<String, dynamic>>? onDestroy;
-  final List<Map<String, dynamic>>? onEnter;
-  final List<Map<String, dynamic>>? onLeave;
   final List<Map<String, dynamic>>? onResume;
   final List<Map<String, dynamic>>? onPause;
 
-  LifecycleDefinition({
-    this.onInitialize,
+  /// Non-fatal problems found while parsing — deprecated aliases, and a hook
+  /// named in both placements. Surfaced so a host can log them; §1.5.3 makes
+  /// the duplicate case an error, which becomes a rejection in 0.6.0 alongside
+  /// the other removals already announced for that release.
+  final List<String> aliasWarnings;
+
+  const LifecycleDefinition({
+    this.onInit,
     this.onReady,
     this.onMount,
     this.onUnmount,
     this.onDestroy,
-    this.onEnter,
-    this.onLeave,
     this.onResume,
     this.onPause,
+    this.aliasWarnings = const <String>[],
   });
 
-  factory LifecycleDefinition.fromJson(Map<String, dynamic> json) {
+  /// DEPRECATED — the spec name is `onInit` (§1.5.1). Kept so existing callers
+  /// keep compiling; removed in 0.6.0.
+  @Deprecated('Use onInit — the spec hook name. Removed in 0.6.0.')
+  List<Map<String, dynamic>>? get onInitialize => onInit;
+
+  /// Canonical entry point: reads the WHOLE definition, so top-level hook
+  /// fields and a grouped `lifecycle` object are both seen.
+  factory LifecycleDefinition.fromDefinition(Map<String, dynamic> definition) {
+    final warnings = <String>[];
+    final grouped = definition['lifecycle'];
+    final groupedMap = grouped is Map
+        ? Map<String, dynamic>.from(grouped)
+        : const <String, dynamic>{};
+
+    List<Map<String, dynamic>>? pick(String canonical, List<String> aliases) {
+      final names = <String>[canonical, ...aliases];
+      // Grouped placement is canonical when a name appears in both (§1.5.3
+      // makes that an error; until 0.6.0 it is a warning and the grouped value
+      // wins, so a document that used to load still loads).
+      final seen = <String>[];
+      dynamic value;
+      for (final n in names) {
+        if (groupedMap[n] != null) {
+          seen.add('lifecycle.$n');
+          value ??= groupedMap[n];
+        }
+      }
+      for (final n in names) {
+        if (definition[n] != null) {
+          seen.add(n);
+          value ??= definition[n];
+        }
+      }
+      if (seen.length > 1) {
+        warnings.add(
+            'lifecycle hook "$canonical" declared more than once (${seen.join(", ")}); '
+            'using ${seen.first}. This becomes an error in 0.6.0 (spec §1.5.3).');
+      }
+      for (final n in names.skip(1)) {
+        if (groupedMap[n] != null || definition[n] != null) {
+          warnings.add(
+              'lifecycle hook "$n" is deprecated; use "$canonical" (spec §1.5.1). '
+              'Removed in 0.6.0.');
+        }
+      }
+      return _parseActions(value);
+    }
+
     return LifecycleDefinition(
-      onInitialize: _parseActions(json['onInitialize']),
-      onReady: _parseActions(json['onReady']),
-      onMount: _parseActions(json['onMount']),
-      onUnmount: _parseActions(json['onUnmount']),
-      onDestroy: _parseActions(json['onDestroy']),
-      onEnter: _parseActions(json['onEnter']),
-      onLeave: _parseActions(json['onLeave']),
-      onResume: _parseActions(json['onResume']),
-      onPause: _parseActions(json['onPause']),
+      onInit: pick('onInit', const ['onInitialize']),
+      onReady: pick('onReady', const []),
+      onMount: pick('onMount', const ['onEnter']),
+      onUnmount: pick('onUnmount', const ['onLeave']),
+      onDestroy: pick('onDestroy', const []),
+      onResume: pick('onResume', const []),
+      onPause: pick('onPause', const []),
+      aliasWarnings: List<String>.unmodifiable(warnings),
     );
   }
 
+  /// DEPRECATED — reads only the grouped `lifecycle` object, so it cannot see
+  /// the top-level placement §1.5.3 allows. Use [fromDefinition]. Removed in
+  /// 0.6.0.
+  @Deprecated('Use LifecycleDefinition.fromDefinition. Removed in 0.6.0.')
+  factory LifecycleDefinition.fromJson(Map<String, dynamic> json) =>
+      LifecycleDefinition.fromDefinition(<String, dynamic>{'lifecycle': json});
+
+  /// A hook value is "a single Action or an Action array" (§1.5.1). A bare
+  /// Action used to return null here, which is a hook that never runs.
   static List<Map<String, dynamic>>? _parseActions(dynamic actions) {
     if (actions == null) return null;
+    if (actions is Map) {
+      return <Map<String, dynamic>>[Map<String, dynamic>.from(actions)];
+    }
     if (actions is List) {
-      return actions.cast<Map<String, dynamic>>();
+      final out = <Map<String, dynamic>>[];
+      for (final a in actions) {
+        if (a is Map) out.add(Map<String, dynamic>.from(a));
+      }
+      return out.isEmpty ? null : out;
     }
     return null;
   }
 
+  /// True when no hook is declared — lets callers skip the runner entirely.
+  bool get isEmpty =>
+      onInit == null &&
+      onReady == null &&
+      onMount == null &&
+      onUnmount == null &&
+      onDestroy == null &&
+      onResume == null &&
+      onPause == null;
+
   Map<String, dynamic> toJson() {
     return {
-      if (onInitialize != null) 'onInitialize': onInitialize,
+      if (onInit != null) 'onInit': onInit,
       if (onReady != null) 'onReady': onReady,
       if (onMount != null) 'onMount': onMount,
       if (onUnmount != null) 'onUnmount': onUnmount,
       if (onDestroy != null) 'onDestroy': onDestroy,
-      if (onEnter != null) 'onEnter': onEnter,
-      if (onLeave != null) 'onLeave': onLeave,
       if (onResume != null) 'onResume': onResume,
       if (onPause != null) 'onPause': onPause,
     };

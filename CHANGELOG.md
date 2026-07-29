@@ -1,3 +1,58 @@
+## [0.1.5] - 2026-07-29
+
+### Fixed
+
+- **Spec widgets were being replaced, not restyled.** The studio registered its
+  own `button` and `text` factories over the runtime's. Each was a
+  reimplementation, so it only read the properties its author had thought of:
+  `button` accepted 4 of ~25, `text` 5 of 15. `onTap`, `disabled`, `enabled`,
+  `loading`, `icon`, `size`, `fullWidth`, colours, `onLongPress`, `submit`,
+  `maxLines`, `overflow`, `textAlign` and the rest were dropped in silence —
+  the widget rendered, reported success and did nothing. A document written to
+  the spec (which says `onTap`) produced a dead control; one that declared
+  `disabled` produced a fully live one. Both are now style-only delegations:
+  the stock factory is captured before replacement and does the build, while
+  the studio contributes appearance through channels the factory already
+  honours. Anything the spec adds later arrives for free.
+- Ops task delegation reported every run failure as
+  `assignee is not a runnable agent and has no skill to run`. The assignee
+  auto-run seam swallowed all exceptions into `null`, and the caller reads a
+  `null` as "not runnable", so timeouts and tool errors were indistinguishable
+  from a mistyped id. The seam's three outcomes are now distinct: `null` means
+  declined (a person, an unknown id, subsystem off) and still falls back to
+  skill dispatch; a throw carries the real cause into the run's `errorCode`.
+
+### Added
+
+- **Composition Profile host wiring (MCP UI DSL v1.4)** — one screen can render,
+  drive and track several MCP servers. All four runtime hooks are registered
+  together or not at all, on both surfaces that mount a runtime (served services
+  and the authoring/bundle view). An unwired host registers nothing, so `view`
+  fails closed to its own fallback rather than resolving a foreign `$ref`
+  against the wrong server. The `composition_host` recipe is vendored with a
+  drift lock, since this tree must build from a standalone clone.
+- `LocalServerManager.reopen(id)` — reconnects a recorded server without opening
+  a tab, so a composed screen can open an origin on first use. Registered
+  devices are deliberately not held open: many boards serve a single peer, so a
+  permanent connection per device has the last one reset the others.
+- A registration boundary test. The studio may add widgets; taking over a spec
+  one now has to be an allowlisted, style-only delegation, and the check derives
+  the takeover set from factory identity rather than a hand-kept list.
+
+### Changed
+
+- Dependencies moved to the published releases: `brain_kernel ^0.2.0`,
+  `mcp_server ^2.1.1`, `flutter_mcp_ui_runtime ^0.5.3`,
+  `flutter_mcp_ui_core ^0.4.3`, `appplayer_claude_code_provider ^0.1.1`.
+  The template seed's ecosystem versions were raised to match, so a newly
+  scaffolded project no longer starts on the previous set.
+- A button that does not name a `variant` now renders the spec default
+  (`elevated`) instead of the studio's former `text` default — a consequence of
+  delegating rather than reimplementing.
+- Code comments no longer carry design-document paths; the documents describe
+  intent and the code is the implementation. Remaining Korean in this package is
+  limited to two test files where the non-Latin script is the subject under test.
+
 ## [0.1.4] - 2026-07-20
 
 ### Fixed
@@ -134,7 +189,7 @@
   `LoopbackAuthorizer` (RFC 8252) + `VaultOAuthTokenStore`; the recipe stays
   unmodified. Coverage `market_oauth_connect_test` (5 — token priority · OAuth
   fallback · non-stateless).
-- Work-flow visibility completed (콘피 문의 B묶음 B2·B3·B4 — all renders
+- Work-flow visibility completed (the B-series field questions B2·B3·B4 — all renders
   over EXISTING records, no new collection): the Processes route gained a
   List↔Board toggle (B2 flow board — one swimlane per process, columns =
   its steps + Done, run cards sit at their current step with
@@ -142,26 +197,26 @@
   no change tick); the Ops Home gained a "Today's flow" card (B4 — the
   morning briefing as a picture: hour-bucketed lanes for invocations /
   delegations / approval waits / run starts on one midnight→now axis); and
-  a Form Builder issue's detail now opens with its JOURNEY (B3 — 기안 →
-  each approval gate as-signed → 발행 → correction link, rendered purely
+  a Form Builder issue's detail now opens with its JOURNEY (B3 — draft ->
+  each approval gate as-signed → issue -> correction link, rendered purely
   from the provenance frozen into the issue fact). All three live-verified
   eyes-on. New widgets follow the studio design tokens
   (VibeTokens/vibeMono · OpsColors/OpsCard) — the approvals page and
   journey strip were restyled onto them after initially shipping with raw
   Material colorScheme (design-system inheritance is the rule).
   Design: `docs/makemind_ops/ops-flow-views.md`.
-- Form Builder gained REAL approval (전자결재 일반화 — the groupware gap
+- Form Builder gained REAL approval (generalised electronic approval — the groupware gap
   where expense requests lived as chat text and the owner's decision queue
   was a hand-managed file): a saved draft can open an ORDERED approval
   line (`form_builder.approval_request` — multi-gate, per-gate designated
-  approver, 전결 finalize that skips the rest, rejection with a REQUIRED
+  approver, final-authority finalize that skips the rest, rejection with a REQUIRED
   reason returning the draft to `draft`; re-submission replaces the
   approval). The gate is OPT-IN and enforced where it matters:
   `form_builder.issue` refuses (`form_builder.approval_required`) until
   the line completes, and the issued fact freezes the line as provenance
   (who signed each gate, when, with what comment). New `Approvals` route
-  (결재함 — pending band with approve/전결/reject dialogs, done band with
-  line progress ● ○ ✕ ⤵) and a Compose 상신 action; every act notifies
+  (approval inbox — pending band with approve / finalize / reject dialogs, done band with
+  line progress ● ○ ✕ ⤵) and a Compose submit action; every act notifies
   the next approver / the requester on the in-app channel (host
   `channel.send`, best-effort with a hang guard). `form_approval` facts
   ride the same per-project FactGraph as drafts/issues (restart-safe —
@@ -169,11 +224,11 @@
   (form projects carry no org tree, so ops-style ancestor escalation is
   explicitly out of scope for now). Live-verified end-to-end over MCP:
   request → issue refused → wrong-actor refused → two-gate approve →
-  issue 2026-004 with frozen provenance → in-app 승인 대기 push read back
+  issue 2026-004 with frozen provenance → in-app approval-pending push read back
   from the feed. Seed manual grew an `approval_protocol` doc (+4 allowlist
   entries) so the manager drives the same surface honestly. Design:
   `docs/form_builder/form-approval-line.md`.
-- The Ops org chart is ALIVE now (관제탑 B1): the Organization page layers
+- The Ops org chart is ALIVE now (control-tower B1): the Organization page layers
   a real-time overlay over the static chart — per-unit ⏳ pending-approval
   and ▤ today's-output badges on the unit header (a blocked unit's frame
   turns to the warn color), an activity glow ring on member chips that
@@ -398,7 +453,7 @@
     sign-off marker (✓) above the gated step, philosophy / quality gates as an
     inline charter checkpoint (◇).
   - **Structure** — the org chart: each workspace (org unit) is a framing
-    container box; the unit lead (팀장, `Workspace.leadMemberId`) sits on top
+    container box; the unit lead (unit head, `Workspace.leadMemberId`) sits on top
     with reporting lines down to its members; nested workspaces compose
     sub-teams into larger units (hierarchy edges). Members show a 🤖 agent /
     👤 human icon.
@@ -442,7 +497,7 @@
   copy-only knowledge. (Open, kernel: unifying the charter active with
   `bk.philosophy`'s active.)
 - Agent orchestration role is now assignable + profile-driven. The functional
-  role (기자 / 편집자 …) IS the **Profile** (persona axis, project-pooled +
+  role (reporter / editor / …) IS the **Profile** (persona axis, project-pooled +
   inherited) — no separate role catalog; the org chart's Structure lens now
   labels/groups members by their profile. Orthogonally, `member_create_agent`
   takes an optional `role` (worker / manager / reviewer → `AgentRole`, which
@@ -451,7 +506,7 @@
   `defaultRole:`), else worker. Runtime-created agents are no longer hardcoded
   to worker.
 - Workspace `leadMemberId` + `workspace_set_lead` tool — an org unit's lead
-  (팀장 / unit head): the top of its hierarchy in the structure org-chart and
+  (unit head): the top of its hierarchy in the structure org-chart and
   the natural default approver / escalation target. Realizes the team-lead tier
   deferred in `specs/platform/12-flowbrain-runtime` (workspace = recursive org
   unit per `07-knowledge-access`); no separate Team entity.

@@ -106,8 +106,7 @@ export 'src/base/install/knowledge_seed_loader.dart';
 // `knowledge_tools.dart` · `profile_tools.dart` · `fact_tools.dart`
 // · `philosophy_tools.dart` · `skill_tools.dart` · `ops_tools.dart`
 // retired 2026-05-26 — those `bk.*` surfaces now come from the
-// kernel's `addStandardTools` (cherry inbox `cli-llm-provider-recipe`
-// §5 path separation).
+// kernel's `addStandardTools` (path separation).
 export 'src/base/install/project_layout.dart';
 export 'src/base/install/project_tools.dart';
 export 'src/base/install/search_tools.dart';
@@ -190,8 +189,8 @@ export 'src/base/types/layer_projection.dart';
 export 'src/base/infra/history_log.dart';
 export 'src/base/infra/workspace_fs_port.dart';
 
-// Round A2-3 finale — vibe-side canonical / patch-pipeline / spec /
-// converter machinery. Every concrete class is the verbatim lift from
+// Vibe-side canonical / patch-pipeline / spec / converter machinery.
+// Every concrete class is the verbatim lift from
 // vibe_app_builder; future builders that want the same layered editing
 // model (canonical bundle + dry-run validation + atomic patch
 // application) can implement the validators alone and reuse the rest.
@@ -241,3 +240,11 @@ export 'src/base/widgets/editors/wiring_settings_list.dart';
 // Connected-server (service) render + connection helpers — host-neutral, used
 // by both the marketplace embed (pro) and the local-server feature (base).
 export 'src/base/servers/served_service.dart';
+// Composition Profile seam — the authoring / bundle surface (workspace) reads
+// it through this barrel, the served surface imports it directly.
+export 'src/base/servers/composition_seam.dart'
+    show
+        StudioCompositionSeam,
+        applyCompositionHooks,
+        applyCompositionHooksToStudioRuntime,
+        kernelToolCallFrom;

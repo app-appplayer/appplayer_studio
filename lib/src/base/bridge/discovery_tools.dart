@@ -1,6 +1,6 @@
 /// Board discovery — Studio-owned wiring over the vendored
-/// `device_discovery` (spec 17, two-stage discovery) and `ble_transport`
-/// (spec 16, BLE GATT) recipes.
+/// `device_discovery` (two-stage discovery) and `ble_transport`
+/// (BLE GATT) recipes.
 ///
 /// Discovery is exposed MCP-first (Studio is LLM-driven):
 /// - `mcp.discover_boards {source: mdns|ble|usb|directory}` — one scan
@@ -9,7 +9,7 @@
 ///   reported (probe failure drops the candidate — it is not a conforming
 ///   MCP node); `http(s)` endpoints are reported unprobed (`probed:
 ///   false`, they attach like any remote MCP server).
-/// - `mcp.connect_ble_board {deviceId}` — spec 16 connection sequence over
+/// - `mcp.connect_ble_board {deviceId}` — connection sequence over
 ///   the real radio, injected through the kernel extension seam. A
 ///   discovered TCP/serial board needs no new tool: connect it with the
 ///   existing `mcp.connect_extension` per the candidate's `connectHint`.
@@ -55,7 +55,7 @@ const int kDiscoverSerialBaudRate = 115200;
 
 /// One enumerated serial port (usb source Stage 1 — the physical
 /// connection IS the announcement; every port is a candidate, VID/PID is
-/// never a filter. The probe is the gate, spec 17 §2).
+/// never a filter. The probe is the gate).
 typedef SerialPortCandidate = ({String portName, String description});
 
 /// Probe seam — [probeCandidate] signature, injectable for tests.
@@ -66,7 +66,7 @@ typedef ProbeFn = Future<BoardIdentity?> Function({
   String clientVersion,
 });
 
-/// Manifest trust seam (spec 17 §6, [ManifestTrustEvaluator.evaluate]).
+/// Manifest trust seam ([ManifestTrustEvaluator.evaluate]).
 /// Null = trust verification not wired (candidates carry no `trust` field and
 /// signature enforcement is inert). Injected by the host once its root-CA
 /// trust anchor is provisioned.
@@ -89,7 +89,7 @@ StudioDiscovery registerDiscoveryTools(
   FutureOr<DirectoryConfig?> Function()? directoryConfig,
   ProbeFn? probe,
   BleLink Function(String deviceId)? bleLinkFor,
-  // Trust verification seam (spec 17 §6). [trustEvaluator] attaches signature
+  // Trust verification seam. [trustEvaluator] attaches signature
   // evidence to probe-confirmed candidates; [enforceSignature] (read fresh from
   // settings per call) gates the auto-connect sweep and connectCandidate on it.
   // Both default off so discovery behaves exactly as before until the host
@@ -207,7 +207,7 @@ class StudioDiscovery {
   final FutureOr<bool> Function()? _enforceSignature;
   final List<String> _toolNames = <String>[];
 
-  /// Attach signature evidence (spec 17 §6) to a probe-confirmed [candidate].
+  /// Attach signature evidence to a probe-confirmed [candidate].
   /// No-op when no evaluator is wired (candidate stays untouched). Otherwise a
   /// `trust` map is added: `{signed, verified, partnerChainValid}` — `signed`
   /// distinguishes an unsigned manifest (no `trust` block) from a signed one
@@ -233,7 +233,7 @@ class StudioDiscovery {
   /// candidate whose attached evidence verified may connect (an unsigned board,
   /// an unverified signature, or a candidate with no evidence at all is
   /// rejected). BLE candidates carry no pre-connect manifest, so under
-  /// enforcement they are blocked until post-connect trust (spec §7) lands.
+  /// enforcement they are blocked until post-connect trust lands.
   Future<bool> _connectAllowedByTrust(Map<String, dynamic> candidate) async {
     final enforce = await _enforceSignature?.call() ?? false;
     if (!enforce) return true;
@@ -306,7 +306,7 @@ class StudioDiscovery {
               if (c.txt.version != null) 'version': c.txt.version,
             });
           }
-          // proto=unknown → non-conformant announcement, dropped (spec 17).
+          // proto=unknown → non-conformant announcement, dropped.
         }
         return <String, dynamic>{
           'ok': true,
@@ -489,7 +489,7 @@ class StudioDiscovery {
         final id = 'board:$manifestId';
         if (!await _connectAllowedByTrust(c)) {
           // Signature enforced and the board is unsigned / unverified —
-          // never auto-connect it (spec 17 §6). Surfaced separately from
+          // never auto-connect it. Surfaced separately from
           // `skipped` (which is "already live") so the reason is clear.
           blocked.add(id);
           continue;

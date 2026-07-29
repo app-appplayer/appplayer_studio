@@ -13,7 +13,6 @@ import '../observability/activity_event.dart';
 import '../triggers/trigger_events.dart';
 import '../util/atomic_write.dart';
 
-/// See `SRS §2.10 FR-OPS-006` for the design specification.
 enum ProcessTrigger { manual, event, task }
 
 enum GateKind { philosophy, quality, approval }

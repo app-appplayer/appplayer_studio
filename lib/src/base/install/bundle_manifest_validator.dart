@@ -179,7 +179,7 @@ class BundleManifestValidator {
           // Compiled TypeScript tool of a `type: server` bundle — declaration
           // shape mirrors js (`target: {entry, fn}`), but the code runs on
           // the marketplace's serving runtime, never in this host, so no
-          // executability validation beyond the shape (spec 08 §5).
+          // executability validation beyond the shape.
           if (t.target['entry'] is! String ||
               (t.target['entry'] as String).isEmpty) {
             issues.add(

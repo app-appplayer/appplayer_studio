@@ -33,6 +33,8 @@ import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
 import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_store.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_manager.dart';
+import 'package:appplayer_studio/src/base/servers/composition_seam.dart'
+    show StudioCompositionSeam, kernelToolCallFrom;
 import 'package:appplayer_studio/src/base/servers/connect_server_dialog.dart'
     show ConnectServerRequest, DiscoveredServer;
 import 'package:appplayer_secure/appplayer_secure.dart'
@@ -236,6 +238,13 @@ class VibeStudioHostApp extends StudioApp {
   final List<Future<List<HomeInstalledTile>> Function()> _extensionTileProviders =
       <Future<List<HomeInstalledTile>> Function()>[];
 
+  /// Kept so the Composition Profile seam can hand the recipe an origin opener.
+  /// Composition opens a named origin on first use; this manager already owns
+  /// "reconnect a recorded server by id" for every transport, so composition
+  /// reuses it instead of growing a second connect path. Null when no client
+  /// host is up (no local servers, hence no origins to open).
+  LocalServerManager? _localServerManager;
+
   void _addExtensionHomeEntry({
     required String label,
     required IconData icon,
@@ -358,7 +367,7 @@ class VibeStudioHostApp extends StudioApp {
   /// `chromiumPath` from here fresh per call so a hot-swap takes effect.
   VibeSettings? _settings;
 
-  /// Memoized board-discovery trust evaluator (spec 17 §6) — built once from
+  /// Memoized board-discovery trust evaluator — built once from
   /// the bundled root-CA anchor on first discovery, then reused. Null result =
   /// anchor missing/malformed → discovery carries no signature evidence.
   Future<Future<TrustEvidence?> Function(BoardIdentity)?>? _discoveryTrustEval;
@@ -469,7 +478,7 @@ class VibeStudioHostApp extends StudioApp {
     // discover the host surface via resources/list + studio.knowledge
     // .query, and supplies the `agents[]` block that boot reads to
     // seed `host_agents.json` (Home tab's Domain panel source).
-    // Per MOD-INFRA-010 §10.1 — host knowledge stays at host scope.
+    // Host knowledge stays at host scope.
     final hostDocs = _findPackageSeed('standard', 'studio.mbd');
     final hostDocsEntries = <SeedBundleEntry>[
       if (hostDocs != null)
@@ -676,7 +685,7 @@ class VibeStudioHostApp extends StudioApp {
     // Round C (kernel-app F) — the host's MCP endpoint joins the
     // shared `KernelApp` pool through `app.addEndpoint(label:'studio')`
     // so it sits next to the spawn factory's narrow-link endpoints
-    // (PORTING_GUIDE §6.2.5). The returned `endpoint.server` is the
+    // The returned `endpoint.server` is the
     // same `mk.KernelServerHost` type the rest of buildServer + the
     // mirror helpers (`_mirrorHostToolsOnto` / `_mirrorHostResourcesOnto`)
     // already accept, so the call sites below stay unchanged.
@@ -759,8 +768,7 @@ class VibeStudioHostApp extends StudioApp {
     // the per-facade host-side `registerXxxTools` wrappers
     // (`base/install/{fact,knowledge,ops,philosophy,profile,skill}_tools.dart`
     // + `base/agent/agent_dispatch_tools.dart`) which previously
-    // re-registered same-named tools — cleanup 2026-05-26 per cherry
-    // inbox `cli-llm-provider-recipe-2026-05-26.md` §5 (bridge alias
+    // re-registered same-named tools — cleanup 2026-05-26 (bridge alias
     // mechanism owns the `bk.*` namespace; hosts let kernel publish
     // the standard surface).
     final hostEndpoint = backbone.app.endpoint('studio');
@@ -777,7 +785,7 @@ class VibeStudioHostApp extends StudioApp {
       endpoint: boot,
       attachToDispatcher: (_, __) {},
       detachFromDispatcher: (_) {},
-      // §6 destructive-action gate (spec 12 / cherry FlowBrain runtime
+      // Destructive-action gate (FlowBrain runtime
       // handoff). Tools registered `destructive: true` (irreversible —
       // git push · external send · settlement · publish) require human
       // confirmation before running. Surfaced through the host's standard
@@ -852,8 +860,8 @@ class VibeStudioHostApp extends StudioApp {
       // the board by id afterward (cherry `embedded-mcp-serving-base`).
       registerExtensionConnectTool(hostTools, clientHost);
       // `mcp.discover_boards` / `mcp.connect_ble_board` — nearby-board
-      // discovery over the vendored device_discovery (spec 17 mDNS
-      // two-stage) and ble_transport (spec 16 GATT) recipes. TCP finds
+      // discovery over the vendored device_discovery (mDNS
+      // two-stage) and ble_transport (GATT) recipes. TCP finds
       // connect through `mcp.connect_extension` above; BLE boards get the
       // dedicated GATT connect. The directory (LDAP) source reads its
       // config fresh from settings per call — a dialog save takes effect
@@ -866,7 +874,7 @@ class VibeStudioHostApp extends StudioApp {
           final json = s.discoveryDirectoryConfig;
           return json == null ? null : DirectoryConfig.fromJson(json);
         },
-        // Manifest signature verification (spec 17 §6). The evaluator is built
+        // Manifest signature verification. The evaluator is built
         // once from the bundled root-CA anchor (dev partner / marketplace);
         // enforcement is read fresh from settings per call so a dialog toggle
         // takes effect without a restart (directoryConfig precedent).
@@ -1033,6 +1041,7 @@ class VibeStudioHostApp extends StudioApp {
         },
         themeReinjectTick: _chromeBridge.themeReinjectTick,
       );
+      _localServerManager = localServerManager;
       _extensionTileProviders.add(() async => localServerManager.tiles());
       _chromeBridge.connectServer = localServerManager.connect;
 
@@ -1148,7 +1157,7 @@ class VibeStudioHostApp extends StudioApp {
     FormCapabilityBinding.install(hostTools);
     registerIngestCapability(hostTools);
     // `provision.*` — BLE device network commissioning (vendored
-    // ble_provisioning recipe, spec 18 sibling): candidates (on-demand scan for
+    // ble_provisioning recipe): candidates (on-demand scan for
     // `mcp-prov` devices) + commission (send Wi-Fi creds, await the join over
     // the status NOTIFY). Host-owned like the other capabilities so a
     // provisioning bundle's `type:tool` calls reach it in-process.
@@ -1358,7 +1367,7 @@ class VibeStudioHostApp extends StudioApp {
       configRoot: backbone.configRoot,
       seedScenarioDirs: () {
         // Built-in app seeds are knowledge-only per the R26 cleanup
-        // (`docs/03_DDD/host.md` MOD-HOST-007 read-scope rule —
+        // (read-scope rule —
         // `knowledge.* + agents.* + manifest + requires + schemaVersion`
         // only). Scenarios are authored through the Scene Builder UI
         // into the user's scene project folder under the workspace
@@ -1398,7 +1407,7 @@ class VibeStudioHostApp extends StudioApp {
     // ignore: unawaited_futures
     _fanOutSeedTools(boot);
     // Built-in apps register their MCP tools directly in Dart (no JS).
-    // Per `studio-builder-runtime-model.md §8.5`, every button / action
+    // Every button / action
     // is a 1:1 MCP tool — built-in apps own their tool impls in code
     // alongside the Flutter shell.
     // ignore: unawaited_futures
@@ -1414,6 +1423,18 @@ class VibeStudioHostApp extends StudioApp {
     // (`addTool` / `addResource` / `addPrompt` / `callTool`) instead of
     // the kernel handle (builtin-os-cleanup Phase 4).
     final registry = BuiltinToolRegistry(boot);
+    // Composition Profile seam (MCP UI DSL v1.4) — a served screen may `$ref`
+    // a definition on ANOTHER server and then drive and track that server's
+    // device. Both halves are host knowledge the recipe cannot discover:
+    // `call` is this host's in-process kernel `mcp.*` dispatcher, and
+    // `openOrigin` is "connect a recorded server by id", which the local-server
+    // manager already owns for every transport. Wired once here; every served
+    // surface in both tiers reads it.
+    StudioCompositionSeam.register(
+      call: kernelToolCallFrom(registry.callTool),
+      clientHost: () => backbone.app.clientHost,
+      openOrigin: _localServerManager?.reopen,
+    );
     for (final app in BuiltInAppRegistry.instance.apps) {
       try {
         await app.registerHostTools(
@@ -1928,10 +1949,10 @@ class VibeStudioHostApp extends StudioApp {
         // so the spawned boot lives in the shared endpoint pool
         // (`backbone.app.endpoints`) alongside the host's 'studio'
         // endpoint. `addEndpoint(label)` is idempotent on the same
-        // label (FR-EP-008), so reconnects to the same narrow URL
+        // label, so reconnects to the same narrow URL
         // return the existing endpoint instead of double-binding.
         // The mirror + register + start sequence stays on the host
-        // side per PORTING_GUIDE §6.2.5 — kernel doesn't ship a
+        // side — kernel doesn't ship a
         // cross-endpoint reflect helper.
         final ep = _backboneCached!.app.addEndpoint(
           label: 'narrow:${parsed.host}_${parsed.port}',
@@ -1939,7 +1960,7 @@ class VibeStudioHostApp extends StudioApp {
         );
         final spawnedBoot = ep.server..register();
         // Mirror host (studio.* + app_builder.*) tools onto the
-        // spawned boot. Per MOD-INFRA-010 §10.1, a domain-spawned
+        // spawned boot. A domain-spawned
         // narrow link must surface the same host base as the system
         // server so external clients can drive workflows the same
         // way regardless of which URL they connect to. Each wrapper
@@ -1968,7 +1989,7 @@ class VibeStudioHostApp extends StudioApp {
     // without requiring user interaction. Without this hook, built-in
     // tabs bypass `_activateBundle` (their bodies are Flutter widgets,
     // not manifest UI) and `mgr.attach` never fires — narrow-link
-    // overrides become a no-op (gap G-1 in MOD-INFRA-010 §10.7).
+    // overrides become a no-op.
     //
     // Fires after the manager is constructed AND after the host's
     // knowledge fan-out has settled so the spawn factory's
@@ -2115,7 +2136,7 @@ class VibeStudioHostApp extends StudioApp {
   /// Register the built-in's own `manifest.knowledge.sources[]` as
   /// MCP resources on the spawned boot. Scoped — only this built-in's
   /// docs land here, so the narrow link doesn't leak other domains'
-  /// docs (per MOD-INFRA-010 §10.5 narrow-link semantics: host base +
+  /// docs (narrow-link semantics: host base +
   /// single domain). Idempotent — duplicate `addResource` throws
   /// `mh.McpError` which is swallowed.
   Future<void> _fanOutBuiltInKnowledgeOnSpawned(
@@ -2313,7 +2334,7 @@ class VibeStudioHostApp extends StudioApp {
 
   /// Copy host-base `studio.*` tools from [source] (system boot) onto
   /// [target] (newly-spawned domain boot) as thin wrappers that
-  /// delegate back into the source's handler. Per MOD-INFRA-010 §10.1
+  /// delegate back into the source's handler.
   /// a narrow per-domain link exposes (host base) + (single active
   /// domain). Domain-specific surfaces (`vibe_*` from App Builder,
   /// `app_builder.*` aliases, future `scene_*`, etc.) are
@@ -2756,7 +2777,7 @@ class VibeStudioHostApp extends StudioApp {
     // Round E (kernel-app F) — sync the KernelApp's active bundle so
     // tool dispatch outside the chrome's wrappers (`app.system.agents
     // .ask`, in-process call from kernel-internal flows) sees the
-    // same scope the chrome shows. PORTING_GUIDE §6.2.6 — one-way
+    // same scope the chrome shows — one-way
     // chrome → kernel; kernel never reads BuiltInAppRegistry.
     _backboneCached?.app.setActiveBundle(bundleId);
     // Update the foreground singleton so any path that hasn't been
@@ -2976,7 +2997,7 @@ class VibeStudioHostApp extends StudioApp {
         // `_activeProjectNotifier`, which feeds the shell's display
         // here. Path null = no project open in the active tab —
         // built-ins surface their own no-project label through
-        // `chromeBridge.lifecycleState.value.projectName` (MOD-APPS-003);
+        // `chromeBridge.lifecycleState.value.projectName`;
         // the 'Home' fallback below is for the actual Home tab.
         valueListenable: _activeProjectNotifier,
         builder:

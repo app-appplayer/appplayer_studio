@@ -11,23 +11,22 @@ import 'ble_link.dart';
 import 'ble_uuids.dart';
 import 'newline_json_framer.dart';
 
-/// MCP [ClientTransport] over the BLE GATT binding of
-/// `specs/platform/16-ble-transport.md`.
+/// MCP [ClientTransport] over the BLE GATT binding.
 ///
 /// Pure Dart: all radio access goes through the injected [BleLink]
 /// (see `FlutterBluePlusLink` for the real radio; tests use a fake).
 ///
-/// [start] performs the spec connection sequence:
+/// [start] performs the connection sequence:
 /// 1. connect (GATT central to the board's peripheral),
-/// 2. try to negotiate ATT MTU >= [desiredMtu] (spec §4 SHOULD; failure is
+/// 2. try to negotiate ATT MTU >= [desiredMtu] (SHOULD; failure is
 ///    non-fatal — the transport keeps working at the default MTU 23),
 /// 3. subscribe TX-characteristic notifications (CCCD) and feed every
 ///    received chunk into the newline framer. Nothing is sent before this
 ///    subscription is in place.
 ///
-/// [send] encodes `jsonEncode(message) + '\n'` (spec §5) and writes it to
+/// [send] encodes `jsonEncode(message) + '\n'` and writes it to
 /// the RX characteristic in chunks of at most `ATT_MTU - 3` bytes, in
-/// order (spec §4 — chunk boundaries carry no semantics on either side).
+/// order (chunk boundaries carry no semantics on either side).
 class BleClientTransport implements ClientTransport {
   BleClientTransport({
     required BleLink link,
@@ -52,7 +51,7 @@ class BleClientTransport implements ClientTransport {
   bool _closed = false;
 
   /// Effective payload size per GATT write after [start]
-  /// (`ATT_MTU - 3`, spec §4).
+  /// (`ATT_MTU - 3`).
   int get maxChunkSize => _maxChunkSize;
 
   /// Connect, negotiate MTU, subscribe notifications. Must complete before
@@ -63,7 +62,7 @@ class BleClientTransport implements ClientTransport {
 
     await _link.connect();
 
-    // Spec §4: SHOULD try MTU >= 247; MUST still work at the default 23.
+    // SHOULD try MTU >= 247; MUST still work at the default 23.
     int mtu;
     try {
       mtu = await _link.requestMtu(_desiredMtu);
@@ -73,7 +72,7 @@ class BleClientTransport implements ClientTransport {
     if (mtu < bleDefaultAttMtu) mtu = bleDefaultAttMtu;
     _maxChunkSize = mtu - bleAttHeaderOverhead;
 
-    // Spec §3: CCCD subscription first — the server sends nothing before
+    // CCCD subscription first — the server sends nothing before
     // it, and this transport sends nothing before it either (send() is
     // gated on _started, which only flips after this line).
     final notifications = await _link.subscribeTxNotifications();

@@ -22,9 +22,7 @@ class UniversalBleProvisioningTransport implements ProvisioningTransport {
     ctrl = StreamController<List<ProvisioningCandidate>>(
       onListen: () async {
         sub = UniversalBle.scanStream
-            .where((d) => d.services
-                .map((s) => s.toLowerCase())
-                .contains(ProvisioningUuids.serviceUuid))
+            .where(_isProvisioningDevice)
             .listen((d) {
           seen[d.deviceId] = ProvisioningCandidate(
             deviceId: d.deviceId,
@@ -43,6 +41,23 @@ class UniversalBleProvisioningTransport implements ProvisioningTransport {
     return ctrl.stream;
   }
 
+  /// A device is provisionable when it advertises the provisioning service
+  /// UUID **or** its advertised name marks it as one.
+  ///
+  /// The name branch is load-bearing on macOS / iOS, not a convenience: the
+  /// firmware puts the 128-bit service UUID in the primary advertisement and
+  /// the name in the scan response, and CoreBluetooth does not reliably surface
+  /// a 128-bit service UUID from an advertisement. Filtering on the UUID alone
+  /// therefore finds nothing on a Mac while working fine on Android — the exact
+  /// asymmetry that made a board sitting in provisioning mode invisible to the
+  /// desktop host. Android surfaces both, so the UUID branch still covers it.
+  static bool _isProvisioningDevice(BleDevice d) {
+    final services = d.services.map((s) => s.toLowerCase());
+    if (services.contains(ProvisioningUuids.serviceUuid)) return true;
+    final name = (d.name ?? d.rawName ?? '').toLowerCase();
+    return name.startsWith(ProvisioningUuids.advertisedName);
+  }
+
   @override
   Future<ProvisioningLink> open(String deviceId) async {
     await UniversalBle.connect(deviceId);
@@ -59,15 +74,19 @@ class UniversalBleProvisioningLink implements ProvisioningLink {
   final String _deviceId;
 
   @override
-  Future<List<WifiAp>> scanWifi() async {
-    final bytes = await UniversalBle.read(_deviceId,
-        ProvisioningUuids.serviceUuid, ProvisioningUuids.wifiListChar);
-    final obj = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
-    final aps = (obj['aps'] as List?) ?? const [];
-    return [
-      for (final a in aps) WifiAp.fromJson(Map<String, Object?>.from(a as Map)),
-    ];
-  }
+  Future<List<WifiAp>> scanWifi() => pageWifiList(
+        read: () async {
+          final bytes = await UniversalBle.read(_deviceId,
+              ProvisioningUuids.serviceUuid, ProvisioningUuids.wifiListChar);
+          return jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
+        },
+        seek: (from) => UniversalBle.write(
+          _deviceId,
+          ProvisioningUuids.serviceUuid,
+          ProvisioningUuids.wifiListChar,
+          Uint8List.fromList(utf8.encode(jsonEncode({'from': from}))),
+        ),
+      );
 
   @override
   Future<void> sendCredentials(String ssid, String password) async {

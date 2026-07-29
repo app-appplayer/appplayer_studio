@@ -2291,7 +2291,7 @@ class _PagesBody extends StatelessWidget {
 }
 
 /// Editor for the single application dashboard (`ui.dashboard`, spec
-/// §11.9). Distinct from the page editor — dashboard is the app's
+/// Distinct from the page editor — dashboard is the app's
 /// compact preview surface and there's at most one per bundle.
 class _DashboardBody extends StatelessWidget {
   const _DashboardBody({
@@ -3859,7 +3859,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// Typed NavigationStyle editor (spec 1.3.4 §05_Theme.md, configs/
+/// Typed NavigationStyle editor (configs/
 /// _primitive/NavigationStyle.yaml). Slot-by-slot fields beat raw
 /// JSON for visual settings — every slot dispatches an upsert at its
 /// own pointer so the patch is small and validator-friendly.

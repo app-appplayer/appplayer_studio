@@ -174,7 +174,7 @@ class AppBuilderBuiltInApp extends BuiltInApp {
     StudioBackbone? backbone,
   }) async {
     // app_builder.newAppProject — 1:1 with the Project Header "New"
-    // button. Per §8.5 dialog vs programmatic is discriminated by the
+    // button. Dialog vs programmatic is discriminated by the
     // presence of args. With `name`: route to chromeBridge.onNewProject
     // headless (existing Flutter scaffold path used by VibeProject.
     // openAt). Without `name`: fire the lifecycle slot so the shell
@@ -700,8 +700,8 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
     // Detach from the DomainServerManager so a domainSpawned boot
     // (created when this built-in was set to inheritFromSystem=false)
     // tears down when no other domain is attached. Without this, the
-    // spawned server lingers across tab close (resource leak — gap G-3
-    // in MOD-INFRA-010 §10.7). System wrapper tools stay registered
+    // spawned server lingers across tab close (resource leak).
+    // System wrapper tools stay registered
     // and gracefully return "no active mount" until a future mount.
     widget.chromeBridge.domainServerManager?.detach(widget.bundlePath);
     // Single-instance liveness: stop being the live App Builder bridge

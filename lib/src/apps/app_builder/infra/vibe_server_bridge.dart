@@ -25,8 +25,7 @@ class VibeServerBridge {
   /// this to the new mount; the mount's dispose clears it only-if-mine.
   /// `vibe_*` tool/resource handlers read through [resolve] so a re-mounted
   /// mount's tool (registered via the standard registry's replace) answers
-  /// from the live bridge, never a torn-down mount's nulled state — see
-  /// the re-mount lifecycle subsection under MOD-INSTALL-BTR (DDD/infra).
+  /// from the live bridge, never a torn-down mount's nulled state.
   /// This is *liveness*, not foreground — a backgrounded-but-mounted App
   /// Builder still answers its real project state (no false "no project").
   /// Domain foreground is the platform's `setActiveBundle()`, not this
@@ -212,7 +211,7 @@ class VibeServerBridge {
   /// Direct dispatch into a vibe FlowBrain agent. Returns the agent's
   /// reply (text + tool calls). Implementer is responsible for
   /// honouring the agent's allowed-tools subset and for dispatching
-  /// any returned tool_calls. See MOD-FEAT-008 AgentHost.
+  /// any returned tool_calls. See AgentHost.
   Future<Map<String, dynamic>> Function(String agentId, String message)?
   askAgent;
 

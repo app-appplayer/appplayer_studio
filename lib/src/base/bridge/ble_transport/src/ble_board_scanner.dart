@@ -8,8 +8,7 @@ import 'package:universal_ble/universal_ble.dart';
 
 import 'ble_uuids.dart';
 
-/// One nearby MCP-serving board seen during a scan
-/// (`specs/platform/16-ble-transport.md` §6).
+/// One nearby MCP-serving board seen during a scan.
 class BleBoardCandidate {
   const BleBoardCandidate({
     required this.deviceId,
@@ -20,7 +19,7 @@ class BleBoardCandidate {
   /// Platform device identifier — pass to `UniversalBleLink(deviceId:)`.
   final String deviceId;
 
-  /// Advertised local name (may be empty — the name is free-form, spec §6).
+  /// Advertised local name (may be empty — the name is free-form).
   final String localName;
 
   /// Signal strength at scan time (dBm); 0 when the platform does not
@@ -31,7 +30,7 @@ class BleBoardCandidate {
   String toString() => 'BleBoardCandidate($deviceId, "$localName", $rssi dBm)';
 }
 
-/// Scans for nearby MCP-serving boards. Discovery per spec §6 is a single
+/// Scans for nearby MCP-serving boards. Discovery is a single
 /// scan filter on the fixed MCP Serving service UUID — boards must include
 /// it in their advertising PDU or scan response, so no other heuristics
 /// are needed.

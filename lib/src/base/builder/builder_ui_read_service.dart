@@ -18,7 +18,7 @@ import 'json_pointer.dart';
 class BuilderUiReadService {
   /// Load and decode `<mbdPath>/ui/app.json`. Throws
   /// [FormatException] when the file is missing or malformed —
-  /// callers should translate to §4 diagnostic shape.
+  /// callers should translate to the diagnostic shape.
   Future<Object?> loadUi(String mbdPath) async {
     final file = File(p.join(mbdPath, 'ui', 'app.json'));
     if (!file.existsSync()) {

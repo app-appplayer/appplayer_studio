@@ -905,7 +905,7 @@ class BuildToolsDispatcher {
     if (routes is Map) {
       final routedPages = <String>{};
       // Resolve a routes-map value to the page id it points at.
-      // Per app.schema.json §RouteValue, route values can be:
+      // Route values can be:
       //   1. raw page id ("home")
       //   2. `ui://pages/<id>` URI form (canonical for cross-bundle
       //      page references)
@@ -5770,7 +5770,7 @@ Kinds set duration + curve on every animatedOpacity / animatedAlign
     );
   }
 
-  /// Accessibility audit (1.3 §13_Accessibility). Walks the widget
+  /// Accessibility audit. Walks the widget
   /// tree and flags issues against WCAG 2.1 AA + Material guidance:
   ///   - touch target < 48dp (button / iconButton without explicit
   ///     constraints meeting min size)
@@ -6167,7 +6167,7 @@ Kinds set duration + curve on every animatedOpacity / animatedAlign
   }
 
   /// Audit `/manifest/assets` for entries whose `contentRef` does not
-  /// match the AssetRef spec (configs/_primitive/AssetRef.yaml — five
+  /// match the AssetRef spec (five
   /// schemes: `bundle://`, `https?://`, `data:`, `assets/`,
   /// `client://`). Pre-1.3.4 projects sometimes carry `material:<name>`
   /// entries (treated as informational icon hints). Returns a list of
@@ -6296,7 +6296,7 @@ Kinds set duration + curve on every animatedOpacity / animatedAlign
   /// Set NavigationStyle slots under `/ui/navigation/style`. Pass
   /// either `slot`+`value` to upsert one field, or `style` to fully
   /// replace the style object. Slot must be a known
-  /// NavigationStyle key (1.3.4 §05_Theme.md).
+  /// NavigationStyle key.
   Future<BuildToolResult> navigationStyleSet({
     String? slot,
     dynamic value,

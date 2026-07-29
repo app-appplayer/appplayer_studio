@@ -1,4 +1,4 @@
-/// Host wiring for the vendored provisioning recipe set (spec 18 siblings):
+/// Host wiring for the vendored provisioning recipe set:
 /// exposes `provision.*` as host capability tools so a bundle or an agent
 /// drives device network onboarding — hand a nearby device the Wi-Fi
 /// credentials, await the terminal join — through one JSON surface, over any

@@ -749,5 +749,5 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
   // into the App Builder BuiltInApp, and `_createNewPackage` now
   // drops a `.builtin_app_builder` marker so the registry's
   // `canHandle` matches the draft naturally — no namespace literal
-  // lookup, no host-side adopt slot. See `docs/03_DDD/apps.md` §0.3a.
+  // lookup, no host-side adopt slot.
 }

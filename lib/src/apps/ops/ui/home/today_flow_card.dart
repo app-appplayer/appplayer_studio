@@ -3,8 +3,7 @@
 /// invocations (mint) · delegations (teal) · approval waits (amber) ·
 /// process runs started (blue). Dot size = count. Pure render over existing
 /// records — facts and run records emit no change tick, so the card is fed
-/// by a poll provider (`todayFlowProvider`). Design:
-/// `docs/makemind_ops/ops-flow-views.md`.
+/// by a poll provider (`todayFlowProvider`).
 library;
 
 import 'dart:math' as math;

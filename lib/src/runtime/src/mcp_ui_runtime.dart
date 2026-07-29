@@ -32,10 +32,13 @@
 library mcp_ui_runtime;
 
 import 'dart:async';
+import 'routing/route_value.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'optimization/widget_cache.dart';
+import 'entry/entry_context.dart';
+import 'entry/entry_session.dart';
 import 'runtime/runtime_engine.dart';
 import 'utils/icon_resolver.dart';
 import 'widgets/widget_factory.dart';
@@ -113,6 +116,13 @@ class MCPUIRuntime {
   /// Gets the state manager (accessible before initialize, returns uninitialized manager)
   StateManager get stateManager => _engine.stateManager;
 
+  /// Entry and identity this runtime was opened under (MCP UI DSL 8.9).
+  ///
+  /// A host wires promotion through [EntrySession.registerPromotion] and can
+  /// replace the principal at any time with [EntrySession.adoptIdentity] —
+  /// bound expressions re-evaluate in place, the document is not rebuilt.
+  EntrySession get entrySession => _engine.entrySession;
+
   /// Gets the theme manager (accessible before initialize, returns uninitialized manager)
   ThemeManager get themeManager => _engine.themeManager;
 
@@ -148,11 +158,30 @@ class MCPUIRuntime {
   ///    author-side linter for JSON bundles.
   /// 2. `dart run tools/spec_codegen/bin/conformance.dart` — CI gate that
   ///    verifies spec ↔ factory drift is zero.
+  /// Initialize the runtime.
+  ///
+  /// [entry] and [identity] carry how this definition was reached and who is
+  /// looking at it (MCP UI DSL 8.9). Both are optional: a definition opened
+  /// from a launcher tile has no entry, and a runtime with neither resolves
+  /// every `entry.*` / `identity.*` binding to null.
+  ///
+  /// An [entry] that names a route opens the definition there instead of at
+  /// its own `initialRoute` — that is what makes a scanned code land on the
+  /// page it asked for.
+  ///
+  /// [launchRoute] is the same request without the arrival: an in-app open
+  /// that names a page (DSL §4.3.1 `navigation.openApp`) sets it and leaves
+  /// `entry.*` absent, because §8.9.1 reserves that tree for definitions
+  /// reached from outside. A document deciding "was I scanned?" would
+  /// otherwise read a navigation as a scan.
   Future<void> initialize(
     Map<String, dynamic> definition, {
     Function(String)? pageLoader,
     bool useCache = true,
     bool validateSchema = true,
+    EntryContext? entry,
+    IdentityContext? identity,
+    String? launchRoute,
   }) async {
     if (_isInitialized) {
       throw StateError('MCP UI Runtime is already initialized');
@@ -173,6 +202,9 @@ class MCPUIRuntime {
       definition: definition,
       pageLoader: pageLoader,
       useCache: useCache,
+      entry: entry,
+      identity: identity,
+      launchRoute: launchRoute,
     );
     _isInitialized = true;
 
@@ -390,6 +422,80 @@ class MCPUIRuntime {
           'Runtime must be initialized before registering tool executors');
     }
     _engine.actionHandler.registerToolExecutor(toolName, executor);
+  }
+
+  /// Register the resolver `view` uses to fetch a definition from an origin.
+  ///
+  /// This is the seam that makes the Composition Profile (spec v1.4 §18.7)
+  /// available. The runtime stays origin-agnostic: it never learns how a
+  /// connection is opened, only how to ask for a definition once one exists —
+  /// establishing outbound connections is a host capability (§6.11.1).
+  ///
+  /// [resolve] receives the resource uri and the `Origin` map (`{}` when the
+  /// source named no origin, meaning the host's own). It MUST throw when the
+  /// origin is unknown or the read fails; returning the host's own definition
+  /// as a fallback would render one server's UI under another's identity, which
+  /// §7.10.1 rule 6 forbids.
+  ///
+  /// A host that does not call this does NOT claim the Composition Profile:
+  /// `view` then fails closed and renders its `fallback` (§18.7.3).
+  void registerDefinitionResolver(
+    Future<Map<String, dynamic>> Function(String ref, Map<String, dynamic> origin)
+        resolve,
+  ) {
+    if (!_isInitialized) {
+      throw StateError(
+          'Runtime must be initialized before registering a definition resolver');
+    }
+    _engine.renderer.definitionResolver = resolve;
+  }
+
+  /// Host hook for running a `tool` action against a named origin.
+  ///
+  /// The companion to [registerDefinitionResolver]: that one brings another
+  /// origin's UI in, this one lets the UI act. Registering only the first
+  /// produces a composed screen that renders and does nothing, because a tool
+  /// call from the embedded subtree takes the app's own path and lands on a
+  /// session that has no client for it.
+  void registerOriginToolCaller(
+    Future<dynamic> Function(
+            Map<String, dynamic> origin, String tool, Map<String, dynamic> params)
+        call,
+  ) {
+    if (!_isInitialized) {
+      throw StateError(
+          'Runtime must be initialized before registering an origin tool caller');
+    }
+    _engine.renderer.originToolCaller = call;
+  }
+
+  /// Host hook for watching a resource on a named origin — the live half of
+  /// the Composition Profile. Without it an embedded subtree can act on its
+  /// device but never track it, so a live reading renders its label and no
+  /// value.
+  void registerOriginResourceWatcher(
+    Future<void Function()> Function(
+      Map<String, dynamic> origin,
+      String uri,
+      void Function(dynamic contents) onUpdate,
+    ) watch,
+  ) {
+    if (!_isInitialized) {
+      throw StateError('Runtime must be initialized before registering an '
+          'origin resource watcher');
+    }
+    _engine.renderer.originResourceWatcher = watch;
+  }
+
+  /// Host hook for a one-shot resource read on a named origin.
+  void registerOriginResourceReader(
+    Future<Object?> Function(Map<String, dynamic> origin, String uri) read,
+  ) {
+    if (!_isInitialized) {
+      throw StateError('Runtime must be initialized before registering an '
+          'origin resource reader');
+    }
+    _engine.renderer.originResourceReader = read;
   }
 
   /// Registered `client.mcpStream` source openers, keyed by uri scheme.
@@ -871,8 +977,8 @@ class _ApplicationShellState extends State<_ApplicationShell> {
   List<Widget>? _shellAppBarActions() {
     if (!NavigationActionExecutor.hasOnExit) return null;
     return <Widget>[
-      IconButton(
-        icon: const Icon(Icons.close),
+      const IconButton(
+        icon: Icon(Icons.close),
         tooltip: 'Close',
         onPressed: NavigationActionExecutor.invokeOnExit,
       ),
@@ -935,14 +1041,19 @@ class _ApplicationShellState extends State<_ApplicationShell> {
     }
 
     try {
-      // Get page URI from route
-      final pageUri = widget.appDefinition.routes[route];
-      if (pageUri == null) {
+      // Any `RouteValue` form (spec v1.4 §1.2.1) — a plain resource URI still
+      // goes through the host page loader; every other form (inline page,
+      // transition wrapper, qualified `$ref` to another origin, binding) is
+      // normalised locally by the shared helper, so this path and
+      // RouteManager cannot drift.
+      final routeValue = widget.appDefinition.routes[route];
+      if (routeValue == null) {
         throw Exception('No page URI found for route: $route');
       }
 
-      // Load page definition
-      final pageJson = await widget.engine.routeManager!.pageLoader(pageUri);
+      final local = routeValueToPageJson(routeValue);
+      final pageJson = local ??
+          await widget.engine.routeManager!.pageLoader(routeValue as String);
       final uiDef = UIDefinition.fromJson(pageJson as Map<String, dynamic>);
       final pageDefinition = PageDefinition.fromUIDefinition(uiDef);
 
@@ -1036,9 +1147,10 @@ class _ApplicationShellState extends State<_ApplicationShell> {
           initialIndex: _currentIndex,
           child: Builder(
             builder: (context) {
-              final TabController? tabController = DefaultTabController.of(context);
+              final TabController tabController =
+                  DefaultTabController.of(context);
               // Listen to tab changes
-              tabController?.addListener(() {
+              tabController.addListener(() {
                 if (!tabController.indexIsChanging && 
                     tabController.index != _currentIndex) {
                   setState(() {

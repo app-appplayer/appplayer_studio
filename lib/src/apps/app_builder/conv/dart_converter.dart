@@ -1016,8 +1016,8 @@ void registerInlineResources(Server server, Map<String, dynamic> ui) {
       );
     });
   }
-  // mcp_ui DSL §11.6.1 — `name` and `version` are REQUIRED.
-  // §11.6.2 — `ApplicationDefinition.title` populates `ui://app/info.name`.
+  // `name` and `version` are REQUIRED.
+  // `ApplicationDefinition.title` populates `ui://app/info.name`.
   // Fall back through title → name → id → 'Untitled App' so the
   // required field is never empty.
   String? _str(String key) {
@@ -1065,7 +1065,7 @@ ReadResourceResult resourceJson(String uri, String text) {
 // Domain tool handlers. The ONLY file most additions touch — every
 // other module is reusable scaffolding.
 //
-// mcp_ui DSL 1.3 spec §3.10 — tool response auto-merge:
+// Tool response auto-merge:
 //   Each top-level key in the JSON response is merged into page
 //   state by binding name on the connecting client. So a handler
 //   returning `{'result': '42'}` updates `{{result}}` — the
@@ -1076,8 +1076,8 @@ ReadResourceResult resourceJson(String uri, String text) {
 // silently overwrite same-named bindings.
 //
 // Errors: throw any Exception. `_register` serialises it as
-// `{'error': '<message>'}` (still §3.10-compatible — bind
-// `{{error}}` in the page). For richer error UX use spec §4.4.2
+// `{'error': '<message>'}` (bind
+// `{{error}}` in the page). For richer error UX, use
 // `onError` with `{{event.message}}` etc. in the canonical.
 //
 // Use makemind ecosystem packages (mcp_client, mcp_llm, mcp_io_*,
@@ -1938,8 +1938,8 @@ Future<Server> startMcpServer({
           _resource(uri, Map<String, dynamic>.from(def)),
     );
   });
-  // mcp_ui DSL §11.6.1 — `name` and `version` are REQUIRED.
-  // §11.6.2 — `ApplicationDefinition.title` populates `ui://app/info.name`.
+  // `name` and `version` are REQUIRED.
+  // `ApplicationDefinition.title` populates `ui://app/info.name`.
   // Fall back through title → name → id → 'Untitled App' so the
   // required field is never empty.
   String? _str(String key) {
@@ -2046,7 +2046,7 @@ ReadResourceResult _resource(String uri, Map<String, dynamic> body) =>
 // Domain tool handlers. The ONLY file most additions touch — every
 // other module is reusable scaffolding.
 //
-// mcp_ui DSL 1.3 spec §3.10 — tool response auto-merge:
+// Tool response auto-merge:
 //   When a `tool` action succeeds, each top-level key in the JSON
 //   response is merged into page state by binding name. So a
 //   handler returning `{'result': '42'}` updates `{{result}}` —
@@ -2066,11 +2066,11 @@ ReadResourceResult _resource(String uri, Map<String, dynamic> body) =>
 // call lands on the runtime executor; over MCP an external client
 // (AppPlayer, Claude Desktop, …) calls the server tool. `_register`
 // folds the response into state on the self-UI side too, so both
-// paths satisfy §3.10 identically.
+// paths satisfy the auto-merge identically.
 //
 // Errors: throw any Exception. `_register` serialises it as
-// `{'error': '<message>'}` (still §3.10-compatible — bind `{{error}}`
-// in the page to display). For richer error UX use spec §4.4.2
+// `{'error': '<message>'}` (bind `{{error}}`
+// in the page to display). For richer error UX, use
 // `onError` with `{{event.message}}` etc. in the canonical.
 library;
 
@@ -2124,7 +2124,7 @@ void _register({
   required Future<Map<String, dynamic>> Function(Map<String, dynamic>)
       handler,
 }) {
-  // Self-host §3.10: when the self-UI calls this tool the runtime's
+  // Self-host auto-merge: when the self-UI calls this tool the runtime's
   // ToolActionExecutor delegates to this executor, but does NOT auto-
   // merge the response back into state (the runtime exposes
   // `mergeState` but never invokes it on tool responses — external

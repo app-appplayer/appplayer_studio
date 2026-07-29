@@ -7,7 +7,6 @@ import 'package:yaml/yaml.dart';
 import '../infra/ws_paths.dart';
 import '../util/atomic_write.dart';
 
-/// See `SRS §2.10 FR-OPS-001` for the design specification.
 enum MemberKind { person, agent }
 
 sealed class Member {
@@ -61,7 +60,7 @@ class AgentMember extends Member {
   /// Per-agent LLM selection. `null` ⇒ boot-time fallback resolves to
   /// `OpsConfig.llm.defaultProvider` / its `model`, then `stub/stub-1`.
   /// Persisted to yaml so reloads keep the same provider/model without
-  /// going back to the config default. See `FR-OPS-001`.
+  /// going back to the config default.
   final ModelSpec? model;
 
   /// Orchestration role (worker / manager / reviewer) — mirrors the kernel
@@ -138,7 +137,7 @@ class MemberRegistry {
   /// `StudioBackbone.defaultAgentModel`). When wired, created agents ride a
   /// REAL provider (so a worker the manager spawns can answer); the
   /// [defaultModelSpec] stub is only reached in a fully unwired standalone /
-  /// test boot. See FR-OPS-001.
+  /// test boot.
   final ModelSpec? defaultModel;
 
   final Map<String, Map<String, Member>> _byWorkspace = {};
@@ -215,7 +214,7 @@ class MemberRegistry {
 
   /// Create an AgentMember and mirror it into flowbrain's Agent Subsystem.
   ///
-  /// Flow (FR-OPS-001):
+  /// Flow:
   ///   1. flowbrain `agents.createAgent` — spawns the self-contained agent
   ///      (own LLM context · own ModelSpec · own forked 4-axis storage).
   ///   2. `tryAssign{Skill,Profile,Philosophy}` for each id in the spec —
@@ -431,7 +430,7 @@ class MemberRegistry {
     _notify();
   }
 
-  /// Actual capture flow is driven by `MOD-ADAPT-BROWSER`; this method is a
+  /// Actual capture flow is driven by the browser auth adapter; this method is a
   /// thin passthrough so the UI can record the resulting AuthProfileRef.
   Future<AuthProfileRef> captureAuthProfile({
     required String memberId,

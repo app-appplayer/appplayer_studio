@@ -1,5 +1,4 @@
 // Cumulative counters for token usage, latency, and call counts.
-// Defined in PRD §FM-OBSERVE-02.
 //
 // Status Bar reads aggregates for the live readout; Diagnostic Export
 // dumps the per-provider breakdown into the support bundle.

@@ -6,7 +6,6 @@
 /// is selected (member edit through the real tool surface, unit summary
 /// with lead assignment, process summary). A stats strip runs along the
 /// bottom. The painted canvas stays available as the Chart toggle.
-/// Design: `docs/makemind_ops/org-directory-master-detail.md`.
 library;
 
 import 'package:flutter/material.dart';

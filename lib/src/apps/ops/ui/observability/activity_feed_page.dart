@@ -1,5 +1,5 @@
 // Live Activity Feed — streams [ActivityEvent]s from the bus into a
-// scrolling timeline. PRD §FM-OBSERVE-03.
+// scrolling timeline.
 //
 // Filters: kind chips + actor search. Auto-scroll pinned to the latest
 // entry; user scrolling up unpins until they jump back to the bottom.

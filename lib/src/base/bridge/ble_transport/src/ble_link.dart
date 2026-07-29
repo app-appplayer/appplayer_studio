@@ -10,8 +10,7 @@
 /// BLE plugin dependency stays isolated in one implementation file.
 library;
 
-/// One GATT connection to an MCP-serving BLE board
-/// (`specs/platform/16-ble-transport.md`).
+/// One GATT connection to an MCP-serving BLE board.
 ///
 /// Call order used by the transport: [connect] → [requestMtu] →
 /// [subscribeTxNotifications] → [writeRxChunk]* → [disconnect].
@@ -28,7 +27,7 @@ abstract interface class BleLink {
 
   /// Enable notifications on the TX characteristic (CCCD write) and return
   /// the stream of notification payloads (server-to-client byte chunks).
-  /// Per spec §3 the server sends nothing before this subscription.
+  /// The server sends nothing before this subscription.
   Future<Stream<List<int>>> subscribeTxNotifications();
 
   /// Write one chunk (already sized to fit ATT_MTU - 3) to the RX

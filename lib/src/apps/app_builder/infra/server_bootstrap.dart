@@ -103,8 +103,7 @@ class ServerBootstrap {
     required Future<KernelToolResult> Function(Map<String, dynamic> args)
     handler,
   }) {
-    // Single canonical exposure: `<bundleId>.<rawName>` per spec
-    // 06-tool-registry / 04-ui-host (§naming) and 10-agent-scoping
+    // Single canonical exposure: `<bundleId>.<rawName>`
     // (worker = `<bundleId>.*`). The categorized name IS the tool name —
     // no raw `vibe_*` primary + `app_builder.*` alias double registration.
     final toolName = _categorize(name) ?? name;
@@ -2115,7 +2114,7 @@ class ServerBootstrap {
       },
     );
 
-    // ─── FlowBrain agent surface (multi-agent, MOD-FEAT-008) ───
+    // ─── FlowBrain agent surface (multi-agent) ───
 
     _addVibeTool(
       name: 'vibe_agent_list',

@@ -315,7 +315,7 @@ class _Header extends StatelessWidget {
       const _LegendDot(color: OpsColors.knowledge, label: '◇ charter'),
     ],
     OrgViewMode.structure => const [
-      _LegendDot(color: OpsColors.domain, label: '★ lead (팀장)'),
+      _LegendDot(color: OpsColors.domain, label: '★ lead'),
       _LegendDot(color: OpsColors.app, label: '🤖 agent / 👤 human'),
     ],
     OrgViewMode.knowledge => const [

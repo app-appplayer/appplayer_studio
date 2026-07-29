@@ -1,6 +1,5 @@
 // Self-healing error surface — pairs the error message with one or more
 // suggested actions so the user can act without leaving the page.
-// PRD §FM-OBSERVE-06.
 
 import 'package:flutter/material.dart';
 

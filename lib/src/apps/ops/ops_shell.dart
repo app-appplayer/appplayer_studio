@@ -72,8 +72,8 @@ import 'package:appplayer_studio/ui.dart' as ui;
 
 /// Sidebar route — mirrors the order of `apps/Ops/dart/lib/widgets/
 /// ops_sidebar.dart`. Each value maps to a body widget in [OpsShell].
-/// Sidebar groups — the essence-based information architecture
-/// (`docs/makemind_ops/UI-REDESIGN.md`). The flat menu is replaced by
+/// Sidebar groups — the essence-based information architecture.
+/// The flat menu is replaced by
 /// four essence areas + a System bin.
 enum OpsGroup {
   overview('OVERVIEW'),
@@ -233,7 +233,7 @@ class _OpsShellState extends State<OpsShell> {
   // regardless of which tab the user is actually viewing — the
   // IndexedStack mounts every tab eagerly to keep state alive.
 
-  /// Per-MOD-APPS-003 contract — built-in publishes its 4-axis hooks
+  /// Per the built-in contract — built-in publishes its 4-axis hooks
   /// to the registry so host wiring (`_syncHeaderActions` reading
   /// `lifecycleState` through `lifecycleStateProvider`) reaches the
   /// same providers regardless of mount file location.
@@ -320,7 +320,7 @@ class _OpsShellState extends State<OpsShell> {
     }
   }
 
-  /// MOD-APPS-003 `domainSettingsProvider` — feeds the host Studio
+  /// `domainSettingsProvider` — feeds the host Studio
   /// Settings dialog (gear icon on the chrome) so Ops's configuration
   /// lives in the same place as App Builder / Scene Builder settings.
   /// The body is `SettingsPage` (Ops's existing form) wrapped in a
@@ -387,7 +387,7 @@ class _OpsShellState extends State<OpsShell> {
     );
   }
 
-  /// MOD-APPS-003 `lifecycleBindingsProvider` — maps the chrome
+  /// `lifecycleBindingsProvider` — maps the chrome
   /// `ProjectHeader` system buttons (X / New / Open / …) and any
   /// `dispatchLifecycleSlot` call onto Ops handlers. Slots Ops does
   /// not own (save / saveAs / revert / build / undo / etc.) stay
@@ -504,12 +504,12 @@ class _OpsShellState extends State<OpsShell> {
     // ignore: unawaited_futures
     _memberChangesSub?.cancel();
     _releaseSlotsIfMine();
-    // Tab CLOSE = full backend shutdown (design contract
-    // knowledge-operations.md §11.3: "tab close = unregisterAll +
+    // Tab CLOSE = full backend shutdown (design contract:
+    // "tab close = unregisterAll +
     // registry.remove"). This State disposes ONLY on tab removal — the
     // host renders tab bodies in a keyed IndexedStack, so a tab SWITCH
     // keeps the mount alive and the backend keeps running in the
-    // background (§11.3 "background active = all"). resetBootCache
+    // background ("background active = all"). resetBootCache
     // disposes the live KnowledgeInit → every workspace
     // BundleActivation.unregisterAll. Guard on this tab owning the live
     // boot so closing a stale Ops tab (its project isn't the booted one,

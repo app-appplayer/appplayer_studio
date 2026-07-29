@@ -410,7 +410,7 @@ void registerUiWriteTools(
       } on FormatException catch (e) {
         // Disambiguate the throws coming back from _applyOp: `test`
         // op failures and unknown / malformed op headers map to
-        // distinct §4 codes so LLM callers can branch on them.
+        // distinct codes so LLM callers can branch on them.
         final msg = e.message;
         String code;
         if (msg.startsWith('test op failed')) {
@@ -536,7 +536,7 @@ mk.KernelToolResult _reject({
 );
 
 /// Validator → MCP rejection. The validator already produced the
-/// §4-shaped map (`code` / `path?` / `expected?` / `actual?` /
+/// diagnostic-shaped map (`code` / `path?` / `expected?` / `actual?` /
 /// `message` / `suggestion?`); we just wrap it as an MCP error.
 mk.KernelToolResult _rejectMap(Map<String, dynamic> rejection) =>
     mk.KernelToolResult(

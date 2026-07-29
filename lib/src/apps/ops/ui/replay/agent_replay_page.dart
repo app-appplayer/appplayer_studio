@@ -1,4 +1,4 @@
-// Conversation replay + A/B compare. PRD §FM-POWER-03 / 04.
+// Conversation replay + A/B compare.
 //
 // Pick agent A. Optionally pick agent B for a side-by-side ask. The page
 // shows the per-agent ConversationTurn history (read via flowbrain's

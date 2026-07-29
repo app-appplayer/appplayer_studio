@@ -393,7 +393,7 @@ class SkillExecutor {
     // persists nothing. Without the `createCandidates` call below the
     // extracted knowledge evaporated (candidates.list stayed empty, fact
     // queries returned nothing) even though ingest reported a non-zero
-    // count. The origin DDD (`adapt-ingest.md`) specifies the flow as
+    // count. The ingest flow is
     // "ingest → Candidate list → Fact confirmed on approval"; this restores the
     // candidate-staging step the migration dropped. Confirmation
     // (`bk.fact.candidates.confirm`) promotes a candidate to a queryable

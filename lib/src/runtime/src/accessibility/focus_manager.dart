@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui show FlutterView;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import '../utils/mcp_logger.dart';
@@ -31,7 +32,7 @@ class MCPFocusManager {
       node.onKeyEvent = (node, event) {
         // Announce label when focused
         if (event is KeyDownEvent && node.hasFocus) {
-          SemanticsService.announce(label, TextDirection.ltr);
+          _announce(label, TextDirection.ltr);
         }
         return KeyEventResult.ignored;
       };
@@ -410,4 +411,23 @@ class SkipToContent extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The view semantic announcements target.
+///
+/// `SemanticsService.announce` was deprecated for being single-window only; it
+/// resolved the implicit view internally. These call sites are manager classes
+/// with no `BuildContext`, so they resolve the same implicit view explicitly.
+/// Null (a genuinely multi-window or view-less embedder) means there is no
+/// unambiguous target — skip the announcement rather than guess a window.
+ui.FlutterView? get _announcementView =>
+    WidgetsBinding.instance.platformDispatcher.implicitView;
+
+/// Announce [message] on the implicit view, or do nothing when there is none.
+void _announce(String message, TextDirection direction,
+    {Assertiveness assertiveness = Assertiveness.polite}) {
+  final view = _announcementView;
+  if (view == null) return;
+  SemanticsService.sendAnnouncement(view, message, direction,
+      assertiveness: assertiveness);
 }

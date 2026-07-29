@@ -9,7 +9,7 @@
 ///   `from` / `to` directly).
 ///
 /// All path inputs are JSON Pointer (RFC 6901). Failures translate
-/// into the §4 diagnostic shape so external LLMs receive
+/// into the diagnostic shape so external LLMs receive
 /// `{ok:false, code, path, expected, actual, message, suggestion}`.
 library;
 

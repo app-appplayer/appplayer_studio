@@ -10,6 +10,8 @@ import 'default_widgets.dart';
 import '../binding/binding_engine.dart';
 import '../actions/action_handler.dart';
 import '../state/state_manager.dart';
+import '../entry/entry_context.dart';
+import '../entry/entry_session.dart';
 import '../services/navigation_service.dart';
 import '../services/dialog_service.dart';
 import '../services/notification_service.dart';
@@ -71,6 +73,12 @@ class RuntimeEngine with ChangeNotifier {
   late final BindingEngine _bindingEngine;
   late final ActionHandler _actionHandler;
   late final StateManager _stateManager;
+  late final EntrySession _entrySession;
+
+  /// Page an in-app open asked for, without the arrival an entry implies
+  /// (MCP UI DSL §8.9.1). Held across `_initializeV1Format`, which is where
+  /// the route table finally exists.
+  String? _launchRoute;
   late final Renderer _renderer;
   late final ThemeManager _themeManager;
 
@@ -85,6 +93,10 @@ class RuntimeEngine with ChangeNotifier {
   // Public getters for page rendering
   Renderer get renderer => _renderer;
   StateManager get stateManager => _stateManager;
+
+  /// Entry and identity this runtime was opened under (MCP UI DSL §8.9).
+  /// Always present; empty until a host adopts an entry or an identity.
+  EntrySession get entrySession => _entrySession;
   CacheManager get cacheManager => _cacheManager;
   BindingEngine get bindingEngine => _bindingEngine;
   ActionHandler get actionHandler => _actionHandler;
@@ -244,6 +256,9 @@ class RuntimeEngine with ChangeNotifier {
     RenderContext? context,
     bool useCache = true,
     Function(String)? pageLoader,
+    EntryContext? entry,
+    IdentityContext? identity,
+    String? launchRoute,
   }) async {
     if (_isInitialized) {
       throw StateError('Runtime engine is already initialized');
@@ -262,6 +277,13 @@ class RuntimeEngine with ChangeNotifier {
           finalDefinition = cachedApp;
         }
       }
+
+      // Adopt the entry before anything reads it: the route manager below
+      // takes its launch route from here, and bindings resolve against it.
+      _launchRoute = launchRoute;
+      if (entry != null) _entrySession.adoptEntry(entry);
+      if (identity != null) _entrySession.adoptIdentity(identity);
+      _entrySession.publish();
 
       // Store page loader if provided
       _pageLoader = pageLoader;
@@ -512,11 +534,17 @@ class RuntimeEngine with ChangeNotifier {
         _appMetadataNotifier.value = _applicationDefinition!.metadata;
       }
 
-      // Create route manager
+      // Create route manager. The entry's route (when it named one) becomes
+      // this runtime's initial route — that is what puts a scan on the page it
+      // asked for instead of the app's home.
       _routeManager = RouteManager(
         appDefinition: _applicationDefinition!,
         pageLoader: _pageLoader!,
         runtimeEngine: this,
+        // An entry's route and a plain launch route are the same request —
+        // "open on this page". They differ only in where they came from, and
+        // an entry that names one wins because it is the more specific fact.
+        launchRoute: _entrySession.entry?.route ?? _launchRoute,
       );
 
       // Initialize theme from application definition
@@ -607,10 +635,10 @@ class RuntimeEngine with ChangeNotifier {
                 .lifecycleDefinition
             : null);
 
-    if (lifecycle != null && lifecycle.onInitialize != null) {
+    if (lifecycle != null && lifecycle.onInit != null) {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.initialize,
-        lifecycle.onInitialize!,
+        lifecycle.onInit!,
       );
     }
   }
@@ -695,26 +723,17 @@ class RuntimeEngine with ChangeNotifier {
 
     _logger.debug('Loading page for route: $route');
 
-    // Step 1: Execute onLeave hooks for the current page
-    final currentLifecycle =
-        _parsedUIDefinition?.type == UIDefinitionType.page
-            ? PageDefinition.fromUIDefinition(_parsedUIDefinition!)
-                .lifecycleDefinition
-            : null;
+    // Teardown of the outgoing page is NOT done here.
+    //
+    // The widget that mounted the page owns its unmount: it fires
+    // onPause → onUnmount → onDestroy from `dispose`, which is the moment the
+    // page actually leaves the tree. Running them here as well fired the same
+    // hooks two and three times over — an unsubscribe hook then tried to
+    // release a subscription that was already gone. (These used to be the
+    // separate `onLeave` hook, which is why the overlap was invisible until
+    // it was folded onto `onUnmount`, its spec name.)
 
-    if (currentLifecycle?.onLeave != null) {
-      await _lifecycleManager.executeOnLeave(currentLifecycle!.onLeave!);
-    }
-
-    // Step 2: Execute onDestroy hooks for the current page
-    if (currentLifecycle?.onDestroy != null) {
-      await _lifecycleManager.executeLifecycleHooks(
-        LifecycleEvent.destroy,
-        currentLifecycle!.onDestroy!,
-      );
-    }
-
-    // Step 3: Load the new page
+    // Load the new page
     await _pageLoader!(route);
 
     // Step 4-6: State initialization, onEnter and onInit hooks are executed
@@ -900,6 +919,15 @@ class RuntimeEngine with ChangeNotifier {
     _appMetadataNotifier.value = next;
   }
 
+  /// Hooks of the top-level definition, whichever kind it is.
+  LifecycleDefinition? _definitionLifecycle() =>
+      _parsedUIDefinition?.type == UIDefinitionType.application
+          ? _applicationDefinition?.lifecycleDefinition
+          : (_parsedUIDefinition?.type == UIDefinitionType.page
+              ? PageDefinition.fromUIDefinition(_parsedUIDefinition!)
+                  .lifecycleDefinition
+              : null);
+
   /// Marks the runtime as ready and executes onReady lifecycle hooks
   Future<void> markReady() async {
     if (!_isInitialized) {
@@ -923,6 +951,15 @@ class RuntimeEngine with ChangeNotifier {
                 .lifecycleDefinition
             : null);
 
+    // §1.5.2 order is onInit → onMount → onReady. onInit ran at initialize;
+    // onMount used to be skipped entirely on this path, so an application that
+    // declared it saw the hook silently ignored.
+    if (lifecycle != null && lifecycle.onMount != null) {
+      await _lifecycleManager.executeLifecycleHooks(
+        LifecycleEvent.mount,
+        lifecycle.onMount!,
+      );
+    }
     if (lifecycle != null && lifecycle.onReady != null) {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.ready,
@@ -947,8 +984,18 @@ class RuntimeEngine with ChangeNotifier {
       _logger.info('Paused');
     }
 
-    // Execute onPause lifecycle hooks
-    if (_runtimeConfig?['lifecycle']?['onPause'] != null) {
+    // Execute onPause lifecycle hooks.
+    //
+    // The parsed definition comes first: this used to read ONLY the legacy
+    // runtime config, so `onPause` written in an application document was
+    // never run.
+    final pauseHooks = _definitionLifecycle()?.onPause;
+    if (pauseHooks != null) {
+      await _lifecycleManager.executeLifecycleHooks(
+        LifecycleEvent.pause,
+        pauseHooks,
+      );
+    } else if (_runtimeConfig?['lifecycle']?['onPause'] != null) {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.pause,
         _runtimeConfig!['lifecycle']['onPause'] as List<dynamic>,
@@ -964,8 +1011,14 @@ class RuntimeEngine with ChangeNotifier {
       _logger.info('Resumed');
     }
 
-    // Execute onResume lifecycle hooks
-    if (_runtimeConfig?['lifecycle']?['onResume'] != null) {
+    // Execute onResume lifecycle hooks (see [pause] on the ordering).
+    final resumeHooks = _definitionLifecycle()?.onResume;
+    if (resumeHooks != null) {
+      await _lifecycleManager.executeLifecycleHooks(
+        LifecycleEvent.resume,
+        resumeHooks,
+      );
+    } else if (_runtimeConfig?['lifecycle']?['onResume'] != null) {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.resume,
         _runtimeConfig!['lifecycle']['onResume'] as List<dynamic>,
@@ -1152,14 +1205,12 @@ class RuntimeEngine with ChangeNotifier {
   /// Convert LifecycleDefinition to JSON
   Map<String, dynamic> _lifecycleToJson(LifecycleDefinition lifecycle) {
     return {
-      if (lifecycle.onInitialize != null)
+      if (lifecycle.onInit != null)
         'onInitialize': lifecycle.onInitialize,
       if (lifecycle.onReady != null) 'onReady': lifecycle.onReady,
       if (lifecycle.onMount != null) 'onMount': lifecycle.onMount,
       if (lifecycle.onUnmount != null) 'onUnmount': lifecycle.onUnmount,
       if (lifecycle.onDestroy != null) 'onDestroy': lifecycle.onDestroy,
-      if (lifecycle.onEnter != null) 'onEnter': lifecycle.onEnter,
-      if (lifecycle.onLeave != null) 'onLeave': lifecycle.onLeave,
       if (lifecycle.onResume != null) 'onResume': lifecycle.onResume,
       if (lifecycle.onPause != null) 'onPause': lifecycle.onPause,
     };
@@ -1284,6 +1335,7 @@ class RuntimeEngine with ChangeNotifier {
     _bindingEngine = BindingEngine();
     _actionHandler = ActionHandler();
     _stateManager = StateManager();
+    _entrySession = EntrySession(stateManager: _stateManager);
     _themeManager = ThemeManager();
     _computedManager = ComputedManager(
       stateManager: _stateManager,

@@ -81,15 +81,28 @@ void registerVbuWidgets(MCPUIRuntime runtime) {
   reg('VbuVideoPlayer', _VbuVideoPlayerFactory());
   // Host override of `button` — adds `click: [action1, action2, ...]`
   // multi-action support. The mcp_ui_runtime stock button only
-  // accepts a single Map for click and casts it directly, so a List
-  // there throws. We wrap with a factory that walks the list and
-  // dispatches each action in order. Single Map click still works
-  // exactly as before.
-  runtime.registerWidget('button', _ButtonOverrideFactory());
-  // `text` override — variant maps to vbu typography tokens (Material
-  // `titleLarge`/`bodyMedium`/etc. would otherwise pull system text
-  // styles that drift from the chrome's mono tone).
-  runtime.registerWidget('text', _TextOverrideFactory());
+  // `button` / `text` — STYLE-ONLY overrides.
+  //
+  // These are spec widgets, not studio widgets. The studio is the runtime plus
+  // its own `Vbu*` catalogue; it must not narrow a widget the spec defines.
+  // Both used to be REIMPLEMENTED here, and a reimplementation only ever reads
+  // the properties whoever wrote it thought of: `button` accepted 4 of the
+  // stock factory's ~25 (a spec-compliant `onTap` silently produced a dead
+  // control on a real board), `text` accepted 5 of 15 (`maxLines`, `overflow`,
+  // `textAlign`, … all dropped). Every gap was invisible — the widget rendered,
+  // reported success, and did nothing.
+  //
+  // So: delegate to the stock factory and contribute STYLE ONLY, through the
+  // channels it already honours. Everything the spec adds later arrives for
+  // free, and a document's own values still win over the studio defaults.
+  final stockButton = runtime.engine.widgetRegistry.get('button');
+  if (stockButton != null) {
+    runtime.registerWidget('button', _StudioStyledButton(stockButton));
+  }
+  final stockText = runtime.engine.widgetRegistry.get('text');
+  if (stockText != null) {
+    runtime.registerWidget('text', _StudioStyledText(stockText));
+  }
 }
 
 /// Wraps another [WidgetFactory] so the rendered widget is enclosed in
@@ -1621,241 +1634,174 @@ class _VbuVideoPlayerFactory extends WidgetFactory {
 // as titleLarge / bodyMedium to the vbu mono / sans tone.
 // ---------------------------------------------------------------------------
 
-class _TextOverrideFactory extends WidgetFactory {
+
+/// Studio look for the spec `button`, contributed as STYLE ONLY.
+///
+/// Delegates the whole build to the stock factory and wraps it in a [Theme]
+/// carrying the studio's button styling. The stock factory passes `null` to
+/// `styleFrom` for anything the document did not specify, so the ambient theme
+/// fills those in — which means the studio gets its look and the document keeps
+/// every property the spec gives it (`disabled`, `loading`, `icon`, `size`,
+/// `fullWidth`, colours, `onLongPress`, `submit`, …).
+class _StudioStyledButton extends WidgetFactory {
+  _StudioStyledButton(this.stock);
+  final WidgetFactory stock;
+
+  @override
+  Widget build(Map<String, dynamic> definition, RenderContext context) {
+    final c = context.themeManager.effectiveMode == 'dark'
+        ? VbuTokens.color
+        : VbuTokens.lightColor;
+    final label = vbuMono(size: 11, weight: FontWeight.w600);
+    const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 8);
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(4));
+    const minSize = Size(0, 28);
+    const density = VisualDensity.compact;
+
+    return Builder(
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx).copyWith(
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: c.textSecondary,
+              padding: padding,
+              shape: shape,
+              textStyle: label,
+              minimumSize: minSize,
+              visualDensity: density,
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.textPrimary,
+              side: BorderSide(color: c.borderDefault),
+              padding: padding,
+              shape: shape,
+              textStyle: label,
+              minimumSize: minSize,
+              visualDensity: density,
+            ),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: c.mint,
+              foregroundColor: c.bg,
+              padding: padding,
+              shape: shape,
+              textStyle: label,
+              minimumSize: minSize,
+              visualDensity: density,
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: c.mint,
+              foregroundColor: c.bg,
+              padding: padding,
+              shape: shape,
+              textStyle: label,
+              minimumSize: minSize,
+              visualDensity: density,
+            ),
+          ),
+        ),
+        child: stock.build(definition, context),
+      ),
+    );
+  }
+}
+
+/// Studio look for the spec `text`, contributed as STYLE ONLY.
+///
+/// The studio uses a compact mono scale rather than the M3 defaults, and that
+/// scale comes from `GoogleFonts` at the Dart level — it cannot be expressed as
+/// a theme font-family string. So the variant's style is injected through the
+/// `style` property the stock factory already merges, with the document's own
+/// `style` layered ON TOP so an author still wins. Everything else
+/// (`maxLines`, `overflow`, `softWrap`, `textAlign`, `textTransform`, …) flows
+/// to the stock factory untouched.
+class _StudioStyledText extends WidgetFactory {
+  _StudioStyledText(this.stock);
+  final WidgetFactory stock;
+
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final props = extractProperties(definition);
-    // spec 17_Naming §17.3.2: `text` is canonical, `content` / `value` are
-    // legacy aliases. Match the runtime TextWidgetFactory's fallback chain
-    // so DSL authors using the canonical `text` key get visible glyphs
-    // (previously only `value` was read here, which silently broke any
-    // template / hand-written DSL using `text`).
-    final value =
-        context.resolve<String?>(
-          props['text'] ?? props['content'] ?? props['value'],
-        ) ??
-        '';
-    final variantRaw =
-        context.resolve<String?>(props['variant']) ?? 'bodyMedium';
-    final c =
-        context.themeManager.effectiveMode == 'dark'
-            ? VbuTokens.color
-            : VbuTokens.lightColor;
-    var style = _variantToStyle(variantRaw, c);
-
-    // Apply DSL `style` overrides on top of variant base — color, fontSize,
-    // fontWeight, fontFamily, letterSpacing. Previously this factory ignored
-    // every style field, so e.g. `style.color: "#9AA3B2"` (secondary tone)
-    // got swallowed and every text rendered in the variant's hardcoded
-    // textPrimary color.
-    final styleProp = props['style'];
-    if (styleProp is Map) {
-      final overrideColor = context.resolve<String?>(styleProp['color']);
-      if (overrideColor != null && overrideColor.isNotEmpty) {
-        final parsed = _parseHexColor(overrideColor);
-        if (parsed != null) style = style.copyWith(color: parsed);
-      }
-      final overrideSize = context.resolve<dynamic>(styleProp['fontSize']);
-      if (overrideSize is num)
-        style = style.copyWith(fontSize: overrideSize.toDouble());
-      final overrideWeightRaw = context.resolve<String?>(
-        styleProp['fontWeight'],
-      );
-      if (overrideWeightRaw != null) {
-        final w = _parseFontWeight(overrideWeightRaw);
-        if (w != null) style = style.copyWith(fontWeight: w);
-      }
-      final overrideFamily = context.resolve<String?>(styleProp['fontFamily']);
-      if (overrideFamily != null && overrideFamily.isNotEmpty) {
-        style = style.copyWith(fontFamily: overrideFamily);
-      }
-      final overrideLetter = context.resolve<dynamic>(
-        styleProp['letterSpacing'],
-      );
-      if (overrideLetter is num)
-        style = style.copyWith(letterSpacing: overrideLetter.toDouble());
+    final variant = context.resolve<String?>(props['variant']) ?? 'bodySmall';
+    final c = context.themeManager.effectiveMode == 'dark'
+        ? VbuTokens.color
+        : VbuTokens.lightColor;
+    final base = _studioTextStyleMap(variant, c);
+    final authored = props['style'];
+    final merged = <String, Object?>{
+      ...base,
+      if (authored is Map) ...authored.cast<String, Object?>(),
+    };
+    // `variant` is dropped: its whole contribution is already in `base`, and
+    // leaving it in would have the stock factory resolve the M3 scale and merge
+    // our compact mono on top of a 57pt line box.
+    final patched = Map<String, dynamic>.from(definition)..remove('variant');
+    final patchedProps = Map<String, dynamic>.from(props)
+      ..remove('variant')
+      ..['style'] = merged;
+    if (patched.containsKey('properties')) {
+      patched['properties'] = patchedProps;
+    } else {
+      patched
+        ..remove('style')
+        ..addAll(<String, dynamic>{'style': merged});
     }
-
-    final maxLines = (context.resolve<num?>(props['maxLines']))?.toInt();
-    final widget = Text(
-      value,
-      style: style,
-      maxLines: maxLines,
-      overflow: maxLines != null ? TextOverflow.ellipsis : null,
-    );
-    return applyCommonWrappers(widget, props, context);
+    return stock.build(patched, context);
   }
+}
 
-  TextStyle _variantToStyle(String variant, dynamic c) {
-    switch (variant) {
-      case 'displayLarge':
-        return vbuMono(size: 22, weight: FontWeight.w700, color: c.textPrimary);
-      case 'displayMedium':
-        return vbuMono(size: 20, weight: FontWeight.w700, color: c.textPrimary);
-      case 'displaySmall':
-      case 'headlineLarge':
-        return vbuMono(size: 18, weight: FontWeight.w700, color: c.textPrimary);
-      case 'headlineMedium':
-      case 'headlineSmall':
-      case 'titleLarge':
-        return vbuMono(size: 16, weight: FontWeight.w600, color: c.textPrimary);
-      case 'titleMedium':
-        return vbuMono(size: 13, weight: FontWeight.w600, color: c.textPrimary);
-      case 'titleSmall':
-      case 'labelLarge':
-        return vbuMono(size: 12, weight: FontWeight.w600, color: c.textPrimary);
-      case 'labelMedium':
-        return vbuMono(
-          size: 11,
-          weight: FontWeight.w500,
-          color: c.textSecondary,
-        );
-      case 'labelSmall':
-        return vbuMono(
-          size: 10,
-          weight: FontWeight.w500,
-          color: c.textTertiary,
-        );
-      case 'bodyLarge':
-        return vbuMono(size: 13, weight: FontWeight.w400, color: c.textPrimary);
-      case 'bodyMedium':
-        return vbuMono(size: 12, weight: FontWeight.w400, color: c.textPrimary);
-      case 'bodySmall':
-      default:
-        return vbuMono(
-          size: 11,
-          weight: FontWeight.w400,
-          color: c.textSecondary,
-        );
-    }
+/// The studio's compact mono type scale, as a DSL `style` map.
+Map<String, Object?> _studioTextStyleMap(String variant, dynamic c) {
+  String hex(Color v) =>
+      '#${(v.toARGB32() & 0x00FFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  Map<String, Object?> m(double size, FontWeight w, Color color) =>
+      <String, Object?>{
+        'fontFamily': vbuMono().fontFamily,
+        'fontSize': size,
+        'fontWeight': w.value,
+        'color': hex(color),
+      };
+  switch (variant) {
+    case 'displayLarge':
+      return m(22, FontWeight.w700, c.textPrimary);
+    case 'displayMedium':
+      return m(20, FontWeight.w700, c.textPrimary);
+    case 'displaySmall':
+    case 'headlineLarge':
+      return m(18, FontWeight.w700, c.textPrimary);
+    case 'headlineMedium':
+    case 'headlineSmall':
+    case 'titleLarge':
+      return m(16, FontWeight.w600, c.textPrimary);
+    case 'titleMedium':
+      return m(13, FontWeight.w600, c.textPrimary);
+    case 'titleSmall':
+    case 'labelLarge':
+      return m(12, FontWeight.w600, c.textPrimary);
+    case 'labelMedium':
+      return m(11, FontWeight.w500, c.textSecondary);
+    case 'labelSmall':
+      return m(10, FontWeight.w500, c.textTertiary);
+    case 'bodyLarge':
+      return m(13, FontWeight.w400, c.textPrimary);
+    case 'bodyMedium':
+      return m(12, FontWeight.w400, c.textPrimary);
+    case 'bodySmall':
+    default:
+      return m(11, FontWeight.w400, c.textSecondary);
   }
 }
 
 /// Parse `#RRGGBB` / `#AARRGGBB` / `0xAARRGGBB` hex to Color. Returns null
-/// for unparseable input so the caller falls back to the variant default.
-Color? _parseHexColor(String s) {
-  var t = s.trim();
-  if (t.startsWith('#')) t = t.substring(1);
-  if (t.startsWith('0x') || t.startsWith('0X')) t = t.substring(2);
-  if (t.length == 6) t = 'FF$t';
-  if (t.length != 8) return null;
-  final v = int.tryParse(t, radix: 16);
-  if (v == null) return null;
-  return Color(v);
-}
-
-/// Parse `w100`..`w900` / `normal` / `bold` to [FontWeight].
-FontWeight? _parseFontWeight(String s) {
-  switch (s.trim().toLowerCase()) {
-    case 'w100':
-    case 'thin':
-      return FontWeight.w100;
-    case 'w200':
-    case 'extralight':
-      return FontWeight.w200;
-    case 'w300':
-    case 'light':
-      return FontWeight.w300;
-    case 'w400':
-    case 'normal':
-    case 'regular':
-      return FontWeight.w400;
-    case 'w500':
-    case 'medium':
-      return FontWeight.w500;
-    case 'w600':
-    case 'semibold':
-      return FontWeight.w600;
-    case 'w700':
-    case 'bold':
-      return FontWeight.w700;
-    case 'w800':
-    case 'extrabold':
-      return FontWeight.w800;
-    case 'w900':
-    case 'black':
-      return FontWeight.w900;
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // button override — accepts click as Map (single action) OR List
 // (multiple actions dispatched in order).
 // ---------------------------------------------------------------------------
-
-class _ButtonOverrideFactory extends WidgetFactory {
-  @override
-  Widget build(Map<String, dynamic> definition, RenderContext context) {
-    final props = extractProperties(definition);
-    final label = context.resolve<String?>(props['label']) ?? '';
-    final variantRaw = context.resolve<String?>(props['variant']) ?? 'text';
-    final variant = variantRaw.toLowerCase();
-    final onPressed = _callback(props['click'], context);
-    final c =
-        context.themeManager.effectiveMode == 'dark'
-            ? VbuTokens.color
-            : VbuTokens.lightColor;
-    final labelStyle = vbuMono(
-      size: 11,
-      weight: FontWeight.w600,
-      color: c.textPrimary,
-    );
-    final padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(4),
-    );
-    Widget btn;
-    switch (variant) {
-      case 'filled':
-      case 'elevated':
-        btn = ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: c.mint,
-            foregroundColor: c.bg,
-            padding: padding,
-            shape: shape,
-            textStyle: labelStyle,
-            minimumSize: const Size(0, 28),
-            visualDensity: VisualDensity.compact,
-          ),
-          child: Text(label),
-        );
-        break;
-      case 'outlined':
-        btn = OutlinedButton(
-          onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: c.textPrimary,
-            side: BorderSide(color: c.borderDefault),
-            padding: padding,
-            shape: shape,
-            textStyle: labelStyle,
-            minimumSize: const Size(0, 28),
-            visualDensity: VisualDensity.compact,
-          ),
-          child: Text(label),
-        );
-        break;
-      case 'text':
-      default:
-        btn = TextButton(
-          onPressed: onPressed,
-          style: TextButton.styleFrom(
-            foregroundColor: c.textSecondary,
-            padding: padding,
-            shape: shape,
-            textStyle: labelStyle,
-            minimumSize: const Size(0, 28),
-            visualDensity: VisualDensity.compact,
-          ),
-          child: Text(label),
-        );
-    }
-    return applyCommonWrappers(btn, props, context);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // VbuTimeline — duration-proportional step strip + overlay tracks.

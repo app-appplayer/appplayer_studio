@@ -1,5 +1,4 @@
 // Empty-state component used across surfaces with no data yet.
-// PRD §FM-ONBOARD-04.
 //
 // Two-line layout: icon + headline + (optional) hint + (optional) CTA
 // button. Tone is welcoming, not apologetic — empty often means "ready

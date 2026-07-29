@@ -1,4 +1,4 @@
-// Philosophy on/off compare. PRD §FM-COMPARE-01.
+// Philosophy on/off compare.
 //
 // Picks an existing agent, sends the same prompt to:
 //   (a) the agent itself (philosophy applied), and

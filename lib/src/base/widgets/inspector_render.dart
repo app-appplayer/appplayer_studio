@@ -4,7 +4,7 @@
 // the connected MCP server through `InspectorUiViewAdapter`. Tool
 // actions in the rendered UI go over the wire via
 // `InspectorSessionManager.recordedCallTool` and the response folds
-// back into the originating runtime per spec §3.10.
+// back into the originating runtime.
 
 import 'dart:async';
 import 'dart:convert';
@@ -173,7 +173,7 @@ class _InspectorRenderState extends State<InspectorRender> {
   /// Default tool executor — forwards to the connected MCP client via
   /// the session manager (so the call shows up in the wire log) and
   /// folds the response into the originating runtime's state per spec
-  /// §3.10. The runtime reference comes from `McpUiRuntimePort` so the
+  /// the auto-merge. The runtime reference comes from `McpUiRuntimePort` so the
   /// fold lands on whichever surface (APP / DASHBOARD) fired the tool.
   Future<void> _onToolCall(
     String tool,

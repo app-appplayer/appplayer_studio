@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui show FlutterView;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import '../utils/mcp_logger.dart';
@@ -80,13 +81,13 @@ class LiveRegionManager {
       case LiveRegionType.assertive:
       case LiveRegionType.alert:
         // Use assertive announcement
-        SemanticsService.announce(message, TextDirection.ltr,
+        _announce(message, TextDirection.ltr,
             assertiveness: Assertiveness.assertive);
         break;
       case LiveRegionType.polite:
       case LiveRegionType.status:
         // Use polite announcement
-        SemanticsService.announce(message, TextDirection.ltr);
+        _announce(message, TextDirection.ltr);
         break;
     }
   }
@@ -190,8 +191,7 @@ class StatusLiveRegion extends StatelessWidget {
   Widget build(BuildContext context) {
     // Announce immediately
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      SemanticsService.announce(
-        message,
+      _announce(message,
         TextDirection.ltr,
         assertiveness: type == LiveRegionType.assertive
             ? Assertiveness.assertive
@@ -393,7 +393,7 @@ class _AccessibleProgressIndicatorState
         final percentage = (widget.value! * 100).round();
         final message = '${widget.label ?? 'Progress'}: $percentage%';
 
-        SemanticsService.announce(message, TextDirection.ltr);
+        _announce(message, TextDirection.ltr);
         _lastAnnouncedValue = widget.value;
       }
     });
@@ -402,7 +402,7 @@ class _AccessibleProgressIndicatorState
     if (widget.value != null) {
       final percentage = (widget.value! * 100).round();
       final message = '${widget.label ?? 'Progress'}: $percentage%';
-      SemanticsService.announce(message, TextDirection.ltr);
+      _announce(message, TextDirection.ltr);
       _lastAnnouncedValue = widget.value;
     }
   }
@@ -541,4 +541,23 @@ class _AccessibleFormFieldState extends State<AccessibleFormField> {
       ),
     );
   }
+}
+
+/// The view semantic announcements target.
+///
+/// `SemanticsService.announce` was deprecated for being single-window only; it
+/// resolved the implicit view internally. These call sites are manager classes
+/// with no `BuildContext`, so they resolve the same implicit view explicitly.
+/// Null (a genuinely multi-window or view-less embedder) means there is no
+/// unambiguous target — skip the announcement rather than guess a window.
+ui.FlutterView? get _announcementView =>
+    WidgetsBinding.instance.platformDispatcher.implicitView;
+
+/// Announce [message] on the implicit view, or do nothing when there is none.
+void _announce(String message, TextDirection direction,
+    {Assertiveness assertiveness = Assertiveness.polite}) {
+  final view = _announcementView;
+  if (view == null) return;
+  SemanticsService.sendAnnouncement(view, message, direction,
+      assertiveness: assertiveness);
 }

@@ -1,5 +1,4 @@
 // Workspace export/import as a portable `.opspack` archive.
-// Defined in PRD §FM-PORTABILITY-01 / 02.
 //
 // Layout of the archive (zip):
 //

@@ -53,7 +53,7 @@ class BuilderUiWriteService {
   /// Discriminators that look widget-shaped (Map with String `type`)
   /// but the spec treats them as Action / value-object payloads, not
   /// renderable widgets. Used in `applyPatch` to bypass widget
-  /// validation for these values. Keep in sync with docs/04_Actions.md.
+  /// validation for these values. Keep in sync with the Action type definitions.
   static const _kKnownActionTypes = <String>{
     'state',
     'tool',
@@ -92,7 +92,7 @@ class BuilderUiWriteService {
       // navigates to the grandparent (which MUST be a Map for the
       // slot name to resolve) and assigns the last segment. Throws
       // on a malformed pointer or non-collection grandparent — the
-      // tool handler maps that to a §4 pathNotFound diagnostic.
+      // tool handler maps that to a pathNotFound diagnostic.
       ptrSet(root, path, node, insert: true);
     }
     if (!dryRun) await _commit(mbdPath, root);
@@ -238,7 +238,7 @@ class BuilderUiWriteService {
   /// Apply a RFC-6902 patch (a list of `{op, path, value?, from?}`
   /// entries) atomically. Either every op succeeds and the result
   /// commits, or any failure rejects the whole batch with the
-  /// offending `opIndex` plus a §4 diagnostic.
+  /// offending `opIndex` plus a diagnostic.
   ///
   /// Supported ops: `add` / `remove` / `replace` / `move` / `copy`
   /// / `test`. When [validateNode] is non-null, every `add` / `replace`

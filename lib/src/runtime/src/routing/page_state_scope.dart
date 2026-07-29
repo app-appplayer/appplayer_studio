@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../actions/action_handler.dart';
 import '../models/ui_definition.dart';
 import '../runtime/runtime_engine.dart';
 import '../runtime/lifecycle_manager.dart';
+import '../runtime/lifecycle_runner.dart';
 import '../renderer/render_context.dart';
 
 /// Provides a page-specific state scope for multi-page applications
@@ -74,6 +77,13 @@ class _MCPPageWidgetState extends State<MCPPageWidget> {
     });
   }
 
+  /// Seeds page state and channels, then runs the page's own lifecycle.
+  ///
+  /// The routed page used to run `onEnter` and `onMount` and nothing else — so
+  /// a page written the way §6.8.1 shows it (subscribe in `onReady`, release
+  /// in `onDestroy`) initialized its state and then sat there, while the very
+  /// same document streamed correctly when embedded. Hook order now comes from
+  /// [LifecycleRunner], the same one every other mount site uses.
   void _initializePage() {
     // Initialize page state in StateManager only for new values
     if (widget.pageDefinition.initialState != null) {
@@ -92,41 +102,29 @@ class _MCPPageWidgetState extends State<MCPPageWidget> {
       widget.runtimeEngine.channelManager.initializeChannels(channels);
     }
 
-    final lifecycle = widget.pageDefinition.lifecycleDefinition;
-
-    // Execute page onEnter lifecycle (before onMount per spec)
-    if (lifecycle?.onEnter != null) {
-      widget.runtimeEngine.lifecycle.executeOnEnter(lifecycle!.onEnter!);
-    }
-
-    // Execute page onMount lifecycle
-    if (lifecycle?.onMount != null) {
-      widget.runtimeEngine.lifecycle.executeLifecycleHooks(
+    _runner = LifecycleRunner(
+      lifecycle: widget.pageDefinition.lifecycleDefinition,
+      label: 'page',
+      execute: (action) =>
+          widget.runtimeEngine.lifecycle.executeLifecycleHooks(
         LifecycleEvent.mount,
-        lifecycle!.onMount!,
-      );
-    }
+        <dynamic>[action],
+      ),
+    );
+    unawaited(_runner!.mount());
   }
+
+  LifecycleRunner? _runner;
 
   @override
   void dispose() {
-    final lifecycle = widget.pageDefinition.lifecycleDefinition;
-
-    // Execute page onLeave lifecycle (before onUnmount per spec)
-    if (lifecycle?.onLeave != null) {
-      widget.runtimeEngine.lifecycle.executeOnLeave(lifecycle!.onLeave!);
-    }
+    // The runner fires onPause → onUnmount → onDestroy (§6.8.3). It is not
+    // awaited: dispose cannot be async, and a hook that releases a
+    // subscription must still be given the chance to run.
+    unawaited(_runner?.unmount() ?? Future<void>.value());
 
     // Dispose auto-dispose channels for this page (P7)
     widget.runtimeEngine.channelManager.disposeAutoChannels();
-
-    // Execute page onUnmount lifecycle
-    if (lifecycle?.onUnmount != null) {
-      widget.runtimeEngine.lifecycle.executeLifecycleHooks(
-        LifecycleEvent.unmount,
-        lifecycle!.onUnmount!,
-      );
-    }
     super.dispose();
   }
 
@@ -173,9 +171,9 @@ class _MCPPageWidgetState extends State<MCPPageWidget> {
               title: Text(title),
               actions: NavigationActionExecutor.hasOnExit
                   ? <Widget>[
-                      IconButton(
-                        key: const Key('mcp.page.close'),
-                        icon: const Icon(Icons.close),
+                      const IconButton(
+                        key: Key('mcp.page.close'),
+                        icon: Icon(Icons.close),
                         tooltip: 'Close',
                         onPressed: NavigationActionExecutor.invokeOnExit,
                       ),

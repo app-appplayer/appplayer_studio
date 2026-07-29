@@ -5,11 +5,10 @@
 import 'dart:convert';
 
 /// Newline-delimited JSON-RPC framing over a reassembled byte stream —
-/// the client-side realization of the wire contract in
-/// `specs/platform/16-ble-transport.md` §5 (UTF-8, `\n` terminated,
+/// the client-side realization of the wire contract (UTF-8, `\n` terminated,
 /// blank lines skipped, surrounding whitespace trimmed).
 ///
-/// Chunk boundaries carry no semantics (spec §4): [feed] accepts arbitrary
+/// Chunk boundaries carry no semantics: [feed] accepts arbitrary
 /// slices of the stream — one JSON-RPC line may span many chunks and one
 /// chunk may contain many lines. Buffering is byte-level so a multi-byte
 /// UTF-8 sequence split across chunks is reassembled correctly before
@@ -45,7 +44,7 @@ class NewlineJsonFramer {
   }
 
   /// Encode one JSON-RPC message into its wire bytes
-  /// (spec §5: `jsonEncode + '\n'`, UTF-8).
+  /// (`jsonEncode + '\n'`, UTF-8).
   static List<int> encodeFrame(dynamic message) =>
       utf8.encode('${jsonEncode(message)}\n');
 }

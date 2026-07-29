@@ -73,21 +73,21 @@ void main() {
     expect(find.text('FIELDS'), findsOneWidget);
     expect(find.text('TABLE · ITEMS'), findsOneWidget);
     // Sheet shows the placeholder field + template's default row.
-    expect(find.text('《수신》'), findsOneWidget);
-    expect(find.text('기본품목'), findsWidgets);
+    expect(find.text('《recipient》'), findsOneWidget);
+    expect(find.text('Default item'), findsWidgets);
   });
 
   testWidgets('typing into a field re-renders the sheet', (tester) async {
     await pumpPage(tester);
     await pickHarnessTemplate(tester);
     await tester.enterText(
-      find.widgetWithText(TextField, '수신'),
-      '대성전자 귀중',
+      find.widgetWithText(TextField, 'recipient'),
+      'To Daesung Electronics',
     );
     await tester.pump();
     // Placeholder replaced by the typed value on the sheet.
-    expect(find.text('《수신》'), findsNothing);
-    expect(find.text('대성전자 귀중'), findsWidgets);
+    expect(find.text('《recipient》'), findsNothing);
+    expect(find.text('To Daesung Electronics'), findsWidgets);
   });
 
   testWidgets('add row + edit cell shows on the sheet; remove row works', (
@@ -98,13 +98,13 @@ void main() {
     await tester.tap(find.text('Add row'));
     await tester.pump();
     expect(find.text('row 2'), findsOneWidget);
-    // Type into the new row's 품목 cell (second table-editor row).
+    // Type into the new row's item-name cell (second table-editor row).
     await tester.enterText(
-      find.widgetWithText(TextField, '품목').last,
-      '추가품목',
+      find.widgetWithText(TextField, 'item').last,
+      'Added item',
     );
     await tester.pump();
-    expect(find.text('추가품목'), findsWidgets); // editor + sheet
+    expect(find.text('Added item'), findsWidgets); // editor + sheet
     // Remove row 2 (its close icon).
     await tester.tap(
       find.descendant(
@@ -123,8 +123,8 @@ void main() {
     await pumpPage(tester);
     await pickHarnessTemplate(tester);
     await tester.enterText(
-      find.widgetWithText(TextField, '수신'),
-      '대성전자',
+      find.widgetWithText(TextField, 'recipient'),
+      'Daesung Electronics',
     );
     await tester.tap(find.text('Validate'));
     await settle(tester);
@@ -137,12 +137,12 @@ void main() {
     await pumpPage(tester);
     await pickHarnessTemplate(tester);
     await tester.enterText(
-      find.widgetWithText(TextField, '수신'),
-      '한울정공',
+      find.widgetWithText(TextField, 'recipient'),
+      'Hanul Precision',
     );
     await tester.enterText(
-      find.widgetWithText(TextField, '품목').first,
-      '드래프트품목',
+      find.widgetWithText(TextField, 'item').first,
+      'Draft item',
     );
     await tester.pump();
     await tester.tap(find.text('Save draft'));
@@ -151,11 +151,11 @@ void main() {
     expect(drafts, hasLength(1));
     final doc =
         (drafts!.first['document'] as Map).cast<String, dynamic>();
-    expect(doc['data']?['수신'], '한울정공');
+    expect(doc['data']?['recipient'], 'Hanul Precision');
     final tables = (doc['tables'] as Map).cast<String, dynamic>();
     expect(
       ((tables['items'] as List).first as Map)['name'],
-      '드래프트품목',
+      'Draft item',
     );
     // Fresh page → load the draft from the list → editors restored.
     await tester.pumpWidget(const SizedBox());
@@ -163,8 +163,8 @@ void main() {
     await pumpPage(tester);
     await tester.tap(find.textContaining('harness-quote').first);
     await settle(tester, 12);
-    expect(find.text('한울정공'), findsWidgets);
-    expect(find.text('드래프트품목'), findsWidgets);
+    expect(find.text('Hanul Precision'), findsWidgets);
+    expect(find.text('Draft item'), findsWidgets);
   });
 
   testWidgets('Issue freezes artifacts on disk and records the issue', (
@@ -173,8 +173,8 @@ void main() {
     await pumpPage(tester);
     await pickHarnessTemplate(tester);
     await tester.enterText(
-      find.widgetWithText(TextField, '수신'),
-      '발행대상',
+      find.widgetWithText(TextField, 'recipient'),
+      'Issue target',
     );
     await tester.pump();
     // Select HTML and IMAGE in addition to the default PDF — exactly the
@@ -218,7 +218,7 @@ void main() {
     // The frozen data is the typed value.
     final content =
         (issues.first['content'] as Map).cast<String, dynamic>();
-    expect(content['data']?['수신'], '발행대상');
+    expect(content['data']?['recipient'], 'Issue target');
   });
 
   testWidgets(
@@ -252,8 +252,8 @@ void main() {
       await settle(tester);
       // Edit the table so the snapshot must carry PATCHED rows.
       await tester.enterText(
-        find.widgetWithText(TextField, '품목').first,
-        '패치품목',
+        find.widgetWithText(TextField, 'item').first,
+        'Patched item',
       );
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Issue'));
@@ -283,7 +283,7 @@ void main() {
           blocks.cast<Map>().firstWhere((b) => b['blockId'] == 'items');
       expect(
         ((items['rows'] as List).first as Map)['cells']?['name'],
-        '패치품목',
+        'Patched item',
       );
       // 3) the local image was copied next to the artifacts (HTML <img>
       // relative src resolves).

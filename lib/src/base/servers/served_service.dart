@@ -4,7 +4,7 @@
 /// kernel connection and the served app UI (`ui://app` + `ui://pages/*`) is
 /// fetched over it and mounted as a first-class studio tab, with button
 /// tool-actions dispatched back through `tools/call` and the JSON result
-/// folded into runtime state (spec §3.10), exactly like the App Builder debug
+/// folded into runtime state, exactly like the App Builder debug
 /// surface.
 ///
 /// This is host-neutral (no marketplace types): both the marketplace embed
@@ -22,6 +22,8 @@ import 'package:appplayer_ui_view/appplayer_ui_view.dart' show UiTargetSnapshot;
 
 import '../main/chrome_bridge.dart' show WorkspaceTabActiveScope;
 import '../widgets/preview_mcp_ui.dart' show McpUiRuntimePort;
+import 'composition_seam.dart'
+    show StudioCompositionSeam, applyCompositionHooks;
 import '../../ui/theme.dart' show VbuTheme;
 
 /// Contract prefix for a connected-service install id (`service:<endpoint>`).
@@ -299,6 +301,24 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
         // Keep the re-arm handle so the active-edge gate can re-assert this
         // surface's theme after a sibling tab resets the shared singleton.
         _reapplyTheme = apply;
+        // Composition Profile (MCP UI DSL v1.4): this served app may `$ref` a
+        // definition living on ANOTHER server and then drive and track that
+        // server's device. Registered here — after `initialize`, before
+        // `buildUI` — so the first render already resolves foreign refs.
+        //
+        // All four or none: a resolver on its own renders the embedded subtree
+        // and sends its controls down THIS surface's connection, landing on a
+        // session with no client for that device. When the seam is unwired
+        // (headless mounts, tests) nothing is registered and `view` fails
+        // closed to its own fallback, which is the honest degrade.
+        applyCompositionHooks(
+          runtime,
+          StudioCompositionSeam.hooksFor(
+            clientHost: () => clientHost,
+            // A source that names no origin is this surface's own server.
+            readOwn: (uri) => readServiceJson(conn, uri),
+          ),
+        );
       },
       onToolCall: (tool, params, runtime) async {
         final result = await conn.callTool(tool, params);

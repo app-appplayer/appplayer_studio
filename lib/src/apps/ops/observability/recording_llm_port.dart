@@ -4,7 +4,7 @@
 // pool so every agent ask shows up in the Live Feed and the Status Bar
 // token counters.
 //
-// PRD §FM-OBSERVE-01 / 02. The wrapper is transparent: capabilities
+// The wrapper is transparent: capabilities
 // flow through unchanged, and unsupported methods (embedding etc.)
 // keep throwing the original UnsupportedError from the inner port.
 

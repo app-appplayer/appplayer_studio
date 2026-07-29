@@ -5,7 +5,6 @@
 /// approver) and everything else latest-first (line progress ● ○ ✕ ⤵).
 /// Button = tool, 1:1: every mutation goes through `form_builder.approve` /
 /// `form_builder.reject` — exactly what an external LLM drives. Design:
-/// `docs/form_builder/form-approval-line.md`.
 library;
 
 import 'package:flutter/material.dart';

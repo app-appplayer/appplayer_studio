@@ -1,6 +1,6 @@
 /// Shared io device-driver wiring — reference recipe.
 ///
-/// Implements the model defined in `specs/platform/11-io-devices.md`:
+/// Implements the io device-driver model:
 ///   - [IoDriverRegistry] / [IoDeviceConfig] — type-keyed builders with
 ///     per-driver platform gating (the provisioner).
 ///   - [registerNetworkDrivers] — builders for the dart:io socket drivers

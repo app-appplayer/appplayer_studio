@@ -118,7 +118,7 @@ class _SceneShellState extends State<SceneShell> {
     BuiltInAppRegistry.instance.unmount(widget.bundlePath);
     // Detach from DomainServerManager so a domainSpawned boot (when
     // inheritFromSystem=false) tears down when this is the last domain
-    // attached. Mirror to App Builder's dispose — MOD-INFRA-010 §10.7
+    // attached. Mirror to App Builder's dispose —
     // gap G-3.
     widget.chromeBridge.domainServerManager?.detach(widget.bundlePath);
     super.dispose();

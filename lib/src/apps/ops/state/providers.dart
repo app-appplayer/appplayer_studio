@@ -77,7 +77,7 @@ Future<Map<String, dynamic>> opsCallTool(
 // (`http://127.0.0.1:7840/mcp`) and the host's chat panel tool-use
 // loop. See `diora/design/builtin-os-cleanup-plan-2026-05-28.md`.
 
-/// Observability subsystem — [ActivityBus] + [TelemetryStore]. PRD §FM-OBSERVE.
+/// Observability subsystem — [ActivityBus] + [TelemetryStore].
 /// Bootstrapped at app start in main.dart and overridden into the booted
 /// [ProviderScope]. Live Feed, Status Bar, and Diagnostic Export consume
 /// from this single instance.
@@ -470,7 +470,6 @@ final processBoardViewProvider = StateProvider<bool>((ref) => false);
 /// Flow-board data pulse: process defs + their runs for one workspace.
 /// Run-state transitions live in KV with NO change tick, so the board polls
 /// (same rule as the org overlay). autoDispose — only while the board shows.
-/// Design: docs/makemind_ops/ops-flow-views.md (B2).
 final processBoardRunsProvider = StreamProvider.autoDispose
     .family<Map<String, List<ProcessRun>>, String>((ref, wsId) async* {
   final init = ref.watch(knowledgeInitProvider);
@@ -493,7 +492,7 @@ final processBoardRunsProvider = StreamProvider.autoDispose
 /// "Today's flow" home card pulse (B4) — hour-bucketed invocations /
 /// delegations / approval waits / run starts for the active workspace.
 /// Facts and run records emit no change tick → poll (autoDispose: alive
-/// only while Home shows). Design: docs/makemind_ops/ops-flow-views.md.
+/// only while Home shows).
 final todayFlowProvider =
     StreamProvider.autoDispose<TodayFlowData>((ref) async* {
   final init = ref.watch(knowledgeInitProvider);
@@ -507,7 +506,7 @@ final todayFlowProvider =
 /// Living-org-chart overlay pulse. The chart geometry rebuilds on registry
 /// mutations, but activity (facts / process-run state) emits NO change tick
 /// — so this polls. autoDispose keeps the timer alive only while the
-/// Organization page is mounted. Design: docs/makemind_ops/ops-living-org-chart.md.
+/// Organization page is mounted.
 final orgOverlayProvider =
     StreamProvider.autoDispose<OrgOverlayData>((ref) async* {
   final init = ref.watch(knowledgeInitProvider);

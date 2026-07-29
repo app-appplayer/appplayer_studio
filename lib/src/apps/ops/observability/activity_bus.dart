@@ -1,5 +1,4 @@
-// In-memory pub/sub + ring buffer for Ops activity. Defined in
-// PRD §FM-OBSERVE-01.
+// In-memory pub/sub + ring buffer for Ops activity.
 //
 // One process-wide singleton owned by the boot path. Riverpod exposes
 // it via [activityBusProvider] in `state/providers.dart` so any UI can

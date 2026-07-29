@@ -49,7 +49,7 @@ enum FormRoute {
 }
 
 /// Top-level body the host mounts inside the Form Builder tab. Owns the
-/// project lifecycle (welcome → bind → routes), the MOD-APPS-003 chrome
+/// project lifecycle (welcome → bind → routes), the chrome
 /// hooks, and the active-tab gate — App Builder / Scene Builder / Ops
 /// pattern, nothing bespoke.
 class FormShell extends StatefulWidget {
@@ -125,7 +125,7 @@ class _FormShellState extends State<FormShell> {
     });
   }
 
-  /// Deep-link landing (docs/03_DDD/app-open-deeplink.md). Route names =
+  /// Deep-link landing. Route names =
   /// the rail's lower-case labels; unknown route/entity returns false so
   /// `studio.app.open` reports it instead of landing somewhere wrong.
   Future<bool> _navigate(String route, {String? entityId}) async {
@@ -264,7 +264,7 @@ class _FormShellState extends State<FormShell> {
     }
   }
 
-  // --- chrome hooks (MOD-APPS-003) -----------------------------------------
+  // --- chrome hooks -------------------------------------------------------
 
   Map<String, LifecycleHandler>? _provideLifecycleBindings() {
     return <String, LifecycleHandler>{
@@ -401,7 +401,7 @@ class _FormShellState extends State<FormShell> {
     BuiltInAppRegistry.instance.unmount(widget.bundlePath);
     _releaseSlotsIfMine();
     // Tab CLOSE = unbind the Form Builder core (design contract
-    // knowledge-operations.md §11.3). This State disposes ONLY on tab
+    // tab-close only). This State disposes ONLY on tab
     // removal — the host renders tab bodies in a keyed IndexedStack, so a
     // tab SWITCH keeps the mount alive and the core stays bound in the
     // background. Guard on this tab owning the live boot so closing a

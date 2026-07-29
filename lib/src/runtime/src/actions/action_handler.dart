@@ -3,7 +3,8 @@ import 'dart:convert' show jsonDecode;
 import 'dart:math' show pow;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' show ActionDefinition;
+import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
+    show ActionDefinition, ActionTypes, IdentityPromotion, PromotionOutcome;
 
 import '../renderer/render_context.dart';
 import '../utils/mcp_logger.dart';
@@ -15,6 +16,7 @@ import '../plugins/plugin_hooks.dart';
 import '../channels/channel_manager.dart';
 import '../models/ui_definition.dart' show PermissionsConfig;
 import '../permissions/permission_manager.dart';
+import '../entry/entry_session.dart';
 import 'action_result.dart';
 
 /// Handles action execution
@@ -99,6 +101,14 @@ class ActionHandler {
 
     // v1.1 Event bus executor
     _executors['event'] = EventActionExecutor();
+
+    // v1.4 Identity actions (MCP UI DSL 8.9.3). Canonical `_executors['identity']`
+    // resolves the sub-operation from `action['action']`; the dotted-flat keys
+    // are the forms the spec's own examples use.
+    final identityExecutor = IdentityActionExecutor();
+    _executors['identity'] = identityExecutor;
+    _executors[ActionTypes.identityPromote] = identityExecutor;
+    _executors[ActionTypes.identityRelease] = identityExecutor;
   }
 
   /// Register a tool executor function
@@ -363,6 +373,38 @@ class ToolActionExecutor extends ActionExecutor {
     }
   }
 
+
+  /// Runs a `tool` action against the subtree's ambient origin.
+  ///
+  /// Params resolve in the embedded scope, exactly as they would locally, and
+  /// the result takes the same §3.10 unwrap path — a call is not a different
+  /// kind of thing because it crossed an origin, only a differently-addressed
+  /// one.
+  Future<ActionResult> _executeThroughOrigin(
+    Map<String, dynamic> action,
+    RenderContext context,
+    String tool,
+    Map<String, dynamic> origin,
+    Future<dynamic> Function(
+            Map<String, dynamic> origin, String tool, Map<String, dynamic> params)
+        callOrigin,
+  ) async {
+    final rawParams = action['params'];
+    final params = <String, dynamic>{};
+    if (rawParams is Map) {
+      rawParams.forEach((key, value) {
+        params['$key'] = context.resolve(value);
+      });
+    }
+    try {
+      final result = await callOrigin(origin, tool, params);
+      return ActionResult.success(data: _maybeUnwrapMcpWire(result, tool));
+    } catch (e) {
+      _logger.error('Tool "$tool" on origin $origin failed: $e');
+      return ActionResult.error('tool "$tool" failed on origin: $e');
+    }
+  }
+
   @override
   Future<ActionResult> execute(
     Map<String, dynamic> action,
@@ -375,6 +417,25 @@ class ToolActionExecutor extends ActionExecutor {
     }
 
     _logger.debug('Executing tool action: $tool with action: $action');
+
+    // A subtree embedded by `view` runs against the origin it was resolved
+    // from, so its tool calls belong to that device (§1.9.5, §2.13.1, §7.10).
+    // Taking the app's own path here is what made a composed screen render
+    // correctly and do nothing: the call reached a session with no client for
+    // it. A scoped subtree with no host bridge is reported rather than
+    // redirected — running another device's tool name against the app's own
+    // server is worse than failing.
+    final origin = context.origin;
+    if (origin != null) {
+      final callOrigin = context.originToolCaller;
+      if (callOrigin == null) {
+        _logger.error('Tool "$tool" is scoped to origin $origin but the host '
+            'wired no origin tool caller');
+        return ActionResult.error(
+            'tool "$tool": this host cannot call tools on another origin');
+      }
+      return _executeThroughOrigin(action, context, tool, origin, callOrigin);
+    }
 
     // Try to find specific tool executor, fallback to 'default' handler
     final toolExecutor = _toolExecutors?[tool] ?? _toolExecutors?['default'];
@@ -980,6 +1041,18 @@ class StateActionExecutor extends ActionExecutor {
       throw Exception('Binding or path is required for state action');
     }
 
+    // §8.9.2 — `entry.*` and `identity.*` are read-only. They describe how the
+    // viewer arrived and who they are; a document that could assign them could
+    // draw itself a steward affordance it was never granted. Rejecting here
+    // rather than silently dropping the write keeps the failure visible to the
+    // author instead of surfacing later as a binding that never changed.
+    if (EntryStateKeys.isReadOnly(binding)) {
+      return ActionResult.error(
+        'State path "$binding" is read-only (MCP UI DSL 8.9.2)',
+        errorCode: 'READ_ONLY_BINDING',
+      );
+    }
+
     try {
       switch (actionType) {
         case 'set':
@@ -1078,6 +1151,90 @@ class StateActionExecutor extends ActionExecutor {
 
 /// Executes resource actions
 class ResourceActionExecutor extends ActionExecutor {
+
+  /// Per-context registry of live origin subscriptions, keyed by uri.
+  ///
+  /// Held on the executor rather than the engine: the engine's registry is the
+  /// app's own, and mixing the two would have an unsubscribe on one origin tear
+  /// down another's watch of the same uri — two devices commonly serve the same
+  /// resource name.
+  static final Map<String, void Function()> _originSubscriptions =
+      <String, void Function()>{};
+
+  static String _originKey(Map<String, dynamic> origin, String uri) =>
+      '${origin['connection']}|$uri';
+
+  Future<ActionResult> _resourceThroughOrigin(
+    Map<String, dynamic> action,
+    RenderContext context,
+    String actionType,
+    String uri,
+    Map<String, dynamic> origin,
+  ) async {
+    final key = _originKey(origin, uri);
+
+    if (actionType == 'unsubscribe') {
+      _originSubscriptions.remove(key)?.call();
+      return ActionResult.success();
+    }
+
+    if (actionType == 'read') {
+      // One shot, no watch left behind. Routed here for the same reason
+      // subscribe is: reading through the app's own path returns the
+      // embedder's resource under the embedded definition's uri, which is a
+      // wrong answer rather than a missing one.
+      final binding = action['binding'] as String? ?? uri;
+      final read = context.originResourceReader;
+      if (read == null) {
+        _logger.error('Resource "\$uri" is scoped to origin \$origin but the '
+            'host wired no origin resource reader');
+        return ActionResult.error(
+            'resource "\$uri": this host cannot read from another origin');
+      }
+      try {
+        final value = await read(origin, uri);
+        context.setValue(binding, value);
+        return ActionResult.success(data: value);
+      } catch (e) {
+        _logger.error('Read "\$uri" on origin \$origin failed: \$e');
+        return ActionResult.error('read "\$uri" failed on origin: \$e');
+      }
+    }
+
+    final binding = action['binding'] as String?;
+    if (binding == null) {
+      return ActionResult.error('Binding is required for subscribe action');
+    }
+    final watch = context.originResourceWatcher;
+    if (watch == null) {
+      _logger.error('Resource "$uri" is scoped to origin $origin but the host '
+          'wired no origin resource watcher');
+      return ActionResult.error(
+          'resource "$uri": this host cannot watch another origin');
+    }
+
+    // Re-subscribing the same uri replaces the previous watch rather than
+    // stacking a second one, which would double every update.
+    _originSubscriptions.remove(key)?.call();
+    try {
+      final dispose = await watch(origin, uri, (contents) {
+        context.setValue(binding, contents);
+      });
+      _originSubscriptions[key] = dispose;
+      return ActionResult.success();
+    } catch (e) {
+      _logger.error('Subscribe to "$uri" on origin $origin failed: $e');
+      final onSubscriptionError =
+          action['onSubscriptionError'] as Map<String, dynamic>?;
+      if (onSubscriptionError != null) {
+        await context.actionHandler.execute(
+          onSubscriptionError,
+          context.createChildContext(variables: {'error': '$e'}),
+        );
+      }
+      return ActionResult.error('subscribe "$uri" failed on origin: $e');
+    }
+  }
   static final _logger = MCPLogger('ResourceActionExecutor');
 
   @override
@@ -1126,6 +1283,18 @@ class ResourceActionExecutor extends ActionExecutor {
 
     if (uri == null) {
       return ActionResult.error('URI is required for resource action');
+    }
+
+    // A subtree embedded by `view` watches its OWN origin's resources, not the
+    // app's (§1.9.5, §2.13.1). Routed before the local path because the local
+    // one silently succeeds against the wrong server: it registers a
+    // subscription the app's own session will never receive updates for, and
+    // the reading renders empty forever.
+    final resourceOrigin = context.origin;
+    if (resourceOrigin != null &&
+        const <String>{'subscribe', 'unsubscribe', 'read'}.contains(actionType)) {
+      return _resourceThroughOrigin(
+          action, context, actionType, uri, resourceOrigin);
     }
 
     try {
@@ -1637,7 +1806,23 @@ class ClientActionExecutorWrapper extends ActionExecutor {
     Map<String, dynamic> action,
     RenderContext context,
   ) async {
-    return _clientHandler.execute(action, context);
+    final result = await _clientHandler.execute(action, context);
+
+    // `bindResult` works here too, as it does for `tool` actions.
+    //
+    // It did not, and the gap was invisible from the DSL: a document could
+    // read a file, take a clipboard value or fetch a stored key and then had
+    // no way to put the answer on screen. Every other action that returns
+    // something binds it, so the omission read as a broken binding rather than
+    // a missing feature.
+    //
+    // Only on success: binding an error's null over a previous value would
+    // erase what the user is looking at.
+    final bindResult = action['bindResult'] as String?;
+    if (bindResult != null && result.success) {
+      context.setValue(bindResult, result.data);
+    }
+    return result;
   }
 }
 
@@ -1972,6 +2157,82 @@ class CancelActionExecutor extends ActionExecutor {
     }
 
     return ActionResult.success();
+  }
+}
+
+/// Executes identity promotion and release (v1.4, MCP UI DSL 8.9.3).
+///
+/// Neither operation takes a credential nor returns one — the result says
+/// only whether the transition occurred. A host that wired no promotion
+/// handler makes both unsupported rather than failing, so a document written
+/// against 8.9 degrades to its guest rendering (8.9.6).
+class IdentityActionExecutor extends ActionExecutor {
+  static final _logger = MCPLogger('IdentityActionExecutor');
+
+  @override
+  Future<ActionResult> execute(
+    Map<String, dynamic> action,
+    RenderContext context,
+  ) async {
+    final type = action['type'] as String?;
+    final String op;
+    if (type == 'identity') {
+      final sub = action['action'] as String?;
+      if (sub == null || sub.isEmpty) {
+        return ActionResult.error(
+            'Identity action requires an `action` sub-operation');
+      }
+      op = sub.startsWith('identity.') ? sub.substring('identity.'.length) : sub;
+    } else if (type == ActionTypes.identityPromote) {
+      op = 'promote';
+    } else if (type == ActionTypes.identityRelease) {
+      op = 'release';
+    } else {
+      return ActionResult.error('Unknown identity action: $type');
+    }
+
+    final session = _sessionOf(context);
+    if (session == null) {
+      // No host support: unsupported, not an error the document must handle.
+      _logger.debug('identity.$op ignored — no entry session on this runtime');
+      return ActionResult.success(data: <String, dynamic>{
+        'outcome': PromotionOutcome.unavailable.wireName,
+        'supported': false,
+        'changed': false,
+      });
+    }
+
+    switch (op) {
+      case 'promote':
+        return _report(await session.promote(), session);
+      case 'release':
+        return _report(await session.release(), session);
+      default:
+        return ActionResult.error('Unknown identity action: identity.$op');
+    }
+  }
+
+  /// Report a transition. `outcome` distinguishes a decline (ask again is
+  /// reasonable) from an unavailable host (it is not) — collapsing both into
+  /// "nothing happened" leaves a document unable to phrase either.
+  ActionResult _report(IdentityPromotion result, EntrySession session) {
+    return ActionResult.success(data: <String, dynamic>{
+      'outcome': result.outcome.wireName,
+      'supported': result.outcome != PromotionOutcome.unavailable,
+      'changed': result.changed,
+      'state': session.identity.state.wireName,
+    });
+  }
+
+  /// The engine is typed dynamic on RenderContext to avoid a circular import,
+  /// so the lookup is guarded rather than cast.
+  EntrySession? _sessionOf(RenderContext context) {
+    try {
+      final session = context.engine?.entrySession;
+      return session is EntrySession ? session : null;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

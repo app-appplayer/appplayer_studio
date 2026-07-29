@@ -20,7 +20,7 @@ library;
 export 'src/provisioning_models.dart'
     show ProvisioningCandidate, WifiAp, ProvisioningState, ProvisioningStatus;
 export 'src/provisioning_link.dart'
-    show ProvisioningUuids, ProvisioningLink, ProvisioningTransport;
+    show ProvisioningUuids, ProvisioningLink, ProvisioningTransport, pageWifiList;
 export 'src/universal_ble_provisioning.dart'
     show UniversalBleProvisioningTransport, UniversalBleProvisioningLink;
 export 'src/provisioning_capability.dart' show BleProvisioningCapability;

@@ -215,8 +215,16 @@ class BundleUiReadAdapter implements UiPort {
     final routes = BundlePageAdapter.toRoutes(uiSection);
 
     Map<String, dynamic>? initialState;
+    // Legacy-form adapter: it reads the deprecated inline fields precisely so
+    // bundles that still carry them keep working. The replacement path
+    // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+    // ignore: deprecated_member_use
     if (uiSection != null && uiSection.state.isNotEmpty) {
       final stateMap = <String, dynamic>{};
+      // Legacy-form adapter: it reads the deprecated inline fields precisely so
+      // bundles that still carry them keep working. The replacement path
+      // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+      // ignore: deprecated_member_use
       for (final entry in uiSection.state.entries) {
         if (entry.value.initialValue != null) {
           stateMap[entry.key] = entry.value.initialValue;
@@ -232,10 +240,26 @@ class BundleUiReadAdapter implements UiPort {
       version: manifest.version,
       initialRoute: routes.keys.isNotEmpty ? routes.keys.first : '/',
       routes: routes,
+      // Legacy-form adapter: it reads the deprecated inline fields precisely so
+      // bundles that still carry them keep working. The replacement path
+      // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+      // ignore: deprecated_member_use
       theme: uiSection?.theme != null
+          // Legacy-form adapter: it reads the deprecated inline fields precisely so
+          // bundles that still carry them keep working. The replacement path
+          // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+          // ignore: deprecated_member_use
           ? core.ThemeDefinition.fromJson(uiSection!.theme!.toJson())
           : null,
+      // Legacy-form adapter: it reads the deprecated inline fields precisely so
+      // bundles that still carry them keep working. The replacement path
+      // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+      // ignore: deprecated_member_use
       navigation: uiSection?.navigation != null
+          // Legacy-form adapter: it reads the deprecated inline fields precisely so
+          // bundles that still carry them keep working. The replacement path
+          // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+          // ignore: deprecated_member_use
           ? core.NavigationConfig.fromJson(uiSection!.navigation!.toJson())
           : null,
       initialState: initialState,

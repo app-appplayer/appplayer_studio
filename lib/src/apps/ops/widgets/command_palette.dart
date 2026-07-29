@@ -1,5 +1,4 @@
 // Command palette overlay — Cmd+K (macOS) / Ctrl+K (Linux/Windows).
-// PRD §FM-POWER-01.
 //
 // Mounted as a global Shortcuts/Actions wrapper just below the booted
 // ProviderScope. Pressing Cmd+K opens a centered modal with a search

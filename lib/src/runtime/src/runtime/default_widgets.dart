@@ -23,6 +23,7 @@ import '../widgets/layout/limitedbox_factory.dart';
 import '../widgets/layout/conditional_factory.dart';
 import '../widgets/layout/indexed_stack_factory.dart';
 import '../widgets/layout/use_template_factory.dart';
+import '../widgets/utility/view_factory.dart';
 import '../templates/template_registry.dart';
 
 // Display widgets
@@ -288,6 +289,11 @@ class DefaultWidgets {
     registry.register('tabBarView', TabBarViewWidgetFactory()); // CamelCase
 
     // Scroll widgets
+    // `view` — Composition Profile (spec v1.4 §2.13.1): embeds a definition
+    // sourced from anywhere, including another MCP origin. Fails closed when
+    // no host resolver is registered (§18.7.3).
+    registry.register('view', ViewFactory());
+
     registry.register('scrollView', ScrollViewFactory()); // CamelCase per spec
     registry.register('singleChildScrollView',
         SingleChildScrollViewWidgetFactory()); // CamelCase

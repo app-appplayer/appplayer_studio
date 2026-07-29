@@ -1,6 +1,6 @@
 // About / Credits page — surfaces build info, makemind ecosystem links,
-// dependency notes, and license. PRD §FM-OBSERVE-04 supporting surface
-// (paired with Diagnostics for the support flow).
+// dependency notes, and license. A supporting surface paired with
+// Diagnostics for the support flow.
 
 import 'dart:io';
 

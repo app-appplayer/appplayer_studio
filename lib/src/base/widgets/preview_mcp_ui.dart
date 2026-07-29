@@ -93,7 +93,7 @@ class CanonicalUiViewAdapter implements UiViewAdapter {
       flat.remove('pages');
       section = flat;
     } else if (tail == 'dashboard') {
-      // Dashboard is its own root view (spec §11.9), not a page. When
+      // Dashboard is its own root view, not a page. When
       // the bundle has authored one, wrap its content in a synthetic
       // single-route App so it goes through the same theme pipeline as
       // any page; `_pageLoaderFor()` resolves the sentinel URI back to
@@ -263,7 +263,7 @@ class McpUiRuntimePort implements UiRuntimePort {
   /// canonical-source previews dispatch tool actions through their
   /// per-tool specific executors. The Inspector port supplies a
   /// callback that forwards to the connected MCP client and folds
-  /// the response into runtime state per spec §3.10. The runtime
+  /// the response into runtime state. The runtime
   /// reference lets the callback `mergeState` directly into the
   /// surface that fired the action.
   final Future<void> Function(

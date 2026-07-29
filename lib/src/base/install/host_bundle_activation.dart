@@ -239,7 +239,7 @@ class HostBundleActivationContext implements BundleActivationContext {
       case mb.ToolKind.ts:
         // `type: server` bundle tool — compiled and executed by the
         // marketplace serving runtime, never by this host (no local TS
-        // executor by design, spec 08 §5). Treat as a declaration: skip
+        // executor by design). Treat as a declaration: skip
         // registration cleanly (ok, nothing exposed) rather than failing
         // the activation.
         return const RegistrationResult(ok: true, exposedName: '');
@@ -352,9 +352,9 @@ class HostBundleActivationContext implements BundleActivationContext {
     }
 
     // Domain tools register through the endpoint directly — bridge
-    // path is reserved for knowledge tools (`bk.<facade>.<verb>`) per
-    // inbox `bridge-purpose-clarification-2026-05-26.md` + the new
-    // `BundleSessionBridge` validator that throws on non-`bk.` names.
+    // path is reserved for knowledge tools (`bk.<facade>.<verb>`),
+    // enforced by the `BundleSessionBridge` validator that throws on
+    // non-`bk.` names.
     _boot.addTool(
       name: exposedName,
       description: desc,
@@ -518,7 +518,7 @@ class HostBundleActivationContext implements BundleActivationContext {
     return RegistrationResult(ok: true, exposedName: exposedId);
   }
 
-  // ── 4-axis + flow + fact registration (knowledge-operations §6) ──
+  // ── 4-axis + flow + fact registration ──────────────────────────
   //
   // Each register* method below mirrors `registerAgent`'s shape: id is
   // prefixed with `<exposedShortId>.<entry.id>` so multi-tab bundles

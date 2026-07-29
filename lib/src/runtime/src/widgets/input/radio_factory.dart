@@ -24,31 +24,35 @@ class RadioWidgetFactory extends WidgetFactory {
     // Extract action handler
     final onChange = (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
 
-    Widget radio = Radio<dynamic>(
-      value: value,
-      groupValue: groupValue,
-      onChanged: onChange != null
-          ? (newValue) {
-              // Spec §2.6.0: canonical `binding`; accept legacy `bindTo`.
-              final path = (properties['binding'] as String?) ??
-                  (properties['bindTo'] as String?);
-              if (path != null) {
-                context.setValue(path, newValue);
-              }
+    // Flutter moved selection + change onto a RadioGroup ancestor; a standalone
+    // `radio` widget therefore carries its own single-item group so the DSL
+    // keeps working unchanged.
+    void handleChange(dynamic newValue) {
+      // Spec §2.6.0: canonical `binding`; accept legacy `bindTo`.
+      final path = (properties['binding'] as String?) ??
+          (properties['bindTo'] as String?);
+      if (path != null) {
+        context.setValue(path, newValue);
+      }
+      if (onChange == null) return;
+      final eventData = Map<String, dynamic>.from(onChange);
+      if (eventData['value'] == '{{event.value}}') {
+        eventData['value'] = newValue;
+      }
+      context.actionHandler.execute(eventData, context);
+    }
 
-              // Execute action
-              final eventData = Map<String, dynamic>.from(onChange);
-              if (eventData['value'] == '{{event.value}}') {
-                eventData['value'] = newValue;
-              }
-              context.actionHandler.execute(eventData, context);
-            }
-          : null,
-      activeColor: activeColor,
-      fillColor: fillColor,
-      focusColor: focusColor,
-      hoverColor: hoverColor,
-      splashRadius: splashRadius,
+    Widget radio = RadioGroup<dynamic>(
+      groupValue: groupValue,
+      onChanged: onChange != null ? handleChange : (_) {},
+      child: Radio<dynamic>(
+        value: value,
+        activeColor: activeColor,
+        fillColor: fillColor,
+        focusColor: focusColor,
+        hoverColor: hoverColor,
+        splashRadius: splashRadius,
+      ),
     );
 
     // Handle label

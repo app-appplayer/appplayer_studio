@@ -1051,8 +1051,8 @@ Future<void> _captureAuth(
   final loginUrl = (spec['loginUrl'] as String?) ?? '';
 
   // Open the login page in the host's headful (visible) auth browser so the
-  // user can sign in. The window stays open until capture. (adapt-browser.md
-  // §7 — auth capture uses headful Chromium.)
+  // user can sign in. The window stays open until capture. Auth capture uses
+  // headful Chromium.
   String contextId;
   try {
     final opened = await opsCallTool(

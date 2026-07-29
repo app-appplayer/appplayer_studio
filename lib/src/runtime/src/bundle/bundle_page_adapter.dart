@@ -20,10 +20,18 @@ class BundlePageAdapter {
   /// Returns a `Map<String, String>` mapping route paths to resource
   /// URIs (`ui://pages/<id>`).
   static Map<String, String> toRoutes(UiSection? uiSection) {
+    // Legacy-form adapter: it reads the deprecated inline fields precisely so
+    // bundles that still carry them keep working. The replacement path
+    // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+    // ignore: deprecated_member_use
     if (uiSection == null || uiSection.pages.isEmpty) {
       return const {};
     }
     final routes = <String, String>{};
+    // Legacy-form adapter: it reads the deprecated inline fields precisely so
+    // bundles that still carry them keep working. The replacement path
+    // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+    // ignore: deprecated_member_use
     for (final page in uiSection.pages.values) {
       final routePath = page.route ?? '/${page.id}';
       routes[routePath] = 'ui://pages/${page.id}';
@@ -38,10 +46,18 @@ class BundlePageAdapter {
   /// happens here.
   static Map<String, Map<String, dynamic>> toPageContent(
       UiSection? uiSection) {
+    // Legacy-form adapter: it reads the deprecated inline fields precisely so
+    // bundles that still carry them keep working. The replacement path
+    // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+    // ignore: deprecated_member_use
     if (uiSection == null || uiSection.pages.isEmpty) {
       return const {};
     }
     final content = <String, Map<String, dynamic>>{};
+    // Legacy-form adapter: it reads the deprecated inline fields precisely so
+    // bundles that still carry them keep working. The replacement path
+    // (BundleResources / ui/) is the sibling branch — deliberate, not deferred.
+    // ignore: deprecated_member_use
     for (final page in uiSection.pages.values) {
       content[page.id] = page.toJson();
     }

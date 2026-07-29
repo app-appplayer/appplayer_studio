@@ -157,8 +157,7 @@ class UndoState {
   final bool canRedo;
 }
 
-/// Default implementation. See `core-workspace-canonical.md` (DDD) for the
-/// full contract.
+/// Default implementation.
 ///
 /// Wraps a kernel [Canonical] for the on-disk bytes + draft-mirror role,
 /// adapting [WorkspaceFsPort] into a [CanonicalStoragePort] so vibe's

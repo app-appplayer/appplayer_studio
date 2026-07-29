@@ -1,6 +1,6 @@
 /// Per-workspace content root inside an Ops project.
 ///
-/// Per the mcp_bundle project layout (DDD MOD-APPS-007), each workspace's
+/// Per the mcp_bundle project layout, each workspace's
 /// operational + knowledge content lives inside its `<wsId>.mbd` bundle
 /// directory (slug-safe name — `/` → `_`, e.g. `org/sales` →
 /// `org_sales.mbd`). The reserved `_system` workspace is a free runtime

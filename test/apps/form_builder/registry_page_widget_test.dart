@@ -29,7 +29,7 @@ void main() {
           'documentId': 'doc-$number',
           'templateId': template,
           'content': {
-            'data': {'수신': recipient},
+            'data': {'recipient': recipient},
           },
           'artifacts': const [],
           'issuedBy': 'nina',
@@ -55,12 +55,12 @@ void main() {
       'documentId': 'doc-2026-004',
       'templateId': 'expense',
       'content': {
-        'data': {'금액': '999', '수신': 'Frozen Co'},
+        'data': {'amount': '999', 'recipient': 'Frozen Co'},
       },
       'artifacts': const [],
       'issuedBy': 'nina',
       'issuedAt': '2026-07-04T04:00:00Z',
-      'keyField': '수신',
+      'keyField': 'recipient',
       'keyValue': 'Frozen Co',
     });
   });

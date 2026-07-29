@@ -1,6 +1,6 @@
 // Keyboard-shortcut cheatsheet — opened via `?` (or `Shift+/`) anywhere
 // in the app. Lists every active shortcut + a short description so the
-// user doesn't have to discover them by accident. PRD §FM-POWER (P1).
+// user doesn't have to discover them by accident.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

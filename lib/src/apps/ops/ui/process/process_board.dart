@@ -6,7 +6,7 @@
 /// completed/cancelled=Done column). READ-ONLY view over the behavior
 /// engine's state — dragging cards does not drive transitions by design.
 /// Data: `processBoardRunsProvider` (4s poll — run state has no change
-/// tick). Design: `docs/makemind_ops/ops-flow-views.md`.
+/// tick).
 library;
 
 import 'package:flutter/material.dart';
@@ -207,8 +207,8 @@ class _RunCard extends StatelessWidget {
         '${run.startedAt.minute.toString().padLeft(2, '0')}';
     // In-flight runs show elapsed time (the board polls every 4s, so this
     // ticks) with a stall warning past a threshold, so a run stuck on
-    // `running` reads as stuck rather than silently forever-running (audit
-    // P2.8). Terminal runs keep their start HH:MM.
+    // `running` reads as stuck rather than silently forever-running.
+    // Terminal runs keep their start HH:MM.
     final inflight =
         run.state == ProcessRunState.running ||
         run.state == ProcessRunState.waitingApproval;
@@ -294,7 +294,7 @@ String boardColumnFor(ProcessRun run) {
 /// EMPTY currentStep (the behavior engine has not reported a node yet), so
 /// [boardColumnFor] yields '' — matching no column, which made the run vanish
 /// from the board (only the swimlane's "N runs" count betrayed it) and its
-/// elapsed/stall badge never render (audit P2.8, konpi live re-verify). Any
+/// elapsed/stall badge never render. Any
 /// non-terminal run whose raw column matches no real step is resolved to the
 /// FIRST step (it is at the start) so it lands somewhere and shows its elapsed.
 String placedBoardColumnFor(ProcessRun run, Process process) {

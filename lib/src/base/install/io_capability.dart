@@ -10,7 +10,7 @@
 /// AppPlayer consume the identical recipe so the same bundle drives devices
 /// the same way (parity).
 ///
-/// Two registration modes (spec `11-io-devices.md`):
+/// Two registration modes:
 ///   - **boot** — `process` (host-owned, target-less) via the recipe's
 ///     [bootAdapters]; registered lazily on the first `io.*` call.
 ///   - **on-connect** — network drivers via [registerNetworkDrivers], built
@@ -99,7 +99,7 @@ List<String> registerIoCapability({
       registry.registerExposed(
         bundleId: ioCapabilityId,
         rawName: verb,
-        // §6 destructive — device commands / committed plans actuate the
+        // Destructive — device commands / committed plans actuate the
         // physical or process world (incl. shell runs like git push) and
         // can't be undone; gated through the host confirm callback. Reads /
         // describes / job queries stay un-gated.

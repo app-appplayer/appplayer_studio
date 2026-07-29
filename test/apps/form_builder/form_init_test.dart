@@ -88,10 +88,10 @@ void main() {
     await init.requestApproval(
       documentId: 'doc-a',
       requestedBy: 'nina',
-      title: '지출 기안',
+      title: 'Expense request',
       line: [
-        {'approverId': 'dept-lead', 'roleLabel': '부서장'},
-        {'approverId': 'owner', 'roleLabel': '오너'},
+        {'approverId': 'dept-lead', 'roleLabel': 'Dept head'},
+        {'approverId': 'owner', 'roleLabel': 'Owner'},
       ],
     );
     expect((await init.getDraft('doc-a'))!['status'], 'review');
@@ -115,7 +115,7 @@ void main() {
     expect((await init.getDraft('doc-a'))!['status'], 'approved');
   });
 
-  test('전결(finalize) skips the rest; reject needs a reason and resets '
+  test('final-authority approval skips the rest; reject needs a reason and resets '
       'the draft; re-request replaces', () async {
     final init = await boot();
     await init.saveDraft(
@@ -133,7 +133,7 @@ void main() {
           ],
         );
 
-    // 전결 at the first gate completes the whole line.
+    // A final-authority approval at the first gate completes the whole line.
     await request();
     var a = await init.approve(
         documentId: 'doc-b', actor: 'lead', finalize: true);
@@ -143,14 +143,14 @@ void main() {
       ['approved', 'skipped', 'skipped'],
     );
 
-    // Re-request (재상신) replaces; a reject without a reason is refused.
+    // Re-request replaces the prior submission; a reject without a reason is refused.
     await request();
     await expectLater(
       init.reject(documentId: 'doc-b', actor: 'lead', comment: '  '),
       throwsA(isA<FormApprovalError>()),
     );
     a = await init.reject(
-        documentId: 'doc-b', actor: 'lead', comment: '금액 재검토');
+        documentId: 'doc-b', actor: 'lead', comment: 'amount needs review');
     expect(a['state'], 'rejected');
     expect((await init.getDraft('doc-b'))!['status'], 'draft');
 

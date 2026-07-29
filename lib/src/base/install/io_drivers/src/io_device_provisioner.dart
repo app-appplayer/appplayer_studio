@@ -1,8 +1,8 @@
 /// Configuration-driven provisioning of connection-oriented io device
 /// adapters, with per-driver platform gating.
 ///
-/// See `specs/platform/11-io-devices.md` §3–§5. Dep-free of `mcp_io` core
-/// internals — references only the public `AdapterBase`.
+/// Dep-free of `mcp_io` core internals — references only the public
+/// `AdapterBase`.
 library;
 
 import 'package:mcp_io/mcp_io.dart';

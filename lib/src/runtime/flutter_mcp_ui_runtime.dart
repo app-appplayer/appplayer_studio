@@ -12,11 +12,16 @@ export 'src/models/app_metadata.dart';
 
 // Routing exports
 export 'src/routing/route_manager.dart';
+
+// Entry & identity (MCP UI DSL 8.9)
+export 'src/entry/entry_context.dart';
+export 'src/entry/entry_session.dart';
 export 'src/routing/page_state_scope.dart';
 
 // Runtime exports
 export 'src/runtime/runtime_engine.dart';
 export 'src/runtime/lifecycle_manager.dart';
+export 'src/runtime/lifecycle_runner.dart';
 export 'src/runtime/service_registry.dart' hide ServiceStatus;
 export 'src/runtime/background_service_manager.dart';
 export 'src/runtime/conformance_checker.dart';

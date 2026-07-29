@@ -9,7 +9,6 @@ import 'ops_error.dart';
 /// Root configuration for makemind Ops.
 ///
 /// Loaded from `~/.makemind-ops/config.yaml` (or platform appSupportDirectory).
-/// See `docs/03_DDD/core-config.md` for the design specification.
 class OpsConfig {
   OpsConfig({
     required this.version,

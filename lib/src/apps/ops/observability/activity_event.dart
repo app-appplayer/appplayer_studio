@@ -1,6 +1,6 @@
 // Activity event model for the in-memory ActivityBus + Live Activity Feed.
 //
-// Defined in PRD §FM-OBSERVE-01. An event is structured: kind classifies
+// An event is structured: kind classifies
 // the source (agent ask, tool dispatch, MCP inbound, fork transition,
 // philosophy gate, error) and meta carries provider/agent/skill/tool ids
 // the UI uses for filtering and headline rendering.

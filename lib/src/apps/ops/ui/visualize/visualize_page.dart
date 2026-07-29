@@ -1,4 +1,4 @@
-// 4-axis radar + knowledge graph viewer. PRD §FM-COMPARE-02 / 03.
+// 4-axis radar + knowledge graph viewer.
 //
 // Two side-by-side surfaces:
 //

@@ -35,17 +35,12 @@ class RadioGroupFactory extends WidgetFactory {
         label = value;
       }
 
+      // Selection + change are owned by the RadioGroup ancestor added below
+      // (Flutter deprecated the per-tile groupValue/onChanged pair).
       return RadioListTile<String>(
         title: Text(label),
         value: value,
-        groupValue: currentValue?.toString(),
-        onChanged: enabled
-            ? (newValue) {
-                if (binding != null && newValue != null) {
-                  context.setValue(binding, newValue);
-                }
-              }
-            : null,
+        enabled: enabled,
         dense: true,
         contentPadding: EdgeInsets.zero,
       );
@@ -64,6 +59,20 @@ class RadioGroupFactory extends WidgetFactory {
         children: radioButtons,
       );
     }
+
+    // One RadioGroup ancestor owns the selection and the change callback for
+    // every tile above (the per-tile groupValue/onChanged pair is deprecated).
+    radioGroup = RadioGroup<String>(
+      groupValue: currentValue?.toString(),
+      onChanged: enabled
+          ? (newValue) {
+              if (binding != null && newValue != null) {
+                context.setValue(binding, newValue);
+              }
+            }
+          : (_) {},
+      child: radioGroup,
+    );
 
     // Add label if provided
     if (label != null) {

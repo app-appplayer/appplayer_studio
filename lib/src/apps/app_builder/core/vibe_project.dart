@@ -885,8 +885,7 @@ enum ProjectKind {
   /// panel as [appPlayerApp]); tools are real TypeScript modules under
   /// `tools/` (`kind: "ts"`, `target: {entry, fn}`) that the marketplace
   /// compiles and serves from a per-listing Cloud Run container. Authoring
-  /// contract: the `cloud_server_authoring` seed knowledge source
-  /// (mirror of marketplace `SERVER_AUTHORING.md`).
+  /// contract: the `cloud_server_authoring` seed knowledge source.
   cloudServerApp,
 }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' show PropertyKeys;
+import '../../models/ui_definition.dart' show LifecycleDefinition;
+import '../lifecycle_host.dart';
 import '../widget_factory.dart';
 import '../../renderer/render_context.dart';
 import '../../templates/template_registry.dart';
@@ -36,6 +38,21 @@ class UseTemplateFactory extends WidgetFactory {
       );
     }
 
-    return context.renderer.renderWidget(resolved, context);
+    // §9.9.1: a template definition's own `onMount` / `onUnmount` fire once
+    // PER INSTANCE, after `stateDefaults` initialization. §18 makes running
+    // `onUnmount` a MUST. Nothing ran them before — a template could declare
+    // both and be rendered with neither.
+    //
+    // The hooks live on the template definition, so they are read from the
+    // resolved template, not from the `use` invocation.
+    final hooks = LifecycleDefinition.fromDefinition(resolved);
+    final rendered = context.renderer.renderWidget(resolved, context);
+    if (hooks.isEmpty) return rendered;
+    return LifecycleHost(
+      hooks: hooks,
+      context: context,
+      label: 'template ${definition[PropertyKeys.template] ?? ''}',
+      child: rendered,
+    );
   }
 }

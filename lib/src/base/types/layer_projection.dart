@@ -27,7 +27,7 @@ abstract interface class LayerProjection {
   ThemeView get theme;
   ComponentSet get components;
 
-  /// The single application-scoped dashboard (`ui.dashboard`, spec §11.9).
+  /// The single application-scoped dashboard (`ui.dashboard`).
   /// Independent of the route/page tree — at most one per app, edited as
   /// its own design view rather than treated as a route.
   DashboardSlice? get dashboard;
@@ -358,7 +358,7 @@ class PageSlice {
 }
 
 /// Dashboard slice — the single `ui.dashboard` block (`content`,
-/// `refreshInterval`, `onTap` per spec §11.9.3). Unlike pages there is
+/// `refreshInterval`, `onTap`). Unlike pages there is
 /// at most one per application.
 class DashboardSlice {
   const DashboardSlice({required this.raw});

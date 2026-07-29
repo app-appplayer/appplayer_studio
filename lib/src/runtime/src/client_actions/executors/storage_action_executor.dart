@@ -7,9 +7,12 @@ library storage_action_executor;
 
 import '../../actions/action_result.dart';
 import '../../renderer/render_context.dart';
+import '../../utils/mcp_logger.dart';
 
 /// Executes storage-related client actions
 class StorageActionExecutor {
+  static final _logger = MCPLogger('StorageActionExecutor');
+
   /// In-memory storage backend
   final Map<String, dynamic> _storage = {};
 
@@ -19,19 +22,42 @@ class StorageActionExecutor {
     Map<String, dynamic> action,
     RenderContext context,
   ) async {
+    // Storage is scoped to the subtree's origin (spec §7.10.1: an embedded
+    // definition has its own storage identity). Without this a screen showing
+    // two devices has them sharing one key space, so the second device to
+    // write "config" silently overwrites the first — and each reads the
+    // other's value back as its own.
+    final prefix = _scopePrefix(context);
+    // The effective key, logged. Two devices on one screen both storing
+    // `config` is indistinguishable from one device storing it twice unless
+    // the key that was actually used is visible somewhere.
+    _logger.info('storage $actionType key='
+        '"$prefix${_param(action, 'key')}"');
     switch (actionType) {
       case 'client.storage.set':
-        return _set(action);
+        return _set(action, prefix);
       case 'client.storage.get':
-        return _get(action);
+        return _get(action, prefix);
       case 'client.storage.remove':
-        return _remove(action);
+        return _remove(action, prefix);
       default:
         return ActionResult.error(
           'Unknown storage action: $actionType',
           errorCode: 'UNKNOWN_ACTION',
         );
     }
+  }
+
+  /// Key prefix for the calling scope.
+  ///
+  /// Empty for the app's own tree, so every pre-composition document keeps its
+  /// exact keys. An embedded subtree gets its origin's connection id, which is
+  /// what separates two devices that both store `config`.
+  String _scopePrefix(RenderContext context) {
+    final origin = context.origin;
+    if (origin == null) return '';
+    final id = origin['connection'];
+    return id is String && id.isNotEmpty ? 'origin:$id/' : '';
   }
 
   /// Extract a parameter supporting both nested (params.key) and flat (key) formats (P6)
@@ -41,7 +67,7 @@ class StorageActionExecutor {
   }
 
   /// Set a value in storage
-  Future<ActionResult> _set(Map<String, dynamic> action) async {
+  Future<ActionResult> _set(Map<String, dynamic> action, String prefix) async {
     try {
       final key = _param(action, 'key') as String?;
       if (key == null) {
@@ -52,7 +78,7 @@ class StorageActionExecutor {
       }
 
       final value = _param(action, 'value');
-      _storage[key] = value;
+      _storage['$prefix$key'] = value;
 
       return ActionResult.success(data: {
         'key': key,
@@ -64,7 +90,7 @@ class StorageActionExecutor {
   }
 
   /// Get a value from storage
-  Future<ActionResult> _get(Map<String, dynamic> action) async {
+  Future<ActionResult> _get(Map<String, dynamic> action, String prefix) async {
     try {
       final key = _param(action, 'key') as String?;
       if (key == null) {
@@ -74,13 +100,13 @@ class StorageActionExecutor {
         );
       }
 
-      final value = _storage[key];
+      final value = _storage['$prefix$key'];
       final defaultValue = _param(action, 'defaultValue');
 
       return ActionResult.success(data: {
         'key': key,
         'value': value ?? defaultValue,
-        'exists': _storage.containsKey(key),
+        'exists': _storage.containsKey('$prefix$key'),
       });
     } catch (e) {
       return ActionResult.error('Failed to get storage value: $e');
@@ -88,7 +114,7 @@ class StorageActionExecutor {
   }
 
   /// Remove a value from storage
-  Future<ActionResult> _remove(Map<String, dynamic> action) async {
+  Future<ActionResult> _remove(Map<String, dynamic> action, String prefix) async {
     try {
       final key = _param(action, 'key') as String?;
       if (key == null) {
@@ -98,8 +124,8 @@ class StorageActionExecutor {
         );
       }
 
-      final existed = _storage.containsKey(key);
-      _storage.remove(key);
+      final existed = _storage.containsKey('$prefix$key');
+      _storage.remove('$prefix$key');
 
       return ActionResult.success(data: {
         'key': key,

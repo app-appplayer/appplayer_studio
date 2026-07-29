@@ -1,6 +1,6 @@
 // Diagnostic export — bundles boot.log + redacted OpsConfig + recent
 // activity events + telemetry snapshot + workspace id list into a single
-// `.zip` for support handoff. Defined in PRD §FM-OBSERVE-05.
+// `.zip` for support handoff.
 //
 // Secrets (API keys, OAuth tokens, AuthProfile) are scrubbed before
 // inclusion. Logs older than 14 days are dropped to keep the bundle

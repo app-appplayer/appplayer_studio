@@ -26,7 +26,7 @@ class InspectorUiViewAdapter implements UiViewAdapter {
   String? _modeOverride;
 
   /// Force `theme.mode` on every emitted snapshot. `null` defers to the
-  /// bundle's own theme. `'light'` / `'dark'` overrides per spec §5.
+  /// bundle's own theme. `'light'` / `'dark'` overrides.
   void setModeOverride(String? mode) {
     if (mode == _modeOverride) return;
     _modeOverride = mode;

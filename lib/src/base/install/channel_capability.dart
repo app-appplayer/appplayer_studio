@@ -3,8 +3,7 @@
 /// Exposes `mcp_channel` (the real conversational framework: connectors +
 /// `events`/`send` + sessions) as `channel.*` tools. The host owns the
 /// long-lived state (a connector registry + a shared `SessionManager`); tools
-/// operate against it by `channelId`. See
-/// `docs/03_DDD/channel-capability.md` for the full design + phasing.
+/// operate against it by `channelId`.
 ///
 /// P1 (this file): connector registry · `list`/`status`/`send` ·
 /// `session.history`, plus a built-in **in-app** connector backed by the
@@ -306,7 +305,7 @@ List<String> registerChannelCapability({
   exposed.add(
     registry.registerExposed(
       bundleId: channelCapabilityId,
-      // §6 destructive — sending a message to an external platform is an
+      // Destructive — sending a message to an external platform is an
       // irreversible outward action; gated through the host confirm callback.
       destructive: true,
       rawName: 'send',

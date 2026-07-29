@@ -162,21 +162,10 @@ class LocalServerManager {
   /// either way and [ServedServiceBody] surfaces an actionable error + Retry
   /// when the connection is down, rather than a silent no-op.
   Future<void> _open(LocalServerRecord r) async {
-    if (!_isLive(r.id)) {
-      try {
-        final token =
-            r.credentialRef == null ? null : await _vault.read(r.credentialRef!);
-        await _connectRaw(
-          id: r.id,
-          transport: r.transport,
-          endpoint: r.endpoint,
-          command: r.command,
-          args: r.args,
-          accessToken: token,
-        );
-      } catch (_) {
-        /* tab still opens; the body shows the error + Retry */
-      }
+    try {
+      await reopen(r.id);
+    } catch (_) {
+      /* tab still opens; the body shows the error + Retry */
     }
     _openTab(
       key: 'local-server:${r.id}',
@@ -186,6 +175,35 @@ class LocalServerManager {
         connectionId: r.id,
         themeReinjectTick: _themeReinjectTick,
       ),
+    );
+  }
+
+  /// Re-establish the connection for a recorded server WITHOUT opening a tab.
+  ///
+  /// This is the composition `openOrigin` path: a composed document NAMES an
+  /// origin, and the host opens it on FIRST USE. Registered devices are
+  /// deliberately not held open — several boards serve a single peer at a time,
+  /// so a permanent connection per registered device has the last one to
+  /// connect reset the others (`Connection reset by peer`, measured on the
+  /// bench), and the tiles on screen then die in turn.
+  ///
+  /// Already live → no-op, so a second reference to the same origin in one
+  /// document does not re-open it. Unknown id → no-op, and the caller surfaces
+  /// "origin is not connected" rather than this silently substituting another.
+  /// No transport discrimination: whatever [_connectRaw] can open, this opens.
+  Future<void> reopen(String id) async {
+    if (_isLive(id)) return;
+    final r = _store.list().where((e) => e.id == id).firstOrNull;
+    if (r == null) return;
+    final token =
+        r.credentialRef == null ? null : await _vault.read(r.credentialRef!);
+    await _connectRaw(
+      id: r.id,
+      transport: r.transport,
+      endpoint: r.endpoint,
+      command: r.command,
+      args: r.args,
+      accessToken: token,
     );
   }
 

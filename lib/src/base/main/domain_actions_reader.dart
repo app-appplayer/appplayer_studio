@@ -60,8 +60,7 @@ List<HeaderAction> readDomainActionsFromManifest({
       final kind = entry['kind']?.toString();
       if (kind == 'selectGroup') {
         // Group affordance — N icons sharing one runtime state key;
-        // the item whose `value` matches gets mint emphasis. See
-        // `tools/builder/docs/studio-builder-runtime-model.md` §8.1.b.
+        // the item whose `value` matches gets mint emphasis.
         _appendSelectGroup(
           entry: entry,
           state: state,

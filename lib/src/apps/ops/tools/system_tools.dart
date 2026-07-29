@@ -878,7 +878,7 @@ class SystemTools {
     _register(
       server,
       'workspace_set_lead',
-      'Set (or clear) a workspace\'s **lead** (팀장 / unit head) — the member '
+      'Set (or clear) a workspace\'s **lead** (unit head) — the member '
           'who heads the team this workspace represents. Renders at the top of '
           'the unit in the org chart (lead → members) and is the natural '
           'default approver / escalation target. Pass empty/omit `memberId` to '
@@ -1799,7 +1799,7 @@ class SystemTools {
       },
       (args) async {
         // Enforce the charter inherited along THIS workspace's own ancestor
-        // chain (07 §182): the prohibitions of the company ∘ department ∘ own
+        // chain: the prohibitions of the company ∘ department ∘ own
         // charter all gate (same-line only). Deterministic seam =
         // `forbiddenPatterns` substring (the NL seam is unwired), applied here
         // across the whole chain instead of a single per-project active ethos.
@@ -1919,7 +1919,7 @@ class SystemTools {
             tags: const <String>['charter', 'anchor'],
           ),
         );
-        // Spec `07-knowledge-access.md` §ethos governance — provenance lives at
+        // Ethos governance — provenance lives at
         // the ethos payload top level: `payload.provenance = {kind: 'anchor'}`.
         // A charter is an anchor (a principle), so it activates immediately;
         // member overrides are `derived` (serves: this charter) via their own
@@ -4045,7 +4045,7 @@ class SystemTools {
               'content': f.content,
             },
         ];
-        // Formal share overlay (FR-OPS-014): surface facts that other
+        // Formal share overlay: surface facts that other
         // workspaces have granted to this one, read-only, narrowed to the
         // granted scope. The owner's other categories stay private — a
         // workspace is a sandbox; cross-team reads are an explicit contract.
@@ -4522,7 +4522,7 @@ class SystemTools {
     // ── Showcase / portability tools ─────────────────────────────────────
     // External Claude / Code clients can drive the same operations the GUI
     // exposes in the sidebar — opspack export/import and the diagnostic
-    // bundle. PRD §FM-MCP-02.
+    // bundle.
     //
     // Hardcoded scenario "recipes" (catalog + seeder) were removed: pre-baked
     // sample content must not live in builtin code — the app starts empty and
@@ -5107,7 +5107,7 @@ class SystemTools {
       var dep = s.stepId;
       // G5 handoff — when a step routes to a channel thread, post a formal
       // handoff notification to it so the next team receives the deliverable
-      // signal (cross-team exchange, FR-OPS-014). Routes to the host
+      // signal (cross-team exchange). Routes to the host
       // `channel.send` tool (built-in = wiring). Behavior action args are
       // static (the engine does not template them from state), so the message
       // carries the step + assignee + task; the produced artefact itself flows
@@ -5227,7 +5227,7 @@ class SystemTools {
   }
 
   /// Resolve the **effective charter along a workspace's own ancestor chain**
-  /// (07 §182: top-down inheritance, same line only). Walks `[wsId, …ancestors]`
+  /// (top-down inheritance, same line only). Walks `[wsId, …ancestors]`
   /// — `WorkspaceRegistry.ancestors` follows the `parentId` chain and NEVER a
   /// sibling / other branch, so a workspace only inherits from its own line.
   /// Prohibitions **accumulate** up the chain (company ∘ dept ∘ own); mission /

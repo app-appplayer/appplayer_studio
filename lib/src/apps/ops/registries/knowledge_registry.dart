@@ -8,7 +8,6 @@ import 'package:yaml/yaml.dart';
 import '../infra/ws_paths.dart';
 import '../util/atomic_write.dart';
 
-/// See `SRS §2.10 FR-OPS-013` for the design specification.
 class SiteKnowledge {
   SiteKnowledge({
     required this.systemId,

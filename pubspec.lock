@@ -5,10 +5,10 @@ packages:
     dependency: "direct main"
     description:
       name: appplayer_claude_code_provider
-      sha256: "175002104f5d79f3e0079c7c19313c0951b5a919e77b414e62656c41bcb57e81"
+      sha256: "60e70eeccf4433de3f93506fde66ad66d90360bdfdd2e63789dad89cbfdf4f8f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.1.1"
   appplayer_form_view:
     dependency: "direct main"
     description:
@@ -93,10 +93,10 @@ packages:
     dependency: "direct main"
     description:
       name: brain_kernel
-      sha256: "4ec398826b650ba1429abdb418d6c1c5416c5df2cb7b2b467f631886a06786b7"
+      sha256: c318470a31552b01a1c6026b707760b1a00826b49c9af5f2e7c4efd84bfdf0c3
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.8"
+    version: "0.2.0"
   characters:
     dependency: transitive
     description:
@@ -391,10 +391,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: "1f1d6a61d30a4f865854d5a7f7ba303109cf3686ae7f65e991a8602d71b8a3cc"
+      sha256: "68b692a8820a070bf77ef9b49c6438d040aca183abfb0ea723a61763de90b22f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.2"
+    version: "0.4.3"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
@@ -407,10 +407,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: "669dbe96cef5ac9c3107899c5436301fdda16e499a629e15fba37259a7688c6b"
+      sha256: f784b9a19552acd129a9b4ffc4f6473d39938e3de3a0f45a897b42c106e7fe2b
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.2"
+    version: "0.5.3"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -889,10 +889,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_server
-      sha256: "069faa5e8c726be2794600dc4ce03dc3ad23d30ee839a547d662d457dcc1c55c"
+      sha256: "4c0e2a09882cd50f70e6cd500ea6669c4f7479b74fc85e248f24e70b70269f67"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.0"
+    version: "2.1.1"
   mcp_skill:
     dependency: transitive
     description:

@@ -83,7 +83,7 @@ class DslWorkspaceView extends StatefulWidget {
   /// `boot.callTool` so the bundle's declared tools (plus any
   /// `requires.builtinTools` it depends on) actually dispatch instead
   /// of silently no-op'ing. Falls through to a 'default' tool
-  /// executor that wraps the result body for spec §3.10 auto-merge.
+  /// executor that wraps the result body for the auto-merge.
   final mk.KernelServerHost? boot;
 
   /// Optional chrome bridge — when supplied, this view wires
@@ -681,9 +681,19 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       base.registerToolWidgets(runtime);
       base.registerVbuWidgets(runtime);
       // Host stream sources for `client.mcpStream` channels (e.g. `ble://scan`
-      // → shared BLE advertisement hub, spec 18). Must run AFTER initialize —
+      // → shared BLE advertisement hub). Must run AFTER initialize —
       // registerStreamSource asserts an initialized runtime.
       base.registerStudioStreamSources(runtime);
+      // Composition Profile (MCP UI DSL v1.4) — a bundle may place several
+      // `view`s that each name a DIFFERENT MCP server and then drive and track
+      // those devices. That is a STUDIO bundle, not a served app, so it renders
+      // on this runtime; wiring only the served surface would leave the very
+      // screen the profile exists for showing its fallbacks. Same
+      // all-four-or-none rule, and the same seam the served surface reads.
+      base.applyCompositionHooksToStudioRuntime(
+        runtime,
+        base.StudioCompositionSeam.hooksFor(),
+      );
       // Override the base-side `VbuBundleEmbed` placeholder factory
       // with the real one that mounts a nested DslWorkspaceView. Base
       // can't register it directly without an import cycle (base ←
@@ -715,8 +725,8 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // Wire tool actions to the host's MCP server. Must be AFTER
       // initialize() — registerToolExecutor asserts the runtime is
       // initialized. The 'default' executor catches every tool the
-      // UI invokes; result body is JSON-decoded so spec §3.10
-      // auto-merge picks up its top-level keys.
+      // UI invokes; result body is JSON-decoded so the auto-merge
+      // picks up its top-level keys.
       //
       // Caveat: lifecycle.onInit hooks fire during initialize() with
       // no executor registered. We re-fire any declared onInit hooks
@@ -741,7 +751,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
         // dual-write so registering the same kb URI on `bridge` also
         // lands on `boot.server.addResource`. The self-rendered
         // MCPUIRuntime here exposes `registerResourceSubscription`,
-        // not a local resource handler; spec §6.4 path is via the
+        // not a local resource handler; the path is via the
         // server, which is already covered.
         // _reFireOnInit is deferred until after `registerTabRuntime`
         // below — onInit hooks may call host MCP verbs (e.g.
@@ -796,7 +806,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
           readState:
               () => Map<String, Object?>.from(runtime.stateManager.state),
           // Dispatch a tool through the same default-executor path
-          // button clicks use, and mirror spec §3.10 auto-merge by
+          // button clicks use, and mirror the auto-merge by
           // writing the response's top-level keys into runtime state.
           // Returns the parsed response so the debug tool can hand it
           // back to the caller — useful for external LLMs that want
@@ -887,7 +897,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
   }
 
   /// Re-execute the bundle's declared `lifecycle.onInit` `tool` hooks
-  /// directly through [exec], then mirror the spec §3.10 auto-merge
+  /// directly through [exec], then mirror the auto-merge
   /// by writing each top-level key of the response into runtime state
   /// via [studio.MCPUIRuntime.updateState]. The engine's own
   /// `executeOnInit` fires during [studio.MCPUIRuntime.initialize] —

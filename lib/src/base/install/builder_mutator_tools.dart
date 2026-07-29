@@ -1268,7 +1268,7 @@ void registerBuilderMutatorTools(
     },
   );
 
-  // ── Flow / Fact mutators (knowledge-operations §3 gap 4/5) ───────
+  // ── Flow / Fact mutators ────────────────────────────────────────
   //
   // bundle.flow.flows[] = FlowDefinition (unified workflow / pipeline /
   // runbook — type discriminator is a future extension).

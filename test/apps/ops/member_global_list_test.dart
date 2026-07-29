@@ -153,8 +153,8 @@ void main() {
       expect(ordered.length, 3);
     });
 
-    test('o2b staff (지원) siblings sort before line (업무), then by id', () {
-      // Under 'org': support (경영지원) must precede the operational units even
+    test('o2b staff siblings sort before line units, then by id', () {
+      // Under 'org': the support unit must precede the operational units even
       // though its id sorts last alphabetically.
       final ordered = orderWorkspacesHierarchical([
         _ws('org', parentId: null),
@@ -228,7 +228,7 @@ void main() {
     });
 
     test('o4b membersInListingOrder: person → manager → reviewer → worker(id)', () {
-      // The unit's manager (본부장/lead) leads the agent roster ahead of the
+      // The unit's manager (lead) leads the agent roster ahead of the
       // rank-and-file, even when its id sorts last alphabetically.
       final ordered = membersInListingOrder([
         _agent('zeta', role: AgentRole.manager), // manager despite 'z'

@@ -85,8 +85,8 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
   bool _loading = false;
   bool _initialLoaded = false;
   // Agent-lifecycle bookkeeping (`agent.*` facts) is hidden by default so the
-  // Facts view reads as domain knowledge, not the 4-axis fork ledger (audit
-  // P1.1). Toggled on by the "system facts" affordance.
+  // Facts view reads as domain knowledge, not the 4-axis fork ledger.
+  // Toggled on by the "system facts" affordance.
   bool _showSystemFacts = false;
 
   @override
@@ -146,8 +146,8 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     }
     final items = <Widget>[];
     final graph = _graphResults ?? const [];
-    // Partition domain knowledge from `agent.*` lifecycle bookkeeping (audit
-    // P1.1): the fork/growth ledger is not a "fact" the user searches — show
+    // Partition domain knowledge from `agent.*` lifecycle bookkeeping: the
+    // fork/growth ledger is not a "fact" the user searches — show
     // it only behind an explicit toggle, with a readable label not the raw
     // factId.
     final domain =
@@ -242,7 +242,7 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     if (system) {
       // Agent-lifecycle bookkeeping — readable "<agent> · <event>" label
       // instead of the raw factId (`agent.fork.assigned/<id>/philosophy/...`),
-      // with the raw id demoted to the subtitle (audit P1.1).
+      // with the raw id demoted to the subtitle.
       final c = (f.content as Map?) ?? const <String, dynamic>{};
       final agentId = (c['agentId'] ?? '').toString();
       final agentLeaf = agentId.isEmpty ? '' : agentId.split('.').last;
@@ -316,8 +316,8 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     try {
       final init = ref.read(knowledgeInitProvider);
       final q = _queryCtrl.text.trim();
-      // Raised from 20: agent-lifecycle bookkeeping (hidden by default, audit
-      // P1.1) shares this window, so a low cap let system facts crowd domain
+      // Raised from 20: agent-lifecycle bookkeeping (hidden by default)
+      // shares this window, so a low cap let system facts crowd domain
       // facts out of the loaded set. Partitioning happens in `_body`.
       final graph = await init.registries.knowledge.query(q, limit: 60);
       final kv = await init.registries.knowledge.listKvFacts(filter: q);

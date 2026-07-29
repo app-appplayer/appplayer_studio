@@ -135,7 +135,7 @@ class _BundleManifestViewState extends State<BundleManifestView> {
       final capability =
           (hasStudioWiring || hasSlashCommand) ? 'studio' : 'appplayer';
       // Chrome user-zone payload templates (wiring.titlebar /
-      // wiring.statusbar — spec §6.4a). Single-string fields, optional.
+      // wiring.statusbar). Single-string fields, optional.
       final titlebar =
           wiring is Map<String, dynamic>
               ? wiring['titlebar']?.toString() ?? ''

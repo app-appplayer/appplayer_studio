@@ -200,7 +200,7 @@ class StudioWorkspace extends StatefulWidget {
   /// by the host from `StudioApp.seedBundles()` at boot. Workspace uses
   /// keys for "is this a seed?" checks (Home picker filter,
   /// tabs.json reference normalization) and the values for
-  /// namespace → path resolve (tabs.json restore). Per SDD §1.4.
+  /// namespace → path resolve (tabs.json restore).
   final Map<String, String> seedPathByNamespace;
 
   /// Built-in app launchers exposed in the home picker's BUILT-IN
@@ -612,7 +612,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // (which short-circuit row-2 via headerActionsResolver) still see
     // their seed manifest's titlebar / statusbar / version reflected
     // in the chrome. Reads through the typed `WiringSection`
-    // (mcp_bundle ≥ 0.3.3 with §6.4a `wiring.titlebar`/`statusbar`
+    // (mcp_bundle ≥ 0.3.3 with `wiring.titlebar`/`statusbar`
     // fields) — mutator round-trip preserves these now.
     final mbd = _resolveManifestPath(t.path ?? '');
     final bundleAtTab = readBundleAt(mbd);
@@ -845,7 +845,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // Lifecycle dispatch targets the active tab's bundle. The R26
     // cleanup retires the studio_builder seed (unified-builder, 2026-
     // 05-19) and strips wiring/lifecycle from the remaining built-in
-    // seeds (knowledge-only — `docs/03_DDD/host.md` MOD-HOST-007), so
+    // seeds (knowledge-only), so
     // there is no seed-side fallback to fall back to. When no tab is
     // active we surface an error per [feedback_no_fallback_anywhere].
     String? mbdPath;
@@ -1796,7 +1796,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       final saved = <StudioTab>[];
       final seen = <String, int>{};
       // Snapshot the install registry once so per-entry verification
-      // doesn't hammer the bundle store. TAB-LIFECYCLE.md §4 G2.
+      // doesn't hammer the bundle store.
       final installedSnap = await widget.bundles.list();
       final installedPaths = <String>{
         for (final entry in installedSnap) entry['mbdPath'] as String? ?? '',
@@ -1807,7 +1807,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       for (final e
           in (json['tabs'] as List<dynamic>? ?? const <dynamic>[])
               .whereType<Map<String, dynamic>>()) {
-        // TAB-LIFECYCLE.md §1: three kinds (seed / installed / draft).
+        // Three kinds (seed / installed / draft).
         // Each kind has a different validity proof — verify here so
         // a stale tabs.json can't sneak unsupported entries past the
         // chrome strip.
@@ -1829,7 +1829,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         } else {
           final persisted = (e['path'] as String?) ?? '';
           if (persisted.isEmpty) continue;
-          // Legacy migration (SDD §1.4.4): if the persisted absolute
+          // Legacy migration: if the persisted absolute
           // path matches a known seed by basename (.mbd dirname), use
           // the current seed path. The stored absolute path may have
           // gone stale due to package reorg; the seed's canonical
@@ -1960,7 +1960,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
 
       // Persist immediately so any legacy entries (path-only seed
       // tabs, stale absolute paths) get rewritten in the new
-      // `{kind:"seed", namespace}` form — SDD §1.4.4.
+      // `{kind:"seed", namespace}` form.
       // ignore: unawaited_futures
       _saveTabs();
     } catch (e) {
@@ -2032,7 +2032,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         (t) => !t.isHome && t.extensionBuilder == null,
       ))
         () {
-          // TAB-LIFECYCLE.md §1: three kinds annotated explicitly.
+          // Three kinds annotated explicitly.
           // Seed wins (host-internal); installed checks registry;
           // draft is the fallback (workspace scratch, not registered).
           final seedNs = _seedNamespaceForPath(t.path);
@@ -2302,7 +2302,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     for (final tool in bundle.tools?.tools ?? const <mb.ToolEntry>[]) {
       await ctx.registerTool(tool);
     }
-    // Knowledge-operations §6 — 4-axis + fact + flow activation. The
+    // Knowledge operations — 4-axis + fact + flow activation. The
     // register* methods stub-fail (`ok:false`) when their underlying
     // facade/runtime isn't wired yet; activation continues so the
     // tab still gets tools + agents + UI working surface.
@@ -2661,7 +2661,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // separate user gesture.
     // A seed tab editing a draft is dual-natured (tab.path = seed,
     // tab.currentProject = draft). Detect by checking whether the tab's
-    // path matches a known seed namespace (SDD §1.4) — no host-side
+    // path matches a known seed namespace — no host-side
     // mode flag.
     final isBuilderDraft =
         _seedNamespaceForPath(tab.path) != null && tab.currentProject != null;
@@ -3437,7 +3437,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // dropping the App Builder marker file. The BuiltInAppRegistry's
     // `canHandle` then matches naturally when the host opens the
     // draft (no hardcoded `seedPathByNamespace[...]` lookup or
-    // namespace literal — see DDD apps.md §0.3a + MOD-APPS-002's
+    // namespace literal — the
     // matching invariant), so the draft mounts inside the App Builder
     // chrome via `_openPackageAsync` → `BuiltInAppRegistry.matchFor`.
     // unified-builder collapsed Studio Builder + App Builder into the
@@ -3475,7 +3475,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // computed by the MCP enrichment step). For the Home filter we
     // need it too, so read the bundle once per entry — same call the
     // MCP handler makes via `_enrichBundleEntry`.
-    // Per SDD §1.4.3: seed identification uses the host-supplied
+    // Seed identification uses the host-supplied
     // namespace set, never a hardcoded literal.
     final seedNs = widget.seedPathByNamespace.keys.toSet();
     bool isSeed(Map<String, dynamic> e) {
@@ -3615,7 +3615,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
           // Label / icon come from the tab's own bundle: name from
           // the persisted display label (set on open via
           // readBundleAt.displayLabel), icon from manifest.icon when
-          // declared (SDD §1.3 — host classification forbidden).
+          // declared (host classification forbidden).
           label: t.isHome ? t.name : t.name,
           icon:
               t.isHome
@@ -3732,7 +3732,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
   }
 
   Widget _bodyForBundleUI(StudioTab t) {
-    // SDD §1.3 — every bundle renders its own `ui/app.json`. Where the
+    // Every bundle renders its own `ui/app.json`. Where the
     // bundle's UI needs to embed another project (e.g. a seed whose
     // page binds `{{currentProject}}` to a VbuBundleEmbed), the bundle
     // handles that internally via state. Host never swaps the rendered
@@ -3799,7 +3799,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
   }
 
   /// Focus an existing tab for the seed identified by [namespace], or
-  /// mount the seed as a new tab when none is up. Per SDD §1.4 the
+  /// mount the seed as a new tab when none is up. The
   /// namespace is the seed's single identifier — `widget.seedPathByNamespace`
   /// resolves the current absolute path. Seeds are filtered out of the
   /// Home picker (see `isSeed` in `_enrichedEntries`), so chrome
@@ -3814,7 +3814,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // scene_builder / makemind_ops). Without this match, MCP callers
     // of `studio.chrome.open_seed` would land on the deprecated shell
     // while the home-card click — same intent — landed on the user
-    // surface. See TAB-LIFECYCLE.md §3 + the R21 round notes.
+    // surface.
     BuiltInLauncher? launcher;
     for (final l in widget.builtInLaunchers) {
       if (l.id == namespace) {

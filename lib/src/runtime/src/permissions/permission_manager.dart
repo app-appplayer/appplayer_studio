@@ -58,6 +58,15 @@ class PermissionManager {
     _grantedPermissions.add(_normalizePermissionType(permission));
   }
 
+  /// Whether [permission] is currently held.
+  ///
+  /// Used to cap what an embedded subtree may ask for: the effective set of a
+  /// `view` is the intersection with its embedder's, never the union, so a
+  /// device's own document cannot escalate through the screen it was given
+  /// (spec §7.10.1).
+  bool isGranted(String permission) =>
+      _grantedPermissions.contains(_normalizePermissionType(permission));
+
   /// Create a permission manager with the given configuration
   PermissionManager(PermissionsConfig? config)
       : _checker = PermissionChecker(config),
@@ -333,9 +342,9 @@ class PermissionManager {
       if (storedDecision != null && !_storage.isExpired(storedDecision) &&
           !storedDecision.revoked) {
         results[permission] = storedDecision;
-      } else if (context != null) {
-        // Prompt the user for permission
-        // ignore: use_build_context_synchronously - Dialog is user-blocking
+      } else if (context != null && context.mounted) {
+        // The storage read above awaited, so re-check the surface is still
+        // alive before putting a blocking dialog on it.
         final decision = await PermissionPrompt.show(
           context: context,
           permissionType: normalized,
@@ -485,6 +494,10 @@ class PermissionManager {
       if (result is PermissionDecision?) {
         return result;
       }
+      // The handler ran and declined to answer. It awaited, so the caller's
+      // element may since have been unmounted — showing a dialog on a dead
+      // context throws. Treat a gone surface as "no decision".
+      if (!context.mounted) return null;
     }
 
     switch (actionType) {

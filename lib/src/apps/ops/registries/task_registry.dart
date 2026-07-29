@@ -9,7 +9,6 @@ import '../infra/ws_paths.dart';
 import '../triggers/trigger_events.dart';
 import '../util/atomic_write.dart';
 
-/// See `SRS §2.10 FR-OPS-012` for the design specification.
 enum TaskKind { oneOff, recurring, sustained }
 
 enum TaskState { pending, inProgress, blocked, completed, cancelled }
@@ -333,9 +332,9 @@ class TaskRegistry {
     final b = StringBuffer(t.title);
     if ((t.description ?? '').isNotEmpty) b.write('\n\n${t.description}');
     if (t.skillIds.isNotEmpty) {
-      b.write('\n\n(관련 스킬: ${t.skillIds.join(', ')})');
+      b.write('\n\n(related skills: ${t.skillIds.join(', ')})');
     }
-    if (t.inputs.isNotEmpty) b.write('\n\n입력: ${t.inputs}');
+    if (t.inputs.isNotEmpty) b.write('\n\ninputs: ${t.inputs}');
     return b.toString();
   }
 

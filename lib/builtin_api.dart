@@ -76,7 +76,7 @@ export 'package:brain_kernel/brain_kernel.dart'
 // activation (exposed namespace · bundleId · tools, etc.).
 //
 // `BundleActivationRegistry` — the process-singleton lifecycle hub
-// (design contract knowledge-operations.md §11.3: canonical owner of
+// (canonical owner of
 // backend activations; tab switch keeps them running, tab close
 // removes them). Exposed because a host-level builtin that boots its
 // OWN backend (Ops / Form Builder each activate per-workspace org

@@ -6,7 +6,6 @@
 /// the transport + address + display name persist here (a plain JSON file
 /// under the config root) and the access token — a secret — lives in the OS
 /// keychain vault, the record keeping only a `credentialRef`
-/// (`specs/platform/14-asset-credentials.md`).
 library;
 
 import 'dart:convert';
@@ -122,7 +121,7 @@ class LocalServerStore {
   }
 }
 
-/// Keychain-backed store for local-server access tokens (spec 14): the token
+/// Keychain-backed store for local-server access tokens: the token
 /// is a secret, so it lives in the OS keychain under a dedicated namespace,
 /// never in the plaintext [LocalServerStore] (which keeps only a
 /// `credentialRef`). Keyed by the server id.

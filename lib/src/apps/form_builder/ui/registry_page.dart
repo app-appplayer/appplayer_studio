@@ -7,7 +7,7 @@
 /// the document's key field value). Right: a sortable ledger table with
 /// month sections. Approval is shown as a mark only — the acting/waiting
 /// process lives in Ops and arrives here through the `studio.app.open`
-/// deep link. Design: `docs/form_builder/document-registry.md`.
+/// deep link.
 library;
 
 import 'package:flutter/material.dart';

@@ -18,7 +18,7 @@ abstract interface class PatchPipeline {
   Future<PatchResult> apply(CanonicalPatch patch);
 }
 
-/// Default implementation. See `core-patch-pipeline.md` (DDD).
+/// Default implementation.
 class PatchPipelineImpl implements PatchPipeline {
   PatchPipelineImpl({
     required WorkspaceCanonical canonical,

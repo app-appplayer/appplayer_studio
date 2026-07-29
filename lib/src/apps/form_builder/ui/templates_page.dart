@@ -1599,7 +1599,7 @@ class _NewTemplateDialogState extends State<_NewTemplateDialog> {
               controller: _name,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: 'Name (e.g. 견적서)',
+                labelText: 'Name (e.g. Quotation)',
                 border: OutlineInputBorder(),
               ),
             ),

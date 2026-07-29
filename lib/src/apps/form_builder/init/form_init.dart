@@ -197,7 +197,7 @@ class FormInit {
   // as drafts — a re-submission after a rejection REPLACES the approval).
   // The line is an ordered list of gates; each act stamps provenance
   // (actedBy/actedAt/comment). Design:
-  // `docs/form_builder/form-approval-line.md`. Authorization is the exact
+  // Authorization is the exact
   // designated approver (form projects carry no org tree, so the ops-style
   // ancestor escalation is out of scope here — MVP deviation noted in the
   // design doc).

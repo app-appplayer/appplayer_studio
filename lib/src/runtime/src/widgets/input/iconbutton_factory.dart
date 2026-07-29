@@ -13,8 +13,11 @@ class IconButtonWidgetFactory extends WidgetFactory {
     if (icon is String) {
       iconData = _resolveIconData(icon);
     } else if (icon is int) {
-      iconData =
-          IconData(icon, fontFamily: properties['fontFamily'] as String?);
+      // Runtime codepoint + family — not const-able.
+      // ignore: non_const_argument_for_const_parameter
+      iconData = IconData(icon,
+          // ignore: non_const_argument_for_const_parameter
+          fontFamily: properties['fontFamily'] as String?);
     }
 
     iconData ??= Icons.error;

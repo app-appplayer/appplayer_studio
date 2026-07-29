@@ -12,7 +12,7 @@ import '../util/atomic_write.dart';
 /// then reads the owner's facts under `scope` (a fact category, or `*` for
 /// all) on top of its own — a **formal** exchange, not the within-workspace
 /// "everything is shared" default. This keeps each workspace a sandbox and
-/// makes cross-team data flow an explicit contract (`FR-OPS-014`).
+/// makes cross-team data flow an explicit contract.
 class ShareGrant {
   ShareGrant({required this.toWorkspaceId, this.scope = '*'});
 
@@ -29,7 +29,6 @@ class ShareGrant {
   );
 }
 
-/// See `SRS §2.10 FR-OPS-014` for the design specification.
 class Workspace {
   Workspace({
     required this.id,
@@ -75,8 +74,7 @@ class Workspace {
   /// unit's hierarchy in the org chart (lead → members) and is the natural
   /// default approver/escalation target for the unit. `null` = no designated
   /// lead. Realizes the team-lead middle tier deferred in
-  /// `specs/platform/12-flowbrain-runtime.md §roles` (workspace = recursive
-  /// org unit per `07-knowledge-access.md §182`).
+  /// Workspace = recursive org unit.
   final String? leadMemberId;
 
   /// Whether this org unit is a **line** (operational / business) or a
@@ -384,7 +382,7 @@ class WorkspaceRegistry {
     await dir.create(recursive: true);
     // Content sub-dirs (members / tasks / processes / knowledge / skills /
     // profiles / philosophies / auth) are no longer pre-created here. Per
-    // the mcp_bundle project layout (MOD-APPS-007) each workspace's content
+    // the mcp_bundle project layout — each workspace's content
     // lives inside its `<wsId>.mbd` bundle dir (see `wsContentRoot`); the
     // content registries create their own sub-dirs on first write and all
     // readers skip-if-missing.
@@ -446,7 +444,7 @@ class WorkspaceRegistry {
     await dir.create(recursive: true);
     // Content sub-dirs (members / tasks / processes / knowledge / skills /
     // profiles / philosophies / auth) are no longer pre-created here. Per
-    // the mcp_bundle project layout (MOD-APPS-007) each workspace's content
+    // the mcp_bundle project layout — each workspace's content
     // lives inside its `<wsId>.mbd` bundle dir (see `wsContentRoot`); the
     // content registries create their own sub-dirs on first write and all
     // readers skip-if-missing.

@@ -110,8 +110,8 @@ class ChromeBridge {
   Future<void> Function()? openAgents;
 
   /// Focus an existing tab for the seed identified by [namespace], or
-  /// mount the seed bundle as a new tab when none is up. Per SDD §1.4
-  /// the seed namespace is the single identifier — host resolves the
+  /// mount the seed bundle as a new tab when none is up. The
+  /// seed namespace is the single identifier — host resolves the
   /// current path via `StudioApp.seedBundles()`. Returns true when the
   /// tab is active, false when the namespace is not declared by the
   /// host so MCP callers can distinguish error from success.
@@ -480,8 +480,8 @@ class ChromeBridge {
 
   /// Dispatch a tool call against the active tab's runtime executor —
   /// the same path the bundle's default executor uses for button
-  /// clicks, so the response auto-merges into runtime state per spec
-  /// §3.10. Returns the raw response map. Consumed by
+  /// clicks, so the response auto-merges into runtime state.
+  /// Returns the raw response map. Consumed by
   /// `studio.debug.dispatch_tool` so an external LLM (or a test
   /// harness) can drive the studio exactly the way a click does:
   /// state writes are observable on `studio.debug.runtime_state`
@@ -942,7 +942,7 @@ class TabRuntimeHooks {
 
   /// Dispatch a tool call through the same default executor the
   /// bundle DSL uses for button clicks. Returns the parsed JSON
-  /// response. Side-effect: spec §3.10 auto-merge writes the
+  /// response. Side-effect: the auto-merge writes the
   /// response's top-level keys into [readState].
   final Future<Map<String, dynamic>> Function(
     String tool,

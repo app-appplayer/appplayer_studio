@@ -205,7 +205,7 @@ class VibeSettings {
   /// When false the sweep only reports (log + tool surface).
   bool discoveryAutoConnect;
 
-  /// Manifest signature enforcement (spec 17 §6). When true, a discovered
+  /// Manifest signature enforcement. When true, a discovered
   /// board is only connected (auto-connect sweep / connectCandidate) if its
   /// probed manifest carries a `trust` block that verifies against a
   /// registered root CA (fail-closed: unsigned / unverified boards are

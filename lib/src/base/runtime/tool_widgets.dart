@@ -7,7 +7,7 @@
 ///   * `<ToolPicker>` — drop-down chooser over a tool list
 ///
 /// All three are sugar on top of mcp_ui_runtime's existing
-/// `action: tool` + spec §3.10 auto-merge contract — they don't need
+/// `action: tool` + auto-merge contract — they don't need
 /// any spec change. The host registers them once after the runtime is
 /// constructed; bundle UIs reference them like any built-in widget
 /// (`{"type": "ToolForm", ...}`).

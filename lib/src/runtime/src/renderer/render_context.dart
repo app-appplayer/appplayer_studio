@@ -80,7 +80,115 @@ class RenderContext {
       resourceHandler: resourceHandler,
       localVariables: childVars,
       idPath: childPath,
+    )..definitionResolver = _definitionResolver
+      ..origin = origin;
+  }
+
+  /// Resolves a qualified `DefinitionSource` for the `view` widget
+  /// (spec §1.9, §6.11, Composition Profile). Registered by the host via
+  /// `MCPUIRuntime.registerDefinitionResolver`; `null` until a host wires one,
+  /// which is how a runtime declares it does NOT implement the Composition
+  /// Profile — `view` then fails closed instead of resolving a foreign `$ref`
+  /// against this runtime's own origin (§18.7.3).
+  ///
+  /// Falls back to the [renderer]'s resolver when this context was built
+  /// without one.
+  ///
+  /// Every context already carries the renderer that owns the resolver, so
+  /// reading through makes the profile reach the whole tree by construction.
+  /// Requiring each construction site to copy the field instead meant a page
+  /// rendered through the router — the path a bundle actually takes — got a
+  /// context whose resolver was null, and `view` reported that the runtime does
+  /// not implement the Composition Profile while the host had in fact claimed
+  /// it. Two of the five construction sites had been missed.
+  Future<Map<String, dynamic>> Function(String ref, Map<String, dynamic> origin)?
+      get definitionResolver => _definitionResolver ?? renderer.definitionResolver;
+
+  set definitionResolver(
+      Future<Map<String, dynamic>> Function(
+              String ref, Map<String, dynamic> origin)?
+          resolve) {
+    _definitionResolver = resolve;
+  }
+
+  Future<Map<String, dynamic>> Function(String ref, Map<String, dynamic> origin)?
+      _definitionResolver;
+
+  /// The MCP origin this subtree runs against (spec §1.9.5, §2.13.1, §7.10).
+  ///
+  /// Set when a `view` resolves a source that names an origin, and inherited by
+  /// every descendant context. Null means the app's own origin.
+  ///
+  /// Deliberately NOT read from the renderer: a resolver is a host capability
+  /// that belongs to the whole tree, but an origin scopes a *subtree*. Reading
+  /// it through would put one device's identity on its siblings.
+  Map<String, dynamic>? origin;
+
+  /// Calls [tool] against the origin this subtree is scoped to.
+  ///
+  /// Reads through to the renderer so the construction site does not have to
+  /// carry it. Null when the host wired none — the tool action then takes its
+  /// normal path, which is correct for an unscoped tree and visibly wrong for
+  /// a scoped one, so the caller reports rather than silently calling the
+  /// app's own server with another device's tool name.
+  Future<dynamic> Function(
+          Map<String, dynamic> origin, String tool, Map<String, dynamic> params)?
+      get originToolCaller => renderer.originToolCaller;
+
+  /// Watches a resource on the origin this subtree is scoped to. Reads through
+  /// to the renderer for the same reason [originToolCaller] does.
+  Future<void Function()> Function(
+    Map<String, dynamic> origin,
+    String uri,
+    void Function(dynamic contents) onUpdate,
+  )? get originResourceWatcher => renderer.originResourceWatcher;
+
+  /// One-shot read on the origin this subtree is scoped to. Reads through to
+  /// the renderer for the same reason the other origin hooks do.
+  Future<Object?> Function(Map<String, dynamic> origin, String uri)?
+      get originResourceReader => renderer.originResourceReader;
+
+  /// Create the isolated scope an embedded definition renders in
+  /// (spec §6.11.3, §7.10.1).
+  ///
+  /// The embedded definition gets its own state tree — it never reads or writes
+  /// the embedder's application-, page-, or widget-scope state. [props] is the
+  /// single, explicit, one-way channel in: values are seeded at mount and
+  /// mutations inside the embedded scope do not propagate back out.
+  ///
+  /// [inheritTheme] false corresponds to `view.theme: "own"`, where the
+  /// embedded definition keeps its own theme rather than adopting the
+  /// embedder's — appropriate when embedding a whole third-party application
+  /// whose identity should be preserved.
+  RenderContext createEmbeddedScope({
+    Map<String, dynamic>? props,
+    bool inheritTheme = true,
+  }) {
+    // A fresh StateManager is what makes the isolation real; sharing the
+    // embedder's would let bindings on either side read the other's tree.
+    final scopedState = StateManager();
+    if (props != null && props.isNotEmpty) {
+      scopedState.initialize(Map<String, dynamic>.from(props));
+    }
+
+    final embedded = RenderContext(
+      renderer: renderer,
+      stateManager: scopedState,
+      bindingEngine: bindingEngine,
+      actionHandler: actionHandler,
+      themeManager: themeManager,
+      parentId: parentId,
+      buildContext: buildContext,
+      engine: engine,
+      navigationHandler: navigationHandler,
+      resourceHandler: resourceHandler,
+      // Deliberately NOT inheriting localVariables: they are the embedder's.
+      localVariables: const <String, dynamic>{},
+      idPath: List<String>.from(_idPath),
     );
+    embedded.definitionResolver = definitionResolver;
+    embedded.origin = origin;
+    return embedded;
   }
 
   /// Generate a unique ID for the current context

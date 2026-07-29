@@ -1,6 +1,6 @@
 // YAML inline editor — reads any `.yaml` file under the active workspace
 // directory tree, lets the user edit it in a monospace text area, and
-// validates the result by re-parsing on save. PRD §FM-POWER-05.
+// validates the result by re-parsing on save.
 //
 // External edits trigger a watcher that re-loads the file on focus. No
 // schema validation beyond yaml-roundtrip — a fuller schema check

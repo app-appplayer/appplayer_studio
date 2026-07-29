@@ -4,8 +4,7 @@
 /// rebuilds only on registry mutations; activity lives in stores that emit
 /// NO change tick (FactGraph facts, KV process runs), so this layer is
 /// fed by a polling provider instead (see `orgOverlayProvider`) and is
-/// resolved against the chart inputs here. Design:
-/// `debug/docs/makemind_ops/ops-living-org-chart.md`.
+/// resolved against the chart inputs here.
 library;
 
 import 'package:mcp_bundle/mcp_bundle.dart' as bundle;

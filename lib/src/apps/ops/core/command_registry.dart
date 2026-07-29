@@ -1,4 +1,4 @@
-// Command registry — drives the Cmd+K palette. PRD §FM-POWER-01 / 02.
+// Command registry — drives the Cmd+K palette.
 //
 // Each command is a tiny record of (id, category, label, hint, runner).
 // The registry is populated dynamically at palette-open time so it

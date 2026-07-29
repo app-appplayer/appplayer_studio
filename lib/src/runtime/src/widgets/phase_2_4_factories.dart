@@ -162,9 +162,9 @@ class KenBurnsImageWidgetFactory extends WidgetFactory {
     // Read but currently treated as advisory — full pan animation
     // ships in a later cycle. Recorded so authors' intent is
     // preserved through the resolver.
-    final _ = context.resolve(properties['startAlignment']);
-    final __ = context.resolve(properties['endAlignment']);
-    final ___ = context.resolve(properties['curve']);
+    context.resolve(properties['startAlignment']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['endAlignment']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['curve']); // resolved for intent; the real renderer ships later
     final fit = _resolveBoxFit(context.resolve(properties['fit']));
     final width = parseDimension(context.resolve(properties['width']));
     final height = parseDimension(context.resolve(properties['height']));
@@ -297,9 +297,9 @@ class CarouselWidgetFactory extends WidgetFactory {
     // `indicatorPosition` (`bottom` / `top` / `none`) are advisory —
     // the cover-flow / depth perspective transforms and the auto-
     // advance timer ship in a later runtime cycle.
-    final _ = context.resolve(properties['autoPlay']);
-    final __ = context.resolve(properties['transition']);
-    final ___ = context.resolve(properties['indicatorPosition']);
+    context.resolve(properties['autoPlay']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['transition']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['indicatorPosition']); // resolved for intent; the real renderer ships later
 
     final children = _buildChildren(properties, context);
     if (children.isEmpty) return const SizedBox.shrink();
@@ -364,7 +364,7 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
     // Read for spec coverage. `scrollDirection` is advisory — the
     // round-robin distribution currently always builds a vertical
     // packed grid. Horizontal masonry ships in a later cycle.
-    final _ = context.resolve(properties['scrollDirection']);
+    context.resolve(properties['scrollDirection']); // resolved for intent; the real renderer ships later
 
     final children = _buildChildren(properties, context);
     if (children.isEmpty) return const SizedBox.shrink();
@@ -448,8 +448,8 @@ class LightboxWidgetFactory extends WidgetFactory {
     // advisory — the lightbox surface currently has no dismiss
     // affordance / index-tracking event source. Wire-up ships when
     // a host gesture callback model is finalised.
-    final _ = properties['onIndexChanged'];
-    final __ = properties['onClose'];
+    properties['onIndexChanged']; // read for intent; wiring ships later
+    properties['onClose'];
 
     return ColoredBox(
       color: backgroundColor,
@@ -505,13 +505,13 @@ class RiveWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
     // Read every spec field so the resolver records authors' intent
     // even though the real renderer is deferred.
-    final _ = context.resolve(properties['src']);
-    final __ = context.resolve(properties['artboard']);
-    final ___ = context.resolve(properties['animation']);
-    final ____ = context.resolve(properties['stateMachine']);
-    final _____ = context.resolve(properties['inputs']);
-    final ______ = context.resolve(properties['fit']);
-    final _______ = context.resolve(properties['alignment']);
+    context.resolve(properties['src']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['artboard']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['animation']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['stateMachine']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['inputs']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['fit']); // resolved for intent; the real renderer ships later
+    context.resolve(properties['alignment']); // resolved for intent; the real renderer ships later
     final width = parseDimension(context.resolve(properties['width']));
     final height = parseDimension(context.resolve(properties['height']));
     return SizedBox(

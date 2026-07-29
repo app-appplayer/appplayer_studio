@@ -1,6 +1,5 @@
 /// Bundle session module — re-export of brain_kernel's
-/// `src/system/bridge/` (extracted 2026-05-25:
-/// `bundle-host-bridge-package-extracted-2026-05-25.md`).
+/// `src/system/bridge/` (extracted 2026-05-25).
 ///
 /// Module was lifted into brain_kernel as the canonical home; this
 /// barrel keeps the in-vibe_studio import path (`base/session/session.dart`)

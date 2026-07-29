@@ -28,7 +28,7 @@ void main() {
         '${projectRoot.path}/forms/2026-$n/document.md',
       );
       f.parent.createSync(recursive: true);
-      f.writeAsStringSync('# 견 적 서\n\n수신: 한울상사 귀중 ($n)');
+      f.writeAsStringSync('# Quotation\n\nrecipient: To Hanul Trading ($n)');
     }
     await init.recordIssue({
       'issueId': 'issue-2026-$n',
@@ -38,7 +38,7 @@ void main() {
       'templateVersion': '1.0.0',
       'content': {
         'templateId': 'quote-kr',
-        'data': {'수신': '한울상사 귀중', '회차': n},
+        'data': {'recipient': 'To Hanul Trading', 'round': n},
       },
       'artifacts': artifacts,
       'issuedAt': '2026-07-03T0$n:00:00Z',
@@ -118,7 +118,7 @@ void main() {
 
       expect(find.textContaining('Issue 2026-001'), findsOneWidget);
       // Frozen markdown made it into the viewer (rendered heading text).
-      expect(find.textContaining('견 적 서'), findsWidgets);
+      expect(find.textContaining('Quotation'), findsWidgets);
       expect(find.text('open folder'), findsOneWidget);
 
       await tester.tap(find.text('Correct & reissue'));

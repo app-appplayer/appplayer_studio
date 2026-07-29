@@ -2,7 +2,7 @@
 /// (a) the source agent's live chat [R3], (b) subscribed agents that should
 /// wake [R2], and (c) a best-effort feed notice [R5]. Pure orchestration: every
 /// side effect is an injected seam, wired at boot (`ops_builtin`), so this stays
-/// testable and layer-clean. See `docs/makemind_ops/ops-agent-trigger-bus.md`.
+/// testable and layer-clean.
 library;
 
 import 'dart:async';

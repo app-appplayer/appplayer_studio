@@ -102,7 +102,7 @@ class FormBuilderBuiltInApp extends BuiltInApp {
   /// future MCP-only boot path can't leak (form currently boots only
   /// through the shell's `_bindProject`, so the null-tab case is defensive).
   /// Guards `form_shell.dispose`; the keyed IndexedStack disposes only on
-  /// tab removal, never on switch (knowledge-operations.md §11.3).
+  /// tab removal, never on switch.
   static bool shouldTeardownOnClose(String? tabProject) =>
       _bootedProject != null &&
       (tabProject == null || tabProject == _bootedProject);

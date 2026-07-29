@@ -133,7 +133,7 @@ Map<String, dynamic> harnessTemplate({
   'name': 'Harness Quote',
   'schema': {
     'fields': [
-      {'name': '수신', 'type': 'string'},
+      {'name': 'recipient', 'type': 'string'},
     ],
   },
   'defaultSections': [
@@ -146,13 +146,13 @@ Map<String, dynamic> harnessTemplate({
           'type': 'heading',
           'index': 0,
           'level': 1,
-          'content': '견적서',
+          'content': 'Quotation',
         },
         {
           'blockId': 'recv',
           'type': 'formField',
           'index': 1,
-          'fieldName': '수신',
+          'fieldName': 'recipient',
           'fieldType': 'text',
         },
         {
@@ -160,12 +160,12 @@ Map<String, dynamic> harnessTemplate({
           'type': 'table',
           'index': 2,
           'columns': [
-            {'id': 'name', 'title': '품목', 'type': 'string'},
-            {'id': 'amount', 'title': '금액', 'type': 'string'},
+            {'id': 'name', 'title': 'item', 'type': 'string'},
+            {'id': 'amount', 'title': 'amount', 'type': 'string'},
           ],
           'rows': [
             {
-              'cells': {'name': '기본품목', 'amount': '₩1'},
+              'cells': {'name': 'Default item', 'amount': '₩1'},
             },
           ],
         },

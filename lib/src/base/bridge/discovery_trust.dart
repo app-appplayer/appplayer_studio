@@ -1,5 +1,4 @@
-/// Manifest trust verification for discovered boards
-/// (`specs/platform/17-device-discovery.md` §6).
+/// Manifest trust verification for discovered boards.
 ///
 /// A probe-confirmed manifest may carry a `trust` block: the board's signer
 /// certificate plus an Ed25519 signature over the canonical manifest bytes
@@ -47,7 +46,7 @@ class TrustEvidence {
   final bool signatureValid;
 }
 
-/// Roles a discovered board may claim (spec 17 §6.1). Any other value is
+/// Roles a discovered board may claim. Any other value is
 /// untrusted — the evidence comes back invalid.
 const Map<String, TrustRole> _acceptedRoles = {
   'partner': TrustRole.partner,
@@ -121,7 +120,7 @@ class ManifestTrustEvaluator {
   }
 }
 
-/// Canonical signing bytes (spec 17 §6.2): the manifest object without its
+/// Canonical signing bytes: the manifest object without its
 /// `trust` field, object keys sorted recursively, compact JSON, UTF-8.
 Uint8List canonicalManifestBytes(Map<dynamic, dynamic> manifest) {
   final unsigned = Map<String, Object?>.from(manifest.cast<String, Object?>())

@@ -49,7 +49,7 @@ import '../util/log.dart';
 import 'task_scheduler.dart';
 import 'workspace_loader.dart';
 
-/// Engine bootstrap — see `docs/03_DDD/core-knowledge-init.md`.
+/// Engine bootstrap.
 class KnowledgeInit {
   KnowledgeInit._({
     required this.system,
@@ -226,7 +226,7 @@ class KnowledgeInit {
   /// (standalone Ops main / CLI / tests), the original self-contained
   /// boot path runs.
   ///
-  /// Per Phase A scope (ops-internalization-plan §A.2), only the
+  /// Per Phase A scope, only the
   /// `KnowledgeSystem` itself is injected. KV now uses the kernel canonical
   /// `KvStoragePortAdapter` (A.3 done — workspace-scoped via `workspaceId`).
   /// Browser / form / ingest are host capabilities (`browser.*` / `form.*`
@@ -632,7 +632,7 @@ class KnowledgeInit {
     registries.process.readOrgKv = (key) async =>
         (await orgKv.get(key)) as String?;
 
-    // Agent-completion trigger bus (R1/R2 — see ops-agent-trigger-bus.md). The
+    // Agent-completion trigger bus (R1/R2). The
     // bus fans a completion to subscribers / the live chat; its action seams
     // (wakeAgent / injectIntoActiveChat / notify) are late-injected in
     // `ops_builtin` where the agents + host channel are in scope. Task runs emit
@@ -733,8 +733,8 @@ class KnowledgeInit {
         final result = await activation.activate(bundle);
         activations.add((activation: activation, bundle: bundle));
         // Register into the process-singleton hub so this Ops org bundle
-        // joins the uniform backend lifecycle (design contract
-        // knowledge-operations.md §11.3: the hub is the canonical owner —
+        // joins the uniform backend lifecycle (the hub is the
+        // canonical owner —
         // tab switch keeps it running, tab close removes it). Without this
         // the Ops backend was invisible to the host's uniform path,
         // `studio.debug.activation`/`runtimes`, chat dispatch, and
@@ -808,7 +808,7 @@ class KnowledgeInit {
       // 12b retired — boot used to seed 5 `workspace_insight` sample
       // facts (vendor_terms · q2_clusters · gate_outcome · avg_confidence
       // · process_throughput) for the home page demo. Per the seed
-      // cleanup contract (apps.md §0.2 + Ops MOD-APPS-007 — seed ships
+      // cleanup contract (seed ships
       // shared agent + operations-manual knowledge only, project data
       // is user-owned), operational data must not be planted by boot.
       // Home page now reads live registries and shows empty / "No
