@@ -16,7 +16,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:path/path.dart' as p;
-import 'package:appplayer_studio/src/base/capture/overlay/overlay_controller.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/encoder_service.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/recorder_service.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/recorder_tools.dart';

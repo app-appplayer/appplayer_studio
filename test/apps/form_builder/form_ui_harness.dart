@@ -12,11 +12,7 @@ import 'package:appplayer_studio/builtin_api.dart' as mk;
 import 'package:brain_kernel/brain_kernel.dart' as bk;
 
 import 'package:appplayer_studio/src/base/install/capability_recipes/capability_recipes.dart'
-    show
-        CapabilityTool,
-        CapabilityToolError,
-        FactBackedFormTemplatePort,
-        formCapabilityTools;
+    show CapabilityToolError, FactBackedFormTemplatePort, formCapabilityTools;
 import 'package:appplayer_studio/src/base/install/capability_tools.dart'
     show withFormVocabularyGate;
 import 'package:appplayer_studio/src/base/install/form_capability_store.dart'

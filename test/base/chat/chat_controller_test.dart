@@ -212,7 +212,7 @@ void main() {
     test('turns list is unmodifiable', () {
       final c = _ctrl();
       expect(
-        () => (c.turns as List<ChatTurn>).add(_reply('x')),
+        () => (c.turns).add(_reply('x')),
         throwsUnsupportedError,
       );
     });

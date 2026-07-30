@@ -10,7 +10,6 @@
 ///   cb7  ChromeBridge nullable slots default to null
 library;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/src/base/main/chrome_bridge.dart';
 

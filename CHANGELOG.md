@@ -1,3 +1,33 @@
+## [0.1.6] - 2026-07-30
+
+### Changed
+
+- `mcp_client` `^2.1.0` → `^2.1.1`, `mcp_server` `^2.1.1` → `^2.1.2`. The server
+  release fixes conformance defects that only surface against another
+  implementation — `ping` and `resources/subscribe` now answer with the empty
+  result the specification defines instead of `pong` / `{"success": true}`,
+  `resources/templates/list` reads the store registration writes to, and
+  progress notifications carry the caller's own `progressToken`. The client
+  release can send `ping` and `completion/complete` at all, and takes its
+  protocol revision as a constructor argument.
+- `mcp_server` 2.1.2 validates `Origin` by default (allow-list: the local
+  machine). The studio is unaffected — it opens no HTTP MCP server of its own,
+  and its client sends no `Origin`. Verified rather than assumed: with a 2.1.2
+  server up, a request with no `Origin` and one from `http://localhost` are
+  both accepted, and one from an outside site is refused with 403. **An app the
+  studio generates, reached from a browser on another origin, must now name
+  that origin via `allowedOrigins`.**
+
+### Fixed
+
+- The dependency pins quoted in the app-builder guidance had gone stale at
+  `^2.0.0` while the generator emitted `^2.1.x`. Two documents restated them as
+  literal text — the guide handed to an LLM writing a server by hand
+  ("Current pins:") and the `vibe://about` orientation page — so the versions a
+  model was told to use disagreed with the ones the templates actually wrote.
+  Both now interpolate the template seed, the single place those versions live,
+  and a guard covers the guide so a literal cannot creep back in.
+
 ## [0.1.5] - 2026-07-29
 
 ### Fixed

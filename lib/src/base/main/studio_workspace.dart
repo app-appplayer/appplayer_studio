@@ -1441,7 +1441,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       if (ro is RenderMetaData) {
         final meta = ro.metaData;
         if (meta is Map<String, dynamic> && ro.hasSize && ro.attached) {
-          if (!_isDescendantOf(ro, primaryRoot) && ro is RenderBox) {
+          if (!_isDescendantOf(ro, primaryRoot)) {
             if (seen.add(ro)) out.add(ro);
           }
         }

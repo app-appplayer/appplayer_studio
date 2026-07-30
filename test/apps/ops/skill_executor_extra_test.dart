@@ -18,7 +18,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/builtin_api.dart'
-    show KnowledgeSystem, KernelToolResult, KernelTextContent;
+    show KnowledgeSystem, KernelToolResult;
 import 'package:appplayer_studio/src/apps/ops/skills/skill_definition.dart';
 import 'package:appplayer_studio/src/apps/ops/skills/skill_executor.dart';
 

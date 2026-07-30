@@ -16,7 +16,7 @@ const String kTemplateFlutterMcpUiRuntime = '^0.5.3';
 
 /// `mcp_server` — the MCP server core the emitted serving apps
 /// (bundle / inline) and Flutter apps host.
-const String kTemplateMcpServer = '^2.1.1';
+const String kTemplateMcpServer = '^2.1.2';
 
 /// `mcp_bundle` — the .mbd bundle format library the bundle-backed variants
 /// read at runtime.

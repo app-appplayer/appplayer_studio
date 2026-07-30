@@ -134,7 +134,6 @@ extension BundleHostAccessors on mb.McpBundle {
   String? resolveJsEntry(mb.ToolEntry tool) {
     if (tool.kind != mb.ToolKind.js) return null;
     final target = tool.target;
-    if (target is! Map) return null;
     final entry = target['entry'];
     if (entry is! String || entry.isEmpty) return null;
     return resolveAsset(entry);

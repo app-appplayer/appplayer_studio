@@ -53,6 +53,9 @@ class UiDebugBridge {
     final views = WidgetsBinding.instance.renderViews;
     if (views.isNotEmpty) {
       final renderView = views.first;
+      // Reading the root layer is the only way to capture the whole render
+      // view (see above); there is no public accessor for it.
+      // ignore: invalid_use_of_protected_member
       final layer = renderView.layer;
       if (layer is OffsetLayer) {
         final image = await layer.toImage(

@@ -4,8 +4,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 
-import 'package:mcp_bundle/mcp_bundle.dart'
-    hide ValidationIssue, ValidationSeverity;
 import 'package:path/path.dart' as p;
 
 import '../../../base/boot/claude_cli_resolver.dart';

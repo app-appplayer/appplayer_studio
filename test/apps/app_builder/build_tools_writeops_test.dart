@@ -97,18 +97,12 @@
 /// w36 after any write, hash before != hash after
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart'
-    show
-        CanonicalPatch,
-        LayerId,
-        PatchPipelineImpl,
-        SpecValidator,
-        WorkspaceCanonicalImpl;
+    show CanonicalPatch, LayerId, PatchPipelineImpl, WorkspaceCanonicalImpl;
 import 'package:appplayer_studio/builtin_api.dart' show PatchOp, UserOriginator;
 import 'package:appplayer_studio/src/base/infra/workspace_fs_port.dart'
     show FileWorkspaceFsPort;

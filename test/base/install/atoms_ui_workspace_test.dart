@@ -167,8 +167,7 @@ class _StubWorkspace implements WorkspaceCanonical {
     this.path,
     this.dirty = false,
     this.canUndoFlag = false,
-    this.canRedoFlag = false,
-  });
+  }) : canRedoFlag = false;
 
   String? path;
   bool dirty;

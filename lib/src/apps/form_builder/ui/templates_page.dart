@@ -6,16 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:appplayer_studio/base.dart'
     show ScopedDialogs, BuiltinToolRegistry, VibeTokens, inspectTag, vibeMono;
 import 'package:mcp_bundle/mcp_bundle.dart'
-    show
-        FormBlock,
-        FormDocument,
-        FormDocumentMetadata,
-        FormFieldBlock,
-        FormHeadingBlock,
-        FormImageBlock,
-        FormSection,
-        FormTableBlock,
-        FormTextBlock;
+    show FormDocument, FormDocumentMetadata, FormSection;
 
 import '../infra/form_spec_vocab.dart' show kPlacementAnchors;
 import 'form_tool_client.dart';

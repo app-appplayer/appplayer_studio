@@ -277,7 +277,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
   /// Last brightness pushed into the runtime — guards
   /// [_applyHostBrightness] from re-emitting the same theme on every
   /// didChangeDependencies tick.
-  Brightness? _lastAppliedBrightness;
 
   void _applyHostBrightness(BuildContext context) {
     final r = _runtime;
@@ -314,7 +313,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
     // source. Re-enable once the precedence is settled.
     // r.themeManager.setStateManager(r.stateManager);
     //
-    // No `b == _lastAppliedBrightness` short-circuit — the swap-edge
+    // No `b == previous` short-circuit — the swap-edge
     // caller invokes this AFTER the previous `MCPRuntimeWidget.dispose`
     // wiped the singleton's `_hostBrightnessOverride` to null (package
     // src/mcp_ui_runtime.dart:604). The chrome shell brightness is
@@ -323,7 +322,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
     // first build evaluates `flutterThemeMode='system'` and falls back
     // to OS platformBrightness, producing a visible light/dark flip
     // when chrome and OS disagree (e.g. chrome dark + OS light).
-    _lastAppliedBrightness = b;
     r.themeManager.setHostBrightness(b);
   }
 

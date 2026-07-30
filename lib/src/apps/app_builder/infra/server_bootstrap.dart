@@ -21,6 +21,7 @@ import '../conv/dart_converter.dart';
 import '../core/vibe_project.dart';
 import '../conv/embed_converter.dart';
 import '../conv/self_ui_converter.dart';
+import '../conv/template_ecosystem_versions.dart';
 import '../core/patch_pipeline.dart';
 import '../core/types.dart';
 import '../core/workspace_canonical.dart';
@@ -4619,7 +4620,7 @@ Write-Host "$($p.Id)"
 /// Orientation document served at `vibe://about`. The first thing any
 /// MCP-connecting LLM should fetch — explains the editor's mental
 /// model, project shape, and how to use the tool / resource catalogue.
-const String _aboutMarkdown = r'''
+final String _aboutMarkdown = r'''
 # vibe — MCP-driven mcp_ui DSL **app** editor
 
 vibe is a desktop tool for authoring **mcp_ui DSL 1.3 applications**.
@@ -5181,7 +5182,9 @@ LVGL source for the project:
 2. Read app-level slices first (`ui://manifest`, `ui://routes`,
    `ui://theme`) before page-level details.
 3. Use `vibe_file_*` to write under `build/<target>/`.
-4. Pin hosted pub deps (`mcp_server: ^2.0.0`, `mcp_bundle: ^0.3.0`).
+''' + '''
+4. Pin hosted pub deps (`mcp_server: $kTemplateMcpServer`, `mcp_bundle: $kTemplateMcpBundle`).
+''' + r'''
 5. Inline variants must use raw canonical JSON — never the typed view.
 6. Run `dart pub get` + `dart compile` + a stdio handshake to verify.
 

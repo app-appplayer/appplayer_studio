@@ -30,7 +30,6 @@ import '../infra/project_seed.dart';
 import '../init/form_init.dart';
 import 'approvals_page.dart';
 import 'compose_page.dart';
-import 'issues_page.dart';
 import 'registry_page.dart';
 import 'templates_page.dart';
 

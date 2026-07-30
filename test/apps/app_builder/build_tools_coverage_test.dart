@@ -268,15 +268,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/base.dart'
-    show
-        CanonicalPatch,
-        ImportKind,
-        LayerId,
-        PatchPipeline,
-        UndoState,
-        WorkspaceCanonical;
+    show CanonicalPatch, ImportKind, PatchPipeline, UndoState, WorkspaceCanonical;
 import 'package:appplayer_studio/builtin_api.dart'
-    show CanonicalChange, CanonicalChangeKind, PatchApplied, PatchResult;
+    show CanonicalChange, PatchApplied, PatchResult;
 import 'package:mcp_bundle/mcp_bundle.dart' show McpBundle;
 import 'package:appplayer_studio/src/apps/app_builder/core/types.dart';
 import 'package:appplayer_studio/src/apps/app_builder/core/vibe_project.dart';
@@ -1290,7 +1284,7 @@ void main() {
       'widget': <String, dynamic>{'type': 'text'},
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c60 ──────────────────────────────────────────────────────────────────
@@ -1983,7 +1977,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('project_info', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c118 ─────────────────────────────────────────────────────────────────
@@ -1991,7 +1985,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('check_wiring', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c119 ─────────────────────────────────────────────────────────────────
@@ -1999,7 +1993,7 @@ void main() {
     final d = _makeNoCanonical();
     final r = await d.dispatch('validate_bundle', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c120 ─────────────────────────────────────────────────────────────────
@@ -2011,7 +2005,7 @@ void main() {
       'tool': 'weather.get',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c121 ─────────────────────────────────────────────────────────────────
@@ -2021,7 +2015,7 @@ void main() {
       'name': 'myService',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c122 ─────────────────────────────────────────────────────────────────
@@ -2031,7 +2025,7 @@ void main() {
       'uri': 'https://example.com/lib.mbd',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c123 ─────────────────────────────────────────────────────────────────
@@ -2043,7 +2037,7 @@ void main() {
         'uri': 'https://example.com/lib.mbd',
       });
       expect(r, isNotNull);
-      expect((r! as BuildToolResult).success, isFalse);
+      expect((r!).success, isFalse);
     },
   );
 
@@ -2055,7 +2049,7 @@ void main() {
       'weights': <String, dynamic>{'400': 'Regular'},
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c125 ─────────────────────────────────────────────────────────────────
@@ -2065,7 +2059,7 @@ void main() {
       'family': 'Roboto',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c126 ─────────────────────────────────────────────────────────────────
@@ -2076,7 +2070,7 @@ void main() {
       'style': <String, dynamic>{'color': '#FF0000'},
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c127 ─────────────────────────────────────────────────────────────────
@@ -2084,7 +2078,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('asset_audit', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c128 ─────────────────────────────────────────────────────────────────
@@ -2092,7 +2086,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('a11y_audit', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c129 ─────────────────────────────────────────────────────────────────
@@ -2102,7 +2096,7 @@ void main() {
       'role': 'color.primary',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c130 ─────────────────────────────────────────────────────────────────
@@ -2113,7 +2107,7 @@ void main() {
       'targetType': 'text',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c131 ─────────────────────────────────────────────────────────────────
@@ -2123,7 +2117,7 @@ void main() {
       'topic': 'phase2_gallery',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c132 ─────────────────────────────────────────────────────────────────
@@ -2132,7 +2126,7 @@ void main() {
     final r = await d.dispatch('health_check', <String, dynamic>{});
     expect(r, isNotNull);
     // healthCheck requires validator — failure expected without one
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c133 ─────────────────────────────────────────────────────────────────
@@ -2142,7 +2136,7 @@ void main() {
       'dryRun': true,
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c134 ─────────────────────────────────────────────────────────────────
@@ -2151,7 +2145,7 @@ void main() {
     final r = await d.dispatch('grade', <String, dynamic>{});
     expect(r, isNotNull);
     // grade calls healthCheck which needs validator — fails without it
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c135 ─────────────────────────────────────────────────────────────────
@@ -2159,7 +2153,7 @@ void main() {
     final d = _makeNoCanonical();
     final r = await d.dispatch('pending_diff', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c136 ─────────────────────────────────────────────────────────────────
@@ -2167,7 +2161,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('help', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c137 ─────────────────────────────────────────────────────────────────
@@ -2175,7 +2169,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('route_audit', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c138 ─────────────────────────────────────────────────────────────────
@@ -2183,7 +2177,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('widget_shape_audit', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c139 ─────────────────────────────────────────────────────────────────
@@ -2193,7 +2187,7 @@ void main() {
       'pageId': 'home',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c140 ─────────────────────────────────────────────────────────────────
@@ -2201,7 +2195,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('dependency_graph', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c141 ─────────────────────────────────────────────────────────────────
@@ -2211,7 +2205,7 @@ void main() {
       'target': 'template:myCard',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c142 ─────────────────────────────────────────────────────────────────
@@ -2219,7 +2213,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('undo_history', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c143 ─────────────────────────────────────────────────────────────────
@@ -2229,7 +2223,7 @@ void main() {
       'ops': <dynamic>[],
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse); // empty ops fail
+    expect((r!).success, isFalse); // empty ops fail
   });
 
   // ── c144 ─────────────────────────────────────────────────────────────────
@@ -2239,7 +2233,7 @@ void main() {
       'pageId': 'ghost',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c145 ─────────────────────────────────────────────────────────────────
@@ -2249,7 +2243,7 @@ void main() {
       'type': 'text',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c146 ─────────────────────────────────────────────────────────────────
@@ -2260,7 +2254,7 @@ void main() {
       'newPath': '/new',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c147 ─────────────────────────────────────────────────────────────────
@@ -2271,7 +2265,7 @@ void main() {
       'args': <String, dynamic>{},
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c148 ─────────────────────────────────────────────────────────────────
@@ -2282,7 +2276,7 @@ void main() {
       'newTemplateId': 'T',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c149 ─────────────────────────────────────────────────────────────────
@@ -2292,7 +2286,7 @@ void main() {
       'widgetPath': '/ui/pages/home/content',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c150 ─────────────────────────────────────────────────────────────────
@@ -2303,7 +2297,7 @@ void main() {
       'dstId': 'home2',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c151 ─────────────────────────────────────────────────────────────────
@@ -2314,7 +2308,7 @@ void main() {
       'newParentPath': '/ui/pages/home/content',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c152 ─────────────────────────────────────────────────────────────────
@@ -2325,7 +2319,7 @@ void main() {
       'newId': 'home',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c153 ─────────────────────────────────────────────────────────────────
@@ -2336,7 +2330,7 @@ void main() {
       'widget': <String, dynamic>{'type': 'button', 'label': 'New'},
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c154 ─────────────────────────────────────────────────────────────────
@@ -2344,7 +2338,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('find_widgets', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c155 ─────────────────────────────────────────────────────────────────
@@ -2355,7 +2349,7 @@ void main() {
       'kind': 'unknown_kind',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c156 ─────────────────────────────────────────────────────────────────
@@ -2365,7 +2359,7 @@ void main() {
       'seedColor': 'not-a-color',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c157 ─────────────────────────────────────────────────────────────────
@@ -2373,7 +2367,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('state_usage', <String, dynamic>{'pageId': ''});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c158 ─────────────────────────────────────────────────────────────────
@@ -2383,7 +2377,7 @@ void main() {
       'path': '..',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c159 ─────────────────────────────────────────────────────────────────
@@ -2398,7 +2392,7 @@ void main() {
       'section': 'theme',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c160 ─────────────────────────────────────────────────────────────────
@@ -2406,7 +2400,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('get_build_config', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c161 ─────────────────────────────────────────────────────────────────
@@ -2416,7 +2410,7 @@ void main() {
       'path': '/ui/pages/home/content/children/0',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c162 ─────────────────────────────────────────────────────────────────
@@ -2428,7 +2422,7 @@ void main() {
       'value': 'Updated',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c163 ─────────────────────────────────────────────────────────────────
@@ -2438,7 +2432,7 @@ void main() {
       'dryRun': true,
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c164 ─────────────────────────────────────────────────────────────────
@@ -2449,7 +2443,7 @@ void main() {
       'newId': 'newCard',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c165 ─────────────────────────────────────────────────────────────────
@@ -2461,7 +2455,7 @@ void main() {
       'scope': 'widget',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c166 ─────────────────────────────────────────────────────────────────
@@ -2471,7 +2465,7 @@ void main() {
       'pageId': 'ghost',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c167 ─────────────────────────────────────────────────────────────────
@@ -2482,7 +2476,7 @@ void main() {
       'newTemplateId': '123bad',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c168 ─────────────────────────────────────────────────────────────────
@@ -2490,7 +2484,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('tokenization_audit', <String, dynamic>{});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isTrue);
+    expect((r!).success, isTrue);
   });
 
   // ── c169 ─────────────────────────────────────────────────────────────────
@@ -2501,7 +2495,7 @@ void main() {
       'kind': 'spinForever',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c170 ─────────────────────────────────────────────────────────────────
@@ -2512,7 +2506,7 @@ void main() {
       'afterPath': '/ui/pages/home/content/children/1',
     });
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c171 ─────────────────────────────────────────────────────────────────
@@ -2520,7 +2514,7 @@ void main() {
     final d = _makeDispatcher(json: _valid());
     final r = await d.dispatch('search', <String, dynamic>{'query': ''});
     expect(r, isNotNull);
-    expect((r! as BuildToolResult).success, isFalse);
+    expect((r!).success, isFalse);
   });
 
   // ── c172 ─────────────────────────────────────────────────────────────────

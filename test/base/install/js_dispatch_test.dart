@@ -6,7 +6,6 @@ import 'package:mcp_bundle/mcp_bundle.dart' as mb;
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
-import 'package:brain_kernel/mcp_host.dart' as mh;
 
 /// Build a `.mbd/` directory with [files] (relative path → content) and
 /// a manifest derived from [manifest]. Returns the absolute mbd path.

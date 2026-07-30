@@ -26,7 +26,6 @@ library;
 
 import 'dart:async';
 
-import 'package:appplayer_studio/src/base/install/composition_host/composition_host.dart';
 import 'package:appplayer_studio/src/base/servers/composition_seam.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart'
@@ -114,7 +113,7 @@ void main() {
       'type': 'page',
       'content': <String, dynamic>{'type': 'text', 'value': ''},
     });
-    final renderer = runtime.engine!.renderer;
+    final renderer = runtime.engine.renderer;
     expect(renderer.definitionResolver, isNull, reason: 'precondition');
 
     applyCompositionHooks(runtime, hooks);
@@ -136,8 +135,8 @@ void main() {
     applyCompositionHooks(
         runtime, StudioCompositionSeam.hooksFor(clientHost: () => null));
 
-    expect(runtime.engine!.renderer.definitionResolver, isNull);
-    expect(runtime.engine!.renderer.originToolCaller, isNull);
+    expect(runtime.engine.renderer.definitionResolver, isNull);
+    expect(runtime.engine.renderer.originToolCaller, isNull);
   });
 
   test('c3 a tool call is routed to the ORIGIN connection', () async {
@@ -359,7 +358,7 @@ void main() {
       'type': 'page',
       'content': <String, dynamic>{'type': 'text', 'value': ''},
     });
-    final renderer = runtime.engine!.renderer;
+    final renderer = runtime.engine.renderer;
     expect(renderer.definitionResolver, isNull, reason: 'precondition');
 
     applyCompositionHooksToStudioRuntime(

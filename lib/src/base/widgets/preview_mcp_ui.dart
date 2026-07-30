@@ -330,7 +330,7 @@ class McpUiRuntimePort implements UiRuntimePort {
           declared is Map && declared.keys.any((k) => k != 'mode');
       final Map<String, dynamic> assertTheme =
           hasOwnPalette
-              ? (declared as Map).cast<String, dynamic>()
+              ? (declared).cast<String, dynamic>()
               : <String, dynamic>{
                 ..._systemBaselineTheme,
                 if (declared is Map && declared['mode'] is String)

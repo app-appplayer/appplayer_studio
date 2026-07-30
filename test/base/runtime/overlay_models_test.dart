@@ -6,7 +6,6 @@
 /// - `OverlayController` push / remove / clear / snapshotJson
 library;
 
-import 'package:flutter/material.dart' show Colors;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/src/base/capture/overlay/overlay_controller.dart';
 import 'package:appplayer_studio/src/base/capture/overlay/overlay_models.dart';

@@ -876,7 +876,7 @@ class _PropertyPanelState extends ConsumerState<_PropertyPanel> {
         ),
       ),
       const SizedBox(height: 12),
-      _readonly('Trigger', proc.trigger ?? 'manual'),
+      _readonly('Trigger', proc.trigger),
       _readonly('Steps', '${proc.steps.length}'),
       _readonly('Gates', '${proc.gates.length}'),
       const SizedBox(height: 8),

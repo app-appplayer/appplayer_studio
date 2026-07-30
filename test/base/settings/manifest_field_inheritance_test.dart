@@ -13,7 +13,6 @@
 ///   fi12 loadInheritedSettings — normalises bare mcpServerUrl via /mcp append
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -208,11 +207,9 @@ void main() {
 
   group('fi11 loadInheritedSettings valid file', () {
     late Directory tmpDir;
-    late String toolId;
 
     setUp(() {
       tmpDir = Directory.systemTemp.createTempSync('vibe_inh_settings_');
-      toolId = p.basename(tmpDir.path);
     });
     tearDown(() {
       if (tmpDir.existsSync()) tmpDir.deleteSync(recursive: true);

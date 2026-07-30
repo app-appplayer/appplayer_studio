@@ -34,14 +34,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/base.dart'
-    show
-        CanonicalPatch,
-        LayerId,
-        UndoState,
-        WorkspaceCanonical,
-        WorkspaceCanonicalImpl;
+    show CanonicalPatch, LayerId, UndoState, WorkspaceCanonical, WorkspaceCanonicalImpl;
 import 'package:appplayer_studio/builtin_api.dart'
-    show PatchOp, UserOriginator, ValidationSeverity;
+    show PatchOp, UserOriginator;
 import 'package:appplayer_studio/src/base/infra/workspace_fs_port.dart'
     show FileWorkspaceFsPort;
 import 'package:appplayer_studio/src/base/spec/spec_validator.dart'

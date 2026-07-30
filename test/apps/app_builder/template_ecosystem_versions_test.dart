@@ -11,6 +11,7 @@ library;
 
 import 'dart:io';
 
+import 'package:appplayer_studio/src/apps/app_builder/conv/llm_server_guide.dart';
 import 'package:appplayer_studio/src/apps/app_builder/conv/template_ecosystem_versions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yaml/yaml.dart';
@@ -55,5 +56,20 @@ void main() {
           'mcp_bundle drift — sync kTemplateMcpBundle with the studio '
           'pubspec.',
     );
+  });
+
+  // The guide the LLM receives when it writes a server by hand used to restate
+  // the pins as literal text, and had gone stale at `^2.0.0` while the
+  // generator emitted `^2.1.x`. The guide now interpolates the same seed, so
+  // the only way it can be wrong is if that interpolation is removed.
+  test('the LLM server guide carries the seed pins, not a stale copy', () {
+    expect(
+      mcpServerDartPattern,
+      contains('mcp_server: $kTemplateMcpServer'),
+      reason:
+          'the hand-written-server guide must quote the seed pin — a literal '
+          'version here goes stale the moment the studio version-ups.',
+    );
+    expect(mcpServerDartPattern, contains('mcp_bundle: $kTemplateMcpBundle'));
   });
 }

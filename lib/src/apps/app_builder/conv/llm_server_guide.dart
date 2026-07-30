@@ -6,8 +6,15 @@
 /// Keep this guide spec-truthful — every example here is what vibe
 /// expects to see in shipped artifacts. When the underlying packages
 /// (`mcp_server`, `mcp_bundle`) change, update this string and bump
-/// the version pins below.
-const String mcpServerDartPattern = r'''
+/// the version pins below. The pins themselves are NOT written here —
+/// they are interpolated from `template_ecosystem_versions.dart`, the one
+/// place the emitted-app versions live, so this guide cannot drift from
+/// what the generator actually writes.
+library;
+
+import 'template_ecosystem_versions.dart';
+
+final String mcpServerDartPattern = r'''
 # MCP server Dart pattern (AppPlayer Builder)
 
 You are generating a runnable Dart MCP server inside the user's
@@ -285,10 +292,12 @@ that the LLM may add when the user asks for them.
 Generated `pubspec.yaml` MUST reference hosted pub versions, never
 local paths. Current pins:
 
+''' + '''
 ```yaml
-mcp_server: ^2.0.0
-mcp_bundle: ^0.3.0
+mcp_server: $kTemplateMcpServer
+mcp_bundle: $kTemplateMcpBundle
 ```
+''' + r'''
 
 ## Native variants (MCP server + self-UI Flutter app)
 

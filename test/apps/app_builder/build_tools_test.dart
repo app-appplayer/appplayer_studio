@@ -172,15 +172,9 @@ import 'dart:io';
 import 'package:archive/archive.dart' show ZipDecoder;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/base.dart'
-    show
-        CanonicalPatch,
-        ImportKind,
-        LayerId,
-        PatchPipeline,
-        UndoState,
-        WorkspaceCanonical;
+    show CanonicalPatch, ImportKind, PatchPipeline, UndoState, WorkspaceCanonical;
 import 'package:appplayer_studio/builtin_api.dart'
-    show CanonicalChange, CanonicalChangeKind, PatchApplied, PatchResult;
+    show CanonicalChange, PatchApplied, PatchResult;
 import 'package:mcp_bundle/mcp_bundle.dart' show McpBundle;
 import 'package:appplayer_studio/src/apps/app_builder/core/vibe_project.dart';
 import 'package:appplayer_studio/src/apps/app_builder/feat/build_tools.dart';

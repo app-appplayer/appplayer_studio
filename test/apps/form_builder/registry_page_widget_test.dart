@@ -5,7 +5,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:appplayer_studio/src/apps/form_builder/init/form_init.dart';
 import 'package:appplayer_studio/src/apps/form_builder/ui/registry_page.dart';
 
 import 'form_ui_harness.dart';
@@ -159,6 +158,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Issue 2026-003'), findsOneWidget);
     // Project closes → page unmounts → the floating dialog must go too.
+    // The harness host is defined in this file; driving its state is the
+    // point of the test.
+    // ignore: invalid_use_of_protected_member
     hostKey.currentState!.setState(() => hostKey.currentState!.closed = true);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));

@@ -247,7 +247,7 @@ class TaskRegistry {
         // returns the first match by scan order and could mis-deliver to a
         // same-named member in another department.
         summary = await agentRun!(
-          assignee!,
+          assignee,
           _taskRequest(t),
           workspaceId: t.workspaceId,
         );
