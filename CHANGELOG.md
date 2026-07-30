@@ -1,3 +1,38 @@
+## [0.1.7] - 2026-07-30
+
+### Fixed
+
+- **The bundle Tools editor could delete but not create.** Tools, domain icons,
+  slash commands and settings sections each had a working delete action wired
+  to the detail panel, and each had a matching create action that nothing
+  called. `_surfaceHeader` was written to take an `onAdd` and paint a "+", and
+  every one of its five call sites left the argument off, so the button never
+  rendered — deleting the last tool left no way back inside the editor. The
+  builder tools (`studio.builder.addTool` and siblings) could still do it from
+  chat, but this editor already offers manual delete everywhere and a manual
+  add for settings fields, so create belongs here too. The four headers now
+  pass their action; LIFECYCLE deliberately does not — it is wiring, not a list
+  authored in this pane.
+
+### Removed
+
+- Five superseded private declarations that had been left behind by earlier
+  refactors and no longer had a reader: a duplicate `OpsRoute` name/value pair
+  in `_OpsShellState` (the live pair moved to `_OpsShellBody`, where it is one
+  line), `_AgentChip` (the model chip already carries the agent roster and its
+  selection callback), the provider tag it painted on a chip line that no
+  longer exists, a set of overlay kinds nothing consulted (the draw sites read
+  the progress value directly), and a per-package overrides path helper
+  duplicating an inline computation in the same file.
+
+### Changed
+
+- Analyzer warnings are back to zero across the tree. The previous readings of
+  "zero" were taken with a pattern that could not match a warning line, so 112
+  had accumulated unseen; the mechanical ones were cleared in 0.1.6 and the
+  remaining ten are resolved here, either by wiring the feature or by removing
+  what replaced it.
+
 ## [0.1.6] - 2026-07-30
 
 ### Changed

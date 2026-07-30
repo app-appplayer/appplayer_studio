@@ -3722,15 +3722,6 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     return _bodyForBundleUI(t);
   }
 
-  /// Per-package settings overrides file. Mirrors the host class's
-  /// `_packageOverridesFile` (keeps the same on-disk path so the
-  /// inline workspace settings panel and the legacy gear-icon dialog
-  /// read/write the same overrides file).
-  String _overridesFileFor(String pkgPath) {
-    final safe = pkgPath.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
-    return p.join(widget.configRoot, 'package_settings', '$safe.json');
-  }
-
   Widget _bodyForBundleUI(StudioTab t) {
     // Every bundle renders its own `ui/app.json`. Where the
     // bundle's UI needs to embed another project (e.g. a seed whose

@@ -835,14 +835,18 @@ class _BundleToolsViewState extends State<BundleToolsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  _surfaceHeader('TOOLS', _tools.length),
+                  _surfaceHeader('TOOLS', _tools.length, onAdd: _addTool),
                   if (_tools.isEmpty)
                     _emptyRowHint(
                       'No tools yet. Ask the chat to design + register one.',
                     )
                   else
                     _toolsListBody(),
-                  _surfaceHeader('DOMAIN ICONS', _domain.length),
+                  _surfaceHeader(
+                    'DOMAIN ICONS',
+                    _domain.length,
+                    onAdd: _pickToolAndAddDomain,
+                  ),
                   if (_domain.isEmpty)
                     _emptyRowHint(
                       'No domain icons wired. Ask the chat to wire a tool '
@@ -850,7 +854,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
                     )
                   else
                     _domainListBody(),
-                  _surfaceHeader('/ COMMANDS', _slash.length),
+                  _surfaceHeader('/ COMMANDS', _slash.length, onAdd: _addSlash),
                   if (_slash.isEmpty)
                     _emptyRowHint(
                       'No / commands yet. Ask the chat to add a slash chip '
@@ -858,7 +862,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
                     )
                   else
                     _slashListBody(),
-                  _surfaceHeader('SETTINGS', _sections.length),
+                  _surfaceHeader('SETTINGS', _sections.length, onAdd: _addSection),
                   if (_sections.isEmpty)
                     _emptyRowHint(
                       'No settings sections yet. Ask the chat to add a '

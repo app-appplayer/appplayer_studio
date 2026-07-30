@@ -44,18 +44,6 @@ const Set<OverlayKind> _pulseKinds = <OverlayKind>{
   OverlayKind.circleHighlight,
 };
 
-const Set<OverlayKind> _drawOnKinds = <OverlayKind>{
-  OverlayKind.arrowPointer,
-  OverlayKind.checkMark,
-  OverlayKind.crossMark,
-  OverlayKind.underline,
-  OverlayKind.strikethrough,
-  OverlayKind.highlighter,
-  OverlayKind.boxOutline,
-  OverlayKind.bracket,
-  OverlayKind.connectorLine,
-};
-
 class OverlayLayer extends StatelessWidget {
   const OverlayLayer({
     super.key,
