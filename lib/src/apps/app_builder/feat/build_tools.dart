@@ -80,6 +80,153 @@ typedef CapturePreviewCallback =
 /// padding. Mirrors the MCP `vibe_layout_snapshot` tool.
 typedef LayoutSnapshotCallback = Future<List<Map<String, dynamic>>?> Function();
 
+/// Every tool name the host currently serves. `check_wiring` uses it to tell
+/// a real tool reference from an invented one; returning null means "cannot
+/// tell", which the checker reports rather than passing over.
+typedef HostToolNamesCallback = Future<Set<String>?> Function();
+
+/// `{{ root.path }}` / `@{ root.path }` with no `state.` prefix — the form
+/// shipped bundles actually use.
+final RegExp _bareBindingRe = RegExp(r'[{@]\{\s*([A-Za-z_][\w.]*)');
+
+/// Binding roots the runtime answers on its own, split by WHERE it answers
+/// them. A flat set was the first cut and it let `{{latitude}}` pass outside a
+/// map, because "this name exists somewhere in the runtime" is not the same
+/// question as "this name exists HERE".
+///
+/// All three sets are derived from `flutter_mcp_ui_runtime`, not invented:
+/// `ClientBindingResolver.supportedPaths` for the global ones, and every key
+/// any factory puts into `createChildContext(variables: …)` for the other
+/// two, attributed to the widget type the registry maps that factory to.
+/// Re-derive on a runtime version-up — a scope that moves turns into a false
+/// positive here.
+
+/// Answered anywhere: device / theme / platform facts.
+const Set<String> kGlobalBindingRoots = <String>{
+  'workingDirectory', 'userName', 'platform', 'locale', 'theme',
+  'orientation', 'network', 'file', 'system', 'env',
+  'isWeb', 'isDebug', 'isRelease', 'isProfile',
+};
+
+/// Action node `type` values. An action body is where the runtime hands over
+/// `event` / `value` / `error`, so those roots are in scope there and nowhere
+/// else. Derived from the executors `ActionHandler` registers.
+const Set<String> kActionTypes = <String>{
+  'tool', 'state', 'navigation', 'resource', 'dialog', 'batch', 'conditional',
+  'notification', 'event', 'channel', 'animation', 'permission', 'sequence',
+  'parallel', 'identity', 'increment', 'cancel',
+};
+
+/// Properties that HOLD an action. Position is the more reliable signal than
+/// the tag: the runtime requires `type` on an action, but documents carry
+/// handlers that omit it, and a handler prop is an action slot either way.
+/// Derived from the widget schema — every property whose declared type
+/// mentions `Action`.
+const Set<String> kActionCarryingProps = <String>{
+  'actions', 'blur', 'change', 'click', 'submit',
+  'onAllow', 'onBlur', 'onCellTap', 'onChange', 'onChanged', 'onClear',
+  'onClose', 'onCollapse', 'onCommand', 'onDelete', 'onDeny', 'onDoubleTap',
+  'onDragEnter', 'onDragLeave', 'onDrop', 'onEnd', 'onEnded', 'onError',
+  'onExpand', 'onFocus', 'onIndexChanged', 'onLinkTap', 'onLongPress',
+  'onMapTap', 'onMarkerTap', 'onNodeTap', 'onOpen', 'onPageChanged',
+  'onPageFinished', 'onPageStarted', 'onPanEnd', 'onPanStart', 'onPanUpdate',
+  'onPause', 'onPlay', 'onRetry', 'onRowTap', 'onSelect', 'onSignatureEnd',
+  'onSort', 'onStepCancel', 'onStepContinue', 'onStepTapped', 'onSubmit',
+  'onTap', 'onTimeUpdate',
+};
+
+/// Answered only INSIDE an action body — the event that fired it, the value
+/// it carries, the error it failed with.
+const Set<String> kActionBindingRoots = <String>{
+  'event', 'value', 'type', 'error', 'code', 'message', 'details', 'stack',
+  'binding', 'uri', 'data', 'oldValue', 'channelId', 'result',
+};
+
+/// Answered only inside a given widget's SUBTREE: the row a list is
+/// rendering, the coordinates a map hands its marker builder.
+const Map<String, Set<String>> kWidgetScopedBindingRoots = <String, Set<String>>{
+  'calendar': <String>{'date', 'day', 'event', 'month', 'year'},
+  'carousel': <String>{'event', 'index', 'item', 'page'},
+  'checkbox': <String>{'event', 'type', 'value'},
+  'checkboxGroup': <String>{'event', 'type', 'value'},
+  'codeEditor': <String>{'event', 'lineCount', 'value'},
+  'dateRangePicker': <String>{'end', 'event', 'start', 'value'},
+  'dragTarget': <String>{'candidateData', 'data', 'dragData', 'dx', 'dy', 'event', 'hasCandidates', 'offset', 'rejectedData'},
+  'drawer': <String>{'event', 'label', 'route', 'type', 'value'},
+  'dropdown': <String>{'event', 'index', 'type', 'value'},
+  'errorBoundary': <String>{'error', 'event', 'stack'},
+  'errorRecovery': <String>{'error', 'event', 'stack'},
+  'fileExplorer': <String>{'event', 'name', 'path', 'type'},
+  'grid': <String>{'col', 'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item', 'row'},
+  'gridview': <String>{'col', 'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item', 'row'},
+  'imageFilter': <String>{'event', 'index', 'item', 'page'},
+  'kenBurnsImage': <String>{'event', 'index', 'item', 'page'},
+  'lightbox': <String>{'event', 'index', 'item', 'page'},
+  'list': <String>{'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item'},
+  'listView': <String>{'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item'},
+  'listview': <String>{'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item'},
+  'map': <String>{'event', 'latitude', 'longitude', 'title'},
+  'markdown': <String>{'event', 'url'},
+  'mediaPlayer': <String>{'duration', 'event', 'isMuted', 'isPlaying', 'position', 'volume'},
+  'networkGraph': <String>{'event', 'label', 'nodeId'},
+  'numberStepper': <String>{'event', 'value'},
+  'pageView': <String>{'event', 'index', 'page', 'type'},
+  'rive': <String>{'event', 'index', 'item', 'page'},
+  'scrollAnimated': <String>{'event', 'index', 'item', 'page'},
+  'select': <String>{'event', 'index', 'type', 'value'},
+  'signature': <String>{'event', 'hasSignature', 'strokeCount'},
+  'slider': <String>{'event', 'type', 'value'},
+  'staggeredGrid': <String>{'event', 'index', 'item', 'page'},
+  'stepper': <String>{'event', 'index', 'step', 'type'},
+  'switch': <String>{'event', 'type', 'value'},
+  'tabBar': <String>{'event', 'index', 'type'},
+  'terminal': <String>{'command', 'event', 'lineCount'},
+  'textField': <String>{'event', 'focus', 'type', 'value'},
+  'textFormField': <String>{'event', 'focus', 'type', 'value'},
+  'textInput': <String>{'event', 'focus', 'type', 'value'},
+  'textfield': <String>{'event', 'focus', 'type', 'value'},
+  'timeline': <String>{'index', 'isFirst', 'isLast', 'item'},
+  'toggle': <String>{'event', 'type', 'value'},
+  'tree': <String>{'depth', 'event', 'hasChildren', 'isSelected', 'item'},
+  'webView': <String>{'error', 'event', 'url'},
+};
+
+/// Union of all three. Kept because a caller that only needs "is this name
+/// known to the runtime at all" should not have to reassemble it.
+final Set<String> kRuntimeBindingRoots = <String>{
+  ...kGlobalBindingRoots,
+  ...kActionBindingRoots,
+  for (final s in kWidgetScopedBindingRoots.values) ...s,
+};
+
+/// Declared state keys of a `state` block, accepting both shapes in the wild:
+/// the flat `state: {k: v}` the canonical fixtures use and the spec's
+/// `state: {initial: {k: v}}` that every shipped bundle on disk actually
+/// writes. Reading only the outer keys sees `initial` and nothing else, so a
+/// checker built on it calls every real binding undefined.
+Set<String> _declaredStateKeys(Object? state) {
+  if (state is! Map) return const <String>{};
+  final out = <String>{for (final k in state.keys) k.toString()};
+  final initial = state['initial'];
+  if (initial is Map) {
+    out.addAll(<String>[for (final k in initial.keys) k.toString()]);
+  }
+  return out;
+}
+
+/// Tool names the bundle itself declares. Tolerates both the nested
+/// (`tools: {tools: [...]}`, current) and flat (`tools: [...]`, older
+/// drafts) shapes the editor already reads.
+Set<String> _declaredBundleToolNames(Map<String, dynamic> root) {
+  final t = root['tools'];
+  final list = (t is Map) ? t['tools'] : t;
+  if (list is! List) return const <String>{};
+  return <String>{
+    for (final e in list)
+      if (e is Map && e['name'] is String) e['name'] as String,
+  };
+}
+
 /// Build-time tools the LLM may call during a chat turn — packing
 /// bundles, running shell commands inside the project, and fetching
 /// the canonical Dart MCP server pattern guide. Source-level edits go
@@ -93,6 +240,7 @@ class BuildToolsDispatcher {
     this.onRunBuild,
     this.onCapturePreview,
     this.onLayoutSnapshot,
+    this.onHostToolNames,
   });
 
   /// The active project. The dispatcher resolves channel paths and
@@ -134,6 +282,11 @@ class BuildToolsDispatcher {
   /// vision (no image bytes) and gives the LLM precise numbers to
   /// reason about (button sizes, computed colors, padding).
   final LayoutSnapshotCallback? onLayoutSnapshot;
+
+  /// Supplies the host's live tool names to `check_wiring` so it can flag an
+  /// action naming a tool nobody serves. Null = the check reports that it
+  /// could not run, instead of reporting nothing.
+  final HostToolNamesCallback? onHostToolNames;
 
   String get _projectRoot => project.projectPath;
 
@@ -896,6 +1049,8 @@ class BuildToolsDispatcher {
     final routes = ui['routes'];
     final initialRoute = ui['initialRoute'];
     final templates = ui['templates'];
+    final appState = ui['state'];
+    final appStateKeys = _declaredStateKeys(appState);
 
     final pageIds =
         pages is Map ? pages.keys.map((e) => e.toString()).toSet() : <String>{};
@@ -1004,13 +1159,7 @@ class BuildToolsDispatcher {
         final pageId = entry.key.toString();
         final page = entry.value;
         if (page is! Map) continue;
-        final state = page['state'];
-        final declared = <String>{};
-        if (state is Map) {
-          for (final k in state.keys) {
-            declared.add(k.toString());
-          }
-        }
+        final declared = _declaredStateKeys(page['state']);
         final referenced = <String>{};
         void scanString(String s) {
           final at = RegExp(r'@\{\s*state\.([\w.]+)\s*\}');
@@ -1044,6 +1193,135 @@ class BuildToolsDispatcher {
                   'declared in /ui/pages/$pageId/state',
             });
           }
+        }
+
+        // Bindings written WITHOUT the `state.` prefix — `{{ foo.bar }}` —
+        // are the common form in shipped bundles and were not scanned at
+        // all above, so a typo'd root reached the runtime, resolved to
+        // nothing, and rendered as an empty string with no error anywhere.
+        //
+        // A bare root is legitimate when it is page state, app state, a
+        // scope the runtime injects (list item / event / tool response) or
+        // a client binding the runtime answers itself. Anything else is a
+        // dangling reference.
+        // The available set is carried DOWN the tree: a widget's scopes
+        // exist only inside its own subtree, and an action's only inside
+        // that action. Checking against one flat union let `{{latitude}}`
+        // pass anywhere just because some map widget exists somewhere.
+        final seen = <String, String>{}; // root -> the scope it was seen in
+        void scan(Object? node, Set<String> inScope, String where) {
+          if (node is String) {
+            for (final m in _bareBindingRe.allMatches(node)) {
+              final r = m.group(1)!.split('.').first;
+              if (r.isEmpty || r == 'state') continue;
+              if (inScope.contains(r)) continue;
+              seen.putIfAbsent(r, () => where);
+            }
+            return;
+          }
+          if (node is List) {
+            for (final e in node) {
+              scan(e, inScope, where);
+            }
+            return;
+          }
+          if (node is! Map) return;
+
+          var scope = inScope;
+          var here = where;
+          final type = node['type'];
+          if (type is String) {
+            final widgetScopes = kWidgetScopedBindingRoots[type];
+            if (widgetScopes != null) {
+              scope = <String>{...scope, ...widgetScopes};
+              here = type;
+            } else if (kActionTypes.contains(type)) {
+              scope = <String>{...scope, ...kActionBindingRoots};
+              here = 'action:$type';
+            }
+          }
+          for (final e in node.entries) {
+            // A handler prop is an action slot regardless of how its body is
+            // tagged — `{"action":"state", …}` with no `type` still runs
+            // there, and its bindings still see the event.
+            if (kActionCarryingProps.contains(e.key)) {
+              scan(
+                e.value,
+                <String>{...scope, ...kActionBindingRoots},
+                'action prop ${e.key}',
+              );
+            } else {
+              scan(e.value, scope, here);
+            }
+          }
+        }
+
+        scan(
+          page,
+          <String>{...declared, ...appStateKeys, ...kGlobalBindingRoots},
+          'the page',
+        );
+        for (final e in seen.entries) {
+          issues.add(<String, dynamic>{
+            'kind': 'undefined_binding_root',
+            'page': pageId,
+            'key': e.key,
+            'scope': e.value,
+            'message':
+                'page "$pageId" binds {{${e.key}…}} inside ${e.value}, '
+                'where "${e.key}" is not in the page state, the app state, '
+                'or the scopes available there — it resolves to nothing at '
+                'render time',
+          });
+        }
+      }
+    }
+
+    // Actions naming a tool nobody serves. The runtime resolves a `tool`
+    // action through the host registry and reports a miss to a log the
+    // author never sees, so the control renders, reports success and does
+    // nothing — the most expensive failure this format has.
+    final toolRefs = <String, String>{}; // tool name -> first page seen on
+    if (pages is Map) {
+      for (final entry in pages.entries) {
+        final pageId = entry.key.toString();
+        final page = entry.value;
+        if (page is! Map) continue;
+        _walkAll(page, '/ui/pages/$pageId', (n, _) {
+          if (n is Map && n['type'] == 'tool') {
+            final t = n['tool'];
+            if (t is String && t.isNotEmpty) toolRefs.putIfAbsent(t, () => pageId);
+          }
+        });
+      }
+    }
+    if (toolRefs.isNotEmpty) {
+      final hostNames = await onHostToolNames?.call();
+      if (hostNames == null) {
+        // Say so rather than passing quietly: a checker that cannot see the
+        // host registry reports nothing, which is indistinguishable from a
+        // bundle whose every tool reference resolves.
+        issues.add(<String, dynamic>{
+          'kind': 'tool_refs_unverified',
+          'count': toolRefs.length,
+          'message':
+              '${toolRefs.length} tool reference(s) were not checked — the '
+              'host tool list is not wired into this checker, so a call to '
+              'a tool nobody serves would not be reported here',
+        });
+      } else {
+        final own = _declaredBundleToolNames(root);
+        for (final e in toolRefs.entries) {
+          if (own.contains(e.key) || hostNames.contains(e.key)) continue;
+          issues.add(<String, dynamic>{
+            'kind': 'undefined_tool_ref',
+            'page': e.value,
+            'tool': e.key,
+            'message':
+                'page "${e.value}" calls tool "${e.key}", which is neither '
+                'declared by this bundle nor served by the host — the '
+                'control renders and does nothing',
+          });
         }
       }
     }

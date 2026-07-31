@@ -21,10 +21,18 @@ packages:
     dependency: "direct main"
     description:
       name: appplayer_secure
-      sha256: d41d0bf25333aa8108e518eae6d167ec4199935f97c033a99ca98b9d70a63a47
+      sha256: "652b91621d768b7d814590c9154aefe719f23986a68cafdab72bfab83049d9d1"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.1"
+    version: "0.1.2"
+  appplayer_secure_core:
+    dependency: transitive
+    description:
+      name: appplayer_secure_core
+      sha256: ddb3ec9aa892be15027e89a64693cb62b6111743987af868f7206f1a47370134
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   appplayer_ui_view:
     dependency: "direct main"
     description:

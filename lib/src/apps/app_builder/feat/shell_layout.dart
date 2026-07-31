@@ -415,6 +415,24 @@ class VibeShellState extends State<VibeShell> {
     _wireStudioChromeBridge();
   }
 
+  /// Host tool names for `check_wiring`, resolved through the duck-typed
+  /// studio chrome bridge. Null means "cannot tell" — the checker reports
+  /// that instead of passing an unchecked bundle as clean.
+  Future<Set<String>?> _hostToolNames() async {
+    final bridge = widget.studioChromeBridge;
+    if (bridge == null) return null;
+    try {
+      final supplier = bridge.hostToolNames;
+      if (supplier == null) return null;
+      final v = supplier();
+      if (v is Set<String>) return v;
+      if (v is Iterable) return <String>{for (final e in v) e.toString()};
+    } catch (_) {
+      // Bridge without the slot — same as unwired, and reported as such.
+    }
+    return null;
+  }
+
   void _wireStudioChromeBridge() {
     final bridge = widget.studioChromeBridge;
     if (bridge == null) return;
@@ -648,6 +666,7 @@ class VibeShellState extends State<VibeShell> {
           onRunBuild: _runBuildFromPreset,
           onCapturePreview: _capturePreviewBytes,
           onLayoutSnapshot: _captureLayoutSnapshotNodes,
+          onHostToolNames: _hostToolNames,
         ),
       );
     }
@@ -756,6 +775,7 @@ class VibeShellState extends State<VibeShell> {
         onRunBuild: _runBuildFromPreset,
         onCapturePreview: _capturePreviewBytes,
         onLayoutSnapshot: _captureLayoutSnapshotNodes,
+        onHostToolNames: _hostToolNames,
       );
     };
     bridge.getSettings = () => _settings;
@@ -1694,6 +1714,7 @@ class VibeShellState extends State<VibeShell> {
         onRunBuild: _runBuildFromPreset,
         onCapturePreview: _capturePreviewBytes,
         onLayoutSnapshot: _captureLayoutSnapshotNodes,
+        onHostToolNames: _hostToolNames,
       ),
     );
     final priorTurns = await proj.chatLog.readAll();
@@ -4761,6 +4782,7 @@ class VibeShellState extends State<VibeShell> {
       validator: _validator,
       onCapturePreview: _capturePreviewBytes,
       onLayoutSnapshot: _captureLayoutSnapshotNodes,
+      onHostToolNames: _hostToolNames,
     );
     String toolName;
     Map<String, dynamic> args = const <String, dynamic>{};

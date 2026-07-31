@@ -3,7 +3,7 @@ description: >
   AppPlayer Studio — universal desktop host that loads any installed domain
   bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
   DSL UI; the host is a universal launcher.
-version: 0.1.7
+version: 0.1.8
 homepage: https://appplayer.app
 repository: https://github.com/app-appplayer/appplayer_studio
 publish_to: none
@@ -82,7 +82,7 @@ dependencies:
   appplayer_form_view: ^0.1.0
   appplayer_ui_view: ^0.1.0
   appplayer_claude_code_provider: ^0.1.1
-  appplayer_secure: ^0.1.1
+  appplayer_secure: ^0.1.2
   brain_kernel: ^0.2.0
   # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
   # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the
@@ -120,6 +120,12 @@ flutter:
     # Board-discovery trust anchors (spec 17 §6) — dev partner / marketplace
     # root CAs the signature evaluator validates against.
     - assets/root_cas/
+    # Vbu atom self-descriptions — one yaml beside each atom's dart body.
+    # `VbuAtomSpecLoader` reads these so the builder catalogue (and the LLM
+    # authoring surface behind it) can see the studio's own widgets. They
+    # were previously read off a source path that no longer exists, which
+    # made every `Vbu*` type unknown to `studio.builder.ui.*`.
+    - lib/src/ui/atoms/
     # App Builder seed templates. Flutter does not recurse into asset
     # directories, so each one is declared explicitly.
     - lib/src/apps/app_builder/seed/app_player_app/

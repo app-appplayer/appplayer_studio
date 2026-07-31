@@ -1,3 +1,69 @@
+## [0.1.8] - 2026-08-01
+
+The failure this format is worst at is a reference whose *shape* is valid and
+whose *target* does not exist: the widget renders, reports success, and does
+nothing. Everything below is about catching that at authoring time instead of
+on a device.
+
+### Fixed
+
+- **The authoring surface refused the studio's own widgets.** The vbu atom
+  specs were read off a source path that stopped existing when that package
+  was folded into the studio, so the custom catalogue was empty and
+  `studio.builder.ui.addNode` rejected every `Vbu*` type as unknown — the
+  editor would not author with the widgets this studio is built out of. They
+  now load from the asset bundle, which also settles what the old code called
+  out as a follow-up: a filesystem path cannot work in a packaged build. The
+  directory is matched as a suffix so one path serves both tiers, and the Pro
+  tier has its own regression test because the key shape differs there
+  (`packages/appplayer_studio/…`) and the standard tree's tests would never
+  show a break.
+- `content` / `child` / `children` were exempt from the schema check, which
+  had come to mean they were not checked at all: `children: "not-a-list"` and
+  `content: 42` both passed and rendered nothing. Their shape is now
+  validated, ahead of the required/type checks — telling an author a property
+  is missing is noise when the slot holding it is malformed.
+- Bindings written without the `state.` prefix — the form shipped bundles
+  actually use — were not scanned at all, so a typo'd root reached the runtime
+  and rendered as an empty string. `state: {initial: {…}}`, which is what every
+  bundle on disk writes, was also read as declaring a single key named
+  `initial`, so a checker built on it would have called every real binding
+  undefined.
+
+### Added
+
+- `check_wiring` reports an action naming a tool nobody serves
+  (`undefined_tool_ref`), comparing against the bundle's own declarations and
+  the host's live registry. Where the host list is unavailable it says so
+  (`tool_refs_unverified`) rather than passing quietly — a checker that cannot
+  see the registry reports nothing, which is indistinguishable from a bundle
+  whose every reference resolves.
+- `check_wiring` reports a binding root that exists nowhere in scope
+  (`undefined_binding_root`). Scope is tracked down the tree rather than
+  flattened: a list's `item` exists inside that list, a map's `latitude` under
+  that map, an action's `event` inside that action. The three scope sets are
+  derived from the runtime — every key a factory puts into a child context,
+  plus the client binding paths — not hand-listed. An action is recognised by
+  the property holding it as well as by its tag, since documents carry
+  handlers that omit `type`. Measured at zero false positives across the
+  bundles on hand.
+- Values that the spec spells out in a property's description instead of a
+  schema `enum` are now enforced. Sixteen string properties document their
+  allowed set in prose — `button.variant` among them — so an invented value
+  used to pass and be ignored at render time. The derivation is deliberately
+  narrow (the text must be nothing but a list of back-ticked identifiers) and
+  a real schema `enum` always wins, so it retires itself if the spec ever
+  declares one.
+
+### Changed
+
+- `appplayer_secure` 0.1.2. Two discovery-trust tests imported
+  `DefaultCryptoProvider` through the package's `src/`, which stopped existing
+  when that package's pure half moved into `appplayer_secure_core`; the barrel
+  now exports the symbol, so the reach-in is gone rather than repointed. The
+  studio uses none of the mutual-auth surface that moved out, so nothing in
+  `lib` changes.
+
 ## [0.1.7] - 2026-07-30
 
 ### Fixed

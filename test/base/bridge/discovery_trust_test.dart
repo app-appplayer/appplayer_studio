@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:appplayer_secure/appplayer_secure.dart';
-import 'package:appplayer_secure/src/cryptography/default_crypto_provider.dart';
 import 'package:appplayer_studio/src/base/bridge/device_discovery/device_discovery.dart'
     show BoardIdentity;
 import 'package:appplayer_studio/src/base/bridge/discovery_trust.dart';

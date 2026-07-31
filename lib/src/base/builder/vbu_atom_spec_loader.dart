@@ -1,67 +1,73 @@
-/// Reads `tools/builder/vibe_studio_ui/dart/lib/src/atoms/<name>.yaml`
-/// (the vbu atom self-descriptions that sit next to each atom's dart
-/// body) and turns each into a [WidgetSpec] with `source = custom`.
+/// Reads the vbu atom self-descriptions — one `<name>.yaml` beside each
+/// atom's dart body — and turns each into a [WidgetSpec] with
+/// `source = custom`, so the builder catalogue (and the LLM authoring
+/// surface behind it) can see the studio's own widgets.
 ///
-/// The yaml sits in `vibe_studio_ui` so an atom ships its widget
-/// shape, props and examples right next to its inert body — every
-/// downstream catalogue (here) reads the same source of truth.
+/// Loaded from the ASSET bundle. The previous filesystem walk looked for
+/// `tools/builder/vibe_studio_ui/dart/lib/src/atoms`, a path that stopped
+/// existing when that package was collapsed into the studio — so the loader
+/// returned an empty list, `catalog.list(source: "custom")` showed nothing,
+/// and `studio.builder.ui.addNode` rejected every `Vbu*` type as unknown.
+/// Assets also close what the old header called out as a follow-up: a
+/// filesystem path cannot work in a packaged build at all.
 ///
-/// Path discovery walks up from `Directory.current` (and the resolved
-/// executable) looking for the workspace marker, then joins
-/// `tools/builder/vibe_studio_ui/dart/lib/src/atoms`. Dev mode is
-/// covered; release-mode packaging will need an assets-bundle path
-/// (tracked as a follow-up to P1).
+/// The asset key is `lib/src/ui/atoms/<name>.yaml` when this package IS the
+/// app and `packages/appplayer_studio/lib/src/ui/atoms/<name>.yaml` when it
+/// is a dependency (the Pro tier), so the directory is matched as a suffix.
 library;
 
-import 'dart:io';
-
-import 'package:path/path.dart' as p;
+import 'package:flutter/services.dart' show AssetManifest, rootBundle;
 import 'package:yaml/yaml.dart';
 
 import 'widget_spec.dart';
 
 class VbuAtomSpecLoader {
-  VbuAtomSpecLoader({String? workspaceRoot}) : _workspaceRoot = workspaceRoot;
+  VbuAtomSpecLoader({AssetBundleReader? reader})
+    : _read = reader ?? const _RootBundleReader();
 
-  static const _atomsRelPath =
-      'tools/builder/vibe_studio_ui/dart/lib/src/atoms';
+  /// Asset directory the specs live under, matched as a suffix so one code
+  /// path serves both "this package is the app" and "this package is a
+  /// dependency".
+  static const _atomsDirSuffix = 'lib/src/ui/atoms/';
 
-  String? _workspaceRoot;
+  final AssetBundleReader _read;
   List<WidgetSpec>? _cache;
 
-  /// Returns every custom (vbu atom) widget spec. Empty when the
-  /// workspace root or the atoms directory cannot be located —
-  /// caller treats that as "no custom widgets".
+  /// Every custom (vbu atom) widget spec. Empty only when the assets are
+  /// genuinely absent, which is a packaging fault rather than a normal state.
   Future<List<WidgetSpec>> load() async {
     if (_cache != null) return _cache!;
-    final root = _workspaceRoot ?? _findWorkspaceRoot();
-    if (root == null) {
-      _workspaceRoot = null;
-      _cache = const <WidgetSpec>[];
-      return _cache!;
-    }
-    _workspaceRoot = root;
-    final atomsDir = Directory(p.join(root, _atomsRelPath));
-    if (!atomsDir.existsSync()) {
-      _cache = const <WidgetSpec>[];
-      return _cache!;
-    }
     final out = <WidgetSpec>[];
-    await for (final entity in atomsDir.list(recursive: false)) {
-      if (entity is! File) continue;
-      if (!entity.path.endsWith('.yaml')) continue;
+    for (final key in await _atomKeys()) {
       try {
-        final raw = await entity.readAsString();
-        final parsed = loadYaml(raw);
-        final spec = _parseCustomYaml(parsed);
+        final spec = _parseCustomYaml(loadYaml(await _read.loadString(key)));
         if (spec != null) out.add(spec);
       } catch (_) {
-        // Skip malformed entries silently.
+        // One malformed yaml must not empty the whole catalogue.
       }
     }
     _cache = List<WidgetSpec>.unmodifiable(out);
     return _cache!;
   }
+
+  Future<List<String>> _atomKeys() async {
+    try {
+      // `AssetManifest.json` was removed from the engine bundle; the typed
+      // manifest is the supported way to enumerate assets, and reading the
+      // old path is what made this return nothing.
+      final keys = await _read.listKeys();
+      return <String>[
+        for (final k in keys)
+          if (k.contains(_atomsDirSuffix) && k.endsWith('.yaml')) k,
+      ]..sort();
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  /// Asset keys the loader resolved. Empty means the specs were not
+  /// packaged — the failure mode that made every `Vbu*` type unknown.
+  Future<List<String>> resolvedAssetKeys() => _atomKeys();
 
   Future<WidgetSpec?> get(String type) async {
     final all = await load();
@@ -70,34 +76,6 @@ class VbuAtomSpecLoader {
     }
     return null;
   }
-
-  String? get workspaceRoot => _workspaceRoot;
-
-  // ── path discovery ─────────────────────────────────────────────
-
-  static String? _findWorkspaceRoot() {
-    final candidates = <String>[
-      Directory.current.path,
-      ..._walkUp(Directory.current.path),
-      ..._walkUp(p.dirname(Platform.resolvedExecutable)),
-    ];
-    for (final c in candidates) {
-      if (Directory(p.join(c, _atomsRelPath)).existsSync()) return c;
-    }
-    return null;
-  }
-
-  static Iterable<String> _walkUp(String start) sync* {
-    var dir = start;
-    for (var i = 0; i < 12; i++) {
-      final parent = p.dirname(dir);
-      if (parent == dir) break;
-      yield parent;
-      dir = parent;
-    }
-  }
-
-  // ── yaml → WidgetSpec ──────────────────────────────────────────
 
   static WidgetSpec? _parseCustomYaml(dynamic yaml) {
     if (yaml is! Map) return null;
@@ -174,4 +152,23 @@ class VbuAtomSpecLoader {
     }
     return 'unknown';
   }
+}
+
+/// Seam over the asset bundle: lets a test supply specs without a Flutter
+/// binding, and makes a broken asset path observable instead of silent.
+abstract interface class AssetBundleReader {
+  /// Every asset key the bundle exposes.
+  Future<List<String>> listKeys();
+  Future<String> loadString(String key);
+}
+
+class _RootBundleReader implements AssetBundleReader {
+  const _RootBundleReader();
+
+  @override
+  Future<List<String>> listKeys() async =>
+      (await AssetManifest.loadFromAssetBundle(rootBundle)).listAssets();
+
+  @override
+  Future<String> loadString(String key) => rootBundle.loadString(key);
 }

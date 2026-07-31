@@ -79,6 +79,50 @@ class SchemaValidator {
             'types.',
       });
     }
+    // Tree-shape keys are exempt from the per-prop schema check, which used
+    // to mean they were not checked AT ALL — `children: "not-a-list"` and
+    // `content: 42` both passed, and the runtime then rendered nothing with
+    // no error. Exempt from the SCHEMA, not from being the right shape.
+    for (final k in const <String>['content', 'child']) {
+      final v = node[k];
+      if (v != null && v is! Map) {
+        return ValidationResult.reject(<String, dynamic>{
+          'code': 'badTreeShape',
+          'path': '/$k',
+          'expected': 'a single widget node (object)',
+          'actual': v.runtimeType.toString(),
+          'message': '`$k` holds one child widget, so it must be an object.',
+          'suggestion': 'Wrap it: {"$k": {"type": "...", ...}}.',
+        });
+      }
+    }
+    final kids = node['children'];
+    if (kids != null) {
+      if (kids is! List) {
+        return ValidationResult.reject(<String, dynamic>{
+          'code': 'badTreeShape',
+          'path': '/children',
+          'expected': 'a list of widget nodes',
+          'actual': kids.runtimeType.toString(),
+          'message': '`children` holds several child widgets, so it must be '
+              'a list.',
+          'suggestion': 'Wrap it: {"children": [{"type": "...", ...}]}.',
+        });
+      }
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i] is! Map) {
+          return ValidationResult.reject(<String, dynamic>{
+            'code': 'badTreeShape',
+            'path': '/children/$i',
+            'expected': 'a widget node (object)',
+            'actual': kids[i].runtimeType.toString(),
+            'message': 'Every entry in `children` must be a widget node.',
+            'suggestion': 'Replace entry $i with {"type": "...", ...}.',
+          });
+        }
+      }
+    }
+
     // 2 + 4: required + per-prop type check on what was provided.
     final providedKeys = <String>{
       ...node.keys.cast<String>().where((k) => k != 'type'),

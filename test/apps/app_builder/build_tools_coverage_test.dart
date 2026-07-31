@@ -398,10 +398,20 @@ BuildToolsDispatcher _makeDispatcher({
   Map<String, dynamic>? json,
   _FakePipeline? pipeline,
   String? projectPath,
+  Set<String>? hostTools,
+  bool wireHostTools = false,
 }) {
   final c = _FakeCanonical(json ?? const <String, dynamic>{});
   final p = _makeProject(projectPath ?? Directory.systemTemp.path, c);
-  return BuildToolsDispatcher(project: p, canonical: c, pipeline: pipeline);
+  return BuildToolsDispatcher(
+    project: p,
+    canonical: c,
+    pipeline: pipeline,
+    // Unwired by default so the existing cases keep exercising the
+    // "cannot check" path; pass wireHostTools to supply a list.
+    onHostToolNames:
+        wireHostTools ? () async => hostTools ?? const <String>{} : null,
+  );
 }
 
 BuildToolsDispatcher _makeNoCanonical() {
@@ -2523,5 +2533,258 @@ void main() {
     final r = await d.navigationStyleSet(slot: '', value: '#FF0000');
     expect(r.success, isFalse);
     expect(r.message, contains('slot'));
+  });
+
+  // ── dangling references (shape valid, target missing) ──────────────────
+  //
+  // The failure this format is worst at: the widget renders, reports success
+  // and does nothing. Same silence that made a spec-compliant `onTap`
+  // produce a dead control on real hardware.
+
+  Map<String, dynamic> _uiCalling(String tool) => <String, dynamic>{
+    'initialRoute': '/',
+    'routes': <String, dynamic>{'/': 'home'},
+    'pages': <String, dynamic>{
+      'home': <String, dynamic>{
+        'type': 'page',
+        'content': <String, dynamic>{
+          'type': 'button',
+          'label': 'Go',
+          'onTap': <String, dynamic>{'type': 'tool', 'tool': tool},
+        },
+      },
+    },
+  };
+
+  Future<List<Map<String, dynamic>>> _issues(BuildToolsDispatcher d) async {
+    final r = await d.checkWiring();
+    expect(r.success, isTrue);
+    final decoded = jsonDecode(r.payload!) as Map<String, dynamic>;
+    return (decoded['issues'] as List).cast<Map<String, dynamic>>();
+  }
+
+  test('w1: undefined_tool_ref — action names a tool nobody serves', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{'ui': _uiCalling('no_such_tool')},
+      wireHostTools: true,
+      hostTools: <String>{'studio.debug.tabs'},
+    );
+    final hit =
+        (await _issues(d)).where((i) => i['kind'] == 'undefined_tool_ref');
+    expect(hit, hasLength(1),
+        reason: 'a dangling tool reference renders a control that silently '
+            'does nothing — it must not pass');
+    expect(hit.first['tool'], 'no_such_tool');
+  });
+
+  test('w2: a tool the bundle declares is not reported', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{
+        'tools': <String, dynamic>{
+          'tools': <dynamic>[
+            <String, dynamic>{'name': 'mine', 'kind': 'host'},
+          ],
+        },
+        'ui': _uiCalling('mine'),
+      },
+      wireHostTools: true,
+      hostTools: <String>{},
+    );
+    expect((await _issues(d)).where((i) => i['kind'] == 'undefined_tool_ref'),
+        isEmpty);
+  });
+
+  test('w3: a tool the host serves is not reported', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{'ui': _uiCalling('studio.scenario.run')},
+      wireHostTools: true,
+      hostTools: <String>{'studio.scenario.run'},
+    );
+    expect((await _issues(d)).where((i) => i['kind'] == 'undefined_tool_ref'),
+        isEmpty);
+  });
+
+  test('w4: with no host list, the checker SAYS it could not check', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{'ui': _uiCalling('anything')},
+    );
+    final issues = await _issues(d);
+    expect(issues.where((i) => i['kind'] == 'tool_refs_unverified'),
+        hasLength(1),
+        reason: 'silence here reads as "no dangling references", which is '
+            'exactly the wrong signal');
+    expect(issues.where((i) => i['kind'] == 'undefined_tool_ref'), isEmpty,
+        reason: 'and it must not guess without the list either');
+  });
+
+  Map<String, dynamic> _uiBinding(
+    String expr, {
+    Map<String, dynamic>? pageState,
+    Map<String, dynamic>? appState,
+  }) => <String, dynamic>{
+    'initialRoute': '/',
+    'routes': <String, dynamic>{'/': 'home'},
+    if (appState != null) 'state': appState,
+    'pages': <String, dynamic>{
+      'home': <String, dynamic>{
+        'type': 'page',
+        if (pageState != null) 'state': pageState,
+        'content': <String, dynamic>{'type': 'text', 'text': expr},
+      },
+    },
+  };
+
+  test('w5: undefined_binding_root — bare {{root}} with no state', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{'ui': _uiBinding('{{nope.deep}}')},
+      wireHostTools: true,
+    );
+    final hit =
+        (await _issues(d)).where((i) => i['kind'] == 'undefined_binding_root');
+    expect(hit, hasLength(1));
+    expect(hit.first['key'], 'nope');
+  });
+
+  test('w6: a scope used WHERE IT APPLIES is not reported', () async {
+    // `item` inside the list rendering it, `event` inside an action body,
+    // `theme` anywhere — each is answered by the runtime at that point.
+    final d = _makeDispatcher(
+      json: <String, dynamic>{
+        'ui': <String, dynamic>{
+          'initialRoute': '/',
+          'routes': <String, dynamic>{'/': 'home'},
+          'state': <String, dynamic>{'fromApp': 2},
+          'pages': <String, dynamic>{
+            'home': <String, dynamic>{
+              'type': 'page',
+              'state': <String, dynamic>{'mine': 1},
+              'content': <String, dynamic>{
+                'type': 'list',
+                'itemTemplate': <String, dynamic>{
+                  'type': 'text',
+                  'text': '{{item.label}} {{mine}} {{fromApp}} '
+                      '{{theme.primary}}',
+                  'onTap': <String, dynamic>{
+                    'type': 'state',
+                    'binding': 'mine',
+                    'value': '{{event.value}}',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      wireHostTools: true,
+    );
+    expect(
+        (await _issues(d)).where((i) => i['kind'] == 'undefined_binding_root'),
+        isEmpty,
+        reason: 'flagging a scope that IS available here would bury the real '
+            'findings under noise');
+  });
+
+  test('w6c: a handler body with no `type` still counts as an action',
+      () async {
+    // Shipped documents carry handlers written as `{"action":"state", …}`
+    // with no `type`. Recognising an action only by its tag missed those, so
+    // `{{event.value}}` inside them was reported as a dangling root. The prop
+    // it sits under is the reliable signal.
+    final d = _makeDispatcher(
+      json: <String, dynamic>{
+        'ui': <String, dynamic>{
+          'initialRoute': '/',
+          'routes': <String, dynamic>{'/': 'home'},
+          'pages': <String, dynamic>{
+            'home': <String, dynamic>{
+              'type': 'page',
+              'state': <String, dynamic>{'input': ''},
+              // `button` opens no scope of its own, so only the handler
+              // PROP can make `event` available here — which is the whole
+              // point of the position rule.
+              'content': <String, dynamic>{
+                'type': 'button',
+                'label': 'Go',
+                'onTap': <String, dynamic>{
+                  'action': 'state',
+                  'binding': 'input',
+                  'value': '{{event.value}}',
+                },
+              },
+            },
+          },
+        },
+      },
+      wireHostTools: true,
+    );
+    expect(
+        (await _issues(d)).where((i) => i['kind'] == 'undefined_binding_root'),
+        isEmpty,
+        reason: 'the handler prop makes this an action slot whatever the body '
+            'is tagged with');
+  });
+
+  test('w6b: the same scope OUTSIDE its widget IS reported', () async {
+    // `item` only exists inside the list that renders it; `dragData` only
+    // under a drag target. A flat allowlist passed both anywhere, which is
+    // what this check was sharpened to stop.
+    final d = _makeDispatcher(
+      json: <String, dynamic>{
+        'ui': <String, dynamic>{
+          'initialRoute': '/',
+          'routes': <String, dynamic>{'/': 'home'},
+          'pages': <String, dynamic>{
+            'home': <String, dynamic>{
+              'type': 'page',
+              'content': <String, dynamic>{
+                'type': 'text',
+                'text': '{{item.label}} {{dragData.x}}',
+              },
+            },
+          },
+        },
+      },
+      wireHostTools: true,
+    );
+    final hits = (await _issues(d))
+        .where((i) => i['kind'] == 'undefined_binding_root')
+        .toList();
+    expect(hits.map((i) => i['key']).toSet(), <String>{'item', 'dragData'});
+    expect(hits.first['scope'], 'the page',
+        reason: 'the report should name WHERE the binding sat, so the fix is '
+            'obvious: move it, or bind something that exists there');
+  });
+
+  test('w7: state {initial: {...}} counts as declared', () async {
+    final d = _makeDispatcher(
+      json: <String, dynamic>{
+        'ui': _uiBinding(
+          '{{fromPage}} {{fromApp}} {{state.fromPage}}',
+          pageState: <String, dynamic>{
+            'initial': <String, dynamic>{'fromPage': 1},
+          },
+          appState: <String, dynamic>{
+            'initial': <String, dynamic>{'fromApp': 2},
+          },
+        ),
+      },
+      wireHostTools: true,
+    );
+    final issues = await _issues(d);
+    expect(issues.where((i) => i['kind'] == 'undefined_binding_root'), isEmpty,
+        reason: 'reading only the outer keys sees `initial` and nothing '
+            'else, so every real binding would be called undefined — and '
+            'that is the shape every bundle on disk writes');
+    expect(issues.where((i) => i['kind'] == 'undefined_state'), isEmpty);
+  });
+
+  test('w8: the runtime scope list is derived, not a stub', () {
+    expect(kRuntimeBindingRoots.length, greaterThan(50),
+        reason: 'this set mirrors every scope the runtime injects plus the '
+            'client binding paths; a short list means it was replaced by a '
+            'guess, and the check would start reporting valid bindings');
+    for (final r in <String>['item', 'event', 'dragData', 'theme']) {
+      expect(kRuntimeBindingRoots, contains(r));
+    }
   });
 }

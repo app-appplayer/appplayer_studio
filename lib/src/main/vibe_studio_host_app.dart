@@ -1884,6 +1884,9 @@ class VibeStudioHostApp extends StudioApp {
       }
     };
 
+    _chromeBridge.hostToolNames =
+        () => <String>{for (final t in boot.toolDefinitions) t.name};
+
     _chromeBridge.dispatchLifecycleSlot = (
       String slot, [
       Map<String, dynamic>? args,

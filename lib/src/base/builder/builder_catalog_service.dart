@@ -52,7 +52,7 @@ class BuilderCatalogService {
     await _vbu.load();
     return <String, dynamic>{
       'specsRoot': _dsl.specsRoot,
-      'workspaceRoot': _vbu.workspaceRoot,
+      'customAssetKeys': await _vbu.resolvedAssetKeys(),
       'standardSkipped': _dsl.skipped,
     };
   }

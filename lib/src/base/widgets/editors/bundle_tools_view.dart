@@ -397,8 +397,20 @@ class _BundleToolsViewState extends State<BundleToolsView> {
     return list;
   }
 
-  // ---- Surface mutators (tools) ----
+  // ---- Manual create path — DELIBERATELY NOT WIRED ----
+  //
+  // The four `_add*` methods below, and `_surfaceHeader`'s `onAdd`, exist but
+  // no call site uses them. That is the design, not an oversight: authoring in
+  // this editor is chat-driven (`studio.builder.addTool` and its siblings), so
+  // the `+` buttons were dropped for vibe mode — see the note in `build`.
+  // They are kept because they are the UI-driven half of the same
+  // `_mutateManifest` contract and would be needed the day that decision is
+  // revisited; wiring one back is a product decision, not a cleanup.
+  //
+  // (`_addField` IS wired — adding a field inside an already-created section
+  // is editing that section, not authoring a new surface entry.)
 
+  // ignore: unused_element
   Future<void> _addTool() async {
     String name = 'new_tool';
     int i = 1;
@@ -525,6 +537,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
 
   // ---- Surface mutators (slash commands) ----
 
+  // ignore: unused_element
   Future<void> _addSlash() async {
     String cmd = '/new';
     int i = 1;
@@ -569,6 +582,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
 
   // ---- Surface mutators (settings sections + fields) ----
 
+  // ignore: unused_element
   Future<void> _addSection() async {
     String key = 'section';
     int i = 1;
@@ -835,18 +849,14 @@ class _BundleToolsViewState extends State<BundleToolsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  _surfaceHeader('TOOLS', _tools.length, onAdd: _addTool),
+                  _surfaceHeader('TOOLS', _tools.length),
                   if (_tools.isEmpty)
                     _emptyRowHint(
                       'No tools yet. Ask the chat to design + register one.',
                     )
                   else
                     _toolsListBody(),
-                  _surfaceHeader(
-                    'DOMAIN ICONS',
-                    _domain.length,
-                    onAdd: _pickToolAndAddDomain,
-                  ),
+                  _surfaceHeader('DOMAIN ICONS', _domain.length),
                   if (_domain.isEmpty)
                     _emptyRowHint(
                       'No domain icons wired. Ask the chat to wire a tool '
@@ -854,7 +864,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
                     )
                   else
                     _domainListBody(),
-                  _surfaceHeader('/ COMMANDS', _slash.length, onAdd: _addSlash),
+                  _surfaceHeader('/ COMMANDS', _slash.length),
                   if (_slash.isEmpty)
                     _emptyRowHint(
                       'No / commands yet. Ask the chat to add a slash chip '
@@ -862,7 +872,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
                     )
                   else
                     _slashListBody(),
-                  _surfaceHeader('SETTINGS', _sections.length, onAdd: _addSection),
+                  _surfaceHeader('SETTINGS', _sections.length),
                   if (_sections.isEmpty)
                     _emptyRowHint(
                       'No settings sections yet. Ask the chat to add a '
@@ -1577,6 +1587,7 @@ class _BundleToolsViewState extends State<BundleToolsView> {
     return m[name] ?? Icons.extension_outlined;
   }
 
+  // ignore: unused_element
   Future<void> _pickToolAndAddDomain() async {
     if (_tools.isEmpty) return;
     final c = VbuTokens.colorOf(context);

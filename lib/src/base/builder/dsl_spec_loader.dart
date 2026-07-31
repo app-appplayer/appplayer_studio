@@ -147,12 +147,18 @@ class DslSpecLoader {
             propDesc.startsWith('required|') ||
             v['required'] == true;
         final rawEnum = v['enum'];
+        // A schema `enum` is the contract. Where the spec instead spells the
+        // allowed values out in the description — 16 properties do,
+        // `button.variant` among them — derive them so the authoring surface
+        // can still reject a value the spec plainly does not allow. The
+        // schema always wins: the day one of these gains a real enum, this
+        // derivation stops being consulted for it and nothing unwinds.
         final enumValues =
             rawEnum is List
                 ? List<String>.unmodifiable(
                   rawEnum.whereType<String>().toList(),
                 )
-                : const <String>[];
+                : documentedEnumValues(propDesc);
         props.add(
           WidgetPropSpec(
             key: k,
@@ -203,4 +209,39 @@ class DslSpecLoader {
     }
     return 'unknown';
   }
+}
+
+/// Values a property's DESCRIPTION spells out when the schema declares no
+/// `enum`. Returns empty unless the text is unambiguously a value list.
+///
+/// The spec writes these as an optional prefix and then nothing but
+/// back-ticked bare identifiers:
+///
+///   `elevated`, `filled`, `outlined`, `text`, `icon`.
+///   Cross-axis alignment: `start`, `center`, `end`, `stretch`.
+///
+/// The match is anchored over the WHOLE remainder, which is what keeps prose
+/// that merely mentions field names out — `fileExplorer.items` ("Hierarchical
+/// `{ name, path, type, children? }` tree…") describes a shape, not a set of
+/// values, and does not match.
+///
+/// Deliberately conservative: a missed list only means no extra checking,
+/// while a wrong list would reject valid authoring.
+List<String> documentedEnumValues(String description) {
+  var text = description.trim();
+  if (text.isEmpty) return const <String>[];
+  // Drop a single leading "Some prose:" label.
+  final colon = text.indexOf(':');
+  if (colon > 0 && !text.substring(0, colon).contains('`')) {
+    text = text.substring(colon + 1).trim();
+  }
+  if (text.endsWith('.')) text = text.substring(0, text.length - 1).trim();
+  if (!RegExp(r'^`[A-Za-z][A-Za-z0-9_]*`'
+          r'(\s*,\s*`[A-Za-z][A-Za-z0-9_]*`)+$')
+      .hasMatch(text)) {
+    return const <String>[];
+  }
+  return List<String>.unmodifiable(<String>[
+    for (final m in RegExp(r'`([^`]+)`').allMatches(text)) m.group(1)!,
+  ]);
 }

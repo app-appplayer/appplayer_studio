@@ -505,6 +505,13 @@ class ChromeBridge {
   )?
   callHostTool;
 
+  /// Every tool name the host currently serves. `check_wiring` compares a
+  /// page's `tool` actions against this plus the bundle's own declarations,
+  /// so an action naming a tool nobody serves is reported instead of
+  /// rendering a control that quietly does nothing. Null when the host has
+  /// not wired it — the checker says so rather than passing silently.
+  Set<String> Function()? hostToolNames;
+
   /// Register a tab's runtime hooks under [tabKey] so the workspace
   /// can route chrome-bridge calls (`runtimeNavigate`,
   /// `updateRuntimeState`) to the CURRENTLY ACTIVE tab — without this
