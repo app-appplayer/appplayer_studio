@@ -14,13 +14,12 @@ class DataTableWidgetFactory extends WidgetFactory {
     // Spec §10.4 canonical `onRowTap`; `rowClick` kept as legacy alias.
     final rowClickAction =
         (properties['onRowTap'] ?? properties['rowClick']) as Map<String, dynamic>?;
-    // Spec §10.4: sort state + callback. Read so the factory honors the
-    // documented API; applying sort to rendered rows is tracked separately.
-    // ignore: unused_local_variable
-    final sortColumn = properties['sortColumn'] as String?;
-    // ignore: unused_local_variable
-    final sortAscending = properties['sortAscending'] as bool? ?? true;
-    // ignore: unused_local_variable
+    // Spec §10.4: `sortColumn` and `sortAscending` are declared `binding`, so
+    // the documented form of both is a `{{...}}` string — reading them without
+    // resolving threw on every document that used them as written.
+    final sortColumn = context.resolve<String?>(properties['sortColumn']);
+    final sortAscending =
+        context.resolve<bool?>(properties['sortAscending']) ?? true;
     final onSort = properties['onSort'] as Map<String, dynamic>?;
 
     // Resolve rows from binding or direct data
@@ -34,16 +33,59 @@ class DataTableWidgetFactory extends WidgetFactory {
       rows = rowsBinding;
     }
 
-    // Build DataColumn list
+    // Build DataColumn list. A column marked `sortable` gets a header that
+    // dispatches `onSort` with `event.column` — the shape §10.4's example
+    // writes back into `sortColumn` / `sortAscending`.
     final dataColumns = columns.map<DataColumn>((col) {
       final colDef = col as Map<String, dynamic>;
+      final key = colDef['key']?.toString() ?? '';
+      final sortable = colDef['sortable'] == true;
       return DataColumn(
-        label: Text(colDef['label']?.toString() ?? colDef['key']?.toString() ?? ''),
+        label:
+            Text(colDef['label']?.toString() ?? colDef['key']?.toString() ?? ''),
+        onSort: sortable && onSort != null
+            ? (columnIndex, ascending) {
+                final eventContext = context.createChildContext(
+                  variables: {
+                    'event': {
+                      'column': key,
+                      'ascending': ascending,
+                      'index': columnIndex,
+                      'type': 'sort',
+                    },
+                  },
+                );
+                eventContext.handleAction(onSort);
+              }
+            : null,
       );
     }).toList();
 
     if (dataColumns.isEmpty) {
       return const SizedBox.shrink();
+    }
+
+    // Apply the declared sort. Without this the widget accepts `sortColumn`
+    // and draws the rows in source order, which is indistinguishable from a
+    // document whose sort state never took.
+    final sortIndex = sortColumn == null
+        ? null
+        : columns.indexWhere(
+            (col) => (col as Map<String, dynamic>)['key']?.toString() ==
+                sortColumn);
+    if (sortIndex != null && sortIndex >= 0) {
+      rows = List<dynamic>.from(rows)
+        ..sort((a, b) {
+          final av = (a as Map<String, dynamic>)[sortColumn];
+          final bv = (b as Map<String, dynamic>)[sortColumn];
+          if (av == null && bv == null) return 0;
+          if (av == null) return sortAscending ? -1 : 1;
+          if (bv == null) return sortAscending ? 1 : -1;
+          final cmp = (av is Comparable && bv is Comparable && av.runtimeType == bv.runtimeType)
+              ? av.compareTo(bv)
+              : av.toString().compareTo(bv.toString());
+          return sortAscending ? cmp : -cmp;
+        });
     }
 
     // Build DataRow list
@@ -80,6 +122,9 @@ class DataTableWidgetFactory extends WidgetFactory {
         columns: dataColumns,
         rows: dataRows,
         showCheckboxColumn: selectable,
+        sortColumnIndex:
+            (sortIndex != null && sortIndex >= 0) ? sortIndex : null,
+        sortAscending: sortAscending,
       ),
     );
   }

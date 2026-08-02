@@ -15,10 +15,10 @@ class BannerWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final message = properties['message'] != null
-        ? context.resolve<String>(properties['message'])
+        ? context.resolve<String?>(properties['message']) ?? ''
         : '';
     final severity = properties['severity'] != null
-        ? context.resolve<String>(properties['severity'])
+        ? context.resolve<String?>(properties['severity']) ?? 'info'
         : 'info';
 
     // actions: list of {label, click} objects

@@ -853,6 +853,84 @@ class NavigationActionExecutor extends ActionExecutor {
     _onOpenAppCallback = null;
   }
 
+  /// Host-provided handler for the `openUrl` navigation sub-action
+  /// (spec §4.3.3). Opening a URL leaves the runtime entirely — it is the
+  /// host's browser, mail client, or dialer that performs it — so the
+  /// runtime enforces the scheme policy of §7.3.4 and delegates the act.
+  ///
+  /// Returning `false` (or throwing) means the host could not open it; that
+  /// reaches the action's `onError`. A runtime with no callback registered
+  /// reports failure rather than succeeding silently: "pressed it and nothing
+  /// happened" is indistinguishable from a broken document.
+  static Future<bool> Function(String url, String target)? _onOpenUrlCallback;
+
+  static void setOnOpenUrlCallback(
+      Future<bool> Function(String url, String target)? callback) {
+    _onOpenUrlCallback = callback;
+  }
+
+  static void clearOnOpenUrlCallback() {
+    _onOpenUrlCallback = null;
+  }
+
+  /// Returns true if a host can open external URLs.
+  static bool get hasOnOpenUrl => _onOpenUrlCallback != null;
+
+  /// Performs `{"type":"navigation","action":"openUrl"}` (spec §4.3.3).
+  ///
+  /// The binding is resolved before the policy check (§7.3.4): a policy
+  /// applied to `"{{link}}"` checks a literal, not the value that will open.
+  Future<ActionResult> _openUrl(
+    Map<String, dynamic> action,
+    RenderContext context,
+  ) async {
+    final url = context.resolve<String?>(action['url']);
+    if (url == null || url.isEmpty) {
+      return ActionResult.error('openUrl requires a url');
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) {
+      // A relative value is an error, not a route — routes are `push`.
+      return ActionResult.error('openUrl requires an absolute URL: $url');
+    }
+    if (_blockedUrlSchemes.contains(uri.scheme.toLowerCase())) {
+      return ActionResult.error(
+          'openUrl refused scheme "${uri.scheme}" (spec §7.3.4)');
+    }
+
+    final target = context.resolve<String?>(action['target']) ?? 'new';
+
+    final opener = _onOpenUrlCallback;
+    if (opener == null) {
+      // Reported, never a silent no-op: the author cannot tell a host without
+      // the capability from a document that is wrong.
+      return ActionResult.error(
+          'No host handler for openUrl; cannot open $url');
+    }
+    try {
+      final opened = await opener(url, target);
+      return opened
+          ? ActionResult.success()
+          : ActionResult.error('Host could not open $url');
+    } catch (e) {
+      return ActionResult.error('Host could not open $url: $e');
+    }
+  }
+
+  /// Schemes a document may never open (spec §7.3.4).
+  ///
+  /// `javascript:` executes in whatever context opens it, and `data:` and
+  /// `file:` let a document hand the host content it authored as though the
+  /// host had fetched it. None of the three is a destination.
+  static const Set<String> _blockedUrlSchemes = {
+    'javascript',
+    'data',
+    'file',
+    'blob',
+    'vbscript',
+  };
+
   @override
   Future<ActionResult> execute(
     Map<String, dynamic> action,
@@ -892,6 +970,14 @@ class NavigationActionExecutor extends ActionExecutor {
     if (actionType == 'exitApp' && _onExitCallback != null) {
       _onExitCallback!.call();
       return ActionResult.success();
+    }
+
+    // §4.3.3 — openUrl leaves the application, so it is never a route change:
+    // no stack entry, no page lifecycle. Handled before the navigation
+    // handlers below so a host handler registered for push/replace cannot
+    // swallow it.
+    if (actionType == 'openUrl') {
+      return _openUrl(action, context);
     }
 
     // Then try custom navigation handlers

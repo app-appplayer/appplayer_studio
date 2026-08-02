@@ -362,67 +362,67 @@
           {
             "id": "dsl-page",
             "title": "page widget",
-            "source": "mcp_ui_dsl/1.3/widgets/page",
+            "source": "mcp_ui_dsl/1.4/widgets/page",
             "content": "page is the root widget of every ui/app.json. Required fields: type:'page', content:<Widget>. Optional: title:string (used by host chrome for tab labels), state.initial:object (initial state map for {{...}} bindings), lifecycle.onInit:Action (runs once after the runtime mounts), lifecycle.onDestroy:Action. Example: {\"type\":\"page\",\"title\":\"Counter\",\"state\":{\"initial\":{\"count\":0}},\"content\":{\"type\":\"text\",\"value\":\"{{count}}\"}}. The page widget has no visual chrome of its own — it just hosts the content tree."
           },
           {
             "id": "dsl-box",
             "title": "box widget",
-            "source": "mcp_ui_dsl/1.3/widgets/box",
+            "source": "mcp_ui_dsl/1.4/widgets/box",
             "content": "box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"value\":\"hello\"}}."
           },
           {
             "id": "dsl-linear",
             "title": "linear widget",
-            "source": "mcp_ui_dsl/1.3/widgets/linear",
+            "source": "mcp_ui_dsl/1.4/widgets/linear",
             "content": "linear is the row/column layout widget. Replaces Flutter's Row/Column. Required: type:'linear', children:[<Widget>...]. Properties: direction:'horizontal'|'vertical' (default horizontal), gap:number (spacing between children), mainAxisAlignment:'start'|'center'|'end'|'spaceBetween'|'spaceAround'|'spaceEvenly', crossAxisAlignment:'start'|'center'|'end'|'stretch', mainAxisSize:'min'|'max'. Example vertical: {\"type\":\"linear\",\"direction\":\"vertical\",\"gap\":8,\"children\":[{\"type\":\"text\",\"value\":\"a\"},{\"type\":\"text\",\"value\":\"b\"}]}."
           },
           {
             "id": "dsl-text",
             "title": "text widget",
-            "source": "mcp_ui_dsl/1.3/widgets/text",
+            "source": "mcp_ui_dsl/1.4/widgets/text",
             "content": "text renders a string. Required: type:'text', value:string. Properties: style:object (fontSize:number, fontWeight:'bold'|'normal'|'w100'..'w900', color:string, fontFamily:string), variant:string (Material 3 typography role — camelCase: displayLarge, displayMedium, displaySmall, headlineLarge..Small, titleLarge..Small, bodyLarge..Small, labelLarge..Small — 15 roles total), maxLines:number, overflow:'ellipsis'|'fade'|'clip'. variant is layered with style. Example: {\"type\":\"text\",\"value\":\"Hello {{name}}\",\"variant\":\"titleMedium\",\"style\":{\"color\":\"#7DD3FC\"}}."
           },
           {
             "id": "dsl-button",
             "title": "button widget",
-            "source": "mcp_ui_dsl/1.3/widgets/button",
-            "content": "button is a clickable action surface. Required: type:'button', label:string, click:Action. The click handler property is named `click` (or alias `onTap`); do NOT use a property named `action` — the runtime ignores it. Properties: variant:'filled'|'outlined'|'text'|'tonal' (Material 3 button kinds), icon:string (icon name), enabled:bool. click is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"click\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
+            "source": "mcp_ui_dsl/1.4/widgets/button",
+            "content": "button is a clickable action surface. Required: type:'button', label:string, onTap:Action. The tap handler property is named `onTap`; `click` and `onPressed` are accepted aliases (§17.3.2). Do NOT use a property named `action` — the runtime ignores it. Properties: variant:'elevated'|'filled'|'outlined'|'text'|'icon' (default 'elevated'; those five are the whole set — 'tonal' is not one of them and is rejected), icon:IconRef, enabled:bool. onTap is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
           },
           {
             "id": "dsl-list",
             "title": "list widget",
-            "source": "mcp_ui_dsl/1.3/widgets/list",
+            "source": "mcp_ui_dsl/1.4/widgets/list",
             "content": "list renders a collection. Required: type:'list', either children:[<Widget>...] OR items:array + itemTemplate:<Widget>. With itemTemplate, each row is rendered from the template with {{item}} and {{index}} bound to the current entry. Properties: orientation:'vertical'|'horizontal' (default vertical), spacing:number, emptyMessage:string, itemExtent:number, shrinkWrap:bool (set true when inside a scroll view so list doesn't take all remaining space), padding:number|EdgeInsets. Use itemTemplate over children for bound dynamic lists. Example: {\"type\":\"list\",\"items\":\"{{todos}}\",\"shrinkWrap\":true,\"itemTemplate\":{\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"{{item.title}}\"}]}}."
           },
           {
             "id": "dsl-sizedBox",
             "title": "sizedBox widget",
-            "source": "mcp_ui_dsl/1.3/widgets/sizedBox",
+            "source": "mcp_ui_dsl/1.4/widgets/sizedBox",
             "content": "sizedBox is a fixed-size empty box. Common as a spacer in linear children. Properties: width:number, height:number, child:<Widget> (optional). Example spacer: {\"type\":\"sizedBox\",\"height\":12}. Use linear.gap instead of sizedBox spacers when possible."
           },
           {
             "id": "dsl-card",
             "title": "card widget",
-            "source": "mcp_ui_dsl/1.3/widgets/card",
+            "source": "mcp_ui_dsl/1.4/widgets/card",
             "content": "card is an elevated container with rounded corners + shadow. Material 3 surface. Required: type:'card', child:<Widget>. Properties: padding:number|EdgeInsets, elevation:number, margin:number, color:string. Example: {\"type\":\"card\",\"padding\":16,\"child\":{\"type\":\"text\",\"value\":\"card body\"}}."
           },
           {
             "id": "dsl-conditional",
             "title": "conditional widget",
-            "source": "mcp_ui_dsl/1.3/widgets/conditional",
+            "source": "mcp_ui_dsl/1.4/widgets/conditional",
             "content": "conditional renders one of two branches based on a boolean binding. Required: type:'conditional', condition:bool|string, then:<Widget>. Optional: else:<Widget>. condition evaluates via _isTruthy: null/false/0/empty-string/empty-list/empty-map are falsy. Note: equality expressions like {{a == b}} are NOT supported — use plain bindings to a precomputed boolean OR rely on truthy/falsy of values. Example: {\"type\":\"conditional\",\"condition\":\"{{loaded}}\",\"then\":{\"type\":\"text\",\"value\":\"ready\"},\"else\":{\"type\":\"text\",\"value\":\"loading…\"}}."
           },
           {
             "id": "dsl-expanded",
             "title": "expanded widget",
-            "source": "mcp_ui_dsl/1.3/widgets/expanded",
+            "source": "mcp_ui_dsl/1.4/widgets/expanded",
             "content": "expanded is a flexible-fill child inside a linear. Replaces Flutter's Expanded. Required: type:'expanded', child:<Widget>. Properties: flex:number (default 1). Use inside linear when one child should absorb remaining space. Example: {\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"left\"},{\"type\":\"expanded\",\"child\":{\"type\":\"text\",\"value\":\"fills\"}}]}."
           },
           {
             "id": "dsl-icon",
             "title": "icon widget",
-            "source": "mcp_ui_dsl/1.3/widgets/icon",
+            "source": "mcp_ui_dsl/1.4/widgets/icon",
             "content": "icon renders a Material icon by name. Required: type:'icon', name:string (Material icon name like 'home', 'add', 'folder_open', 'settings'). Properties: size:number, color:string. Example: {\"type\":\"icon\",\"name\":\"home\",\"size\":20,\"color\":\"#7DD3FC\"}. Common names: home, add, close, edit, delete, folder, folder_open, settings, info, warning, error, search, refresh, play_arrow, stop, chevron_left, chevron_right, expand_more, expand_less, more_vert, extension, star, push_pin, history."
           }
         ]
@@ -433,37 +433,37 @@
           {
             "id": "state-initial",
             "title": "state.initial — page state",
-            "source": "mcp_ui_dsl/1.3/state",
+            "source": "mcp_ui_dsl/1.4/state",
             "content": "Every page can declare an initial state map under state.initial. NOT state directly — the wrap layer is state.initial:{}. The map's keys are addressable from any widget via {{key}} bindings. After initialize, the runtime owns the state tree; tool action results are auto-merged into top-level state (every key in the tool's outputSchema becomes a state key). Example: {\"type\":\"page\",\"state\":{\"initial\":{\"count\":0,\"text\":\"\"}},\"content\":...}. Anti-pattern: 'state':{...} directly (NOT supported)."
           },
           {
             "id": "state-bindings",
             "title": "template bindings — {{path}}",
-            "source": "mcp_ui_dsl/1.3/bindings",
+            "source": "mcp_ui_dsl/1.4/bindings",
             "content": "Any string value in a widget property can be a template binding using {{path}} syntax. The path is dot-separated for nested objects ({{user.name}}). For list items, the runtime injects {{item}} and {{index}} into the template scope. Bindings re-evaluate whenever the bound state changes — the widget rebuilds. Note: arithmetic and equality expressions ({{a + b}}, {{x == y}}) are NOT supported in this runtime version — pre-compute the value in tool handlers or use conditional with a precomputed boolean. Example simple value: 'value':'{{count}}'. Example list item: 'value':'{{item.title}}'."
           },
           {
             "id": "action-tool",
             "title": "tool action — invoke an MCP tool",
-            "source": "mcp_ui_dsl/1.3/actions",
-            "content": "Canonical action shape: {\"type\":\"tool\",\"tool\":\"<short.name>\",\"params\":{...}}. Anti-patterns: {action:'tool', args:{...}} (wrong field names — use type+params). Action params can include {{binding}} references — they're resolved at dispatch time. Tool responses are JSON-decoded and the top-level keys auto-merge into the page state (spec §3.10), so a tool returning {shouted:'HI'} sets state.shouted='HI' which downstream widgets like {\"value\":\"{{shouted}}\"} render automatically. Example button action: {\"type\":\"button\",\"label\":\"Run\",\"click\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}. The handler attaches under `click` (or its alias `onTap`) — NOT `action`; the runtime ignores `action`."
+            "source": "mcp_ui_dsl/1.4/actions",
+            "content": "Canonical action shape: {\"type\":\"tool\",\"tool\":\"<short.name>\",\"params\":{...}}. Anti-patterns: {action:'tool', args:{...}} (wrong field names — use type+params). Action params can include {{binding}} references — they're resolved at dispatch time. Tool responses are JSON-decoded and the top-level keys auto-merge into the page state (spec §3.10), so a tool returning {shouted:'HI'} sets state.shouted='HI' which downstream widgets like {\"value\":\"{{shouted}}\"} render automatically. Example button action: {\"type\":\"button\",\"label\":\"Run\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}. The handler attaches under `click` (or its alias `onTap`) — NOT `action`; the runtime ignores `action`."
           },
           {
             "id": "action-event-arg",
             "title": "callback event values — $event",
-            "source": "mcp_ui_dsl/1.3/actions/event",
+            "source": "mcp_ui_dsl/1.4/actions/event",
             "content": "Custom widgets that fire callbacks with a value (onSelect getting a tab index, onChanged getting a text value, onPick getting a selected item) inject the value into action.params under the key $event. Authors can wire this through params.$event or reference it from within params for forwarding. Example: a list pick handler that records the picked index — {\"onSelect\":{\"type\":\"tool\",\"tool\":\"recordTab\",\"params\":{\"index\":\"{{$event}}\"}}}. The runtime resolves $event before dispatching the tool."
           },
           {
             "id": "lifecycle-onInit",
             "title": "lifecycle.onInit — auto-load on mount",
-            "source": "mcp_ui_dsl/1.3/lifecycle",
+            "source": "mcp_ui_dsl/1.4/lifecycle",
             "content": "page.lifecycle.onInit fires ONCE after the runtime initializes the page tree. Common use: auto-call a refresh tool that populates initial state. Example: {\"type\":\"page\",\"lifecycle\":{\"onInit\":{\"type\":\"tool\",\"tool\":\"refresh\",\"params\":{}}},\"content\":...}. Caveat in this runtime version: onInit may fire during initialize() before tool executors are registered — hosts re-fire onInit manually after registerToolExecutor. Authors do not need to handle this; just declare onInit and the host re-fires."
           },
           {
             "id": "auto-merge",
             "title": "tool response auto-merge — spec §3.10",
-            "source": "mcp_ui_dsl/1.3/auto-merge",
+            "source": "mcp_ui_dsl/1.4/auto-merge",
             "content": "Every tool response (the JSON-decoded body) has its top-level keys auto-merged into the page state. Naming the output schema fields the same as the binding keys in widgets means zero glue code — tool returns {count:5} and widgets binding {{count}} update. Anti-pattern: declaring an explicit onSuccess on the action — that overrides the auto-merge and you must do the merge yourself. Just rely on auto-merge unless you need a custom side effect."
           }
         ]
@@ -776,7 +776,7 @@
             "id": "kd-chunk-schema",
             "title": "chunks schema (knowledge.sources[].documents[])",
             "source": "studio/knowledge_design/chunks",
-            "content": "knowledge.sources is an array. Each source: {id: <namespace-like string>, documents: [<Document>]}. Each Document: {id: <stable identifier>, title: <short label>, source: <provenance string, e.g. 'mcp_ui_dsl/1.3/widgets/text'>, content: <the actual searchable text>}. content is the BM25-indexed body. Keep each document ~100–800 tokens — too short = poor signal, too long = imprecise hits. Group documents into sources by topic so callers can scope queries with sourceId. Examples of source ids: 'mcp_ui_dsl_widgets', 'common_pitfalls', 'ux_patterns', 'finance_terms', 'kpi_definitions'."
+            "content": "knowledge.sources is an array. Each source: {id: <namespace-like string>, documents: [<Document>]}. Each Document: {id: <stable identifier>, title: <short label>, source: <provenance string, e.g. 'mcp_ui_dsl/1.4/widgets/text'>, content: <the actual searchable text>}. content is the BM25-indexed body. Keep each document ~100–800 tokens — too short = poor signal, too long = imprecise hits. Group documents into sources by topic so callers can scope queries with sourceId. Examples of source ids: 'mcp_ui_dsl_widgets', 'common_pitfalls', 'ux_patterns', 'finance_terms', 'kpi_definitions'."
           },
           {
             "id": "kd-fact-schema",
@@ -865,7 +865,7 @@
             "id": "pitfall-button-click-not-action",
             "title": "pitfall — button uses click property (not action)",
             "source": "studio/pitfalls/button_action",
-            "content": "button widget reads the action handler from a property named `click` (alias `onTap`) — NOT `action`. A button declaring {\"type\":\"button\",\"label\":\"...\",\"action\":{...}} renders but the click does nothing because the runtime never sees the action. Correct: {\"type\":\"button\",\"label\":\"...\",\"click\":{\"type\":\"tool\",\"tool\":\"...\",\"params\":{...}}}."
+            "content": "button widget reads the action handler from a property named `click` (alias `onTap`) — NOT `action`. A button declaring {\"type\":\"button\",\"label\":\"...\",\"action\":{...}} renders but the click does nothing because the runtime never sees the action. Correct: {\"type\":\"button\",\"label\":\"...\",\"onTap\":{\"type\":\"tool\",\"tool\":\"...\",\"params\":{...}}}."
           },
           {
             "id": "pitfall-list-takes-space",

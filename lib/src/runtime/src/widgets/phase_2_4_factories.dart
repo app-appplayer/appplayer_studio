@@ -351,8 +351,14 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final columns =
-        (context.resolve(properties['columns']) as num?)?.toInt() ?? 2;
+    // §: `columns` is `number | object`. The object form is the per-form-factor
+    // override map (`{ default: 2, md: 3, lg: 4 }`), which is the shape the
+    // spec's own example uses. Responsive resolution is opt-in per
+    // `RenderContext.pickResponsive`, so it has to be asked for here.
+    final rawColumns = context.resolve(properties['columns']);
+    final resolvedColumns =
+        rawColumns is Map ? context.pickResponsive(rawColumns) : rawColumns;
+    final columns = (resolvedColumns as num?)?.toInt() ?? 2;
     final mainAxisSpacing =
         (context.resolve(properties['mainAxisSpacing']) as num?)?.toDouble() ??
             0.0;
@@ -361,10 +367,12 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
             0.0;
     final padding =
         parseEdgeInsets(context.resolve(properties['padding']));
-    // Read for spec coverage. `scrollDirection` is advisory — the
-    // round-robin distribution currently always builds a vertical
-    // packed grid. Horizontal masonry ships in a later cycle.
-    context.resolve(properties['scrollDirection']); // resolved for intent; the real renderer ships later
+    // The round-robin distribution is symmetric, so honoring
+    // `scrollDirection` is a transpose: N columns scrolled vertically, or N
+    // rows scrolled horizontally. Reading the property and ignoring it left
+    // `scrollDirection: "horizontal"` looking like it had taken.
+    final horizontal =
+        context.resolve<String?>(properties['scrollDirection']) == 'horizontal';
 
     final children = _buildChildren(properties, context);
     if (children.isEmpty) return const SizedBox.shrink();
@@ -376,28 +384,47 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
       perColumn[i % columns].add(children[i]);
     }
 
+    final slots = List.generate(columns, (col) {
+      final slotChildren = <Widget>[];
+      for (var j = 0; j < perColumn[col].length; j++) {
+        if (j > 0) {
+          slotChildren.add(horizontal
+              ? SizedBox(width: mainAxisSpacing)
+              : SizedBox(height: mainAxisSpacing));
+        }
+        slotChildren.add(perColumn[col][j]);
+      }
+      final leading = col == 0 ? 0.0 : crossAxisSpacing / 2;
+      final trailing = col == columns - 1 ? 0.0 : crossAxisSpacing / 2;
+      return Expanded(
+        child: Padding(
+          padding: horizontal
+              ? EdgeInsets.only(top: leading, bottom: trailing)
+              : EdgeInsets.only(left: leading, right: trailing),
+          child: horizontal
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: slotChildren,
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: slotChildren,
+                ),
+        ),
+      );
+    });
+
     return SingleChildScrollView(
+      scrollDirection: horizontal ? Axis.horizontal : Axis.vertical,
       padding: padding,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: List.generate(columns, (col) {
-          final colChildren = <Widget>[];
-          for (var j = 0; j < perColumn[col].length; j++) {
-            if (j > 0) colChildren.add(SizedBox(height: mainAxisSpacing));
-            colChildren.add(perColumn[col][j]);
-          }
-          return Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(
-                  left: col == 0 ? 0 : crossAxisSpacing / 2,
-                  right: col == columns - 1 ? 0 : crossAxisSpacing / 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: colChildren,
-              ),
-            ),
-          );
-        }),
+      child: horizontal
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: slots,
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: slots,
       ),
     );
   }

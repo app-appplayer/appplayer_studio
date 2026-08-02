@@ -126,7 +126,7 @@ class PopupMenuButtonWidgetFactory extends WidgetFactory {
     final minHeight = tokens.itemHeight ?? 0;
 
     if (itemData is Map<String, dynamic>) {
-      final value = context.resolve<String>(itemData['value']) as String? ?? '';
+      final value = context.resolve<String?>(itemData['value']) ?? '';
       final enabled = itemData['enabled'] as bool? ?? true;
       final height = itemData['height']?.toDouble() ?? minHeight;
       final padding =

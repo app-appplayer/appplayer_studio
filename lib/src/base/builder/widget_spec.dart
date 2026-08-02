@@ -34,6 +34,7 @@ class WidgetPropSpec {
     this.defaultValue,
     this.required = false,
     this.enumValues = const <String>[],
+    this.aliases = const <String>[],
   });
 
   /// Property name as it appears in DSL JSON (e.g. `direction`).
@@ -61,6 +62,22 @@ class WidgetPropSpec {
   /// declared an `enum` list. Empty otherwise.
   final List<String> enumValues;
 
+  /// Spellings §17.3.2 registers for this property (`child` for
+  /// `dragTarget.builder`, `content` for `markdown.text`). The runtime
+  /// resolves them, so a checker that only knows [key] rejects documents
+  /// the runtime renders — and for a required property it rejects them as
+  /// "missing" while the value is sitting right there under its other name.
+  final List<String> aliases;
+
+  /// Every spelling that satisfies this property.
+  List<String> get spellings => <String>[key, ...aliases];
+
+  /// Element-shape declarations (`columns[].key`) describe items INSIDE an
+  /// array property, not a key on the node. Treating them as node keys made
+  /// every `dataTable` unauthorable: the check demanded a property literally
+  /// named `columns[].key`.
+  bool get isElementPath => key.contains('[]') || key.contains('.');
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'key': key,
     'type': type,
@@ -68,6 +85,7 @@ class WidgetPropSpec {
     if (defaultValue != null) 'default': defaultValue,
     if (required) 'required': true,
     if (enumValues.isNotEmpty) 'enum': enumValues,
+    if (aliases.isNotEmpty) 'aliases': aliases,
   };
 }
 

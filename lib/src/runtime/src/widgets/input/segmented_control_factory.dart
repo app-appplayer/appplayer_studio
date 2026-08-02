@@ -13,13 +13,10 @@ class SegmentedControlFactory extends WidgetFactory {
     final binding = properties['binding'] as String?;
     final options = properties['options'] as List<dynamic>? ?? [];
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
-    // Spec §2.6.19: `variant` (segmented / tabs / buttons). Current
-    // implementation renders all variants as Material SegmentedButton;
-    // the property is accepted so authors can declare intent and future
-    // variant-specific rendering can swap without DSL breakage.
-    // ignore: unused_local_variable
-    final variant =
-        (properties['variant'] as String?) ?? 'segmented';
+    // Spec §2.6.19 — the three variants render differently. They used to all
+    // resolve to SegmentedButton, so a document declaring `tabs` or `buttons`
+    // got the same control and the declaration meant nothing.
+    final variant = context.resolve<String?>(properties['variant']) ?? 'segmented';
 
     // Get current value
     final currentValue =
@@ -60,23 +57,87 @@ class SegmentedControlFactory extends WidgetFactory {
       );
     }
 
-    Widget segmentedControl = SegmentedButton<String>(
-      segments: segments.entries
-          .map((entry) => ButtonSegment<String>(
-                value: entry.key,
-                label: entry.value,
-              ))
-          .toList(),
-      selected: currentValue != null ? {currentValue.toString()} : {},
-      onSelectionChanged: enabled
-          ? (Set<String> selection) {
-              if (binding != null && selection.isNotEmpty) {
-                context.setValue(binding, selection.first);
-              }
-            }
-          : null,
-      multiSelectionEnabled: false,
-    );
+    void select(String value) {
+      if (binding != null) context.setValue(binding, value);
+    }
+
+    final selectedValue = currentValue?.toString();
+    final keys = segments.keys.toList();
+
+    Widget segmentedControl;
+    switch (variant) {
+      case 'tabs':
+        // Underlined tab strip: the same selection, presented as navigation
+        // rather than as a control.
+        segmentedControl = Builder(
+          builder: (ctx) {
+            final scheme = Theme.of(ctx).colorScheme;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final key in keys)
+                  InkWell(
+                    onTap: enabled ? () => select(key) : null,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            width: 2,
+                            color: key == selectedValue
+                                ? scheme.primary
+                                : Colors.transparent,
+                          ),
+                        ),
+                      ),
+                      child: segments[key],
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+        break;
+      case 'buttons':
+        // Discrete toggle buttons — each keeps its own edge rather than
+        // sharing one joined outline.
+        segmentedControl = Wrap(
+          spacing: 8,
+          children: [
+            for (final key in keys)
+              key == selectedValue
+                  ? FilledButton(
+                      onPressed: enabled ? () => select(key) : null,
+                      child: segments[key]!,
+                    )
+                  : OutlinedButton(
+                      onPressed: enabled ? () => select(key) : null,
+                      child: segments[key]!,
+                    ),
+          ],
+        );
+        break;
+      case 'segmented':
+      default:
+        segmentedControl = SegmentedButton<String>(
+          segments: segments.entries
+              .map((entry) => ButtonSegment<String>(
+                    value: entry.key,
+                    label: entry.value,
+                  ))
+              .toList(),
+          selected: selectedValue != null ? {selectedValue} : {},
+          // A document may bind the selection to state that has no value yet
+          // — §2.6.0 does not require an initial one. Without this
+          // `SegmentedButton` asserts and the whole page fails to draw.
+          emptySelectionAllowed: selectedValue == null,
+          onSelectionChanged: enabled
+              ? (Set<String> selection) {
+                  if (selection.isNotEmpty) select(selection.first);
+                }
+              : null,
+          multiSelectionEnabled: false,
+        );
+    }
 
     // Add label if provided
     if (label != null) {

@@ -16,10 +16,10 @@ class LottieAnimationWidgetFactory extends WidgetFactory {
     final autoplay = context.resolve<bool>(
         properties['autoPlay'] ?? properties['autoplay'] ?? true);
     final loop = context.resolve<bool>(properties['loop'] ?? true);
-    final width = context.resolve<double?>(properties['width']);
-    final height = context.resolve<double?>(properties['height']);
+    final width = parseDimension(context.resolve((properties['width'])));
+    final height = parseDimension(context.resolve((properties['height'])));
     final fit = context.resolve<String>(properties['fit'] ?? 'contain');
-    final speed = context.resolve<double?>(properties['speed']) ?? 1.0;
+    final speed = parseDimension(context.resolve((properties['speed']))) ?? 1.0;
     final onComplete = properties['onComplete'] as Map<String, dynamic>?;
     // Theme-adaptive placeholder chrome — the stub widget renders its
     // own box (since the platform Lottie package isn't wired up), so

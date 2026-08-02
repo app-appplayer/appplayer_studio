@@ -35,9 +35,9 @@ class ButtonWidgetFactory extends WidgetFactory {
     // Design doc uses 'disabled'; support legacy 'enabled' with inversion
     final bool disabled;
     if (properties.containsKey('disabled')) {
-      disabled = context.resolve<bool>(properties['disabled']);
+      disabled = context.resolve<bool?>(properties['disabled']) ?? false;
     } else if (properties['enabled'] != null) {
-      final enabled = context.resolve<bool>(properties['enabled']);
+      final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
       disabled = !enabled;
     } else {
       disabled = false;

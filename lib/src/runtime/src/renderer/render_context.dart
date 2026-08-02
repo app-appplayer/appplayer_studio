@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'renderer.dart';
+import '../assets/asset_ref.dart';
+import '../assets/asset_resolver.dart';
 import '../binding/binding_engine.dart';
 import '../actions/action_handler.dart';
 import '../state/state_manager.dart';
@@ -519,6 +521,39 @@ class RenderContext {
     if (value is num) return value;
     if (value is String) return num.tryParse(value);
     return null;
+  }
+
+  /// Asset resolution for every slot typed `AssetRef` (spec §6.12).
+  ///
+  /// Read from the engine so a host wires it once. Falls back to
+  /// [AssetResolver.builtin], which resolves the forms needing no injected
+  /// capability — so a host that wires nothing keeps exactly the behaviour it
+  /// had before this seam existed.
+  AssetResolver get assetResolver {
+    // `engine` is dynamic to avoid a circular import, so a host object without
+    // this member would throw NoSuchMethodError from inside a build — the
+    // widget then vanishes from the tree instead of rendering. Fail soft to
+    // the builtin set, which is the honest answer for a host that wired none.
+    try {
+      final fromEngine = engine?.assetResolver;
+      if (fromEngine is AssetResolver) return fromEngine;
+    } catch (_) {
+      // Host exposes no resolver — builtin forms only.
+    }
+    return AssetResolver.builtin;
+  }
+
+  /// Resolves a raw DSL value to an [ImageProvider], or `null` when the value
+  /// is absent, malformed, or names a form this runtime does not support.
+  ///
+  /// Bindings resolve **before** scheme dispatch (§6.12.2): a slot that
+  /// dispatches on the literal `"{{item.picture}}"` finds no scheme and fails
+  /// on a document that is correct.
+  ImageProvider? resolveAssetImage(dynamic raw) {
+    final resolvedValue = raw is String ? resolve<String>(raw) : raw;
+    final ref = AssetRef.parse(resolvedValue);
+    if (ref == null) return null;
+    return assetResolver.imageProviderFor(ref);
   }
 
   /// Get resource subscribe handler

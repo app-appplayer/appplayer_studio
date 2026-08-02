@@ -42,15 +42,10 @@ class AvatarWidgetFactory extends WidgetFactory {
     }
 
     // Build background image
-    ImageProvider? backgroundImageProvider;
-    if (backgroundImage != null && backgroundImage.isNotEmpty) {
-      if (backgroundImage.startsWith('http://') ||
-          backgroundImage.startsWith('https://')) {
-        backgroundImageProvider = NetworkImage(backgroundImage);
-      } else if (backgroundImage.startsWith('assets/')) {
-        backgroundImageProvider = AssetImage(backgroundImage);
-      }
-    }
+    // §6.12 — one resolution path. This chain used to accept two schemes, so
+    // an avatar served as a `data:` URI or from the bundle silently fell back
+    // to the label.
+    final backgroundImageProvider = context.resolveAssetImage(backgroundImage);
 
     Widget avatar = CircleAvatar(
       radius: radius,

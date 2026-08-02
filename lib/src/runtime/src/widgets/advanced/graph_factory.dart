@@ -11,7 +11,7 @@ class GraphWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final data =
-        context.resolve<List<dynamic>>(properties['data']) as List<dynamic>? ??
+        context.resolve<List<dynamic>?>(properties['data']) ??
             [];
     // Spec §10.12 canonical `chartType`; `type` kept as legacy alias but
     // collides with the widget-type discriminator, so `chartType` is the

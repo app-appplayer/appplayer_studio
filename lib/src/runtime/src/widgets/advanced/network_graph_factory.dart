@@ -9,14 +9,12 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final nodes = context.resolve<List<dynamic>>(properties['nodes'] ?? [])
-            as List<dynamic>? ??
+    final nodes = context.resolve<List<dynamic>?>(properties['nodes'] ?? []) ??
         [];
-    final edges = context.resolve<List<dynamic>>(properties['edges'] ?? [])
-            as List<dynamic>? ??
+    final edges = context.resolve<List<dynamic>?>(properties['edges'] ?? []) ??
         [];
-    final width = context.resolve<double?>(properties['width']);
-    final height = context.resolve<double?>(properties['height']) ?? 400.0;
+    final width = parseDimension(context.resolve((properties['width'])));
+    final height = parseDimension(context.resolve((properties['height']))) ?? 400.0;
     final interactive =
         context.resolve<bool>(properties['interactive'] ?? true);
     final layout = context.resolve<String>(properties['layout'] ?? 'force');

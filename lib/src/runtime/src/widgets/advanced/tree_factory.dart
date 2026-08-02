@@ -23,8 +23,8 @@ class TreeWidgetFactory extends WidgetFactory {
     final onNodeTap = properties['onNodeTap'] as Map<String, dynamic>?;
     final showLines = context.resolve<bool>(properties['showLines'] ?? true);
     final selectable = context.resolve<bool>(properties['selectable'] ?? false);
-    final width = context.resolve<double?>(properties['width']);
-    final height = context.resolve<double?>(properties['height']);
+    final width = parseDimension(context.resolve((properties['width'])));
+    final height = parseDimension(context.resolve((properties['height'])));
     final indentation = (properties['indentation'] as num?)?.toDouble() ?? 24.0;
     // Spec §10.11 `itemPadding`: EdgeInsets applied inside every row so the
     // vertical component drives row height. Falls back to the design-doc

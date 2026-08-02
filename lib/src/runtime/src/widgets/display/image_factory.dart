@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../assets/asset_ref.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
@@ -58,43 +59,37 @@ class ImageWidgetFactory extends WidgetFactory {
       return _buildErrorWidget(errorWidget, w, h);
     }
 
-    if (src.isEmpty) {
-      // No source provided
+    // §6.12: every AssetRef slot resolves through one path. The per-factory
+    // scheme chain that used to live here supported only the forms a
+    // synchronous loader can build, so `data:` rendered a placeholder naming
+    // the runtime's limitation and `bundle://` / `client://` fell through to
+    // the fallback despite being declared by the spec.
+    final provider =
+        src.isEmpty ? null : context.assetResolver.imageProviderFor(
+            AssetRef.parse(src)!);
+
+    if (provider == null) {
+      // Unsupported scheme, malformed reference, or no source: take the
+      // declared fallback (§6.12.4) rather than rendering an implementation
+      // detail where the author asked for a picture.
       image = buildFallbackWidget(width, height);
-    } else if (src.startsWith('http://') || src.startsWith('https://')) {
-      // Network image
-      image = Image.network(
-        src,
+    } else {
+      image = Image(
+        image: provider,
         width: width,
         height: height,
         fit: fit,
         alignment: alignment,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          // A pending read is not a failure (§6.12.5) — show the loading
+          // state, not the fallback.
+          if (wasSynchronouslyLoaded || frame != null) return child;
           return buildLoadingWidget(width, height);
         },
         errorBuilder: (context, error, stackTrace) {
           return buildFallbackWidget(width, height);
         },
       );
-    } else if (src.startsWith('assets/')) {
-      // Asset image
-      image = Image.asset(
-        src,
-        width: width,
-        height: height,
-        fit: fit,
-        alignment: alignment,
-        errorBuilder: (context, error, stackTrace) {
-          return buildFallbackWidget(width, height);
-        },
-      );
-    } else if (src.startsWith('data:image')) {
-      // Base64 image (would need additional implementation)
-      image = _buildPlaceholder('Base64 not supported', width, height);
-    } else {
-      // File path or other
-      image = buildFallbackWidget(width, height);
     }
 
     return applyCommonWrappers(image, properties, context);

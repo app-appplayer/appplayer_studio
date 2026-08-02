@@ -1,3 +1,26 @@
+import '../widgets/advanced/barcode_factory.dart';
+import '../widgets/advanced/diff_viewer_factory.dart';
+import '../widgets/advanced/gantt_factory.dart';
+import '../widgets/advanced/pdf_viewer_factory.dart';
+import '../widgets/advanced/rich_text_editor_factory.dart';
+import '../widgets/advanced/kanban_factory.dart';
+import '../widgets/advanced/spreadsheet_factory.dart';
+import '../widgets/layout/resizable_factory.dart';
+import '../widgets/layout/splitter_factory.dart';
+import '../widgets/dialog/popover_factory.dart';
+import '../widgets/interactive/context_menu_factory.dart';
+import '../widgets/layout/accordion_factory.dart';
+import '../widgets/navigation/breadcrumb_factory.dart';
+import '../widgets/navigation/link_factory.dart';
+import '../widgets/navigation/menu_factory.dart';
+import '../widgets/navigation/pagination_factory.dart';
+import '../widgets/advanced/qr_code_factory.dart';
+import '../widgets/input/combobox_factory.dart';
+import '../widgets/input/date_time_picker_factory.dart';
+import '../widgets/input/file_input_factory.dart';
+import '../widgets/input/multi_select_factory.dart';
+import '../widgets/input/otp_input_factory.dart';
+import '../widgets/input/voice_input_factory.dart';
 import 'widget_registry.dart';
 
 // Layout widgets
@@ -405,6 +428,60 @@ class DefaultWidgets {
     registry.register('appbar', AppBarWidgetFactory());
     registry.register(
         'bottomnavigationbar', BottomNavigationBarWidgetFactory());
+
+    // v1.4 widgets (§17.2.1). Registered as they are implemented; the spec
+    // declares the full set and drift_audit reports what has not landed yet.
+    registry.register('multiSelect', MultiSelectFactory());
+    registry.register('combobox', ComboboxFactory());
+    registry.register('autocomplete', ComboboxFactory()); // §17.3.1 alias
+    registry.register('otpInput', OtpInputFactory());
+    registry.register('dateTimePicker', DateTimePickerFactory());
+    registry.register('fileInput', FileInputFactory());
+    registry.register('qrCode', QrCodeFactory());
+    registry.register('barcode', BarcodeFactory());
+    registry.register('accordion', AccordionFactory());
+    registry.register('collapsible', AccordionFactory()); // §17.3.1 alias
+    registry.register('popover', PopoverFactory());
+    registry.register('hoverCard', PopoverFactory()); // §17.3.1 alias
+    registry.register('menu', MenuFactory());
+    registry.register('contextMenu', ContextMenuFactory());
+    registry.register('breadcrumb', BreadcrumbFactory());
+    registry.register('pagination', PaginationFactory());
+    registry.register('link', LinkFactory());
+    registry.register('navLink', LinkFactory()); // §17.3.1 alias
+    registry.register('splitter', SplitterFactory());
+    registry.register('resizable', ResizableFactory());
+    registry.register('diffViewer', DiffViewerFactory());
+    registry.register('kanban', KanbanFactory());
+    registry.register('gantt', GanttFactory());
+    registry.register('spreadsheet', SpreadsheetFactory());
+    registry.register('richTextEditor', RichTextEditorFactory());
+    registry.register('pdfViewer', PdfViewerFactory());
+    registry.register('voiceInput', VoiceInputFactory());
+
+    // v1.4 palette aliases (§17.3.1). A no-code builder's vocabulary was
+    // aligned with this spec; twenty of its components turned out to be
+    // existing widgets under another name. Read-only: accepted on input,
+    // never emitted, so a document round-tripped through a tool converges on
+    // the canonical name (§18.2.10).
+    registry.register('dataGrid', DataTableWidgetFactory());
+    registry.register('treeView', TreeWidgetFactory());
+    registry.register('meter', GaugeWidgetFactory());
+    registry.register('video', MediaPlayerWidgetFactory());
+    registry.register('audio', MediaPlayerWidgetFactory());
+    registry.register('modal', DialogWidgetFactory());
+    registry.register('dialog', DialogWidgetFactory());
+    registry.register('alert', AlertDialogWidgetFactory()); // §17.3.1
+    registry.register('confirmDialog', AlertDialogWidgetFactory());
+    registry.register('toast', SnackBarWidgetFactory());
+    registry.register('skeleton', PlaceholderWidgetFactory());
+    registry.register('tag', ChipWidgetFactory());
+    registry.register('steps', StepperWidgetFactory());
+    registry.register('scrollArea', ScrollViewFactory());
+    registry.register('numberInput', NumberFieldFactory());
+    registry.register('dropdownMenu', PopupMenuButtonWidgetFactory());
+    registry.register('code', CodeEditorWidgetFactory());
+    registry.register('label', TextWidgetFactory());
 
     // Kebab-case legacy aliases.
     //

@@ -18,8 +18,8 @@ class MarkdownWidgetFactory extends WidgetFactory {
     // 17_Naming §17.3.2); `content` is a legacy alias from v1.0 and is
     // accepted per §18.2.10 (runtimes MUST accept registered aliases).
     final content =
-        context.resolve<String>(properties['text']) as String? ??
-            context.resolve<String>(properties['content']) as String? ??
+        context.resolve<String?>(properties['text']) ??
+            context.resolve<String?>(properties['content']) ??
             '';
     final selectable = properties['selectable'] as bool? ?? false;
     final width = (properties['width'] as num?)?.toDouble();

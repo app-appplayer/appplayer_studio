@@ -10,7 +10,7 @@ class ChipWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final label = context.resolve<String>(properties['label']) as String? ?? '';
+    final label = context.resolve<String?>(properties['label']) ?? '';
     final avatar = properties['avatar'] as Map<String, dynamic>?;
     final selected = context.resolve<bool>(properties['selected'] ?? false);
     final variant = context.resolve<String?>(properties['variant']);

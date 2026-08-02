@@ -12,16 +12,15 @@ class CalendarWidgetFactory extends WidgetFactory {
     // Extract calendar properties
     final view = context.resolve<String>(properties['view'] ?? 'month');
     final selectedDateStr = context.resolve<String?>(properties['selectedDate']);
-    final events = context.resolve<List<dynamic>>(properties['events'] ?? [])
-            as List<dynamic>? ??
+    final events = context.resolve<List<dynamic>?>(properties['events'] ?? []) ??
         [];
     final showHeader = context.resolve<bool>(properties['showHeader'] ?? true);
     final showWeekNumbers =
         context.resolve<bool>(properties['showWeekNumbers'] ?? false);
     final firstDayOfWeek =
         context.resolve<int>(properties['firstDayOfWeek'] ?? 0);
-    final width = context.resolve<double?>(properties['width']);
-    final height = context.resolve<double?>(properties['height']) ?? 400.0;
+    final width = parseDimension(context.resolve((properties['width'])));
+    final height = parseDimension(context.resolve((properties['height']))) ?? 400.0;
 
     // Extract colors — theme-adaptive defaults. Today/selected/event
     // previously pinned to hardcoded Material-2 blues / red which clashed

@@ -60,10 +60,42 @@ class StateManager extends ChangeNotifier {
   /// Get the current state
   Map<String, dynamic> get state => Map<String, dynamic>.from(_state);
 
-  /// Initialize state with initial values
+  /// Roots this container holds on behalf of someone other than the document.
+  ///
+  /// Registered by whoever publishes them rather than named here, so a
+  /// container that holds none — an embedded scope's own state tree — keeps no
+  /// reserved names, and a document is free to use those words for its own
+  /// state there.
+  final Set<String> _hostRoots = <String>{};
+
+  /// Reserve [root] as host-owned, so a wholesale replacement leaves it alone.
+  ///
+  /// A replacement installs what the *document* owns: a definition's initial
+  /// state, a restored cache. Facts the host published are not that, and a
+  /// replacement that took them with it would leave every binding over them
+  /// resolving to null while the host still holds the values — a failure that
+  /// shows up as blank text rather than an error.
+  void reserveHostRoot(String root) {
+    _hostRoots.add(root);
+  }
+
+  /// The host-owned entries to carry across a replacement.
+  ///
+  /// A reserved key present in the incoming state does not win: it is not the
+  /// document's to supply, so a collision is the document shadowing a fact.
+  Map<String, dynamic> _carryHostRoots() => <String, dynamic>{
+        for (final root in _hostRoots)
+          if (_state.containsKey(root)) root: _state[root],
+
+      };
+
+  /// Initialize state with initial values. Roots reserved by
+  /// [reserveHostRoot] survive.
   void initialize(Map<String, dynamic> initialState) {
+    final hostRoots = _carryHostRoots();
     _state.clear();
     _state.addAll(initialState);
+    _state.addAll(hostRoots);
     _logger.debug('initialize with: $initialState');
     _logger.debug('state after init: $_state');
     _logger.debug('hashCode: $hashCode');
@@ -259,10 +291,12 @@ class StateManager extends ChangeNotifier {
     return Map<String, dynamic>.from(_state);
   }
 
-  /// Replace the entire state
+  /// Replace the entire state. Roots reserved by [reserveHostRoot] survive.
   void setState(Map<String, dynamic> newState) {
+    final hostRoots = _carryHostRoots();
     _state.clear();
     _state.addAll(newState);
+    _state.addAll(hostRoots);
 
     // Notify all stream listeners
     _streamControllers.forEach((path, controller) {

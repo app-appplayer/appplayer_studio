@@ -83,7 +83,24 @@ class SchemaValidator {
     // to mean they were not checked AT ALL — `children: "not-a-list"` and
     // `content: 42` both passed, and the runtime then rendered nothing with
     // no error. Exempt from the SCHEMA, not from being the right shape.
+    // `content` and `child` are tree slots on most widgets — but the registry
+    // also registers them as spellings of ordinary properties (`content` for
+    // `markdown.text`, `child` for `dragTarget.builder`). Where this widget
+    // declares such a spelling, the declared type governs and the tree-shape
+    // rule does not apply; `markdown {content: "…"}` is a string by contract.
+    final declaredSpellings = <String, WidgetPropSpec>{
+      for (final p in spec.properties)
+        if (!p.isElementPath)
+          for (final name in p.spellings) name: p,
+    };
+    bool governedBySpec(String k) {
+      final p = declaredSpellings[k];
+      if (p == null) return false;
+      final t = p.type.toLowerCase();
+      return !t.contains('widget');
+    }
     for (final k in const <String>['content', 'child']) {
+      if (governedBySpec(k)) continue;
       final v = node[k];
       if (v != null && v is! Map) {
         return ValidationResult.reject(<String, dynamic>{
@@ -96,7 +113,7 @@ class SchemaValidator {
         });
       }
     }
-    final kids = node['children'];
+    final kids = governedBySpec('children') ? null : node['children'];
     if (kids != null) {
       if (kids is! List) {
         return ValidationResult.reject(<String, dynamic>{
@@ -127,7 +144,10 @@ class SchemaValidator {
     final providedKeys = <String>{
       ...node.keys.cast<String>().where((k) => k != 'type'),
     };
-    final knownKeys = <String>{for (final p in spec.properties) p.key};
+    final knownKeys = <String>{
+      for (final p in spec.properties)
+        if (!p.isElementPath) p.key,
+    };
     // Tree-shape keys are allowed on every node (they describe the
     // structural slots, not props): content / child / children.
     const treeKeys = <String>{'content', 'child', 'children'};
@@ -136,9 +156,23 @@ class SchemaValidator {
     // strict per-prop check would falsely reject otherwise valid
     // wiring like `box { click: { type:state, ... } }`.
     const universalActionKeys = <String>{'click', 'onTap'};
+    // Spellings §17.3.2 registers count as the property being present, and
+    // element-shape declarations (`columns[].key`) are not node keys at all.
+    // Without the first, `dragTarget {child: …}` was reported as missing its
+    // required `builder` while the value sat there under its other name;
+    // without the second, `dataTable` could not be authored at all — the
+    // check demanded a key literally named `columns[].key`.
+    final aliasOf = <String, String>{
+      for (final p in spec.properties)
+        if (!p.isElementPath)
+          for (final a in p.aliases) a: p.key,
+    };
     for (final p in spec.properties) {
-      final present = providedKeys.contains(p.key);
-      final value = node[p.key];
+      if (p.isElementPath) continue;
+      final spelling =
+          p.spellings.firstWhere(providedKeys.contains, orElse: () => '');
+      final present = spelling.isNotEmpty;
+      final value = present ? node[spelling] : null;
       if (p.required && !present) {
         return ValidationResult.reject(<String, dynamic>{
           'code': 'missingRequired',
@@ -163,6 +197,7 @@ class SchemaValidator {
     final extras =
         providedKeys
             .difference(knownKeys)
+            .difference(aliasOf.keys.toSet())
             .difference(treeKeys)
             .difference(universalActionKeys)
             .toList();

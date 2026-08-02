@@ -15,9 +15,7 @@ class FileExplorerWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final items = context.resolve<List<dynamic>>(properties['items'])
-            as List<dynamic>? ??
-        [];
+    final items = context.resolve<List<dynamic>?>(properties['items']) ?? [];
     final showIcons = properties['showIcons'] as bool? ?? true;
     final showHidden = properties['showHidden'] as bool? ?? false;
     final expandAll = properties['expandAll'] as bool? ?? false;

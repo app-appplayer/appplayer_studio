@@ -99,7 +99,7 @@ class NavigationRailWidgetFactory extends WidgetFactory {
         }
       } else if (destData['labelText'] != null) {
         label = Text(
-            context.resolve<String>(destData['labelText']) as String? ?? '');
+            context.resolve<String?>(destData['labelText']) ?? '');
       } else {
         label = const Text('');
       }

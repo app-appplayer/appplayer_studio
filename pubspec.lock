@@ -398,27 +398,24 @@ packages:
   flutter_mcp_ui_core:
     dependency: "direct main"
     description:
-      name: flutter_mcp_ui_core
-      sha256: "68b692a8820a070bf77ef9b49c6438d040aca183abfb0ea723a61763de90b22f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.4.3"
+      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_core"
+      relative: false
+    source: path
+    version: "0.5.1"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
-      name: flutter_mcp_ui_generator
-      sha256: "8173aa3bf323d2ac241b3a8fb548bb010c53af0e083ffa5657e3fd0dbe06888b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.4.1"
+      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_generator"
+      relative: false
+    source: path
+    version: "0.5.1"
   flutter_mcp_ui_runtime:
     dependency: "direct main"
     description:
-      name: flutter_mcp_ui_runtime
-      sha256: f784b9a19552acd129a9b4ffc4f6473d39938e3de3a0f45a897b42c106e7fe2b
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.5.3"
+      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_runtime"
+      relative: false
+    source: path
+    version: "0.6.1"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -745,10 +742,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_bundle
-      sha256: "2ac3765a5f6001a9c686cf33797c1333ef537eb9a79a36c79187140048444afb"
+      sha256: d6377c786ae336543a0f07e504ef9455e7dbe46cdf5a3dc97a29d8090016673c
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.8"
+    version: "0.4.9"
   mcp_canvas:
     dependency: "direct main"
     description:

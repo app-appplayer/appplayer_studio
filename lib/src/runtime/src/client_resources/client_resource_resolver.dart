@@ -1138,9 +1138,14 @@ class ResourceEntry {
     if (loadedAt == null) return;
 
     final age = DateTime.now().difference(loadedAt!);
-    if (age > expireDuration) {
+    // Inclusive: `Duration.zero` means "already stale/expired on load", and a
+    // strict `>` made that depend on whether the clock had ticked between
+    // markReady and this call — the same assertion passed or failed by
+    // scheduling. Non-zero durations are unaffected, since age crosses them
+    // between ticks either way.
+    if (age >= expireDuration) {
       state = ResourceLifecycleState.expired;
-    } else if (age > staleDuration) {
+    } else if (age >= staleDuration) {
       state = ResourceLifecycleState.stale;
     }
   }

@@ -1,3 +1,4 @@
+import '../assets/asset_resolver.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../renderer/render_context.dart';
@@ -179,6 +180,15 @@ class RuntimeEngine with ChangeNotifier {
   /// Optional one-shot `read` callback (spec §4.5). Null when the host did
   /// not register one; callers fall back to `onResourceSubscribe`.
   Function(String, String)? get onResourceRead => _onResourceRead;
+
+  /// Asset resolution for every slot typed `AssetRef` (spec §6.12).
+  ///
+  /// Defaults to [AssetResolver.builtin], which serves the forms needing no
+  /// injected capability, so a host that wires nothing keeps the behaviour it
+  /// had before this seam existed. A host wires `bundle://`, `client://`, and
+  /// origin-served assets by supplying readers — and only then may the
+  /// runtime declare those forms (§18.2.12).
+  AssetResolver assetResolver = AssetResolver.builtin;
 
   /// Optional one-shot `list` callback (spec §4.5). Null when the host did
   /// not register one; callers fall back to `onResourceSubscribe`.

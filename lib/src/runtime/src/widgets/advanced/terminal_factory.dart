@@ -16,8 +16,7 @@ class TerminalWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final lines =
-        context.resolve<List<dynamic>>(properties['lines']) as List<dynamic>? ??
-            [];
+        context.resolve<List<dynamic>?>(properties['lines']) ?? [];
     final prompt = properties['prompt'] as String? ?? '\$ ';
     final showInput = properties['showInput'] as bool? ?? true;
     final width = (properties['width'] as num?)?.toDouble();

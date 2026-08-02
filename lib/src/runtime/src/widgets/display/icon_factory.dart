@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../form_factor/app_tokens.dart';
+import '../../assets/asset_ref.dart';
 import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
@@ -38,7 +39,7 @@ class IconWidgetFactory extends WidgetFactory {
         24.0;
     final color = parseColor(context.resolve(properties['color']), context);
 
-    final widget = _buildIconWidget(iconValue, size, color);
+    final widget = _buildIconWidget(iconValue, size, color, context);
     return applyCommonWrappers(widget, properties, context);
   }
 
@@ -78,24 +79,38 @@ class IconWidgetFactory extends WidgetFactory {
     return null;
   }
 
-  Widget _buildIconWidget(dynamic value, double size, Color? color) {
-    if (value is String && _isHttpUrl(value)) {
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Image.network(
-          value,
+  Widget _buildIconWidget(
+    dynamic value,
+    double size,
+    Color? color,
+    RenderContext context,
+  ) {
+    // §2.5.4 / IconRef — a bare string carrying no known scheme is a *name*,
+    // which keeps the named form the zero-ceremony default. Anything that
+    // parses as a real asset form goes through the one resolver (§6.12), so
+    // an icon may now be a bundle SVG, an inline data URI, or a host resource
+    // rather than only an http(s) URL.
+    final ref = value is String ? AssetRef.parse(value) : null;
+    if (ref != null && !ref.looksLikeIconName) {
+      final provider = context.assetResolver.imageProviderFor(ref);
+      if (provider != null) {
+        return SizedBox(
           width: size,
           height: size,
-          color: color,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => Icon(
-            resolveIconData('broken_image'),
-            size: size,
+          child: Image(
+            image: provider,
+            width: size,
+            height: size,
             color: color,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Icon(
+              resolveIconData('broken_image'),
+              size: size,
+              color: color,
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
 
     return Icon(_resolveIconData(value), size: size, color: color);
@@ -124,7 +139,4 @@ class IconWidgetFactory extends WidgetFactory {
     return resolveIconData('help_outline');
   }
 
-  bool _isHttpUrl(String value) {
-    return value.startsWith('http://') || value.startsWith('https://');
-  }
 }

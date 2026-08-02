@@ -9,8 +9,8 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final permissions = context.resolve<List<dynamic>>(
-            properties['permissions'] ?? []) as List<dynamic>? ??
+    final permissions = context.resolve<List<dynamic>?>(
+            properties['permissions'] ?? []) ??
         [];
     final style =
         context.resolve<String>(properties['style'] ?? 'inline');

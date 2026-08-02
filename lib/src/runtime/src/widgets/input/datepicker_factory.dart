@@ -11,7 +11,7 @@ class DatePickerWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final label = properties['label'] != null
-        ? context.resolve<String>(properties['label'])
+        ? context.resolve<String?>(properties['label']) ?? 'Select Date'
         : 'Select Date';
     final initialDate = properties['initialDate'] != null
         ? DateTime.parse(properties['initialDate'])

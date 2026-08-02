@@ -39,7 +39,15 @@ typedef IdentityPromoter = Future<IdentityPromotion> Function();
 /// Per-runtime holder for `entry.*` and `identity.*`.
 class EntrySession {
   EntrySession({required StateManager stateManager})
-      : _stateManager = stateManager;
+      : _stateManager = stateManager {
+    // These roots are published into the document's state container so the
+    // binding engine can read them, but they are not the document's state.
+    // Reserving them is what keeps a definition's `state.initial` — installed
+    // as a wholesale replacement moments later — from taking them with it.
+    for (final root in EntryStateKeys.readOnlyRoots) {
+      _stateManager.reserveHostRoot(root);
+    }
+  }
 
   final StateManager _stateManager;
 

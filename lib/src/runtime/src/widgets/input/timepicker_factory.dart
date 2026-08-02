@@ -11,7 +11,7 @@ class TimePickerWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final label = properties['label'] != null
-        ? context.resolve<String>(properties['label'])
+        ? context.resolve<String?>(properties['label']) ?? 'Select Time'
         : 'Select Time';
     final initialTime = properties['initialTime'] != null
         ? (_parseTimeOfDay(properties['initialTime']) ?? TimeOfDay.now())

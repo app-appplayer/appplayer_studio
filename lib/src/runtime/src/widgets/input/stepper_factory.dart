@@ -72,18 +72,17 @@ class StepperWidgetFactory extends WidgetFactory {
 
   Step _buildStep(dynamic stepData, RenderContext context) {
     if (stepData is Map<String, dynamic>) {
-      final title = stepData['title'] != null
-          ? context.buildWidget(stepData['title'] as Map<String, dynamic>)
-          : Text(
-              context.resolve<String>(stepData['titleText']) as String? ?? '');
+      // §2.6.20 documents a step as `{ title, subtitle?, state?, content,
+      // isActive? }` and its example writes `"title": "Account"` — a string.
+      // A widget is accepted too, for titles that need more than a label.
+      // `titleText` predates the spec's shape and still resolves.
+      final title = _label(stepData['title'], context) ??
+          _label(stepData['titleText'], context) ??
+          const Text('');
 
-      final content = stepData['content'] != null
-          ? context.buildWidget(stepData['content'] as Map<String, dynamic>)
-          : Container();
+      final content = _label(stepData['content'], context) ?? Container();
 
-      final subtitle = stepData['subtitle'] != null
-          ? context.buildWidget(stepData['subtitle'] as Map<String, dynamic>)
-          : null;
+      final subtitle = _label(stepData['subtitle'], context);
 
       final isActive = stepData['isActive'] as bool? ?? false;
       final state = _parseStepState(stepData['state']);
@@ -101,6 +100,16 @@ class StepperWidgetFactory extends WidgetFactory {
       title: const Text('Step'),
       content: Container(),
     );
+  }
+
+  /// A step field that the spec writes as a bare string but that may also
+  /// carry a widget. Returns null when the field is absent so the caller
+  /// decides the fallback.
+  Widget? _label(dynamic value, RenderContext context) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return context.buildWidget(value);
+    final text = context.resolve<String?>(value);
+    return text == null ? null : Text(text);
   }
 
   StepperType? _parseStepperType(String? value) {

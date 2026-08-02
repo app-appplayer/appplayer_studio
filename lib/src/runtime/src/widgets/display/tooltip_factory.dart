@@ -11,7 +11,7 @@ class TooltipWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final message =
-        context.resolve<String>(properties['message']) as String? ?? '';
+        context.resolve<String?>(properties['message']) ?? '';
     final richMessage = properties['richMessage'] != null
         ? _buildInlineSpan(properties['richMessage'], context)
         : null;

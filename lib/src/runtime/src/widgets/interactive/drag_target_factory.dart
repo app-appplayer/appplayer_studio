@@ -7,9 +7,22 @@ class DragTargetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     // Canonical `builder` per spec §2.10.4; `child` accepted as legacy alias.
-    final builderDef = definition['builder'] ?? definition['child'];
+    // The registry also documents `children` — multiple widgets wrapped into
+    // a linear column — which this factory used to reject, so a document
+    // written the way the registry describes it threw.
+    final rawChildren = definition['children'];
+    final builderDef = definition['builder'] ??
+        definition['child'] ??
+        (rawChildren is List && rawChildren.isNotEmpty
+            ? <String, dynamic>{
+                'type': 'linear',
+                'direction': 'vertical',
+                'children': rawChildren,
+              }
+            : null);
     if (builderDef == null) {
-      throw Exception('DragTarget requires a builder (or child) property');
+      throw Exception(
+          'DragTarget requires a builder (or child / children) property');
     }
 
     // Event handlers — canonical `onDrop` per spec, `onAccept` accepted as

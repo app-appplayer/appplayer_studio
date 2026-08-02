@@ -11,7 +11,7 @@ class SnackBarWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final content =
-        context.resolve<String>(properties['content']) as String? ?? '';
+        context.resolve<String?>(properties['content']) ?? '';
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final elevation = parseDimension(properties['elevation']);

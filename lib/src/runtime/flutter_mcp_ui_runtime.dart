@@ -44,8 +44,17 @@ export 'src/state/computed_property.dart';
 export 'src/binding/binding_engine.dart';
 
 // Action exports
+// `ActionExecutor` and `ActionResult` are the parameter and return types of
+// `MCPUIRuntime.registerAction`, which is public. Without them a host cannot
+// name the type it is being asked to supply, so the method could not be called
+// from outside this package at all.
 export 'src/actions/action_handler.dart'
-    show ActionHandler, NavigationActionExecutor, ChannelActionExecutor;
+    show
+        ActionHandler,
+        ActionExecutor,
+        NavigationActionExecutor,
+        ChannelActionExecutor;
+export 'src/actions/action_result.dart' show ActionResult;
 
 // v1.1 exports
 export 'src/core/constants/client_action_types.dart';

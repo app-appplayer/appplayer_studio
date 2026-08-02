@@ -16,8 +16,8 @@ class ChartWidgetFactory extends WidgetFactory {
         context.resolve<String>(properties['chartType'] ?? 'line');
     final rawData = properties['data'];
     final title = context.resolve<String?>(properties['title']);
-    final width = context.resolve<double?>(properties['width']);
-    final height = context.resolve<double?>(properties['height']) ?? 300.0;
+    final width = parseDimension(context.resolve((properties['width'])));
+    final height = parseDimension(context.resolve((properties['height']))) ?? 300.0;
 
     // Extract visual properties
     final showGrid = context.resolve<bool>(properties['showGrid'] ?? true);
@@ -56,8 +56,7 @@ class ChartWidgetFactory extends WidgetFactory {
       // Convert first dataset to ChartDataPoint for backward compat
       chartData = _datasetToPoints(datasets.isNotEmpty ? datasets.first : null, dataLabels);
     } else {
-      final data = context.resolve<List<dynamic>>(rawData ?? [])
-              as List<dynamic>? ??
+      final data = context.resolve<List<dynamic>?>(rawData ?? []) ??
           [];
       chartData = _parseChartData(data, chartType);
       datasets = [];

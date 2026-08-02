@@ -91,7 +91,7 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
         autofocus: autofocus,
         materialTapTargetSize: materialTapTargetSize,
         label:
-            Text(context.resolve<String>(properties['label']) as String? ?? ''),
+            Text(context.resolve<String?>(properties['label']) ?? ''),
         icon: properties['icon'] != null
             ? Icon(_parseIconData(properties['icon']))
             : null,

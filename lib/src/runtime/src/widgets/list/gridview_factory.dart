@@ -83,7 +83,7 @@ class GridViewWidgetFactory extends WidgetFactory {
     if ((itemsPath != null || directItems != null) && itemTemplate != null) {
       // Dynamic grid with data binding
       final items = itemsPath != null
-          ? context.resolve<List<dynamic>>(itemsPath) as List<dynamic>? ?? []
+          ? context.resolve<List<dynamic>?>(itemsPath) ?? []
           : directItems ?? [];
 
       gridView = GridView.builder(

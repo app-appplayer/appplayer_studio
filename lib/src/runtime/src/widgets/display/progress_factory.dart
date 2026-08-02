@@ -10,7 +10,7 @@ class ProgressWidgetFactory extends WidgetFactory {
     // Design: type → Implementation: indicatorType
     final type =
         context.resolve<String>(properties['type'] ?? properties['indicatorType'] ?? 'circular');
-    final value = context.resolve<double?>(properties['value']);
+    final value = parseDimension(context.resolve((properties['value'])));
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final color = parseColor(context.resolve(properties['color']), context);
@@ -52,7 +52,7 @@ class CircularProgressWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final value = context.resolve<double?>(properties['value']);
+    final value = parseDimension(context.resolve((properties['value'])));
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final color = parseColor(context.resolve(properties['color']), context);
@@ -85,7 +85,7 @@ class LinearProgressWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final value = context.resolve<double?>(properties['value']);
+    final value = parseDimension(context.resolve((properties['value'])));
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final color = parseColor(context.resolve(properties['color']), context);

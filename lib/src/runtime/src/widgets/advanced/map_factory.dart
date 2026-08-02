@@ -27,8 +27,7 @@ class MapWidgetFactory extends WidgetFactory {
     // schematic grid regardless of type.
     // ignore: unused_local_variable
     final mapType = properties['mapType'] as String? ?? 'standard';
-    final markers = context.resolve<List<dynamic>>(properties['markers'] ?? [])
-            as List<dynamic>? ??
+    final markers = context.resolve<List<dynamic>?>(properties['markers'] ?? []) ??
         [];
     final interactive =
         context.resolve<bool>(properties['interactive'] ?? true);

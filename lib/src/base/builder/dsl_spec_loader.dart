@@ -15,12 +15,21 @@ import 'package:yaml/yaml.dart';
 
 import 'widget_spec.dart';
 
+/// Spec version the authoring surface is built against.
+///
+/// A fixed `1.3` here meant the catalogue offered the 1.3 vocabulary while the
+/// spec had moved on: the widgets 1.4 added were unknown to `addNode`, and the
+/// enums 1.4 declares were absent, so property values were only ever checked by
+/// the prose-derived fallback. One constant, so a version-up is one edit and
+/// `dsl_spec_version_test` fails when it drifts from the spec on disk.
+const String kDslSpecVersion = '1.4';
+
 class DslSpecLoader {
-  DslSpecLoader({this.version = '1.3', String? specsRoot})
+  DslSpecLoader({this.version = kDslSpecVersion, String? specsRoot})
     : _specsRoot = specsRoot;
 
-  /// Spec version under `specs/mcp_ui_dsl/spec/<version>/`. Defaults
-  /// to `1.3` (the current canonical).
+  /// Spec version under `specs/mcp_ui_dsl/spec/<version>/`. Defaults to
+  /// [kDslSpecVersion].
   final String version;
 
   String? _specsRoot;
@@ -159,6 +168,7 @@ class DslSpecLoader {
                   rawEnum.whereType<String>().toList(),
                 )
                 : documentedEnumValues(propDesc);
+        final rawAliases = v['aliases'];
         props.add(
           WidgetPropSpec(
             key: k,
@@ -167,6 +177,9 @@ class DslSpecLoader {
             defaultValue: v['default'],
             required: isRequired,
             enumValues: enumValues,
+            aliases: rawAliases is List
+                ? List<String>.unmodifiable(rawAliases.whereType<String>())
+                : const <String>[],
           ),
         );
       });

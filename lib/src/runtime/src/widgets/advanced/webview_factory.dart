@@ -99,7 +99,7 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
   @override
   void initState() {
     super.initState();
-    _loadContent();
+    _loadContent(fromInitState: true);
   }
 
   @override
@@ -108,27 +108,50 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
     super.dispose();
   }
 
-  void _loadContent() {
-    // Simulate page load start
-    _notifyPageStarted();
+  /// [fromInitState] is true on the first call, where the element is not yet
+  /// mounted: assigning the fields directly is correct there, and calling
+  /// `setState` is an error the framework reports as "setState() called
+  /// during build". Every action dispatch is deferred to after the first
+  /// frame for the same reason — a document whose `onError` writes state
+  /// would otherwise rebuild mid-build.
+  void _loadContent({bool fromInitState = false}) {
+    void apply(VoidCallback changes) {
+      if (fromInitState) {
+        changes();
+      } else if (mounted) {
+        setState(changes);
+      }
+    }
+
+    void afterFrame(VoidCallback action) {
+      if (!fromInitState) {
+        action();
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) action();
+      });
+    }
+
+    afterFrame(_notifyPageStarted);
 
     // Check platform support
     if (!_isPlatformSupported()) {
-      setState(() {
+      apply(() {
         _isLoading = false;
         _errorMessage = 'WebView is not supported on this platform';
       });
-      _notifyError(_errorMessage!);
+      afterFrame(() => _notifyError(_errorMessage!));
       return;
     }
 
     // Validate URL or HTML content
     if (widget.url == null && widget.html == null) {
-      setState(() {
+      apply(() {
         _isLoading = false;
         _errorMessage = 'Either url or html content is required';
       });
-      _notifyError(_errorMessage!);
+      afterFrame(() => _notifyError(_errorMessage!));
       return;
     }
 
@@ -142,6 +165,8 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
         _notifyPageFinished();
       }
     });
+    // The timer body always runs after the first frame, so it may use
+    // `setState` directly.
   }
 
   bool _isPlatformSupported() {

@@ -10,9 +10,9 @@ class FractionallySizedWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final widthFactor =
-        context.resolve<double?>(properties['widthFactor']);
+        parseDimension(context.resolve((properties['widthFactor'])));
     final heightFactor =
-        context.resolve<double?>(properties['heightFactor']);
+        parseDimension(context.resolve((properties['heightFactor'])));
     final alignment = parseAlignment(properties['alignment']) ?? Alignment.center;
 
     // Build child widget

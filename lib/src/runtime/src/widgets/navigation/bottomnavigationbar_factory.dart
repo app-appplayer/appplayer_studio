@@ -12,8 +12,8 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
     // Spec §2.8.2 canonical `selectedIndex`; `currentIndex` kept as legacy
     // Flutter-style alias.
     final currentIndex =
-        context.resolve<int>(properties['selectedIndex'] ??
-                properties['currentIndex']) as int? ??
+        context.resolve<int?>(properties['selectedIndex'] ??
+                properties['currentIndex']) ??
             0;
     final elevation = parseDimension(properties['elevation']);
     final type = _parseBottomNavigationBarType(properties['type']);

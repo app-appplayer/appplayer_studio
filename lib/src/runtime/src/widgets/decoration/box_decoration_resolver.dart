@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -259,8 +257,12 @@ class BoxDecorationResolver {
   ) {
     if (value is! Map) return null;
     final src = value['image'] ?? value['src'];
-    if (src is! String || src.isEmpty) return null;
-    final provider = _resolveImageProvider(src);
+    // §6.12.2 — resolve the binding before dispatching on scheme. This
+    // function took `context` and used it for every field except this one, so
+    // `{{item.picture}}` reached the loader as a literal and no scheme
+    // matched: the box rendered with its color and without its image, on a
+    // document that was correct.
+    final provider = context.resolveAssetImage(src);
     if (provider == null) return null;
 
     final filter = value['colorFilter'];
@@ -278,29 +280,6 @@ class BoxDecorationResolver {
     );
   }
 
-  static ImageProvider? _resolveImageProvider(String src) {
-    if (src.startsWith('http://') || src.startsWith('https://')) {
-      return NetworkImage(src);
-    }
-    if (src.startsWith('assets/')) {
-      return AssetImage(src);
-    }
-    if (src.startsWith('data:image')) {
-      final commaIdx = src.indexOf(',');
-      if (commaIdx == -1) return null;
-      final isBase64 = src.substring(0, commaIdx).contains(';base64');
-      final payload = src.substring(commaIdx + 1);
-      try {
-        final bytes = isBase64
-            ? base64Decode(payload)
-            : Uint8List.fromList(utf8.encode(Uri.decodeComponent(payload)));
-        return MemoryImage(bytes);
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
 
   static ColorFilter? _resolveColorFilter(
     Map filter,
