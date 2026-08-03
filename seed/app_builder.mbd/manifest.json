@@ -360,70 +360,952 @@
         "id": "mcp_ui_dsl_widgets",
         "documents": [
           {
-            "id": "dsl-page",
-            "title": "page widget",
-            "source": "mcp_ui_dsl/1.4/widgets/page",
-            "content": "page is the root widget of every ui/app.json. Required fields: type:'page', content:<Widget>. Optional: title:string (used by host chrome for tab labels), state.initial:object (initial state map for {{...}} bindings), lifecycle.onInit:Action (runs once after the runtime mounts), lifecycle.onDestroy:Action. Example: {\"type\":\"page\",\"title\":\"Counter\",\"state\":{\"initial\":{\"count\":0}},\"content\":{\"type\":\"text\",\"value\":\"{{count}}\"}}. The page widget has no visual chrome of its own — it just hosts the content tree."
+            "id": "dsl-accessibleWrapper",
+            "title": "accessibleWrapper widget",
+            "source": "mcp_ui_dsl/1.4/widgets/accessibleWrapper",
+            "content": "`accessibleWrapper` — utility, Core profile. Wraps a child with accessibility annotations (ARIA-style). See [`13_Accessibility.md`](13_Accessibility.md) for the full property set.\nRequired: child:Widget.\nOptional: accessibility:object."
+          },
+          {
+            "id": "dsl-accordion",
+            "title": "accordion widget",
+            "source": "mcp_ui_dsl/1.4/widgets/accordion",
+            "content": "`accordion` (also `collapsible`) — layout, Core profile. Sections that expand and collapse. `children` are the panels; each panel declares its own `title` (or a `header` widget) and body. Composing this from `conditional` + `inkWell` renders correctly and loses two things the author cannot add back: the expand/collapse transition, and the accessibility state a screen reader announces (expanded / collapsed, and which control owns which region). A collapsed section that is merely absent from the tree reads to assistive technology as content that does not exist rather than content that is hidden. `collapsible` is an alias for the single-section case — one panel with `allowMultiple` irrelevant. It is the same widget, not a smaller one.\nRequired: panels:array<object>.\nOptional: allowMultiple:boolean (default false), bordered:boolean (default true), expandedIds:array<string>, icon:IconRef."
+          },
+          {
+            "id": "dsl-alertDialog",
+            "title": "alertDialog widget",
+            "source": "mcp_ui_dsl/1.4/widgets/alertDialog",
+            "content": "`alertDialog` (also `alert`, `confirmDialog`) — dialog, Core profile. Modal alert with an optional title, an optional body (string or widget), and a list of labeled action buttons. Dispatched via the `dialog` action (`{ \"type\": \"dialog\", \"dialog\": { \"type\": \"alertDialog\", ... } }`). The runtime renders it as a `Dialog` surface scoped to the current navigator (not the root navigator), so tapping an action pops only the dialog.\nOptional: actions:array<object{ label: string, variant: string, primary: boolean, onTap: Action }>, content:string | Widget, dismissible:boolean (default true), onClose:Action, title:string."
+          },
+          {
+            "id": "dsl-align",
+            "title": "align widget",
+            "source": "mcp_ui_dsl/1.4/widgets/align",
+            "content": "`align` — layout, Core profile. Aligns a single child at a specified alignment.\nRequired: child:Widget.\nOptional: alignment:Alignment (default center)."
+          },
+          {
+            "id": "dsl-animatedAlign",
+            "title": "animatedAlign widget",
+            "source": "mcp_ui_dsl/1.4/widgets/animatedAlign",
+            "content": "`animatedAlign` — animation, Core profile. Implicitly animates a child's `alignment` within its bounds. Use for slide-from-edge / settle-to-position micro-interactions.\nRequired: alignment:Alignment, child:Widget.\nOptional: curve:AnimationCurve (default easeInOut), duration:Dimension (default 300), onEnd:Action."
+          },
+          {
+            "id": "dsl-animatedContainer",
+            "title": "animatedContainer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/animatedContainer",
+            "content": "`animatedContainer` — animation, Core profile. Container that implicitly animates property changes. Whenever any of the size/decoration/alignment/padding fields change between builds the runtime tweens between the old and new values over `duration` using `curve`.\nOptional: alignment:Alignment, child:Widget, curve:AnimationCurve (default easeInOut), decoration:BoxDecoration, duration:Dimension (default 300), height:Dimension, margin:EdgeInsets, onEnd:Action, padding:EdgeInsets, width:Dimension."
+          },
+          {
+            "id": "dsl-animatedDefaultTextStyle",
+            "title": "animatedDefaultTextStyle widget",
+            "source": "mcp_ui_dsl/1.4/widgets/animatedDefaultTextStyle",
+            "content": "`animatedDefaultTextStyle` — animation, Core profile. Implicitly animates the default `TextStyle` applied to descendant `text` / `richText` widgets. Each style field (color, fontSize, fontWeight, letterSpacing, lineHeight, …) tweens independently. Use for emphasis transitions (e.g., headline grows + bolds when selected).\nRequired: child:Widget, style:TextStyle.\nOptional: curve:AnimationCurve (default easeInOut), duration:Dimension (default 300), onEnd:Action."
+          },
+          {
+            "id": "dsl-animatedOpacity",
+            "title": "animatedOpacity widget",
+            "source": "mcp_ui_dsl/1.4/widgets/animatedOpacity",
+            "content": "`animatedOpacity` — animation, Core profile. Implicitly animates the child's `opacity` whenever it changes. Use for fade-in / fade-out micro-interactions without explicit animation controllers.\nRequired: child:Widget, opacity:number.\nOptional: curve:AnimationCurve (default easeInOut), duration:Dimension (default 300), onEnd:Action."
+          },
+          {
+            "id": "dsl-animatedPositioned",
+            "title": "animatedPositioned widget",
+            "source": "mcp_ui_dsl/1.4/widgets/animatedPositioned",
+            "content": "`animatedPositioned` — animation, Core profile. Implicitly animates a child's edge offsets inside a `stack`. Same contract as `positioned` (top/right/bottom/left/width/height) but changes are tweened. Only valid as a `stack` child.\nRequired: child:Widget.\nOptional: bottom:Dimension, curve:AnimationCurve (default easeInOut), duration:Dimension (default 300), height:Dimension, left:Dimension, onEnd:Action, right:Dimension, top:Dimension, width:Dimension."
+          },
+          {
+            "id": "dsl-aspectRatio",
+            "title": "aspectRatio widget",
+            "source": "mcp_ui_dsl/1.4/widgets/aspectRatio",
+            "content": "`aspectRatio` — layout, Core profile. Sizes the child to a specific aspect ratio.\nRequired: child:Widget.\nOptional: aspectRatio:number (default 1.0)."
+          },
+          {
+            "id": "dsl-avatar",
+            "title": "avatar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/avatar",
+            "content": "`avatar` — display, Core profile. Circular widget for user images or initials.\nOptional: color:Color (alias backgroundColor), label:string (alias text), size:number (default 40), src:AssetRef."
+          },
+          {
+            "id": "dsl-badge",
+            "title": "badge widget",
+            "source": "mcp_ui_dsl/1.4/widgets/badge",
+            "content": "`badge` — display, Core profile. Small status indicator typically anchored to another widget.\nOptional: child:Widget, color:Color, label:string."
+          },
+          {
+            "id": "dsl-banner",
+            "title": "banner widget",
+            "source": "mcp_ui_dsl/1.4/widgets/banner",
+            "content": "`banner` — display, Core profile. Persistent message banner at the top of a section or page.\nRequired: message:string.\nOptional: actions:array<BannerAction>, onClose:Action, severity:string (one of info|success|warning|error; default info)."
+          },
+          {
+            "id": "dsl-barcode",
+            "title": "barcode widget",
+            "source": "mcp_ui_dsl/1.4/widgets/barcode",
+            "content": "`barcode` — advanced, Advanced profile. Renders a 1-D barcode for `value`. Like `qrCode`, the bar pattern is computed rather than laid out. Unlike it, each `format` constrains what `value` may contain — an EAN-13 payload is thirteen digits with a check digit, not arbitrary text.\nRequired: value:string | binding.\nOptional: backgroundColor:Color, displayValue:boolean (default true), foregroundColor:Color, format:string (one of code128|code39|ean13|ean8|upcA|upcE|itf|codabar; default code128), height:number (default 80), width:number."
+          },
+          {
+            "id": "dsl-baseline",
+            "title": "baseline widget",
+            "source": "mcp_ui_dsl/1.4/widgets/baseline",
+            "content": "`baseline` — utility, Core profile. Aligns a child by its baseline.\nRequired: baseline:number, child:Widget.\nOptional: baselineType:string (default alphabetic)."
+          },
+          {
+            "id": "dsl-bottomNavigation",
+            "title": "bottomNavigation widget",
+            "source": "mcp_ui_dsl/1.4/widgets/bottomNavigation",
+            "content": "`bottomNavigation` (also `bottomNav`, `bottomnavigationbar`) — navigation, Core profile. Bottom navigation bar. Each item's text field is `label`.\nRequired: items:array<NavItem>.\nOptional: onChange:Action, selectedIndex:number | binding (default 0)."
+          },
+          {
+            "id": "dsl-bottomSheet",
+            "title": "bottomSheet widget",
+            "source": "mcp_ui_dsl/1.4/widgets/bottomSheet",
+            "content": "`bottomSheet` — dialog, Core profile. Modal bottom sheet with swipeable handle.\nRequired: child:Widget.\nOptional: backgroundColor:Color, enableDrag:boolean (default true), isDismissible:boolean (default true), onClose:Action, shape:object."
           },
           {
             "id": "dsl-box",
             "title": "box widget",
             "source": "mcp_ui_dsl/1.4/widgets/box",
-            "content": "box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"value\":\"hello\"}}."
+            "content": "`box` (also `container`, `constrained`) — layout, Core profile. Generic single-child container that applies size, padding, margin, and a decoration (background color, border, shadow, gradient, borderRadius). Most commonly used as a styled wrapper around any child widget.\nOptional: alignment:Alignment, color:Color (alias backgroundColor), decoration:BoxDecoration, height:Dimension, margin:EdgeInsets, maxHeight:number, maxWidth:number, minHeight:number, minWidth:number, padding:string|EdgeInsets, width:Dimension.\n\nNotes: box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"text\":\"hello\"}}."
           },
           {
-            "id": "dsl-linear",
-            "title": "linear widget",
-            "source": "mcp_ui_dsl/1.4/widgets/linear",
-            "content": "linear is the row/column layout widget. Replaces Flutter's Row/Column. Required: type:'linear', children:[<Widget>...]. Properties: direction:'horizontal'|'vertical' (default horizontal), gap:number (spacing between children), mainAxisAlignment:'start'|'center'|'end'|'spaceBetween'|'spaceAround'|'spaceEvenly', crossAxisAlignment:'start'|'center'|'end'|'stretch', mainAxisSize:'min'|'max'. Example vertical: {\"type\":\"linear\",\"direction\":\"vertical\",\"gap\":8,\"children\":[{\"type\":\"text\",\"value\":\"a\"},{\"type\":\"text\",\"value\":\"b\"}]}."
-          },
-          {
-            "id": "dsl-text",
-            "title": "text widget",
-            "source": "mcp_ui_dsl/1.4/widgets/text",
-            "content": "text renders a string. Required: type:'text', value:string. Properties: style:object (fontSize:number, fontWeight:'bold'|'normal'|'w100'..'w900', color:string, fontFamily:string), variant:string (Material 3 typography role — camelCase: displayLarge, displayMedium, displaySmall, headlineLarge..Small, titleLarge..Small, bodyLarge..Small, labelLarge..Small — 15 roles total), maxLines:number, overflow:'ellipsis'|'fade'|'clip'. variant is layered with style. Example: {\"type\":\"text\",\"value\":\"Hello {{name}}\",\"variant\":\"titleMedium\",\"style\":{\"color\":\"#7DD3FC\"}}."
+            "id": "dsl-breadcrumb",
+            "title": "breadcrumb widget",
+            "source": "mcp_ui_dsl/1.4/widgets/breadcrumb",
+            "content": "`breadcrumb` — navigation, Core profile. Trail of ancestor locations ending at the current one. Composable from `linear` + `text` + navigate actions, but composing it loses the landmark role assistive technology uses to skip to it, and every author re-decides where the separator goes and whether the last item is a link (it is not).\nRequired: items:array<object>.\nOptional: maxItems:number, separator:string (default /)."
           },
           {
             "id": "dsl-button",
             "title": "button widget",
             "source": "mcp_ui_dsl/1.4/widgets/button",
-            "content": "button is a clickable action surface. Required: type:'button', label:string, onTap:Action. The tap handler property is named `onTap`; `click` and `onPressed` are accepted aliases (§17.3.2). Do NOT use a property named `action` — the runtime ignores it. Properties: variant:'elevated'|'filled'|'outlined'|'text'|'icon' (default 'elevated'; those five are the whole set — 'tonal' is not one of them and is rejected), icon:IconRef, enabled:bool. onTap is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
+            "content": "`button` — input, Core profile. Interactive button. The canonical label field is `label`.\nRequired: label:string (alias text).\nOptional: elevation:string|number, enabled:boolean (default true), icon:IconRef, onDoubleTap:Action, onLongPress:Action, onTap:Action, variant:string (one of elevated|filled|outlined|text|icon; default elevated; alias style).\n\nNotes: button is a clickable action surface. Required: type:'button', label:string, onTap:Action. The tap handler property is named `onTap`; `click` and `onPressed` are accepted aliases (§17.3.2). Do NOT use a property named `action` — the runtime ignores it. Properties: variant:'elevated'|'filled'|'outlined'|'text'|'icon' (default 'elevated'; those five are the whole set — 'tonal' is not one of them and is rejected), icon:IconRef, enabled:bool. onTap is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
           },
           {
-            "id": "dsl-list",
-            "title": "list widget",
-            "source": "mcp_ui_dsl/1.4/widgets/list",
-            "content": "list renders a collection. Required: type:'list', either children:[<Widget>...] OR items:array + itemTemplate:<Widget>. With itemTemplate, each row is rendered from the template with {{item}} and {{index}} bound to the current entry. Properties: orientation:'vertical'|'horizontal' (default vertical), spacing:number, emptyMessage:string, itemExtent:number, shrinkWrap:bool (set true when inside a scroll view so list doesn't take all remaining space), padding:number|EdgeInsets. Use itemTemplate over children for bound dynamic lists. Example: {\"type\":\"list\",\"items\":\"{{todos}}\",\"shrinkWrap\":true,\"itemTemplate\":{\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"{{item.title}}\"}]}}."
+            "id": "dsl-calendar",
+            "title": "calendar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/calendar",
+            "content": "`calendar` — advanced, Core profile. Calendar view for date selection and event display.\nOptional: events:binding, firstDate:string, lastDate:string, onChange:Action, selectedDate:string | binding, view:string (one of month|week|day; default month)."
           },
           {
-            "id": "dsl-sizedBox",
-            "title": "sizedBox widget",
-            "source": "mcp_ui_dsl/1.4/widgets/sizedBox",
-            "content": "sizedBox is a fixed-size empty box. Common as a spacer in linear children. Properties: width:number, height:number, child:<Widget> (optional). Example spacer: {\"type\":\"sizedBox\",\"height\":12}. Use linear.gap instead of sizedBox spacers when possible."
+            "id": "dsl-canvas",
+            "title": "canvas widget",
+            "source": "mcp_ui_dsl/1.4/widgets/canvas",
+            "content": "`canvas` — advanced, Core profile. General-purpose vector drawing via an ordered command array. All numeric and color properties support binding expressions, enabling data-driven graphics (progress rings, custom indicators, composable chart primitives).\nDeclares no properties of its own."
           },
           {
             "id": "dsl-card",
             "title": "card widget",
             "source": "mcp_ui_dsl/1.4/widgets/card",
-            "content": "card is an elevated container with rounded corners + shadow. Material 3 surface. Required: type:'card', child:<Widget>. Properties: padding:number|EdgeInsets, elevation:number, margin:number, color:string. Example: {\"type\":\"card\",\"padding\":16,\"child\":{\"type\":\"text\",\"value\":\"card body\"}}."
+            "content": "`card` — display, Core profile. Elevated single-child container.\nRequired: child:Widget.\nOptional: color:Color (alias backgroundColor), elevation:string|number (default 1), margin:EdgeInsets, shape:string|object.\n\nNotes: card is an elevated container with rounded corners + shadow. Material 3 surface. Required: type:'card', child:<Widget>. Properties: elevation:number, margin:number, color:string. card declares no padding and the runtime does not read one — wrap the child in a box for inner spacing. {\"type\":\"card\",\"child\":{\"type\":\"text\",\"text\":\"card body\"}}."
+          },
+          {
+            "id": "dsl-carousel",
+            "title": "carousel widget",
+            "source": "mcp_ui_dsl/1.4/widgets/carousel",
+            "content": "`carousel` — list, Core profile. Horizontally scrolling browser with optional partial-viewport framing (cover-flow / album-shelf style). Distinct from `pageView` (which always snaps a full viewport per page) — `carousel` lets authors set `viewportFraction` < 1 so adjacent items peek in, signalling \"more to scroll\". Used for content shelves (book covers, album browsers, magazine front pages).\nOptional: autoPlay:number, children:array<Widget>, indicatorPosition:string (one of bottom|top|none; default bottom), initialIndex:number (default 0), itemTemplate:Widget, items:binding, loop:boolean (default false), onPageChanged:Action, scrollDirection:string (one of horizontal|vertical; default horizontal), transition:string (one of slide|fade|coverflow|depth; default slide), viewportFraction:number (default 1.0)."
+          },
+          {
+            "id": "dsl-center",
+            "title": "center widget",
+            "source": "mcp_ui_dsl/1.4/widgets/center",
+            "content": "`center` — layout, Core profile. Centers a single child within available space.\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-chart",
+            "title": "chart widget",
+            "source": "mcp_ui_dsl/1.4/widgets/chart",
+            "content": "`chart` — advanced, Core profile. Data visualization widget with multiple chart types.\nRequired: chartType:string (one of line|bar|pie|donut|scatter|area|radar|polar|bubble), data:object | array, data.datasets[].data:array<number>.\nOptional: data.datasets[].backgroundColor:string (default theme), data.datasets[].borderColor:string (default theme), data.datasets[].label:string, height:number, options:object (default {}), options.animation.duration:number (default 1000), options.legend.position:string (one of top|bottom|left|right|none; default top), options.responsive:boolean (default true), width:number."
+          },
+          {
+            "id": "dsl-checkbox",
+            "title": "checkbox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/checkbox",
+            "content": "`checkbox` — input, Core profile. Boolean checkbox. Shared rows per §2.6.0; `value` is `boolean`.\nOptional: label:string."
+          },
+          {
+            "id": "dsl-checkboxGroup",
+            "title": "checkboxGroup widget",
+            "source": "mcp_ui_dsl/1.4/widgets/checkboxGroup",
+            "content": "`checkboxGroup` — input, Core profile. Multi-selection checkbox group. Shared rows per §2.6.0; `binding` holds an `array` of selected values (top-level, not per-option).\nRequired: options:array<Option> (alias items).\nOptional: label:string, orientation:string (default vertical)."
+          },
+          {
+            "id": "dsl-chip",
+            "title": "chip widget",
+            "source": "mcp_ui_dsl/1.4/widgets/chip",
+            "content": "`chip` (also `tag`) — display, Core profile. Compact element representing an attribute, action, or filter.\nRequired: label:string.\nOptional: avatar:Widget, onDelete:Action, onTap:Action, selected:boolean (default false), variant:string (default filled)."
+          },
+          {
+            "id": "dsl-clipOval",
+            "title": "clipOval widget",
+            "source": "mcp_ui_dsl/1.4/widgets/clipOval",
+            "content": "`clipOval` — utility, Core profile. Clips a child to an oval.\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-clipRRect",
+            "title": "clipRRect widget",
+            "source": "mcp_ui_dsl/1.4/widgets/clipRRect",
+            "content": "`clipRRect` — utility, Core profile. Clips a child to a rounded rectangle.\nRequired: child:Widget.\nOptional: borderRadius:BorderRadius (default 0)."
+          },
+          {
+            "id": "dsl-codeEditor",
+            "title": "codeEditor widget",
+            "source": "mcp_ui_dsl/1.4/widgets/codeEditor",
+            "content": "`codeEditor` (also `code`) — advanced, Core profile. Syntax-highlighted code editor.\nOptional: backgroundColor:Color, code:string | binding, copyable:boolean (default false), expandAll:boolean (default false), fontSize:number, height:number, language:string (one of plaintext|javascript|typescript|dart|python|java|kotlin|swift|go|rust|c|cpp|csharp|ruby|php|sql|json|yaml|xml|html|css|markdown|shell; default plaintext), lineHeight:number, onChange:Action, readOnly:boolean (default false), showLineNumbers:boolean (default true), tabSize:number (default 2), textColor:Color, theme:string (one of vsLight|vsDark|monokai|solarizedLight|solarizedDark|github|dracula; default vsLight), width:number."
+          },
+          {
+            "id": "dsl-colorPicker",
+            "title": "colorPicker widget",
+            "source": "mcp_ui_dsl/1.4/widgets/colorPicker",
+            "content": "`colorPicker` — input, Core profile. Color selection. Shared rows per §2.6.0; `value` is a hex color string.\nOptional: enableHistory:boolean (default false), label:string, pickerType:string (one of wheel|palette|both; default wheel), showAlpha:boolean (default false), showLabel:boolean (default true)."
+          },
+          {
+            "id": "dsl-combobox",
+            "title": "combobox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/combobox",
+            "content": "`combobox` (also `autocomplete`) — input, Core profile. Text entry with suggestions. Shared rows per §2.6.0; `binding` holds the **typed string**, not an option id. The defining property is that a value outside `options` is legal — that is what separates it from `select` / `multiSelect`, where the option list is the domain. Composing it from `textInput` + a list loses focus ownership: the list must not steal focus from the field, arrow keys must move a highlight without moving the caret, and Escape must close the list without clearing the text. Those are one widget's job.\nOptional: allowCustom:boolean (default true), debounceMs:number (default 250), label:string, minChars:number (default 1), onSearch:Action, options:array<Option> (alias items), placeholder:string."
           },
           {
             "id": "dsl-conditional",
             "title": "conditional widget",
             "source": "mcp_ui_dsl/1.4/widgets/conditional",
-            "content": "conditional renders one of two branches based on a boolean binding. Required: type:'conditional', condition:bool|string, then:<Widget>. Optional: else:<Widget>. condition evaluates via _isTruthy: null/false/0/empty-string/empty-list/empty-map are falsy. Note: equality expressions like {{a == b}} are NOT supported — use plain bindings to a precomputed boolean OR rely on truthy/falsy of values. Example: {\"type\":\"conditional\",\"condition\":\"{{loaded}}\",\"then\":{\"type\":\"text\",\"value\":\"ready\"},\"else\":{\"type\":\"text\",\"value\":\"loading…\"}}."
+            "content": "`conditional` — layout, Core profile. Renders different branches based on an expression. Two forms are supported: then/else and multi-branch (`switch`/`cases`).\nOptional: cases:array, condition:boolean | binding, default:Widget, else:Widget, switch:binding, then:Widget (alias child/widget).\n\nNotes: conditional renders one of two branches based on a boolean binding. Required: type:'conditional', condition:bool|string, then:<Widget>. Optional: else:<Widget>. condition evaluates via _isTruthy: null/false/0/empty-string/empty-list/empty-map are falsy. Note: equality expressions like {{a == b}} are NOT supported — use plain bindings to a precomputed boolean OR rely on truthy/falsy of values. Example: {\"type\":\"conditional\",\"condition\":\"{{loaded}}\",\"then\":{\"type\":\"text\",\"text\":\"ready\"},\"else\":{\"type\":\"text\",\"text\":\"loading…\"}}."
+          },
+          {
+            "id": "dsl-contextMenu",
+            "title": "contextMenu widget",
+            "source": "mcp_ui_dsl/1.4/widgets/contextMenu",
+            "content": "`contextMenu` — interaction, Core profile. Menu raised by secondary activation on its `child` — right-click, long press, or the platform's context key. This cannot be composed: the gesture that raises it is platform-specific (and on touch competes with scroll and text selection), and the menu must appear at the pointer rather than against the child's box. A `gestureDetector` wrapping a `popupMenuButton` gets neither.\nRequired: child:Widget, items:array<object>.\nOptional: enabled:boolean (default true)."
+          },
+          {
+            "id": "dsl-customDialog",
+            "title": "customDialog widget",
+            "source": "mcp_ui_dsl/1.4/widgets/customDialog",
+            "content": "`customDialog` (also `modal`, `dialog`) — dialog, Core profile. Dialog with arbitrary widget content.\nRequired: child:Widget.\nOptional: dismissible:boolean (default true), onClose:Action."
+          },
+          {
+            "id": "dsl-dashboard",
+            "title": "dashboard widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dashboard",
+            "content": "`dashboard` — utility, Core profile. Renders a compact dashboard tile — the widget equivalent of the `ApplicationDefinition.dashboard` field (see [`11_Bundle_Metadata.md`](11_Bundle_Metadata.md) §11). Used to embed a dashboard-mode tile inside a page (launcher / app grid scenarios).\nOptional: content:Widget, onTap:Action, refreshInterval:number."
+          },
+          {
+            "id": "dsl-dataTable",
+            "title": "dataTable widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dataTable",
+            "content": "`dataTable` (also `dataGrid`) — advanced, Core profile. Material-style sortable, selectable data table bound to a row array.\nRequired: columns:array<Column>, columns[].key:string, columns[].label:string, rows:array<object> | binding.\nOptional: columns[].align:string (one of start|center|end; default start), columns[].sortable:boolean (default false), columns[].width:number, editable:boolean (default false), filterable:boolean (default false), onRowTap:Action, onSort:Action, resizableColumns:boolean (default false), rowHeight:number, selectable:boolean (default false), sortAscending:binding (default true), sortColumn:binding, virtualScroll:boolean (default false)."
+          },
+          {
+            "id": "dsl-dateField",
+            "title": "dateField widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dateField",
+            "content": "`dateField` — input, Core profile. Date input with calendar/text entry modes. Shared rows per §2.6.0; `value` is an ISO date string.\nOptional: firstDate:string, format:string (default yyyy-MM-dd), label:string, lastDate:string, locale:string, mode:string (one of calendar|input|both; default calendar)."
+          },
+          {
+            "id": "dsl-datePicker",
+            "title": "datePicker widget",
+            "source": "mcp_ui_dsl/1.4/widgets/datePicker",
+            "content": "`datePicker` — input, Core profile. Standalone date picker surface. Shared rows per §2.6.0; `value` is an ISO date string.\nOptional: firstDate:string, label:string, lastDate:string."
+          },
+          {
+            "id": "dsl-dateRangePicker",
+            "title": "dateRangePicker widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dateRangePicker",
+            "content": "`dateRangePicker` — input, Core profile. Date range selection. Exception to §2.6.0: instead of a single `binding`, the range is bound via **two separate properties** — `startDate` and `endDate` — each independently following §2.6.0 two-way semantics (each accepts a literal ISO string, a `{{path}}` expression for read-only display, or a plain state-path string for two-way binding). `firstDate`/`lastDate` remain one-way constraints on the allowed range.\nOptional: enabled:boolean (default true), endDate:string, firstDate:string, format:string (default yyyy-MM-dd), label:string, lastDate:string, locale:string, onChange:Action, startDate:string."
+          },
+          {
+            "id": "dsl-dateTimePicker",
+            "title": "dateTimePicker widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dateTimePicker",
+            "content": "`dateTimePicker` — input, Core profile. Single instant — date and time chosen together. Shared rows per §2.6.0; `binding` holds one ISO-8601 timestamp. Not `datePicker` + `timePicker` side by side: those bind two values the author must then recombine, and the recombination is where time zones get lost. One widget, one instant, one binding.\nOptional: dateFormat:string, label:string, max:string, min:string, minuteInterval:number (default 1), timeFormat:string, timeZone:string."
+          },
+          {
+            "id": "dsl-decoration",
+            "title": "decoration widget",
+            "source": "mcp_ui_dsl/1.4/widgets/decoration",
+            "content": "`decoration` — display, Core profile. Wraps a child with a decoration box (color, gradient, border, shadow, image, blur) without otherwise affecting layout. The full `BoxDecoration` may be supplied via `decoration:`, or any of its fields may appear flat at the top level for ergonomic shorthand.\nOptional: backdropBlur:number, border:BoxBorder, borderRadius:BorderRadius, boxShadow:array<BoxShadow>, child:Widget, children:array<Widget>, color:Color, decoration:BoxDecoration, gradient:Gradient, image:BackgroundImage, shape:string (one of rectangle|circle; default rectangle)."
+          },
+          {
+            "id": "dsl-diffViewer",
+            "title": "diffViewer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/diffViewer",
+            "content": "`diffViewer` — advanced, Advanced profile. Side-by-side or unified comparison of two texts. Separate from `codeEditor` rather than a mode on it, because the input is two documents: a `mode` flag on a single-value widget would leave one of the two with nowhere to bind. Read-only by design — editing a diff means editing one side, which is `codeEditor`'s job.\nRequired: newValue:string | binding, oldValue:string | binding.\nOptional: contextLines:number, highlightLines:array<number>, language:string, showLineNumbers:boolean (default true), splitView:boolean (default true)."
+          },
+          {
+            "id": "dsl-divider",
+            "title": "divider widget",
+            "source": "mcp_ui_dsl/1.4/widgets/divider",
+            "content": "`divider` — display, Core profile. Horizontal separator.\nOptional: color:Color, endIndent:number, indent:number, thickness:number (default 1)."
+          },
+          {
+            "id": "dsl-dragTarget",
+            "title": "dragTarget widget",
+            "source": "mcp_ui_dsl/1.4/widgets/dragTarget",
+            "content": "`dragTarget` — interaction, Core profile. Drop area that accepts dragged data.\nRequired: builder:Widget (alias child).\nOptional: canDrop:binding, children:array<Widget>, onDragEnter:Action, onDragLeave:Action, onDrop:Action."
+          },
+          {
+            "id": "dsl-draggable",
+            "title": "draggable widget",
+            "source": "mcp_ui_dsl/1.4/widgets/draggable",
+            "content": "`draggable` — interaction, Core profile. Drag source widget that produces drag data and feedback visuals.\nRequired: child:Widget, data:any | binding.\nOptional: childWhenDragging:Widget, feedback:Widget."
+          },
+          {
+            "id": "dsl-drawer",
+            "title": "drawer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/drawer",
+            "content": "`drawer` — navigation, Core profile. Side navigation drawer. Each item's text field is `label`.\nOptional: children:array<Widget>, header:Widget, items:array<DrawerItem>, onClose:Action, onSelect:Action."
+          },
+          {
+            "id": "dsl-errorBoundary",
+            "title": "errorBoundary widget",
+            "source": "mcp_ui_dsl/1.4/widgets/errorBoundary",
+            "content": "`errorBoundary` — utility, Core profile. Catches render and build errors thrown by descendants and displays a fallback UI. See [`06_Runtime_Contract.md`](06_Runtime_Contract.md) for the exact recovery lifecycle.\nRequired: child:Widget.\nOptional: fallback:Widget, onError:Action."
+          },
+          {
+            "id": "dsl-errorRecovery",
+            "title": "errorRecovery widget",
+            "source": "mcp_ui_dsl/1.4/widgets/errorRecovery",
+            "content": "`errorRecovery` — utility, Core profile. Retry-oriented variant of `errorBoundary`. The `handlers` map may route specific error types to distinct fallbacks.\nOptional: child:Widget, children:array<Widget>, fallback:Widget, handlers:object, onError:Action, showDetails:boolean (default false)."
           },
           {
             "id": "dsl-expanded",
             "title": "expanded widget",
             "source": "mcp_ui_dsl/1.4/widgets/expanded",
-            "content": "expanded is a flexible-fill child inside a linear. Replaces Flutter's Expanded. Required: type:'expanded', child:<Widget>. Properties: flex:number (default 1). Use inside linear when one child should absorb remaining space. Example: {\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"value\":\"left\"},{\"type\":\"expanded\",\"child\":{\"type\":\"text\",\"value\":\"fills\"}}]}."
+            "content": "`expanded` — layout, Core profile. Flex child that expands to fill available space inside a `linear` parent.\nRequired: child:Widget.\nOptional: flex:number (default 1).\n\nNotes: expanded is a flexible-fill child inside a linear. Replaces Flutter's Expanded. Required: type:'expanded', child:<Widget>. Properties: flex:number (default 1). Use inside linear when one child should absorb remaining space. Example: {\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"text\":\"left\"},{\"type\":\"expanded\",\"child\":{\"type\":\"text\",\"text\":\"fills\"}}]}."
+          },
+          {
+            "id": "dsl-fileExplorer",
+            "title": "fileExplorer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/fileExplorer",
+            "content": "`fileExplorer` — advanced, Core profile. File and directory browser.\nOptional: directories:array<string>, expandAll:boolean (default false), files:array<string>, height:number, items:array<object> | binding, onOpen:Action, onSelect:Action, rootPath:string, selectedColor:Color, showHidden:boolean (default false), showIcons:boolean (default true), width:number."
+          },
+          {
+            "id": "dsl-fileInput",
+            "title": "fileInput widget",
+            "source": "mcp_ui_dsl/1.4/widgets/fileInput",
+            "content": "`fileInput` — input, Core profile. Lets the user hand the application a file they picked themselves. Follows the shared input contract (spec §2.6.0): with `binding` set, the runtime writes the selection to that state path. The value written is a list of file descriptors — see `binding` below. **Why this is Core and `client.selectFile` is not.** Reading a path the document names (`client.readFile`, `client.listFiles` — spec §8.2) reaches into the host's filesystem, so it belongs to the Client Profile behind a `file.read` grant (spec §8.4). Receiving a file the *user chose in a picker* is the opposite: the choosing is the consent, and the app learns nothing it was not handed. It is the same trust level as `signature` (also Core), which already accepts user-drawn input. A browser-rendered app that cannot claim the Client Profile still must be able to accept an upload. A runtime MUST NOT use this widget as a path to unpicked files: only what the picker returned is readable, and `path` MAY be absent (it is on web). Transport is not this widget's concern — once the selection is in state, sending it is an ordinary `tool` action.\nOptional: accept:array<string>, aspectRatio:number, binding:string, crop:boolean (default false), dragDrop:boolean (default true), enabled:boolean (default true), label:string, maxBytes:number, maxFiles:number, multiple:boolean (default false), onChange:Action, onError:Action, preview:boolean (default false)."
+          },
+          {
+            "id": "dsl-fittedBox",
+            "title": "fittedBox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/fittedBox",
+            "content": "`fittedBox` — utility, Core profile. Scales and aligns its child to fit available space.\nRequired: child:Widget.\nOptional: alignment:Alignment (default center), fit:string (one of cover|contain|fill|scaleDown|none; default contain)."
+          },
+          {
+            "id": "dsl-flexible",
+            "title": "flexible widget",
+            "source": "mcp_ui_dsl/1.4/widgets/flexible",
+            "content": "`flexible` — layout, Core profile. Flex child that may occupy up to its natural size.\nRequired: child:Widget.\nOptional: fit:string (default loose), flex:number (default 1)."
+          },
+          {
+            "id": "dsl-floatingActionButton",
+            "title": "floatingActionButton widget",
+            "source": "mcp_ui_dsl/1.4/widgets/floatingActionButton",
+            "content": "`floatingActionButton` — navigation, Core profile. Floating action button (FAB).\nOptional: icon:IconRef, label:string, onTap:Action (alias click/onPressed)."
+          },
+          {
+            "id": "dsl-flow",
+            "title": "flow widget",
+            "source": "mcp_ui_dsl/1.4/widgets/flow",
+            "content": "`flow` — utility, Core profile. Lightweight flowing layout that places each child along the main axis with fixed `spacing`, falling back to a new run when space is exhausted. A simpler alternative to `wrap` (§2.4.11) for spacer-style chains.\nRequired: children:array<Widget>.\nOptional: alignment:string (one of start|center|end; default start), direction:string (default horizontal), spacing:number (default 8)."
+          },
+          {
+            "id": "dsl-form",
+            "title": "form widget",
+            "source": "mcp_ui_dsl/1.4/widgets/form",
+            "content": "`form` — input, Core profile. Container that manages validation state for its child inputs.\nRequired: children:array<Widget>.\nOptional: onSubmit:Action, showErrorsOn:string (one of submit|change|blur; default submit)."
+          },
+          {
+            "id": "dsl-fractionallySized",
+            "title": "fractionallySized widget",
+            "source": "mcp_ui_dsl/1.4/widgets/fractionallySized",
+            "content": "`fractionallySized` — layout, Core profile. Sizes the child as a fraction of the parent.\nRequired: child:Widget.\nOptional: heightFactor:number, widthFactor:number."
+          },
+          {
+            "id": "dsl-gantt",
+            "title": "gantt widget",
+            "source": "mcp_ui_dsl/1.4/widgets/gantt",
+            "content": "`gantt` — advanced, Advanced profile. Tasks on a time axis, with dependencies and progress. What makes this a widget rather than a composition is the axis. Bars are positioned by *time*, not by index, so the row and the header must share one scale, stay aligned through zoom and horizontal scroll, and place a task whose span is shorter than a pixel without dropping it. Composing it from `grid` gives rows that drift from the header as soon as either scrolls. Dependencies are drawn, not enforced: the widget renders the arrows and reports an edit, and whether a move is legal is the server's answer.\nRequired: tasks:array<object> | binding.\nOptional: editable:boolean (default false), range:object, rowHeight:number, showDependencies:boolean (default true), showProgress:boolean (default true), todayMarker:boolean (default true), viewMode:string (one of hour|day|week|month|quarter|year; default day)."
+          },
+          {
+            "id": "dsl-gauge",
+            "title": "gauge widget",
+            "source": "mcp_ui_dsl/1.4/widgets/gauge",
+            "content": "`gauge` (also `meter`) — advanced, Core profile. Radial gauge for a value within a range.\nRequired: value:number.\nOptional: backgroundColor:Color (default #E0E0E0), labelFormat:string (default {value}), max:number (default 100), min:number (default 0), segments:array<Segment>, showLabel:boolean (default true), size:number (default 200), startAngle:number (default 135), strokeWidth:number (default 20), sweepAngle:number (default 270), valueColor:Color (default theme primary)."
+          },
+          {
+            "id": "dsl-gestureDetector",
+            "title": "gestureDetector widget",
+            "source": "mcp_ui_dsl/1.4/widgets/gestureDetector",
+            "content": "`gestureDetector` — interaction, Core profile. Detects touch and pointer gestures on its child.\nRequired: child:Widget.\nOptional: onDoubleTap:Action, onLongPress:Action, onPanEnd:Action, onPanStart:Action, onPanUpdate:Action, onTap:Action."
+          },
+          {
+            "id": "dsl-graph",
+            "title": "graph widget",
+            "source": "mcp_ui_dsl/1.4/widgets/graph",
+            "content": "`graph` — advanced, Core profile. Time-series / numeric data graph (line, bar, area, scatter) drawn on a single set of axes. For node/edge topology visualization use `networkGraph` (§10.13).\nRequired: data:array<Point> | binding.\nOptional: chartType:string (one of line|bar|area|scatter; default line), fillColor:Color, gridColor:Color (default light grey), height:number (default 200), lineColor:Color (default #2196F3), showGrid:boolean (default true), showLabels:boolean (default true), strokeWidth:number (default 2), width:number (default 300)."
+          },
+          {
+            "id": "dsl-grid",
+            "title": "grid widget",
+            "source": "mcp_ui_dsl/1.4/widgets/grid",
+            "content": "`grid` (also `gridview`) — list, Core profile. Scrollable two-dimensional collection.\nRequired: columns:number | object (alias crossAxisCount).\nOptional: children:array<Widget>, columnGap:number (default 0), itemAspectRatio:number, itemTemplate:Widget, items:binding, rowGap:number (default 0)."
+          },
+          {
+            "id": "dsl-headerBar",
+            "title": "headerBar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/headerBar",
+            "content": "`headerBar` (also `appbar`) — navigation, Core profile. Application header / toolbar at the top of a page.\nOptional: actions:array<Widget>, backgroundColor:Color, centerTitle:boolean (default false), elevation:number (default 1), exitButton:ExitButtonConfig | boolean, leading:Widget, title:string | Widget."
+          },
+          {
+            "id": "dsl-heatmap",
+            "title": "heatmap widget",
+            "source": "mcp_ui_dsl/1.4/widgets/heatmap",
+            "content": "`heatmap` — advanced, Core profile. Two-dimensional heatmap visualization.\nRequired: data:array | binding.\nOptional: cellSize:number (default 40), colorRange:{ low, high } (default { #E3F2FD, #1565C0 }), colorRange.high:Color, colorRange.low:Color, columnLabels:array<string>, onCellTap:Action, rowLabels:array<string>, showValues:boolean (default false)."
+          },
+          {
+            "id": "dsl-hero",
+            "title": "hero widget",
+            "source": "mcp_ui_dsl/1.4/widgets/hero",
+            "content": "`hero` — animation, Core profile. Shared-element transition wrapper. Wrap a child widget on the source page AND on the destination page with the SAME `tag`; the runtime morphs the source widget's bounds → destination widget's bounds during the route transition (cover → detail magnification, album cover → expanded album view). Pairs naturally with `RouteTransition` styles such as `fade` or `sharedAxis`.\nRequired: child:Widget, tag:string.\nOptional: flightShuttleBuilder:Widget, transitionOnUserGestures:boolean (default false)."
           },
           {
             "id": "dsl-icon",
             "title": "icon widget",
             "source": "mcp_ui_dsl/1.4/widgets/icon",
-            "content": "icon renders a Material icon by name. Required: type:'icon', name:string (Material icon name like 'home', 'add', 'folder_open', 'settings'). Properties: size:number, color:string. Example: {\"type\":\"icon\",\"name\":\"home\",\"size\":20,\"color\":\"#7DD3FC\"}. Common names: home, add, close, edit, delete, folder, folder_open, settings, info, warning, error, search, refresh, play_arrow, stop, chevron_left, chevron_right, expand_more, expand_less, more_vert, extension, star, push_pin, history."
+            "content": "`icon` — display, Core profile. Displays an icon. The `icon` property accepts three source forms — pick the lightest option that fits the asset: 1. **Named (built-in)** — `\"home\"`, `\"folder_open\"`, … from the runtime's Material Icons resolver table. Zero-cost. 2. **Codepoint** — `{codepoint, fontFamily?, fontPackage?}` for Material Icons codepoints not in the name table. 3. **Any `AssetRef`** — a network URL, `bundle://` asset, `assets/` path, `data:image/svg+xml;…` inline SVG, `client://` host resource, or an `{uri, origin?}` object read from an origin. Which of these a given runtime resolves is declared, not assumed (`06_Runtime_Contract.md` §6.12). A bare string that matches no known scheme and is not an `assets/` path is read as a **name**, so the named form stays the zero-ceremony default. The optional `shader` field paints the icon with a gradient/shader fill (rather than a solid `color`). When both are set the shader wins.\nRequired: icon:IconRef.\nOptional: color:Color, shader:Gradient, size:string|number, sizeToken:string (one of sm|md|lg|xl).\n\nNotes: icon renders a Material icon. The property is `icon`, not `name` — the factory reads only `properties['icon']`, so `name` renders nothing. Required: type:'icon', icon:string (Material icon name like 'home', 'add', 'folder_open', 'settings'). Properties: size:number, color:string. Example: {\"type\":\"icon\",\"icon\":\"home\",\"size\":20,\"color\":\"#7DD3FC\"}. Common names: home, add, close, edit, delete, folder, folder_open, settings, info, warning, error, search, refresh, play_arrow, stop, chevron_left, chevron_right, expand_more, expand_less, more_vert, extension, star, push_pin, history."
+          },
+          {
+            "id": "dsl-iconButton",
+            "title": "iconButton widget",
+            "source": "mcp_ui_dsl/1.4/widgets/iconButton",
+            "content": "`iconButton` — input, Core profile. Icon-only button for compact actions.\nRequired: icon:IconRef.\nOptional: color:Color, enabled:boolean (default true), onTap:Action, size:number."
+          },
+          {
+            "id": "dsl-image",
+            "title": "image widget",
+            "source": "mcp_ui_dsl/1.4/widgets/image",
+            "content": "`image` — display, Core profile. Displays an image from any asset source the runtime resolves — a network URL, the active bundle, inline bytes, a host resource, or a resource served by an origin. See `AssetRef`; a runtime declares which of those it resolves (`06_Runtime_Contract.md` §6.12) and routes the rest to `fallback` / `fallbackUrl` / `fallbackBehavior`.\nRequired: src:AssetRef (alias source/backgroundImage).\nOptional: alignment:Alignment (default center), fit:string (one of cover|contain|fill|none|scaleDown|fitHeight|fitWidth; default contain), height:number, width:number."
+          },
+          {
+            "id": "dsl-imageFilter",
+            "title": "imageFilter widget",
+            "source": "mcp_ui_dsl/1.4/widgets/imageFilter",
+            "content": "`imageFilter` — display, Core profile. Wraps a child with a colour / blur filter. Distinct from `BoxDecoration.image.colorFilter` (which colours an image background) — `imageFilter` filters the entire rendered subtree. Use for sepia/grayscale book pages, blur-on-hover thumbnails, saturation-bumped hero shots.\nRequired: child:Widget, filter:string (one of sepia|grayscale|blur|saturation|brightness|contrast|invert).\nOptional: intensity:number (default 1.0)."
+          },
+          {
+            "id": "dsl-indexedStack",
+            "title": "indexedStack widget",
+            "source": "mcp_ui_dsl/1.4/widgets/indexedStack",
+            "content": "`indexedStack` — layout, Core profile. Displays a single child selected by index. All children retain state.\nRequired: children:array<Widget>.\nOptional: alignment:Alignment (default topStart), index:number | binding (default 0)."
+          },
+          {
+            "id": "dsl-inkWell",
+            "title": "inkWell widget",
+            "source": "mcp_ui_dsl/1.4/widgets/inkWell",
+            "content": "`inkWell` — interaction, Core profile. Material-style touch feedback with ripple effect.\nRequired: child:Widget.\nOptional: borderRadius:number, onLongPress:Action, onTap:Action."
+          },
+          {
+            "id": "dsl-intrinsicHeight",
+            "title": "intrinsicHeight widget",
+            "source": "mcp_ui_dsl/1.4/widgets/intrinsicHeight",
+            "content": "`intrinsicHeight` — layout, Core profile. Constrains a child to the intrinsic height required by its content.\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-intrinsicWidth",
+            "title": "intrinsicWidth widget",
+            "source": "mcp_ui_dsl/1.4/widgets/intrinsicWidth",
+            "content": "`intrinsicWidth` — layout, Core profile. Constrains a child to the intrinsic width required by its content.\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-kanban",
+            "title": "kanban widget",
+            "source": "mcp_ui_dsl/1.4/widgets/kanban",
+            "content": "`kanban` — advanced, Advanced profile. Cards in columns, moved between columns by dragging. Composable from `grid` + `draggable` + `dragTarget` in the sense that the pieces exist — and that composition is where the work actually is. Drop targets must be the gaps between cards rather than the cards themselves, the column must auto-scroll while a card hovers near its edge, and a drop must report *where* in the destination the card landed, not just that it moved. Authors composing this get a board that looks right and reorders wrongly. The widget owns presentation and gesture. It does **not** own the move: `onCardMove` reports the intent and the author's action decides, so a server-rejected move is not silently already applied on screen.\nRequired: columns:array<object> | binding, itemTemplate:Widget.\nOptional: columnWidth:Dimension, draggable:boolean (default true), itemKey:string (default id), optimistic:boolean (default false)."
+          },
+          {
+            "id": "dsl-kenBurnsImage",
+            "title": "kenBurnsImage widget",
+            "source": "mcp_ui_dsl/1.4/widgets/kenBurnsImage",
+            "content": "`kenBurnsImage` — display, Core profile. Image with an automatic slow zoom-and-pan animation (the \"Ken Burns effect\"). Used for cinematic stills in book chapter openings, landing pages, and slideshow frames. The image holds intrinsic resolution and is animated within fit-bounds — no cropping outside the rendered rectangle.\nRequired: src:AssetRef.\nOptional: curve:AnimationCurve (default linear), duration:Dimension (default 8000), endAlignment:Alignment (default bottomEnd), fit:string (one of cover|contain|fill|fitWidth|fitHeight; default cover), height:Dimension, intensity:number (default 0.15), loop:boolean (default true), startAlignment:Alignment (default topStart), width:Dimension."
+          },
+          {
+            "id": "dsl-layoutBuilder",
+            "title": "layoutBuilder widget",
+            "source": "mcp_ui_dsl/1.4/widgets/layoutBuilder",
+            "content": "`layoutBuilder` — utility, Core profile. Runtime-only responsive container: picks a child by matching the current constraints against a breakpoint map.\nOptional: breakpoints:object, default:Widget, layouts:object."
+          },
+          {
+            "id": "dsl-lazy",
+            "title": "lazy widget",
+            "source": "mcp_ui_dsl/1.4/widgets/lazy",
+            "content": "`lazy` — utility, Core profile. Defer rendering of an expensive subtree until it enters the viewport (or until explicitly loaded).\nOptional: child:Widget, children:array<Widget>, content:Widget | object (alias child), onError:Action, onLoad:Action, placeholder:Widget, trigger:string (one of visible|immediate|manual; default visible)."
+          },
+          {
+            "id": "dsl-lightbox",
+            "title": "lightbox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/lightbox",
+            "content": "`lightbox` — advanced, Core profile. Full-screen modal image viewer with pinch-zoom and swipe-between- images. Used as a tap target on a thumbnail image — opening the lightbox transitions the thumbnail into the full-screen view. Pairs naturally with `hero` for the cover-to-detail morph.\nRequired: images:array<AssetRef>.\nOptional: allowSwipe:boolean (default true), allowZoom:boolean (default true), backgroundColor:Color (default #FF000000), initialIndex:number (default 0), maxZoom:number (default 4.0), onClose:Action, onIndexChanged:Action."
+          },
+          {
+            "id": "dsl-limitedBox",
+            "title": "limitedBox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/limitedBox",
+            "content": "`limitedBox` — utility, Core profile. Limits a child's size only when it would otherwise be unbounded.\nRequired: child:Widget.\nOptional: maxHeight:number (default double.infinity), maxWidth:number (default double.infinity)."
+          },
+          {
+            "id": "dsl-linear",
+            "title": "linear widget",
+            "source": "mcp_ui_dsl/1.4/widgets/linear",
+            "content": "`linear` (also `row`, `column`) — layout, Core profile. Linear (flex) layout along a single axis. Replaces separate `row` / `column` widgets — use `direction: \"horizontal\"` or `direction: \"vertical\"`. Main-axis sizing: when at least one child is `expanded` / `flexible` / `spacer` (or carries a `flex` value), `linear` expands to fill the available main-axis space so those children can distribute the remainder; otherwise it shrink-wraps its children. Authors can override this with the explicit `mainAxisSize` property.\nRequired: children:array<Widget>, direction:string (default vertical; alias orientation/scrollDirection).\nOptional: alignment:string (one of start|center|end|stretch; default start; alias crossAxisAlignment), distribution:string (one of start|center|end|spaceBetween|spaceAround|spaceEvenly|space-between|space-around|space-evenly; default start; alias mainAxisAlignment), mainAxisSize:string (one of min|max), spacing:number (default 0; alias gap/itemSpacing).\n\nNotes: linear is the row/column layout widget. Replaces Flutter's Row/Column. Required: type:'linear', children:[<Widget>...]. Properties: direction:'horizontal'|'vertical' (default horizontal), gap:number (spacing between children), mainAxisAlignment:'start'|'center'|'end'|'spaceBetween'|'spaceAround'|'spaceEvenly', crossAxisAlignment:'start'|'center'|'end'|'stretch', mainAxisSize:'min'|'max'. Example vertical: {\"type\":\"linear\",\"direction\":\"vertical\",\"gap\":8,\"children\":[{\"type\":\"text\",\"text\":\"a\"},{\"type\":\"text\",\"text\":\"b\"}]}."
+          },
+          {
+            "id": "dsl-link",
+            "title": "link widget",
+            "source": "mcp_ui_dsl/1.4/widgets/link",
+            "content": "`link` (also `navLink`) — navigation, Core profile. Text that navigates. `route` goes to an internal route; `url` leaves the application through `navigation.openUrl` (§4.3.3). Exactly one of the two is set — a link that could mean either is a link whose destination the author did not decide. Composable from `inkWell` + `text` + an action, and the composition is what most documents do today. It loses the link role (assistive technology announces \"button\"), the visited/hover affordances, and — for `url` — the external-destination cue a user needs before leaving the app. `navLink` is the same widget with `activeWhen` in use: a link that knows whether it points at where you already are.\nRequired: label:string.\nOptional: activeWhen:string | binding, child:Widget, icon:IconRef, params:object, route:string, target:string (one of new|same; default new), underline:string (one of always|hover|never; default hover), url:string."
+          },
+          {
+            "id": "dsl-list",
+            "title": "list widget",
+            "source": "mcp_ui_dsl/1.4/widgets/list",
+            "content": "`list` (also `listView`, `listview`) — list, Core profile. Scrollable linear collection rendered from an array binding.\nOptional: children:array<Widget>, emptyMessage:string, itemExtent:number, itemHeight:number, itemTemplate:Widget, items:binding, orientation:string (default vertical), overscan:number (default 3), spacing:number (default 0), virtual:boolean (default false).\n\nNotes: list renders a collection. Required: type:'list', either children:[<Widget>...] OR items:array + itemTemplate:<Widget>. With itemTemplate, each row is rendered from the template with {{item}} and {{index}} bound to the current entry. Properties: orientation:'vertical'|'horizontal' (default vertical), spacing:number, emptyMessage:string, itemExtent:number, shrinkWrap:bool and padding:number|EdgeInsets are read by the runtime but not declared in 1.4 — they work at run time and the conformance check rejects them, so prefer a surrounding box for padding. Use itemTemplate over children for bound dynamic lists. Example: {\"type\":\"list\",\"items\":\"{{todos}}\",\"shrinkWrap\":true,\"itemTemplate\":{\"type\":\"linear\",\"children\":[{\"type\":\"text\",\"text\":\"{{item.title}}\"}]}}."
+          },
+          {
+            "id": "dsl-listItem",
+            "title": "listItem widget",
+            "source": "mcp_ui_dsl/1.4/widgets/listItem",
+            "content": "`listItem` (also `listTile`, `list-tile`) — list, Core profile. Single row in a list with optional leading/trailing widgets. Replaces Material `listTile` naming.\nOptional: enabled:boolean (default true), leading:Widget, onTap:Action, selected:boolean (default false), subtitle:string | Widget, title:string | Widget, trailing:Widget."
+          },
+          {
+            "id": "dsl-lottieAnimation",
+            "title": "lottieAnimation widget",
+            "source": "mcp_ui_dsl/1.4/widgets/lottieAnimation",
+            "content": "`lottieAnimation` — animation, Core profile. Embedded Lottie/JSON animation playback.\nRequired: src:AssetRef (alias source).\nOptional: autoPlay:boolean (default true), loop:boolean (default true)."
+          },
+          {
+            "id": "dsl-map",
+            "title": "map widget",
+            "source": "mcp_ui_dsl/1.4/widgets/map",
+            "content": "`map` — advanced, Core profile. Geographic map with markers and overlays.\nRequired: markers[].id:string, markers[].latitude:number, markers[].longitude:number, overlays[].type:string (one of polygon|polyline|circle).\nOptional: center:{ latitude, longitude }, latitude:number, longitude:number, mapType:string (one of standard|satellite|terrain|hybrid; default standard), markers:array<Marker> (default []), markers[].color:string, markers[].icon:string, markers[].label:string, onMapTap:Action, onMarkerTap:Action, overlays:array<Overlay> (default []), overlays[].fillColor:string, overlays[].points:array<object{ latitude: number, longitude: number }> (default required for polygon/polyline), overlays[].strokeColor:string, overlays[].strokeWidth:number (default 1), zoom:number (default 13)."
+          },
+          {
+            "id": "dsl-margin",
+            "title": "margin widget",
+            "source": "mcp_ui_dsl/1.4/widgets/margin",
+            "content": "`margin` — layout, Core profile. Applies outer margin around a single child.\nRequired: child:Widget, margin:EdgeInsets (alias value)."
+          },
+          {
+            "id": "dsl-markdown",
+            "title": "markdown widget",
+            "source": "mcp_ui_dsl/1.4/widgets/markdown",
+            "content": "`markdown` — advanced, Core profile. Markdown renderer.\nRequired: text:string | binding (alias content).\nOptional: backgroundColor:Color, codeBackgroundColor:Color, fontSize:number, height:number, linkColor:Color, onLinkTap:Action, selectable:boolean (default false), textColor:Color, width:number."
+          },
+          {
+            "id": "dsl-mediaPlayer",
+            "title": "mediaPlayer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/mediaPlayer",
+            "content": "`mediaPlayer` (also `video`, `audio`) — advanced, Core profile. Audio / video player widget.\nRequired: source:AssetRef (alias src).\nOptional: autoPlay:boolean (default false), controls:boolean (default true), height:number, loop:boolean (default false), mediaType:string (one of audio|video; default inferred), muted:boolean (default false), onEnded:Action, onError:Action, onPause:Action, onPlay:Action, onTimeUpdate:Action, poster:AssetRef, volume:number (default 1.0), waveform:boolean (default false), width:number."
+          },
+          {
+            "id": "dsl-mediaQuery",
+            "title": "mediaQuery widget",
+            "source": "mcp_ui_dsl/1.4/widgets/mediaQuery",
+            "content": "`mediaQuery` — utility, Core profile. Responsive widget that inspects the current layout context and picks a child based on media-query conditions. Supports a `then`/`else` expression form and a `breakpoints` map form. The binding engine exposes `{{media.width}}`, `{{media.height}}`, `{{media.orientation}}` inside `condition`.\nOptional: breakpoints:object, condition:object | binding, defaultChild:Widget, else:Widget, then:Widget."
+          },
+          {
+            "id": "dsl-menu",
+            "title": "menu widget",
+            "source": "mcp_ui_dsl/1.4/widgets/menu",
+            "content": "`menu` — navigation, Core profile. Standing list of navigation destinations, optionally nested. Unlike `popupMenuButton` (a trigger that opens a transient list) this one is part of the layout — a sidebar or an inline section list. `navigationRail` covers the icon-rail form on one axis with a flat item set; this covers nesting, collapsing, and the expanded/collapsed sidebar that admin screens are built from.\nRequired: items:array<object>.\nOptional: collapsed:boolean | binding, mode:string (one of vertical|horizontal|inline; default vertical), openKeys:array<string>, selectedKey:string | binding."
+          },
+          {
+            "id": "dsl-multiSelect",
+            "title": "multiSelect widget",
+            "source": "mcp_ui_dsl/1.4/widgets/multiSelect",
+            "content": "`multiSelect` — input, Core profile. Dropdown selection of more than one value. Shared rows per §2.6.0; `binding` holds an **array** of selected values. Distinct from `checkboxGroup`, which lays every option out at once: this keeps the closed/summary form of `select` and is what a long option list needs. Distinct from `select`, which is single-value — the two are kept apart rather than folded into a `multiple` flag because the bound value changes shape (scalar vs array), and a flag that silently changes the type of what lands in state is the kind of thing an author discovers at runtime.\nRequired: options:array<Option> (alias items).\nOptional: label:string, maxSelections:number, placeholder:string, searchable:boolean (default false), selectAll:boolean (default false), showChips:boolean (default true)."
+          },
+          {
+            "id": "dsl-navigationRail",
+            "title": "navigationRail widget",
+            "source": "mcp_ui_dsl/1.4/widgets/navigationRail",
+            "content": "`navigationRail` — navigation, Core profile. Vertical navigation rail for tablet/desktop layouts. Each item's text field is `label`.\nRequired: items:array<NavItem> (alias destinations).\nOptional: onChange:Action, selectedIndex:number | binding."
+          },
+          {
+            "id": "dsl-networkGraph",
+            "title": "networkGraph widget",
+            "source": "mcp_ui_dsl/1.4/widgets/networkGraph",
+            "content": "`networkGraph` — advanced, Core profile. Network topology graph. Same node/edge model as `graph`, with topology-oriented defaults (hierarchical layout, directed edges).\nDeclares no properties of its own."
+          },
+          {
+            "id": "dsl-numberField",
+            "title": "numberField widget",
+            "source": "mcp_ui_dsl/1.4/widgets/numberField",
+            "content": "`numberField` (also `numberInput`) — input, Core profile. Specialized input for numeric values. Shared rows per §2.6.0; `value` is `number`.\nOptional: decimalPlaces:number (default 0), label:string, max:number, min:number, prefix:string, showStepper:boolean (default true), step:number (default 1), suffix:string, thousandSeparator:string."
+          },
+          {
+            "id": "dsl-numberStepper",
+            "title": "numberStepper widget",
+            "source": "mcp_ui_dsl/1.4/widgets/numberStepper",
+            "content": "`numberStepper` — input, Core profile. Incremental numeric input with plus/minus buttons. Shared rows per §2.6.0; `value` is `number`.\nOptional: label:string, max:number, min:number, step:number (default 1)."
+          },
+          {
+            "id": "dsl-offlineFallback",
+            "title": "offlineFallback widget",
+            "source": "mcp_ui_dsl/1.4/widgets/offlineFallback",
+            "content": "`offlineFallback` — utility, Core profile. Swaps between an online widget and an offline fallback based on connectivity tracked by the runtime. Connectivity state may be pinned by an `isOnline` binding for tests.\nOptional: icon:IconRef, isOnline:boolean | binding, message:string, offline:Widget, onRetry:Action, online:Widget, showRetry:boolean (default true)."
+          },
+          {
+            "id": "dsl-opacity",
+            "title": "opacity widget",
+            "source": "mcp_ui_dsl/1.4/widgets/opacity",
+            "content": "`opacity` — animation, Core profile. Wraps a child with opacity, with optional animation.\nRequired: child:Widget, opacity:number | binding.\nOptional: animated:boolean (default false), curve:string (default easeInOut), duration:number (default 300)."
+          },
+          {
+            "id": "dsl-otpInput",
+            "title": "otpInput widget",
+            "source": "mcp_ui_dsl/1.4/widgets/otpInput",
+            "content": "`otpInput` — input, Core profile. Fixed-length one-time-code entry. Shared rows per §2.6.0; `binding` holds the concatenated string, not per-cell values. This exists because the composed version is reliably broken. A row of `textInput`s loses: pasting a full code (it lands entirely in the first cell), forward focus movement on entry and backward on delete, and the platform's one-time-code autofill, which needs a single field declaring that intent. None of the three can be recovered by the author.\nOptional: autoSubmit:Action, autofill:boolean (default true), inputType:string (one of numeric|alphanumeric; default numeric), length:number (default 6), masked:boolean (default false)."
+          },
+          {
+            "id": "dsl-padding",
+            "title": "padding widget",
+            "source": "mcp_ui_dsl/1.4/widgets/padding",
+            "content": "`padding` — layout, Core profile. Applies padding around a single child.\nRequired: child:Widget, padding:EdgeInsets."
+          },
+          {
+            "id": "dsl-pageView",
+            "title": "pageView widget",
+            "source": "mcp_ui_dsl/1.4/widgets/pageView",
+            "content": "`pageView` — scroll, Core profile. Full-viewport paged scroll view. Snaps one page per swipe; ideal for book pages, photo galleries, onboarding flows. Distinct from `carousel` (partial-viewport, peeking neighbours) — pageView is always one full page. Each child is rendered as a separate page.\nRequired: children:array<Widget>.\nOptional: allowImplicitScrolling:boolean (default false), direction:string (one of horizontal|vertical; default horizontal), initialPage:number (default 0), loop:boolean (default false), onPageChanged:Action, scrollPhysics:string (one of bouncing|clamping|neverScrollable; default clamping)."
+          },
+          {
+            "id": "dsl-pagination",
+            "title": "pagination widget",
+            "source": "mcp_ui_dsl/1.4/widgets/pagination",
+            "content": "`pagination` — navigation, Core profile. Page selector for a paged collection. `binding` holds the current page (1-based). The composed version is where off-by-one bugs live: first/last bounds, the ellipsis window, and disabling prev/next at the ends are re-derived by every author. Stating it once also fixes what a screen reader hears — \"page 3 of 12\", not \"3\".\nRequired: total:number.\nOptional: binding:string, pageSize:number (default 20), pageSizeOptions:array<number>, showSizeChanger:boolean (default false), showTotal:boolean (default false), siblingCount:number (default 1)."
+          },
+          {
+            "id": "dsl-pdfViewer",
+            "title": "pdfViewer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/pdfViewer",
+            "content": "`pdfViewer` — advanced, Advanced profile. Renders a PDF document with page navigation and zoom. `webView` can display a PDF where the host has a plugin for it, and that is the substitution to avoid: the document then belongs to the browser, so page position, zoom, and search are outside the DSL's reach and outside the app's theme. A viewer widget keeps them addressable. `src` is an `AssetRef`, so the same document works from a bundle, a URL, a picked file (`fileInput` writes a `data:` URI), or a server resource.\nRequired: src:AssetRef.\nOptional: fit:string (one of width|height|page; default width), page:number | binding, showPageNav:boolean (default true), showToolbar:boolean (default true), showZoom:boolean (default true), zoom:number | binding."
+          },
+          {
+            "id": "dsl-permissionPrompt",
+            "title": "permissionPrompt widget",
+            "source": "mcp_ui_dsl/1.4/widgets/permissionPrompt",
+            "content": "`permissionPrompt` — utility, Core profile. Presents a prompt for one or more client capabilities (e.g., clipboard, filesystem). See [`07_Security.md`](07_Security.md) for the permission vocabulary.\nOptional: allowPartial:boolean (default false), description:string, icon:IconRef, onAllow:Action, onDeny:Action, permissionType:string, permissions:array<string>, style:string (one of inline|dialog|banner; default inline), title:string."
+          },
+          {
+            "id": "dsl-placeholder",
+            "title": "placeholder widget",
+            "source": "mcp_ui_dsl/1.4/widgets/placeholder",
+            "content": "`placeholder` (also `skeleton`) — display, Core profile. Empty placeholder widget with optional dimensions and color.\nOptional: child:Widget, color:Color, fallbackHeight:number, fallbackWidth:number, strokeWidth:number."
+          },
+          {
+            "id": "dsl-popover",
+            "title": "popover widget",
+            "source": "mcp_ui_dsl/1.4/widgets/popover",
+            "content": "`popover` (also `hoverCard`) — dialog, Core profile. Transient surface anchored to a trigger. `child` is the trigger; `content` is what appears. Distinct from `tooltip` (text only, no focusable content) and from `customDialog` (modal, centred, takes the whole screen's attention). A popover keeps the page usable behind it and is positioned against its anchor, which is the part composition cannot supply: flipping to the other side when it would overflow the viewport, and returning focus to the trigger on dismiss. `hoverCard` is the same widget with `trigger: \"hover\"`.\nRequired: child:Widget, content:Widget.\nOptional: closeDelay:number (default 0), dismissOnOutside:boolean (default true), open:boolean | binding, openDelay:number (default 0), placement:string (one of top|bottom|start|end|auto; default auto), trigger:string (one of tap|hover|focus|manual; default tap)."
+          },
+          {
+            "id": "dsl-popupMenuButton",
+            "title": "popupMenuButton widget",
+            "source": "mcp_ui_dsl/1.4/widgets/popupMenuButton",
+            "content": "`popupMenuButton` (also `dropdownMenu`) — navigation, Core profile. Button that reveals a popup menu of options.\nRequired: items:array<MenuItem>.\nOptional: icon:IconRef (default more_vert), onSelect:Action."
+          },
+          {
+            "id": "dsl-positioned",
+            "title": "positioned widget",
+            "source": "mcp_ui_dsl/1.4/widgets/positioned",
+            "content": "`positioned` — layout, Core profile. Positions a child within a `stack` using offsets.\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-progressBar",
+            "title": "progressBar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/progressBar",
+            "content": "`progressBar` (also `linearProgressIndicator`, `loadingIndicator`, `loading-indicator`, `progress-bar`, `progress`) — display, Core profile. Progress indicator (linear or circular).\nOptional: backgroundColor:Color, color:Color (default theme primary), indicatorType:string (default linear), value:number | binding."
+          },
+          {
+            "id": "dsl-qrCode",
+            "title": "qrCode widget",
+            "source": "mcp_ui_dsl/1.4/widgets/qrCode",
+            "content": "`qrCode` — advanced, Advanced profile. Renders a QR code for `value`. Cannot be composed — the module grid is computed, not laid out. The definition is small in exchange, and it pairs with the scanning side the platform already has: a code produced here is the same artefact §8.9 reads on arrival.\nRequired: value:string | binding.\nOptional: backgroundColor:Color, errorCorrection:string (one of L|M|Q|H; default M), foregroundColor:Color, logo:AssetRef, margin:boolean (default true), size:number (default 200)."
+          },
+          {
+            "id": "dsl-radio",
+            "title": "radio widget",
+            "source": "mcp_ui_dsl/1.4/widgets/radio",
+            "content": "`radio` — input, Core profile. Single radio button. The group's selected value is bound via `groupValue` (or the enclosing `radioGroup`'s `binding`).\nRequired: groupValue:any | binding, value:any.\nOptional: label:string, onChange:Action."
+          },
+          {
+            "id": "dsl-radioGroup",
+            "title": "radioGroup widget",
+            "source": "mcp_ui_dsl/1.4/widgets/radioGroup",
+            "content": "`radioGroup` — input, Core profile. Single-selection radio group. Shared rows per §2.6.0.\nRequired: options:array<Option> (alias items).\nOptional: label:string, orientation:string (default vertical)."
+          },
+          {
+            "id": "dsl-rangeSlider",
+            "title": "rangeSlider widget",
+            "source": "mcp_ui_dsl/1.4/widgets/rangeSlider",
+            "content": "`rangeSlider` — input, Core profile. Range selection with two thumbs. Shared rows per §2.6.0; `value` is an object `{ start, end }`.\nOptional: divisions:number, max:number (default 1), min:number (default 0)."
+          },
+          {
+            "id": "dsl-rating",
+            "title": "rating widget",
+            "source": "mcp_ui_dsl/1.4/widgets/rating",
+            "content": "`rating` — input, Core profile. Discrete rating control (e.g., star rating). Shared rows per §2.6.0; `value` is `number`.\nOptional: color:Color, icon:IconRef (default star), max:number (default 5)."
+          },
+          {
+            "id": "dsl-resizable",
+            "title": "resizable widget",
+            "source": "mcp_ui_dsl/1.4/widgets/resizable",
+            "content": "`resizable` — layout, Advanced profile. A box the user can resize by dragging its edges or corners. Distinct from `splitter`, which divides a fixed area between siblings. This changes one widget's own size against whatever surrounds it.\nRequired: child:Widget.\nOptional: handles:array<string>, height:number | binding, keepAspectRatio:boolean (default false), maxHeight:number, maxWidth:number, minHeight:number, minWidth:number, width:number | binding."
+          },
+          {
+            "id": "dsl-richText",
+            "title": "richText widget",
+            "source": "mcp_ui_dsl/1.4/widgets/richText",
+            "content": "`richText` — display, Core profile. Multi-span styled text — paragraph composition for long-form content (articles, book chapters, captions with inline emphasis or icons). Each `Span` is either a styled text run or an inline widget; the paragraph-level `style` provides the base TextStyle that individual span styles layer on top of.\nRequired: spans:array<Span>.\nOptional: dropCap:DropCap, maxLines:number, overflow:string (one of clip|ellipsis|fade|visible; default clip), softWrap:boolean (default true), style:TextStyle, textAlign:string (one of start|end|left|right|center|justify; default start), textDirection:string (one of ltr|rtl)."
+          },
+          {
+            "id": "dsl-richTextEditor",
+            "title": "richTextEditor widget",
+            "source": "mcp_ui_dsl/1.4/widgets/richTextEditor",
+            "content": "`richTextEditor` — advanced, Advanced profile. Formatted text entry. Shared rows per §2.6.0. **The bound value is HTML**, a subset stated in `format` below. That choice is the whole reason this widget needed a decision rather than a definition: an editor's value format is a contract every consumer of the document inherits, and a proprietary delta model would make the content unreadable to anything but the editor that produced it. HTML is what `richText` and `markdown` already sit beside, and a host that cannot edit can still display it. A runtime MUST sanitise on the way in and on the way out — §7.5 applies to this value exactly as it applies to any other author-supplied markup. The editor is not a licence to inject.\nOptional: format:string (one of html|markdown; default html), maxLength:number, minHeight:number, placeholder:string, toolbar:array<string>."
+          },
+          {
+            "id": "dsl-rive",
+            "title": "rive widget",
+            "source": "mcp_ui_dsl/1.4/widgets/rive",
+            "content": "`rive` — animation, Core profile. Plays a Rive animation (`.riv` asset) — the alternative to `lottieAnimation` when the asset was authored in Rive. State-machine inputs are driven via `inputs` so the same asset reacts to host state changes (toggle, scrub, trigger). Distinct from Lottie: Rive supports interactive state machines, vector deformation, and smaller binary footprints; Lottie is After Effects-based and better suited to time-driven motion graphics.\nRequired: src:AssetRef.\nOptional: alignment:Alignment (default center), animation:string, artboard:string, fit:string (one of fill|contain|cover|fitWidth|fitHeight|none|scaleDown; default contain), height:Dimension, inputs:object, stateMachine:string, width:Dimension."
+          },
+          {
+            "id": "dsl-safeArea",
+            "title": "safeArea widget",
+            "source": "mcp_ui_dsl/1.4/widgets/safeArea",
+            "content": "`safeArea` — layout, Core profile. Insets children so they avoid system UI overlaps (notch, status bar, home indicator).\nRequired: child:Widget."
+          },
+          {
+            "id": "dsl-scrollAnimated",
+            "title": "scrollAnimated widget",
+            "source": "mcp_ui_dsl/1.4/widgets/scrollAnimated",
+            "content": "`scrollAnimated` — animation, Core profile. Animation driven by scroll position rather than time. Wraps a child and reads from an ancestor scroll view's offset. Each `binding` maps a scroll-offset window to a property tween — when scroll passes through `[fromOffset, toOffset]` the property interpolates between `fromValue` and `toValue` linearly (or via `curve`). Common uses: parallax masthead (image translates 50% scroll speed), reveal-on-scroll (fade in as element enters viewport), shrinking title (font scales as user scrolls down).\nRequired: bindings:array<object>, child:Widget."
+          },
+          {
+            "id": "dsl-scrollBar",
+            "title": "scrollBar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/scrollBar",
+            "content": "`scrollBar` — scroll, Core profile. Wraps a scrollable child with a visible scroll bar. The runtime MUST provide a shared scroll controller to both the scroll bar and its scrollable child. When `thumbVisibility` or `trackVisibility` is `true`, the controller is required to drive the visibility; omitting it is a runtime error. Authors SHOULD NOT manage the controller manually — the runtime injects it transparently so the child scrollable (`scrollView`, `singleChildScrollView`, `list`, `grid`, `pageView`) binds to the same position.\nOptional: child:Widget, children:array<Widget>, radius:number, thickness:number, thumbVisibility:boolean, trackVisibility:boolean."
+          },
+          {
+            "id": "dsl-scrollView",
+            "title": "scrollView widget",
+            "source": "mcp_ui_dsl/1.4/widgets/scrollView",
+            "content": "`scrollView` (also `scrollArea`) — scroll, Core profile. Scrollable viewport. Two layout modes — pick one per instance: - **Linear mode** — `child` (single widget) or `children` (wrapped in an implicit linear column along `direction`). Simplest for everyday scrolling content. - **Sliver mode** — `slivers` array of `Sliver` primitives. Use for collapsing app bars, sticky section headers, parallax mastheads, or mixing list/grid sections in one viewport. The three input slots (`child`, `children`, `slivers`) are mutually exclusive.\nOptional: child:Widget, children:array<Widget>, direction:string (one of vertical|horizontal; default vertical), padding:EdgeInsets, scrollPhysics:string (one of bouncing|clamping|neverScrollable; default clamping), slivers:array<Sliver>."
+          },
+          {
+            "id": "dsl-segmentedControl",
+            "title": "segmentedControl widget",
+            "source": "mcp_ui_dsl/1.4/widgets/segmentedControl",
+            "content": "`segmentedControl` — input, Core profile. Segmented selection, styled as tabs or buttons. Shared rows per §2.6.0.\nRequired: options:array<Option> (alias segments).\nOptional: label:string, variant:string (one of segmented|tabs|buttons; default segmented)."
+          },
+          {
+            "id": "dsl-select",
+            "title": "select widget",
+            "source": "mcp_ui_dsl/1.4/widgets/select",
+            "content": "`select` (also `dropdown`) — input, Core profile. Single-value dropdown selection. Shared rows per §2.6.0.\nRequired: options:array<Option> (alias items).\nOptional: placeholder:string."
+          },
+          {
+            "id": "dsl-signature",
+            "title": "signature widget",
+            "source": "mcp_ui_dsl/1.4/widgets/signature",
+            "content": "`signature` — advanced, Core profile. Signature capture pad.\nOptional: backgroundColor:Color, binding:binding, borderColor:Color, height:number, onClear:Action, onSignatureEnd:Action, penColor:Color (default #000000; alias color), penWidth:number (default 2.0; alias strokeWidth), showClearButton:boolean (default true), showGuide:boolean (default false), width:number."
+          },
+          {
+            "id": "dsl-simpleDialog",
+            "title": "simpleDialog widget",
+            "source": "mcp_ui_dsl/1.4/widgets/simpleDialog",
+            "content": "`simpleDialog` — dialog, Core profile. Dialog presenting a list of options.\nOptional: children:array<Widget>, onClose:Action, onSelect:Action, options:array<Option>, title:string."
+          },
+          {
+            "id": "dsl-singleChildScrollView",
+            "title": "singleChildScrollView widget",
+            "source": "mcp_ui_dsl/1.4/widgets/singleChildScrollView",
+            "content": "`singleChildScrollView` — scroll, Core profile. Lightweight scrollable wrapper for a single child.\nOptional: child:Widget, children:array<Widget>, direction:string (default vertical), padding:EdgeInsets."
+          },
+          {
+            "id": "dsl-sizedBox",
+            "title": "sizedBox widget",
+            "source": "mcp_ui_dsl/1.4/widgets/sizedBox",
+            "content": "`sizedBox` — layout, Core profile. Fixed-size box. Commonly used as a spacer with an explicit size.\nOptional: child:Widget, height:number, width:number.\n\nNotes: sizedBox is a fixed-size empty box. Common as a spacer in linear children. Properties: width:number, height:number, child:<Widget> (optional). Example spacer: {\"type\":\"sizedBox\",\"height\":12}. Use linear.gap instead of sizedBox spacers when possible."
+          },
+          {
+            "id": "dsl-slider",
+            "title": "slider widget",
+            "source": "mcp_ui_dsl/1.4/widgets/slider",
+            "content": "`slider` — input, Core profile. Continuous single-value selection. Shared rows per §2.6.0; `value` is `number`.\nOptional: divisions:number, label:string, max:number (default 1), min:number (default 0), value:number (alias values)."
+          },
+          {
+            "id": "dsl-snackBar",
+            "title": "snackBar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/snackBar",
+            "content": "`snackBar` (also `toast`) — dialog, Core profile. Transient notification at the bottom of the screen.\nRequired: content:string.\nOptional: action:SnackBarAction, duration:number (default 4000), onClose:Action."
+          },
+          {
+            "id": "dsl-spacer",
+            "title": "spacer widget",
+            "source": "mcp_ui_dsl/1.4/widgets/spacer",
+            "content": "`spacer` — layout, Core profile. Flexible empty space inside a `linear` parent.\nOptional: flex:number (default 1)."
+          },
+          {
+            "id": "dsl-splitter",
+            "title": "splitter widget",
+            "source": "mcp_ui_dsl/1.4/widgets/splitter",
+            "content": "`splitter` — layout, Advanced profile. Panes separated by draggable gutters. Distinct from `resizable`, which resizes one box against the layout around it. This divides a fixed area between siblings: dragging a gutter takes space from one pane and gives it to the next, so the total never changes.\nRequired: children:array<Widget>.\nOptional: collapsible:array<boolean>, gutterSize:number (default 8), minSizes:array<number>, orientation:string (one of horizontal|vertical; default horizontal), sizes:array<number> | binding."
+          },
+          {
+            "id": "dsl-spreadsheet",
+            "title": "spreadsheet widget",
+            "source": "mcp_ui_dsl/1.4/widgets/spreadsheet",
+            "content": "`spreadsheet` — advanced, Advanced profile. Editable grid of cells addressed by row and column, with optional formulas. Distinct from `dataTable`, which presents records: a table's unit is a row with typed fields, a spreadsheet's unit is a cell with a coordinate. That difference is why one cannot be a mode of the other — selection, editing, and paste all address different things. **Formulas are evaluated by the runtime's expression engine under §7.1**, not by a spreadsheet language of the DSL's own. A runtime that cannot meet that sandbox MUST render formulas as their last computed value rather than evaluating them loosely: a cell that runs arbitrary text is the one place this widget could become an injection surface.\nRequired: data:array<array> | binding.\nOptional: columnHeaders:boolean (default true), columns:array<object>, editable:boolean (default true), formulas:boolean (default false), frozenColumns:number (default 0), frozenRows:number (default 0), rowHeaders:boolean (default true)."
+          },
+          {
+            "id": "dsl-stack",
+            "title": "stack widget",
+            "source": "mcp_ui_dsl/1.4/widgets/stack",
+            "content": "`stack` — layout, Core profile. Overlapping children. Non-positioned children align per `alignment`; positioned children use explicit offsets (see `positioned`).\nRequired: children:array<Widget>.\nOptional: alignment:Alignment (default topStart), fit:string (one of loose|expand|passthrough; default loose)."
+          },
+          {
+            "id": "dsl-staggeredGrid",
+            "title": "staggeredGrid widget",
+            "source": "mcp_ui_dsl/1.4/widgets/staggeredGrid",
+            "content": "`staggeredGrid` — list, Core profile. Pinterest-style masonry layout — items keep their intrinsic height and are packed by column without uniform row alignment. Use for album / book / portfolio shelves where covers have different aspect ratios. Distinct from `grid` (uniform row alignment) and `carousel` (single-axis scrolling).\nRequired: columns:number | object.\nOptional: children:array<Widget>, crossAxisSpacing:number (default 0), itemTemplate:Widget, items:binding, mainAxisSpacing:number (default 0), padding:EdgeInsets, scrollDirection:string (one of vertical|horizontal; default vertical)."
+          },
+          {
+            "id": "dsl-stepper",
+            "title": "stepper widget",
+            "source": "mcp_ui_dsl/1.4/widgets/stepper",
+            "content": "`stepper` (also `steps`) — input, Core profile. Step-by-step wizard. Shared `binding` / `value` / `enabled` / `onChange` per §2.6.0 — the bound value is the **active step index** (integer). `binding` and `currentStep` are aliases: when `binding` is set, it takes effect; otherwise `currentStep` is read as a one-way property.\nRequired: steps:array<Step>.\nOptional: currentStep:number | binding (default 0), onStepCancel:Action, onStepContinue:Action, onStepTapped:Action, stepperType:string (default vertical)."
+          },
+          {
+            "id": "dsl-tabBar",
+            "title": "tabBar widget",
+            "source": "mcp_ui_dsl/1.4/widgets/tabBar",
+            "content": "`tabBar` — navigation, Core profile. Horizontal tab selector. Each tab's text field is `label`.\nRequired: tabs:array<Tab>.\nOptional: onChange:Action, selectedIndex:number | binding (default 0)."
+          },
+          {
+            "id": "dsl-tabBarView",
+            "title": "tabBarView widget",
+            "source": "mcp_ui_dsl/1.4/widgets/tabBarView",
+            "content": "`tabBarView` — navigation, Core profile. Content area that displays widgets corresponding to the currently selected tab.\nRequired: children:array<Widget>.\nOptional: selectedIndex:number | binding."
+          },
+          {
+            "id": "dsl-table",
+            "title": "table widget",
+            "source": "mcp_ui_dsl/1.4/widgets/table",
+            "content": "`table` — advanced, Core profile. Layout table for arranging widgets in rows and columns. Not data-bound; each cell is a widget.\nRequired: rows:array<object{ cells: array<Widget> }>.\nOptional: border:{ color, width }, columnWidths:object, defaultColumnWidth:string | number (default flex), defaultVerticalAlignment:string (one of top|middle|bottom|baseline; default middle)."
+          },
+          {
+            "id": "dsl-terminal",
+            "title": "terminal widget",
+            "source": "mcp_ui_dsl/1.4/widgets/terminal",
+            "content": "`terminal` — advanced, Core profile. ANSI-capable terminal emulator.\nOptional: backgroundColor:Color, fontSize:number, height:number, lines:binding, maxLines:number, onCommand:Action, prompt:string (default $), promptColor:Color, showInput:boolean (default true), textColor:Color, width:number."
+          },
+          {
+            "id": "dsl-text",
+            "title": "text widget",
+            "source": "mcp_ui_dsl/1.4/widgets/text",
+            "content": "`text` (also `label`) — display, Core profile. Renders a string. The canonical content field is `text`.\nRequired: text:string (alias content).\nOptional: dropCap:DropCap, maxLines:number, overflow:string (default clip), style:TextStyle, textAlign:string (default start), variant:string (one of displayLarge|displayMedium|displaySmall|headlineLarge|headlineMedium|headlineSmall|titleLarge|titleMedium|titleSmall|bodyLarge|bodyMedium|bodySmall|labelLarge|labelMedium|labelSmall).\n\nNotes: text renders a string. Required: type:'text', text:string (alias `content`). The runtime also accepts `value` as a third fallback, but 1.4 does not declare it — author `text`, or the conformance check rejects a document that renders. Properties: style:object (fontSize:number, fontWeight:'bold'|'normal'|'w100'..'w900', color:string, fontFamily:string), variant:string (Material 3 typography role — camelCase: displayLarge, displayMedium, displaySmall, headlineLarge..Small, titleLarge..Small, bodyLarge..Small, labelLarge..Small — 15 roles total), maxLines:number, overflow:'ellipsis'|'fade'|'clip'. variant is layered with style. Example: {\"type\":\"text\",\"text\":\"Hello {{name}}\",\"variant\":\"titleMedium\",\"style\":{\"color\":\"#7DD3FC\"}}."
+          },
+          {
+            "id": "dsl-textInput",
+            "title": "textInput widget",
+            "source": "mcp_ui_dsl/1.4/widgets/textInput",
+            "content": "`textInput` (also `textField`, `textfield`, `textFormField`, `text-form-field`) — input, Core profile. Single-line (or multi-line when `maxLines > 1`) text entry. Follows the shared input contract (spec §2.6.0): when `binding` is set, the runtime reads the current value from the state path and writes user input back without requiring an explicit `onChange`. Explicit `value` + `onChange` override the shorthand.\nOptional: binding:string, defaultCountry:string, enabled:boolean (default true), helperText:string, inputType:string (one of text|number|email|phone|url|search|multiline; default text), label:string, maxLength:integer, maxLines:integer (default 1), obscureText:boolean (default false), placeholder:string (alias hint), prefixIcon:string, readOnly:boolean (default false), showToggle:boolean (default false), suffixIcon:string, validation:ValidationConfig, value:string | binding."
+          },
+          {
+            "id": "dsl-timeField",
+            "title": "timeField widget",
+            "source": "mcp_ui_dsl/1.4/widgets/timeField",
+            "content": "`timeField` — input, Core profile. Time input. Shared rows per §2.6.0; `value` is a time string (e.g., `\"14:30\"`).\nOptional: format:string (default HH:mm), label:string, mode:string (default spinner), use24HourFormat:boolean (default true)."
+          },
+          {
+            "id": "dsl-timePicker",
+            "title": "timePicker widget",
+            "source": "mcp_ui_dsl/1.4/widgets/timePicker",
+            "content": "`timePicker` — input, Core profile. Standalone time picker surface. Shared rows per §2.6.0; `value` is a time string.\nOptional: label:string, use24HourFormat:boolean (default false)."
+          },
+          {
+            "id": "dsl-timeline",
+            "title": "timeline widget",
+            "source": "mcp_ui_dsl/1.4/widgets/timeline",
+            "content": "`timeline` — advanced, Core profile. Chronological timeline of events.\nRequired: items:array<TimelineItem>, items[].title:string.\nOptional: items[].color:string (default theme), items[].icon:string, items[].subtitle:string, items[].time:string, orientation:string (one of vertical|horizontal; default vertical)."
+          },
+          {
+            "id": "dsl-toggle",
+            "title": "toggle widget",
+            "source": "mcp_ui_dsl/1.4/widgets/toggle",
+            "content": "`toggle` (also `switch`) — input, Core profile. Binary on/off control. Shared `binding` / `value` / `enabled` / `onChange` per §2.6.0; `value` is `boolean`.\nDeclares no properties of its own."
+          },
+          {
+            "id": "dsl-tooltip",
+            "title": "tooltip widget",
+            "source": "mcp_ui_dsl/1.4/widgets/tooltip",
+            "content": "`tooltip` — display, Core profile. Wrapper that reveals a tooltip on hover or long-press.\nRequired: child:Widget, message:string."
+          },
+          {
+            "id": "dsl-transform",
+            "title": "transform widget",
+            "source": "mcp_ui_dsl/1.4/widgets/transform",
+            "content": "`transform` — animation, Core profile. Geometric transformation (rotate, scale, translate) applied to a child.\nRequired: child:Widget.\nOptional: animated:boolean (default false), curve:string (default easeInOut), duration:number (default 300), origin:object (default { x: 0.5, y: 0.5 }), rotate:number (default 0), scale:number | object (default 1), translate:object."
+          },
+          {
+            "id": "dsl-tree",
+            "title": "tree widget",
+            "source": "mcp_ui_dsl/1.4/widgets/tree",
+            "content": "`tree` (also `treeView`) — advanced, Core profile. Hierarchical tree view with expandable nodes.\nRequired: data:array | binding.\nOptional: checkable:boolean (default false), checkedKeys:array<string> | binding, childrenKey:string (default children), draggable:boolean (default false), expandable:boolean (default true), height:number, indentation:number (default 24), initiallyExpanded:boolean (default false), itemPadding:EdgeInsets, itemTemplate:Widget, lineColor:Color, onCollapse:Action, onExpand:Action, onNodeTap:Action, onSelect:Action, selectable:boolean (default false), selectedColor:Color, showLines:boolean (default true), width:number."
+          },
+          {
+            "id": "dsl-use",
+            "title": "use widget",
+            "source": "mcp_ui_dsl/1.4/widgets/use",
+            "content": "`use` — utility, Core profile. Instantiates a named template (see §9.6).\nRequired: template:string.\nOptional: params:object, slots:object."
+          },
+          {
+            "id": "dsl-verticalDivider",
+            "title": "verticalDivider widget",
+            "source": "mcp_ui_dsl/1.4/widgets/verticalDivider",
+            "content": "`verticalDivider` — display, Core profile. Vertical separator, typically used in horizontal layouts.\nOptional: color:Color, endIndent:number, indent:number, thickness:number (default 1), width:number."
+          },
+          {
+            "id": "dsl-view",
+            "title": "view widget",
+            "source": "mcp_ui_dsl/1.4/widgets/view",
+            "content": "`view` — utility, Composition profile. Embeds a definition sourced from anywhere — including another MCP origin — at this point in the tree. The consumer side of composition: `11_Bundle_Metadata.md` §11.9 `dashboard` declares how an app presents itself *when embedded*; `view` is how an app *embeds*. See [`01_Core_Concepts.md`](01_Core_Concepts.md) §1.9 for `DefinitionSource` and the origin-scope rule. When `source` names an origin, that origin becomes the ambient origin for the embedded subtree: its `tool` calls, resource reads, subscriptions, state, storage, and permissions all scope to it (§1.9.5, §7.10, §8.8). This is what lets a definition authored with no knowledge of any embedder render unmodified and still reach its own server.\nRequired: source:DefinitionSource.\nOptional: fallback:Widget, loading:Widget, onError:Action, props:object, theme:string (one of inherit|own; default inherit)."
+          },
+          {
+            "id": "dsl-visibility",
+            "title": "visibility widget",
+            "source": "mcp_ui_dsl/1.4/widgets/visibility",
+            "content": "`visibility` — layout, Core profile. Shows or hides a child with optional state preservation and replacement content.\nOptional: child:Widget, children:array<Widget>, maintainSize:boolean (default false), maintainState:boolean (default false), replacement:Widget, visible:boolean | binding (default true)."
+          },
+          {
+            "id": "dsl-voiceInput",
+            "title": "voiceInput widget",
+            "source": "mcp_ui_dsl/1.4/widgets/voiceInput",
+            "content": "`voiceInput` — input, Client profile. Speech captured from the microphone, transcribed into `binding`. **Client Profile, not Core** — and the line is worth stating because `fileInput` sits on the other side of it. Picking a file is one act of choosing, and the choosing is the consent. A microphone is a continuous capture of the room, including whoever else is in it, so it belongs behind the permission system (§8.4) with a grant the user can see and revoke. There is no composition that reaches it: microphone access is a host capability, so without this widget a document cannot express the intent at all.\nOptional: binding:string, continuous:boolean (default false), interimResults:boolean (default false), language:string, maxDuration:number, showWaveform:boolean (default true)."
+          },
+          {
+            "id": "dsl-webView",
+            "title": "webView widget",
+            "source": "mcp_ui_dsl/1.4/widgets/webView",
+            "content": "`webView` — advanced, Core profile. Embedded web view.\nOptional: allowNavigation:boolean (default true), enableJavaScript:boolean (default true), enableZoom:boolean (default true), height:number, html:string (default null (if url set)), onError:Action, onPageFinished:Action, onPageStarted:Action, url:string (default null (if html set)), width:number."
+          },
+          {
+            "id": "dsl-wrap",
+            "title": "wrap widget",
+            "source": "mcp_ui_dsl/1.4/widgets/wrap",
+            "content": "`wrap` — layout, Core profile. Flow layout that wraps children to the next line when they exceed available width/height.\nRequired: children:array<Widget>.\nOptional: alignment:string (default start), direction:string (default horizontal), runSpacing:number (default 0), spacing:number (default 0)."
           }
         ]
       },
@@ -472,82 +1354,268 @@
         "id": "mcp_ui_dsl_custom_widgets",
         "documents": [
           {
-            "id": "custom-ToolForm",
-            "title": "ToolForm custom widget",
-            "source": "studio/custom_widgets/ToolForm",
-            "content": "ToolForm auto-generates a form from a tool's inputSchema (JSON Schema). Required: type:'ToolForm', tool:'<name>', inputSchema:object. Optional: submitLabel:string (default 'Submit'), bindResult:string (state key to merge result into; default = auto-merge top-level), loadingBinding:string (bool flag flipped during submission). Field type mapping: string→TextField; number/integer→numeric TextField; boolean→Switch; string+enum→Dropdown. Example: {\"type\":\"ToolForm\",\"tool\":\"shout\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}}."
+            "id": "custom-VbuActivityBar",
+            "title": "VbuActivityBar (studio custom widget)",
+            "source": "studio/custom_widgets/VbuActivityBar",
+            "content": "`VbuActivityBar` — chrome. Vbu atom — ActivityBar. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: groups:Object, width:number."
           },
           {
-            "id": "custom-ToolResult",
-            "title": "ToolResult custom widget",
-            "source": "studio/custom_widgets/ToolResult",
-            "content": "ToolResult renders the last tool result with type-aware fields based on outputSchema. Required: type:'ToolResult', resultBinding:string (state key holding the result), outputSchema:object. Properties: emptyMessage:string. Pairs with ToolForm or any tool action — auto-merge populates the state key, ToolResult re-renders. Example: {\"type\":\"ToolResult\",\"resultBinding\":\"shouted\",\"outputSchema\":{\"type\":\"object\",\"properties\":{\"shouted\":{\"type\":\"string\"}}}}."
+            "id": "custom-VbuBundleEmbed",
+            "title": "VbuBundleEmbed (studio custom widget)",
+            "source": "studio/custom_widgets/VbuBundleEmbed",
+            "content": "`VbuBundleEmbed` — embed. Vbu atom — BundleEmbed. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: bundlePath:string, uiPath:string."
           },
           {
-            "id": "custom-ToolPicker",
-            "title": "ToolPicker custom widget",
-            "source": "studio/custom_widgets/ToolPicker",
-            "content": "ToolPicker renders a dropdown of available tools and dispatches the selected one on change. Required: type:'ToolPicker', tools:array of tool names. Properties: label:string, value:string (currently selected — usually bound to state). Use when the UI lets the user pick which tool to run before forming inputs."
+            "id": "custom-VbuBundleKnowledgeView",
+            "title": "VbuBundleKnowledgeView (studio custom widget)",
+            "source": "studio/custom_widgets/VbuBundleKnowledgeView",
+            "content": "`VbuBundleKnowledgeView` — embed. Vbu atom — BundleKnowledgeView. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: bundlePath:string."
           },
           {
-            "id": "custom-VbuTitleBar",
-            "title": "VbuTitleBar custom widget",
-            "source": "studio/custom_widgets/VbuTitleBar",
-            "content": "VbuTitleBar is the studio's chrome-style strip for the top of a bundle's page — full-width, 28px tall (VbuTokens.titlebarHeight, matches the studio's own titlebar), `surface` background, `borderDefault` 1px bottom border, mono 12pt w600 title. Tool aesthetic — thin and quiet. When a page needs a header bar, this atom usually fits and keeps the bundle's tone consistent with the studio chrome around it. Required: type:'VbuTitleBar', title:string. Properties: subtitle:string (small secondary line shown inline with a · separator, mono 11pt), leading:<Widget> (small leading icon, optional), trailing:[<Widget>...] (small icon buttons / VbuPills, optional — 14-16px icons match the tool tone), height:number (default 28), background:string (hex; defaults to surface token). Pairs naturally with `linear(direction:'vertical', crossAxisAlignment:'stretch')` at page root + `expanded` body below. Example minimal: {\"type\":\"VbuTitleBar\",\"title\":\"My App\"}. Example with subtitle + trailing: {\"type\":\"VbuTitleBar\",\"title\":\"Counter\",\"subtitle\":\"count {{count}}\",\"trailing\":[{\"type\":\"icon\",\"name\":\"settings\",\"size\":14}]}. When the user asks for something taller / larger-font (44px+, 16pt+ titles, prominent shadow), that's typically a mobile-AppBar request — suggest the lighter atom first and confirm; the studio is a desktop tool, so a mobile-style header usually reads as out-of-place inside it."
+            "id": "custom-VbuBundleManifestView",
+            "title": "VbuBundleManifestView (studio custom widget)",
+            "source": "studio/custom_widgets/VbuBundleManifestView",
+            "content": "`VbuBundleManifestView` — embed. Vbu atom — BundleManifestView. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: bundlePath:string."
           },
           {
-            "id": "custom-VbuPaneHeader",
-            "title": "VbuPaneHeader custom widget",
-            "source": "studio/custom_widgets/VbuPaneHeader",
-            "content": "VbuPaneHeader is the studio's panel-title bar — small uppercase label + optional trailing actions + optional clear button. Required: type:'VbuPaneHeader', label:string. Properties: actions:[<Widget>...] (trailing icons/buttons), onClear:Action (renders an X icon, fires this action), clearTooltip:string, height:number (default 36). Example: {\"type\":\"VbuPaneHeader\",\"label\":\"RECENT\",\"actions\":[]}. Distinct from VbuTitleBar: VbuPaneHeader = uppercase SECTION label inside a panel; VbuTitleBar = window-chrome strip across the top of the whole page."
-          },
-          {
-            "id": "custom-VbuPill",
-            "title": "VbuPill custom widget",
-            "source": "studio/custom_widgets/VbuPill",
-            "content": "VbuPill is a small rounded chip — badge or tag. Required: type:'VbuPill', label:string. Properties: leading:<Widget> (icon before label), onTap:Action, background:string (hex color), foreground:string (hex color). Default: studio's subtle pill colour. Example: {\"type\":\"VbuPill\",\"label\":\"draft\",\"background\":\"#22C55E\",\"foreground\":\"#0B1220\"}."
-          },
-          {
-            "id": "custom-VbuLabelledField",
-            "title": "VbuLabelledField custom widget",
-            "source": "studio/custom_widgets/VbuLabelledField",
-            "content": "VbuLabelledField is a label-prefixed text input — studio form convention. Required: type:'VbuLabelledField', label:string, hint:string. Properties: value:string (initial value binding), obscure:bool (password-style), trailing:<Widget>, labelWidth:number (default 92), onChanged:Action (fires with each keystroke; the new text is in {{$event}}). Example: {\"type\":\"VbuLabelledField\",\"label\":\"Name\",\"hint\":\"my-project\",\"value\":\"{{name}}\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setName\",\"params\":{\"name\":\"{{$event}}\"}}}."
-          },
-          {
-            "id": "custom-VbuLabelledToggle",
-            "title": "VbuLabelledToggle custom widget",
-            "source": "studio/custom_widgets/VbuLabelledToggle",
-            "content": "VbuLabelledToggle is a label-prefixed switch. Required: type:'VbuLabelledToggle', label:string, value:bool, onChanged:Action. Properties: hint:string. onChanged receives the new bool in {{$event}}. Example: {\"type\":\"VbuLabelledToggle\",\"label\":\"Enable\",\"value\":\"{{enabled}}\",\"hint\":\"toggle the feature\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setEnabled\",\"params\":{\"v\":\"{{$event}}\"}}}."
-          },
-          {
-            "id": "custom-VbuLabelledMenu",
-            "title": "VbuLabelledMenu custom widget",
-            "source": "studio/custom_widgets/VbuLabelledMenu",
-            "content": "VbuLabelledMenu is a label-prefixed dropdown. Required: type:'VbuLabelledMenu', label:string, value:any, options:[any...], onChanged:Action. Properties: labels:map{value→displayLabel}, labelWidth:number (default 92). Picked value lands in {{$event}}. Example: {\"type\":\"VbuLabelledMenu\",\"label\":\"Mode\",\"value\":\"{{mode}}\",\"options\":[\"dev\",\"prod\"],\"labels\":{\"dev\":\"Development\",\"prod\":\"Production\"},\"onChanged\":{\"type\":\"tool\",\"tool\":\"setMode\",\"params\":{\"m\":\"{{$event}}\"}}}."
-          },
-          {
-            "id": "custom-VbuSystemNote",
-            "title": "VbuSystemNote custom widget",
-            "source": "studio/custom_widgets/VbuSystemNote",
-            "content": "VbuSystemNote is a callout / banner for informational or error messages. Required: type:'VbuSystemNote', text:string. Properties: error:bool (red-styled when true), onDelete:Action (renders dismiss X). Default is the studio's subtle note tone. Example info: {\"type\":\"VbuSystemNote\",\"text\":\"Saved — 3 changes\"}. Example error: {\"type\":\"VbuSystemNote\",\"text\":\"Permission denied\",\"error\":true}."
+            "id": "custom-VbuBundleToolsEditor",
+            "title": "VbuBundleToolsEditor (studio custom widget)",
+            "source": "studio/custom_widgets/VbuBundleToolsEditor",
+            "content": "`VbuBundleToolsEditor` — embed. Vbu atom — BundleToolsEditor. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: bundlePath:string."
           },
           {
             "id": "custom-VbuBusyIndicator",
-            "title": "VbuBusyIndicator custom widget",
+            "title": "VbuBusyIndicator (studio custom widget)",
             "source": "studio/custom_widgets/VbuBusyIndicator",
-            "content": "VbuBusyIndicator is a small rotating-dots spinner with optional label. Properties: label:string (default 'thinking…'), dotColor:string, cycleMs:number (default 1200 ms). Use to indicate background work. Example: {\"type\":\"VbuBusyIndicator\",\"label\":\"loading…\"}."
+            "content": "`VbuBusyIndicator` — atom. Vbu atom — BusyIndicator. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: cycleMs:number, dotColor:string, label:string.\n\nNotes: VbuBusyIndicator is a small rotating-dots spinner with optional label. Properties: label:string (default 'thinking…'), dotColor:string, cycleMs:number (default 1200 ms). Use to indicate background work. Example: {\"type\":\"VbuBusyIndicator\",\"label\":\"loading…\"}."
+          },
+          {
+            "id": "custom-VbuChannelStrip",
+            "title": "VbuChannelStrip (studio custom widget)",
+            "source": "studio/custom_widgets/VbuChannelStrip",
+            "content": "`VbuChannelStrip` — control. Compact pill row representing build channels (serving / native / preview / …). Used in app_builder's action row as the left-side channel selector. Selection is external via `activeChannel`.\nOptional: activeChannel:string, channels:Array<string>, onSelect:Action."
+          },
+          {
+            "id": "custom-VbuComposer",
+            "title": "VbuComposer (studio custom widget)",
+            "source": "studio/custom_widgets/VbuComposer",
+            "content": "`VbuComposer` — chat. Vbu atom — Composer. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: busy:unknown, hint:unknown, maxLines:unknown, minLines:unknown, onSubmit:unknown, value:unknown."
+          },
+          {
+            "id": "custom-VbuCopyOnHover",
+            "title": "VbuCopyOnHover (studio custom widget)",
+            "source": "studio/custom_widgets/VbuCopyOnHover",
+            "content": "`VbuCopyOnHover` — utility. Vbu atom — CopyOnHover. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: child:Widget, copiedSnackText:string, onDelete:Action, text:string."
+          },
+          {
+            "id": "custom-VbuDialogScaffold",
+            "title": "VbuDialogScaffold (studio custom widget)",
+            "source": "studio/custom_widgets/VbuDialogScaffold",
+            "content": "`VbuDialogScaffold` — dialog. Vbu atom — DialogScaffold. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: actions:Array<Widget>, body:Widget, leadingAction:Widget, maxHeight:number, maxWidth:number, subtitle:string, title:string, titleIcon:Object, titleIconColor:string."
+          },
+          {
+            "id": "custom-VbuDomainActionsRow",
+            "title": "VbuDomainActionsRow (studio custom widget)",
+            "source": "studio/custom_widgets/VbuDomainActionsRow",
+            "content": "`VbuDomainActionsRow` — display. Vbu atom — DomainActionsRow. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: chipSize:number, entries:Object, iconSize:number, onTap:Action, spacing:number."
           },
           {
             "id": "custom-VbuFormSection",
-            "title": "VbuFormSection custom widget",
+            "title": "VbuFormSection (studio custom widget)",
             "source": "studio/custom_widgets/VbuFormSection",
-            "content": "VbuFormSection wraps a labelled group of form fields with consistent spacing. Required: type:'VbuFormSection', label:string, children:[<Widget>...]. Properties: rowGap:number (default 8). Use as the outer container for related VbuLabelledField/VbuLabelledToggle/VbuLabelledMenu rows. Example: {\"type\":\"VbuFormSection\",\"label\":\"AUTH\",\"children\":[{\"type\":\"VbuLabelledField\",\"label\":\"Email\",\"hint\":\"you@example.com\",\"value\":\"{{email}}\"}]}."
+            "content": "`VbuFormSection` — form. Vbu atom — FormSection. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: children:Array<Widget>, label:string, rowGap:number.\n\nNotes: VbuFormSection wraps a labelled group of form fields with consistent spacing. Required: type:'VbuFormSection', label:string, children:[<Widget>...]. Properties: rowGap:number (default 8). Use as the outer container for related VbuLabelledField/VbuLabelledToggle/VbuLabelledMenu rows. Example: {\"type\":\"VbuFormSection\",\"label\":\"AUTH\",\"children\":[{\"type\":\"VbuLabelledField\",\"label\":\"Email\",\"hint\":\"you@example.com\",\"value\":\"{{email}}\"}]}."
+          },
+          {
+            "id": "custom-VbuHeroPanel",
+            "title": "VbuHeroPanel (studio custom widget)",
+            "source": "studio/custom_widgets/VbuHeroPanel",
+            "content": "`VbuHeroPanel` — layout. Vbu atom — HeroPanel. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: actions:Object, footer:Widget, maxWidth:number, subtitle:string, title:string."
+          },
+          {
+            "id": "custom-VbuHistoryViewer",
+            "title": "VbuHistoryViewer (studio custom widget)",
+            "source": "studio/custom_widgets/VbuHistoryViewer",
+            "content": "`VbuHistoryViewer` — display. Vbu atom — HistoryViewer. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: emptyText:string, entries:Object, title:string."
+          },
+          {
+            "id": "custom-VbuIconButton",
+            "title": "VbuIconButton (studio custom widget)",
+            "source": "studio/custom_widgets/VbuIconButton",
+            "content": "`VbuIconButton` — atom. Vbu atom — IconButton. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: emphasised:boolean, icon:Object, iconSize:number, onTap:Action, tooltip:string."
+          },
+          {
+            "id": "custom-VbuInspectorPanel",
+            "title": "VbuInspectorPanel (studio custom widget)",
+            "source": "studio/custom_widgets/VbuInspectorPanel",
+            "content": "`VbuInspectorPanel` — embed. Debug-mode inspector. Variant strip (96h, 168×80 cards) + toolbar (36h, size/orient/brightness) + render split (left=live render child, right=wire log child). The actual RenderMetadata walker is fed via `renderChild` / `logChild` so the atom stays free of runtime dependencies.\nOptional: activeVariantId:string, brightness:string (one of auto|light|dark; default auto), deviceSize:string, logChild:Widget, onBrightnessChange:Action, onOrientChange:Action, onSizeChange:Action, onVariantChange:Action, orientation:string (one of portrait|landscape; default portrait), renderChild:Widget, variants:Array<Object>."
+          },
+          {
+            "id": "custom-VbuInstanceStrip",
+            "title": "VbuInstanceStrip (studio custom widget)",
+            "source": "studio/custom_widgets/VbuInstanceStrip",
+            "content": "`VbuInstanceStrip` — layout. Instance card row used by app_builder's [3] slot and similar layer-list surfaces. Two orientations: `horizontal` (56px scrollable strip, 152×32 cards) and `vertical` (168px sidebar column, full-width 32px cards with an optional section title). Selection is external via `selectedId`. Each card may carry an `issue` pill, a `⋮` popup menu, and the strip itself can append a trailing `+ Add` card.\nOptional: addLabel:string, emptyText:string (default No instances yet), items:Array<Object>, onAdd:Action, onSelect:Action, orientation:string (one of horizontal|vertical; default horizontal), sectionDotColor:string, sectionTitle:string, selectedId:string."
+          },
+          {
+            "id": "custom-VbuJsonEditor",
+            "title": "VbuJsonEditor (studio custom widget)",
+            "source": "studio/custom_widgets/VbuJsonEditor",
+            "content": "`VbuJsonEditor` — form. Vbu atom — JsonEditor. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: change:Action<String>, initialText:string, maxLines:number, minLines:number, parsed:Action<Object?>, placeholder:string, readOnly:boolean, value:string."
+          },
+          {
+            "id": "custom-VbuLabelledField",
+            "title": "VbuLabelledField (studio custom widget)",
+            "source": "studio/custom_widgets/VbuLabelledField",
+            "content": "`VbuLabelledField` — form. Vbu atom — LabelledField. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: hint:unknown, label:unknown, labelWidth:unknown, obscure:unknown, onChanged:unknown, trailing:unknown, value:unknown.\n\nNotes: VbuLabelledField is a label-prefixed text input — studio form convention. Required: type:'VbuLabelledField', label:string, hint:string. Properties: value:string (initial value binding), obscure:bool (password-style), trailing:<Widget>, labelWidth:number (default 92), onChanged:Action (fires with each keystroke; the new text is in {{$event}}). Example: {\"type\":\"VbuLabelledField\",\"label\":\"Name\",\"hint\":\"my-project\",\"value\":\"{{name}}\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setName\",\"params\":{\"name\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuLabelledFolder",
+            "title": "VbuLabelledFolder (studio custom widget)",
+            "source": "studio/custom_widgets/VbuLabelledFolder",
+            "content": "`VbuLabelledFolder` — form. Vbu atom — LabelledFolder. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: hint:string, label:string, labelWidth:number, onClear:Action, onPick:unknown, value:string."
+          },
+          {
+            "id": "custom-VbuLabelledMenu",
+            "title": "VbuLabelledMenu (studio custom widget)",
+            "source": "studio/custom_widgets/VbuLabelledMenu",
+            "content": "`VbuLabelledMenu` — form. Vbu atom — LabelledMenu. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: label:string, labelWidth:number, labels:Object, onChanged:Action<Object?>, options:Object, value:Object.\n\nNotes: VbuLabelledMenu is a label-prefixed dropdown. Required: type:'VbuLabelledMenu', label:string, value:any, options:[any...], onChanged:Action. Properties: labels:map{value→displayLabel}, labelWidth:number (default 92). Picked value lands in {{$event}}. Example: {\"type\":\"VbuLabelledMenu\",\"label\":\"Mode\",\"value\":\"{{mode}}\",\"options\":[\"dev\",\"prod\"],\"labels\":{\"dev\":\"Development\",\"prod\":\"Production\"},\"onChanged\":{\"type\":\"tool\",\"tool\":\"setMode\",\"params\":{\"m\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuLabelledToggle",
+            "title": "VbuLabelledToggle (studio custom widget)",
+            "source": "studio/custom_widgets/VbuLabelledToggle",
+            "content": "`VbuLabelledToggle` — form. Vbu atom — LabelledToggle. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: hint:string, label:string, onChanged:Action<bool>, value:boolean.\n\nNotes: VbuLabelledToggle is a label-prefixed switch. Required: type:'VbuLabelledToggle', label:string, value:bool, onChanged:Action. Properties: hint:string. onChanged receives the new bool in {{$event}}. Example: {\"type\":\"VbuLabelledToggle\",\"label\":\"Enable\",\"value\":\"{{enabled}}\",\"hint\":\"toggle the feature\",\"onChanged\":{\"type\":\"tool\",\"tool\":\"setEnabled\",\"params\":{\"v\":\"{{$event}}\"}}}."
+          },
+          {
+            "id": "custom-VbuMasterDetail",
+            "title": "VbuMasterDetail (studio custom widget)",
+            "source": "studio/custom_widgets/VbuMasterDetail",
+            "content": "`VbuMasterDetail` — layout. Vbu atom — MasterDetail. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: body:Widget, onTap:Action, panelLabel:string, panelWidth:number, sections:Object."
+          },
+          {
+            "id": "custom-VbuPaneHeader",
+            "title": "VbuPaneHeader (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPaneHeader",
+            "content": "`VbuPaneHeader` — chrome. Vbu atom — PaneHeader. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: actions:Array<Widget>, clearTooltip:string, height:number, label:string, onClear:unknown.\n\nNotes: VbuPaneHeader is the studio's panel-title bar — small uppercase label + optional trailing actions + optional clear button. Required: type:'VbuPaneHeader', label:string. Properties: actions:[<Widget>...] (trailing icons/buttons), onClear:Action (renders an X icon, fires this action), clearTooltip:string, height:number (default 36). Example: {\"type\":\"VbuPaneHeader\",\"label\":\"RECENT\",\"actions\":[]}. Distinct from VbuTitleBar: VbuPaneHeader = uppercase SECTION label inside a panel; VbuTitleBar = window-chrome strip across the top of the whole page."
+          },
+          {
+            "id": "custom-VbuPanelDialogScaffold",
+            "title": "VbuPanelDialogScaffold (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPanelDialogScaffold",
+            "content": "`VbuPanelDialogScaffold` — dialog. Vbu atom — PanelDialogScaffold. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: actions:Array<Widget>, actionsLeading:Widget, body:Widget, headerExtra:Widget, height:number, quickActions:Array<Widget>, title:string, titleTrailing:Widget, width:number."
+          },
+          {
+            "id": "custom-VbuPanelSplitter",
+            "title": "VbuPanelSplitter (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPanelSplitter",
+            "content": "`VbuPanelSplitter` — chrome. Vbu atom — PanelSplitter. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: axis:string, color:string, hitWidth:number, onDrag:Action<double>, onDragEnd:Action, thickness:number."
+          },
+          {
+            "id": "custom-VbuPathTile",
+            "title": "VbuPathTile (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPathTile",
+            "content": "`VbuPathTile` — form. Vbu atom — PathTile. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: click:Action, label:string, leading:Widget, meta:string, onTap:unknown, selected:boolean, trailing:Widget."
+          },
+          {
+            "id": "custom-VbuPill",
+            "title": "VbuPill (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPill",
+            "content": "`VbuPill` — atom. Vbu atom — Pill. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: background:string, foreground:string, label:string, leading:Widget, onTap:Action.\n\nNotes: VbuPill is a small rounded chip — badge or tag. Required: type:'VbuPill', label:string. Properties: leading:<Widget> (icon before label), onTap:Action, background:string (hex color), foreground:string (hex color). Default: studio's subtle pill colour. Example: {\"type\":\"VbuPill\",\"label\":\"draft\",\"background\":\"#22C55E\",\"foreground\":\"#0B1220\"}."
+          },
+          {
+            "id": "custom-VbuPreviewMcpUi",
+            "title": "VbuPreviewMcpUi (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPreviewMcpUi",
+            "content": "`VbuPreviewMcpUi` — embed. Domain-side preview for the bundle currently being authored. Renders a device-frame chrome with a top toolbar (size / orientation / brightness / refresh) and a body slot. When `child` is supplied the atom frames it; otherwise the placeholder body shows bundleId / uiPath / device meta until the real-mount factory wires an MCPUIRuntime.\nOptional: brightness:string (one of auto|light|dark; default auto), bundleId:string, child:Widget, deviceSize:string, onBrightnessChange:Action, onOrientChange:Action, onRefresh:Action, onSizeChange:Action, orientation:string (one of portrait|landscape; default portrait), showInspector:boolean (default false), uiPath:string (default ui/app.json)."
+          },
+          {
+            "id": "custom-VbuProjectNameRow",
+            "title": "VbuProjectNameRow (studio custom widget)",
+            "source": "studio/custom_widgets/VbuProjectNameRow",
+            "content": "`VbuProjectNameRow` — form. Vbu atom — ProjectNameRow. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: dirty:boolean, hasProject:boolean, onRename:Action, projectName:string."
+          },
+          {
+            "id": "custom-VbuPromptBubble",
+            "title": "VbuPromptBubble (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPromptBubble",
+            "content": "`VbuPromptBubble` — chat. Vbu atom — PromptBubble. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: maxWidth:number, onDelete:Action, text:string."
+          },
+          {
+            "id": "custom-VbuPropertiesForm",
+            "title": "VbuPropertiesForm (studio custom widget)",
+            "source": "studio/custom_widgets/VbuPropertiesForm",
+            "content": "`VbuPropertiesForm` — layout. Vertical scrollable form rendering layer-specific property sections. Header `PROPERTIES` + optional context line (stripe + focus id) + divider + scrolling body. Each section = title + N rows; each row = label (96w) + editor matched to `field.kind`: `text` / `number` / `bool` / `enum` / `color` / `widget` / `asset`. Field changes fire `field.onChange` actions.\nOptional: contextLabel:string, contextStripeColor:string, emptyText:string (default No focused layer), sections:Array<Object>."
+          },
+          {
+            "id": "custom-VbuRecentMenuButton",
+            "title": "VbuRecentMenuButton (studio custom widget)",
+            "source": "studio/custom_widgets/VbuRecentMenuButton",
+            "content": "`VbuRecentMenuButton` — chrome. Vbu atom — RecentMenuButton. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: headerLabel:string, maxMenuWidth:number, minMenuWidth:number, onPick:Action<String>, recents:Object, tooltip:string."
+          },
+          {
+            "id": "custom-VbuRouter",
+            "title": "VbuRouter (studio custom widget)",
+            "source": "studio/custom_widgets/VbuRouter",
+            "content": "`VbuRouter` — layout. Vbu atom — Router. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: cases:Object, fallback:Widget, value:string."
+          },
+          {
+            "id": "custom-VbuSettingsSectionsForm",
+            "title": "VbuSettingsSectionsForm (studio custom widget)",
+            "source": "studio/custom_widgets/VbuSettingsSectionsForm",
+            "content": "`VbuSettingsSectionsForm` — form. Vbu atom — SettingsSectionsForm. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: sections:Object."
+          },
+          {
+            "id": "custom-VbuSlashChips",
+            "title": "VbuSlashChips (studio custom widget)",
+            "source": "studio/custom_widgets/VbuSlashChips",
+            "content": "`VbuSlashChips` — chat. Vbu atom — SlashChips. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: chips:Object, spacing:number."
+          },
+          {
+            "id": "custom-VbuSnapshotDiff",
+            "title": "VbuSnapshotDiff (studio custom widget)",
+            "source": "studio/custom_widgets/VbuSnapshotDiff",
+            "content": "`VbuSnapshotDiff` — display. Vbu atom — SnapshotDiff. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: leftAccent:string, leftLabel:string, rightAccent:string, rightLabel:string, sections:Object, title:string."
           },
           {
             "id": "custom-VbuStatusbar",
-            "title": "VbuStatusbar custom widget",
+            "title": "VbuStatusbar (studio custom widget)",
             "source": "studio/custom_widgets/VbuStatusbar",
-            "content": "VbuStatusbar is a thin bottom strip with left and right slot lists — common chrome footer pattern. Required: type:'VbuStatusbar'. Properties: left:[<Widget>...], right:[<Widget>...], height:number (default 22), gap:number (default 16). Use inside the page body for a custom status line; the host chrome already has its own statusbar so don't duplicate."
+            "content": "`VbuStatusbar` — chrome. Vbu atom — Statusbar. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: gap:number, height:number, left:Array<Widget>, right:Array<Widget>.\n\nNotes: VbuStatusbar is a thin bottom strip with left and right slot lists — common chrome footer pattern. Required: type:'VbuStatusbar'. Properties: left:[<Widget>...], right:[<Widget>...], height:number (default 22), gap:number (default 16). Use inside the page body for a custom status line; the host chrome already has its own statusbar so don't duplicate."
+          },
+          {
+            "id": "custom-VbuSystemNote",
+            "title": "VbuSystemNote (studio custom widget)",
+            "source": "studio/custom_widgets/VbuSystemNote",
+            "content": "`VbuSystemNote` — atom. Vbu atom — SystemNote. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: error:boolean, onDelete:Action, text:string.\n\nNotes: VbuSystemNote is a callout / banner for informational or error messages. Required: type:'VbuSystemNote', text:string. Properties: error:bool (red-styled when true), onDelete:Action (renders dismiss X). Default is the studio's subtle note tone. Example info: {\"type\":\"VbuSystemNote\",\"text\":\"Saved — 3 changes\"}. Example error: {\"type\":\"VbuSystemNote\",\"text\":\"Permission denied\",\"error\":true}."
+          },
+          {
+            "id": "custom-VbuTabStrip",
+            "title": "VbuTabStrip (studio custom widget)",
+            "source": "studio/custom_widgets/VbuTabStrip",
+            "content": "`VbuTabStrip` — chrome. Vbu atom — TabStrip. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: activeIndex:number, height:number, maxTabWidth:number, onClose:Action<int>, onSelect:Action<int>, tabs:Object, trailing:Array<Widget>."
+          },
+          {
+            "id": "custom-VbuTimeline",
+            "title": "VbuTimeline (studio custom widget)",
+            "source": "studio/custom_widgets/VbuTimeline",
+            "content": "`VbuTimeline` — media. Vbu atom — Timeline. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: pixelsPerSecond:number, scrubMs:number, selectStep:Action<int>, selectedIndex:number, stepHeight:number, steps:Object, trackHeight:number, tracks:Object."
+          },
+          {
+            "id": "custom-VbuTitleBar",
+            "title": "VbuTitleBar (studio custom widget)",
+            "source": "studio/custom_widgets/VbuTitleBar",
+            "content": "`VbuTitleBar` — chrome. Vbu atom — TitleBar. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: background:string, height:number, leading:Widget, subtitle:string, title:string, trailing:Array<Widget>.\n\nNotes: VbuTitleBar is the studio's chrome-style strip for the top of a bundle's page — full-width, 28px tall (VbuTokens.titlebarHeight, matches the studio's own titlebar), `surface` background, `borderDefault` 1px bottom border, mono 12pt w600 title. Tool aesthetic — thin and quiet. When a page needs a header bar, this atom usually fits and keeps the bundle's tone consistent with the studio chrome around it. Required: type:'VbuTitleBar', title:string. Properties: subtitle:string (small secondary line shown inline with a · separator, mono 11pt), leading:<Widget> (small leading icon, optional), trailing:[<Widget>...] (small icon buttons / VbuPills, optional — 14-16px icons match the tool tone), height:number (default 28), background:string (hex; defaults to surface token). Pairs naturally with `linear(direction:'vertical', crossAxisAlignment:'stretch')` at page root + `expanded` body below. Example minimal: {\"type\":\"VbuTitleBar\",\"title\":\"My App\"}. Example with subtitle + trailing: {\"type\":\"VbuTitleBar\",\"title\":\"Counter\",\"subtitle\":\"count {{count}}\",\"trailing\":[{\"type\":\"icon\",\"icon\":\"settings\",\"size\":14}]}. When the user asks for something taller / larger-font (44px+, 16pt+ titles, prominent shadow), that's typically a mobile-AppBar request — suggest the lighter atom first and confirm; the studio is a desktop tool, so a mobile-style header usually reads as out-of-place inside it."
+          },
+          {
+            "id": "custom-VbuToolsList",
+            "title": "VbuToolsList (studio custom widget)",
+            "source": "studio/custom_widgets/VbuToolsList",
+            "content": "`VbuToolsList` — display. Vbu atom — ToolsList. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: tools:Object."
+          },
+          {
+            "id": "custom-VbuVideoPlayer",
+            "title": "VbuVideoPlayer (studio custom widget)",
+            "source": "studio/custom_widgets/VbuVideoPlayer",
+            "content": "`VbuVideoPlayer` — media. Vbu atom — VideoPlayer. Schema auto-extracted from factory; refine description and examples in follow-up.\nOptional: aspectRatio:number, autoplay:boolean, click:Action, label:string, loop:boolean, maxLines:number, showControls:boolean, src:string, value:string, variant:string."
           }
         ]
       },
