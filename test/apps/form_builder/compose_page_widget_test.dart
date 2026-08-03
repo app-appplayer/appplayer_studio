@@ -37,6 +37,26 @@ void main() {
     }
   }
 
+  /// Pump until [ready] holds instead of a fixed number of rounds.
+  ///
+  /// `settle(tester, 60)` was a guess at how long the issue pipeline takes to
+  /// render media and write the record. Under load 60 rounds was not always
+  /// enough, and the failure surfaced as "no widget matching Issued" — which
+  /// reads like the pipeline never ran rather than the test asking early.
+  Future<void> settleUntil(
+    WidgetTester tester,
+    bool Function() ready, {
+    int maxRounds = 200,
+  }) async {
+    for (var i = 0; i < maxRounds; i++) {
+      if (ready()) return;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+  }
+
   Future<void> pumpPage(
     WidgetTester tester, {
     Map<String, dynamic>? correction,
@@ -185,7 +205,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Issue'));
     // The issue pipeline renders the chosen media + the record to disk —
     // give the real IO time.
-    await settle(tester, 60);
+    await settleUntil(
+        tester, () => find.textContaining('Issued').evaluate().isNotEmpty);
     expect(find.textContaining('Issued'), findsOneWidget);
     final issues = await tester.runAsync(() => h.init.listIssues());
     expect(issues, hasLength(1));

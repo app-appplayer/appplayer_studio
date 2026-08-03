@@ -6,16 +6,19 @@
     "shouted": ""
   },
   "content": {
-    "type": "Column",
+    "type": "linear",
     "padding": 16,
     "children": [
       {
-        "type": "Text",
+        "type": "text",
         "value": "Wire Demo — minimal tool↔UI sample",
-        "style": { "fontSize": 18, "fontWeight": "bold" }
+        "style": {
+          "fontSize": 18,
+          "fontWeight": "bold"
+        }
       },
       {
-        "type": "TextInput",
+        "type": "textInput",
         "label": "Text to shout",
         "value": "{{input}}",
         "onChanged": {
@@ -25,18 +28,21 @@
         }
       },
       {
-        "type": "Button",
+        "type": "button",
         "label": "Shout",
         "onTap": {
           "action": "tool",
           "tool": "wire_demo.shout",
-          "args": { "text": "{{input}}" }
+          "args": {
+            "text": "{{input}}"
+          }
         }
       },
       {
-        "type": "Text",
+        "type": "text",
         "value": "Result: {{shouted}}"
       }
-    ]
+    ],
+    "direction": "vertical"
   }
 }

@@ -23,6 +23,7 @@
 library;
 
 import 'builder_catalog_service.dart';
+import 'dsl_primitive_loader.dart';
 import 'widget_spec.dart';
 
 class ValidationResult {
@@ -34,9 +35,17 @@ class ValidationResult {
 }
 
 class SchemaValidator {
-  SchemaValidator(this.catalog);
+  SchemaValidator(this.catalog, {DslPrimitiveLoader? primitives})
+    : _primitives = primitives ?? DslPrimitiveLoader();
 
   final BuilderCatalogService catalog;
+
+  /// Spec primitives (`Color`, `Alignment`, `IconRef`, …). The checker used
+  /// to treat every named type as permissive, so a slot typed `Color`
+  /// accepted any string and the author learned nothing until the screen
+  /// came up empty.
+  final DslPrimitiveLoader _primitives;
+  Map<String, DslPrimitive> _prims = const <String, DslPrimitive>{};
 
   /// Validate an entire node before `addNode` commits. Checks:
   /// 1. `type` is a registered widget.
@@ -44,6 +53,7 @@ class SchemaValidator {
   /// 3. Every provided prop is in the schema (strict).
   /// 4. Every provided prop matches its declared type / enum.
   Future<ValidationResult> validateNode(Object? node) async {
+    _prims = await _primitives.load();
     if (node is! Map) {
       return ValidationResult.reject(<String, dynamic>{
         'code': 'propTypeMismatch',
@@ -191,6 +201,15 @@ class SchemaValidator {
         }
       }
     }
+    // 2b: element-shape declarations (`columns[].key`, `options.legend.
+    // position`). The registry declares 21 of them and the checker skipped
+    // every one, so `dataTable` rows missing their key and
+    // `chart {options: {legend: {position: "nowhere"}}}` both passed while
+    // the runtime read nothing. Walk into the value and apply the sub-spec.
+    for (final sub in spec.properties.where((p) => p.isElementPath)) {
+      final rejection = _checkNested(node, sub, type);
+      if (rejection != null) return ValidationResult.reject(rejection);
+    }
     // 3: extra props rejected (strict). Tree-shape keys and universal
     // interaction keys (click / onTap — accepted on every widget per
     // mcp_ui_dsl 1.3 Actions) are exempt.
@@ -325,6 +344,74 @@ class SchemaValidator {
     return ValidationResult.ok();
   }
 
+  /// Apply an element-path declaration (`columns[].key`, `a.b.c`) to [node].
+  ///
+  /// Absent containers are not an error here — the top-level check already
+  /// decided whether the container itself was required. What this catches is
+  /// a container that IS present and whose contents disagree with the
+  /// registry.
+  Map<String, dynamic>? _checkNested(
+    Map<dynamic, dynamic> node,
+    WidgetPropSpec sub,
+    String type,
+  ) {
+    final segments = sub.key.split('.');
+    var current = <Object?>[node];
+    for (var i = 0; i < segments.length; i++) {
+      final raw = segments[i];
+      final isList = raw.endsWith('[]');
+      final name = isList ? raw.substring(0, raw.length - 2) : raw;
+      final next = <Object?>[];
+      for (final holder in current) {
+        if (holder is! Map) continue;
+        final value = holder[name];
+        final last = i == segments.length - 1;
+        if (value == null) {
+          if (sub.required && holder.containsKey(name) == false && !last) {
+            continue; // container absent — nothing to say
+          }
+          if (sub.required && last) {
+            return <String, dynamic>{
+              'code': 'missingRequired',
+              'path': '/${sub.key}',
+              'expected': '${sub.key} (${sub.type})',
+              'message':
+                  'Widget "$type" requires `${sub.key}`. ${sub.description}',
+              'suggestion': 'Add $name to each entry of the container.',
+            };
+          }
+          continue;
+        }
+        if (isList) {
+          if (value is! List) {
+            return <String, dynamic>{
+              'code': 'propTypeMismatch',
+              'path': '/$name',
+              'expected': 'a list',
+              'actual': value.runtimeType.toString(),
+              'message': '`$name` must be a list — `${sub.key}` describes its '
+                  'entries.',
+              'suggestion': 'Wrap the entries: {"$name": [ … ]}.',
+            };
+          }
+          next.addAll(value);
+        } else {
+          next.add(value);
+        }
+      }
+      current = next;
+      if (current.isEmpty) return null;
+    }
+    // `current` now holds the leaf values the declaration governs.
+    for (final leaf in current) {
+      final rejection = _checkType(leaf, sub);
+      if (rejection != null) {
+        return rejection..putIfAbsent('path', () => '/${sub.key}');
+      }
+    }
+    return null;
+  }
+
   /// Returns null on success, or a rejection map (without `path`)
   /// when the value doesn't match the prop's declared type / enum.
   Map<String, dynamic>? _checkType(Object? value, WidgetPropSpec prop) {
@@ -368,8 +455,37 @@ class SchemaValidator {
       if (value is! Map) {
         return _mismatch(prop, 'Action object', value);
       }
+    } else {
+      // A named spec primitive (`Color`, `Alignment`, `IconRef`, …). The
+      // contract lives in `configs/_primitive/<Name>.yaml`; read it rather
+      // than keep a copy here that goes stale the next time the spec moves.
+      final prim = _primitiveFor(t);
+      final verdict = prim?.accepts(value);
+      if (verdict == false) {
+        return <String, dynamic>{
+          'code': 'primitiveOutOfRange',
+          'expected': prim!.expectation,
+          'actual': value,
+          'message': '`${prop.key}` is a ${prim.name}: "$value" is not one of '
+              'the forms it accepts.',
+          'suggestion': 'See `configs/_primitive/${prim.name}.yaml` for the '
+              'accepted spellings.',
+        };
+      }
     }
     // Object / unknown / list / map types are permissive — fine.
+    return null;
+  }
+
+  /// The primitive a declared type names, if any. A union (`Color | binding`)
+  /// resolves to its first named primitive — the binding half is already
+  /// covered by every primitive that refs `Binding`.
+  DslPrimitive? _primitiveFor(String declared) {
+    for (final part in declared.split('|')) {
+      final t = part.trim().replaceAll('"', '');
+      final prim = _prims[t];
+      if (prim != null) return prim;
+    }
     return null;
   }
 

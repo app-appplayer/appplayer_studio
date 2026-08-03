@@ -76,6 +76,7 @@ void main() {
         reason: 'condition never held within $maxRounds pump rounds');
   }
 
+
   Future<void> unmount(WidgetTester tester) async {
     // Dispose the page (cancels the version-poll timer) before the test
     // framework checks for pending timers.
@@ -91,6 +92,31 @@ void main() {
         out.content.map((c) => (c as dynamic).text as String).join();
     final decoded = jsonDecode(text);
     return (decoded as Map).cast<String, dynamic>();
+  }
+
+  /// Read back from the server until [ready] holds.
+  ///
+  /// Save is a round trip: the tap returns before the server has the new
+  /// version. Asserting after a fixed `settle` made the readback race the
+  /// write, and the failure surfaced as a wrong VALUE (`1.0.0` where
+  /// `1.0.1` was expected) — which reads like a product defect rather than
+  /// a test that asked too early.
+  Future<Map<String, dynamic>?> serverUntil(
+    WidgetTester tester,
+    String slug,
+    bool Function(Map<String, dynamic> tpl) ready, {
+    int maxRounds = 60,
+  }) async {
+    Map<String, dynamic>? last;
+    for (var i = 0; i < maxRounds; i++) {
+      last = await tester.runAsync(() => serverTemplate(slug));
+      if (last != null && ready(last)) return last;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    return last;
   }
 
   testWidgets('create dialog: typing enables Create; template persists', (
@@ -155,9 +181,8 @@ void main() {
       expect(save, findsOneWidget);
       await tester.tap(save);
       await settle(tester);
-      final tpl = await tester.runAsync(
-        () => serverTemplate('harness-quote'),
-      );
+      final tpl = await serverUntil(tester, 'harness-quote',
+          (t) => t['template']['version'] == '1.0.1');
       final blocks =
           (tpl!['template']['defaultSections'] as List).first['blocks']
               as List;
@@ -189,7 +214,9 @@ void main() {
         && find.text('Image (logo / seal)').evaluate().isEmpty);
     await tester.tap(find.widgetWithText(FilledButton, 'Save v1.0.1'));
     await settle(tester);
-    var tpl = await tester.runAsync(() => serverTemplate('harness-quote'));
+    var tpl = await serverUntil(tester, 'harness-quote', (t) =>
+        ((t['template']['defaultSections'] as List).first['blocks'] as List)
+            .any((b) => b['type'] == 'image'));
     var types = ((tpl!['template']['defaultSections'] as List)
             .first['blocks'] as List)
         .map((b) => b['type'])

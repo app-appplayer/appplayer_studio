@@ -5,23 +5,29 @@
     "counter": 0
   },
   "content": {
-    "type": "Column",
+    "type": "linear",
     "padding": 24,
     "mainAxisAlignment": "center",
     "crossAxisAlignment": "center",
     "children": [
       {
-        "type": "Text",
+        "type": "text",
         "value": "Sample App",
-        "style": { "fontSize": 24, "fontWeight": "bold" }
+        "style": {
+          "fontSize": 24,
+          "fontWeight": "bold"
+        }
       },
-      { "type": "Text", "value": "Counter: {{counter}}" },
       {
-        "type": "Row",
+        "type": "text",
+        "value": "Counter: {{counter}}"
+      },
+      {
+        "type": "linear",
         "mainAxisAlignment": "center",
         "children": [
           {
-            "type": "Button",
+            "type": "button",
             "label": "−",
             "onTap": {
               "action": "state",
@@ -29,9 +35,12 @@
               "value": "{{counter - 1}}"
             }
           },
-          { "type": "SizedBox", "width": 8 },
           {
-            "type": "Button",
+            "type": "sizedBox",
+            "width": 8
+          },
+          {
+            "type": "button",
             "label": "+",
             "onTap": {
               "action": "state",
@@ -39,8 +48,10 @@
               "value": "{{counter + 1}}"
             }
           }
-        ]
+        ],
+        "direction": "horizontal"
       }
-    ]
+    ],
+    "direction": "vertical"
   }
 }
