@@ -54,6 +54,7 @@ import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' as core
         ApplicationDefinition,
         DashboardConfig,
         PageDefinition,
+        isMcpUiDslWidgetType,
         validateMcpUiDslWidget;
 import 'models/ui_definition.dart';
 import 'models/app_metadata.dart';
@@ -229,7 +230,7 @@ class MCPUIRuntime {
 
     void validateNode(Object? node, String where) {
       if (node is Map<String, dynamic>) {
-        final result = core.validateMcpUiDslWidget(node);
+        final result = core.validateMcpUiDslWidget(_maskExtensions(node));
         if (!result.isValid) {
           for (final e in result.errors) {
             issues.add('$where ${e.path}: ${e.message}');
@@ -249,6 +250,47 @@ class MCPUIRuntime {
       if (dc is Map<String, dynamic>) validateNode(dc, 'dashboard.content');
     }
     return issues;
+  }
+
+  /// Replaces every host-registered widget with a placeholder before the
+  /// document is checked against the spec schema.
+  ///
+  /// `registerWidget` invites a host to add widget types the DSL does not
+  /// define — a dashboard slot, a vendor chart. The generated schema knows
+  /// only the spec's set, so validating a document containing one rejects it,
+  /// and the host is told its own extension is a malformed document. Offering
+  /// an extension mechanism and then refusing what it produces is a contract
+  /// disagreeing with itself.
+  ///
+  /// The extension's own subtree is the host's contract, not the spec's, so it
+  /// is masked whole rather than partly checked. Everything around it is still
+  /// validated: an unregistered type stays an error, which is what catches a
+  /// typo.
+  Map<String, dynamic> _maskExtensions(Map<String, dynamic> node) {
+    final registry = _engine.widgetRegistry;
+    var replaced = false;
+
+    Object? walk(Object? value) {
+      if (value is Map<String, dynamic>) {
+        final type = value['type'];
+        if (type is String &&
+            registry.has(type) &&
+            !core.isMcpUiDslWidgetType(type)) {
+          replaced = true;
+          // `box` with no properties validates on its own and carries no
+          // required fields, so it stands in without inventing a shape.
+          return <String, dynamic>{'type': 'box'};
+        }
+        return <String, dynamic>{
+          for (final e in value.entries) e.key: walk(e.value),
+        };
+      }
+      if (value is List) return value.map(walk).toList();
+      return value;
+    }
+
+    final masked = walk(node) as Map<String, dynamic>;
+    return replaced ? masked : node;
   }
 
   /// Initialize runtime from a strongly-typed ApplicationDefinition
@@ -532,12 +574,14 @@ class MCPUIRuntime {
     return open?.call(uri, params);
   }
 
-  /// Register a custom widget factory
+  /// Register a custom widget factory.
+  ///
+  /// May be called before [initialize]: schema validation consults the
+  /// registry, so a host widget registered first is accepted in the document
+  /// it appears in. Registering afterwards still works for rendering, but the
+  /// document that introduced the type will already have been validated
+  /// without it.
   void registerWidget(String type, WidgetFactory factory) {
-    if (!_isInitialized) {
-      throw StateError(
-          'Runtime must be initialized before registering widgets');
-    }
     _engine.widgetRegistry.register(type, factory);
   }
 

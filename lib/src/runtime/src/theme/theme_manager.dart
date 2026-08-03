@@ -408,6 +408,19 @@ class ThemeManager with ChangeNotifier {
   /// (`success` / `warning` / `info` and their `on*` variants).
   static Color? _colorFromScheme(ColorScheme s, String slot) {
     switch (slot) {
+      // §5.3.1 legacy spellings. Material 3 folded the background family into
+      // the surface family and retired `surfaceVariant`; the spec keeps the
+      // old names resolving so documents written against earlier drafts do
+      // not silently lose their colours. `inverseOnSurface` is the earlier
+      // spelling of `onInverseSurface`.
+      case 'background':
+        return s.surface;
+      case 'onBackground':
+        return s.onSurface;
+      case 'surfaceVariant':
+        return s.surfaceContainerHighest;
+      case 'inverseOnSurface':
+        return s.onInverseSurface;
       case 'primary':
         return s.primary;
       case 'onPrimary':

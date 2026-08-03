@@ -259,6 +259,11 @@ abstract class WidgetFactory {
     'outlineVariant',
     'inverseSurface',
     'onInverseSurface',
+    // §5.3.1 legacy spellings, resolved by `ThemeManager._colorFromScheme`.
+    'inverseOnSurface',
+    'background',
+    'onBackground',
+    'surfaceVariant',
     'inversePrimary',
     'scrim',
     'shadow',

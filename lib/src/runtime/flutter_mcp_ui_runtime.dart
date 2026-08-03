@@ -36,7 +36,10 @@ export 'src/services/notification_service.dart';
 export 'src/theme/theme_manager.dart';
 
 // State management exports
-export 'src/state/state_manager.dart' show StateManager;
+// `StateChangeEvent` is exported alongside the manager: a host that bridges
+// two runtimes (a dashboard slot mirroring its device, §3.5.5) has to name the
+// type it receives from `StateManager.stream`.
+export 'src/state/state_manager.dart' show StateManager, StateChangeEvent;
 export 'src/state/state_watcher.dart';
 export 'src/state/computed_property.dart';
 

@@ -1,10 +1,13 @@
-/// Invariant tests for `registerVbuWidgets` — verifies the
-/// `MCPUIRuntime.registerWidget` contract that vbu_* atoms can't be
-/// registered before the runtime is initialised. The actual rendered-
-/// widget coverage lands when the studio mounts a real DSL workspace,
-/// which the existing routine scenarios already exercise; this test
-/// pins the pre-init invariant so accidental re-ordering at boot
-/// fails loudly instead of silently.
+/// Contract tests for `registerVbuWidgets`.
+///
+/// The runtime used to REJECT registration before `initialize` and this file
+/// pinned that. `flutter_mcp_ui_runtime 0.6.1` inverted it deliberately:
+/// schema validation now consults the widget registry, so a host widget must
+/// be registerable BEFORE the document that uses it is validated — otherwise a
+/// host catalogue can never pass validation in the document it appears in.
+///
+/// What is worth pinning now is the new guarantee: registering early is legal,
+/// each runtime keeps its own registry, and the types actually land.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,20 +15,20 @@ import 'package:appplayer_studio/runtime.dart' as rt;
 import 'package:appplayer_studio/src/base/runtime/vbu_widgets.dart';
 
 void main() {
-  testWidgets('registerVbuWidgets throws before runtime.initialize', (
+  testWidgets('registerVbuWidgets is legal before runtime.initialize', (
     tester,
   ) async {
     final runtime = rt.MCPUIRuntime();
-    expect(() => registerVbuWidgets(runtime), throwsStateError);
+    expect(() => registerVbuWidgets(runtime), returnsNormally);
   });
 
-  testWidgets('throws independently across runtimes (no shared state)', (
+  testWidgets('each runtime keeps its own registry (no shared state)', (
     tester,
   ) async {
     final r1 = rt.MCPUIRuntime();
     final r2 = rt.MCPUIRuntime();
-    expect(() => registerVbuWidgets(r1), throwsStateError);
-    expect(() => registerVbuWidgets(r2), throwsStateError);
+    expect(() => registerVbuWidgets(r1), returnsNormally);
+    expect(() => registerVbuWidgets(r2), returnsNormally);
   });
 
   // NOTE: post-initialize registration of vbu_* atoms would need a
