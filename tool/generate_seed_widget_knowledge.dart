@@ -11,14 +11,14 @@
 ///
 /// Both vocabularies already exist in machine-readable form:
 ///
-///   specs/mcp_ui_dsl/spec/<version>/widgets/**.yaml   the specification
-///   lib/src/ui/atoms/*.yaml                            the studio's own atoms
+///   `specs/mcp_ui_dsl/spec/<version>/widgets/**.yaml`  the specification
+///   `lib/src/ui/atoms/*.yaml`                          the studio's own atoms
 ///
 /// So the seed is generated from them rather than restated beside them. A
 /// version-up that adds a widget adds its doc here; one that removes a property
 /// removes it from the doc. There is no third copy to drift.
 ///
-/// Hand-written prose is **kept**. Where a doc already existed, its text is
+/// Hand-written prose is kept. Where a doc already existed, its text is
 /// preserved under `Notes:` — the generated part carries the facts, the human
 /// part carries the idiom, and neither overwrites the other.
 ///
