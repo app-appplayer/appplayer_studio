@@ -405,16 +405,18 @@ void registerUiControlTools(
   boot.addTool(
     name: 'studio.ui.type',
     description:
-        'Set the focused `TextField` content programmatically — '
-        'walks the widget tree to find the focused `EditableText` '
-        'and writes directly into its `TextEditingController`. '
-        'Bypasses macOS IME (no Korean/CJK composition garbling) '
-        'and accessibility permissions entirely. Pass `elementId` '
-        'to focus first (chains tap + type), or focus manually '
-        'with `studio.ui.tap` then call without elementId. Default '
-        '`clear: true` replaces content; `false` appends. Returns '
-        '`{ok, text, before?, after}` so callers can verify the '
-        'write took.',
+        'Type into the focused `TextField` — walks the widget tree to '
+        'find the focused `EditableText` and delivers the new value '
+        'through the same entry point the platform text input uses, '
+        'so input formatters run and `onChanged` fires exactly as for '
+        'a keystroke. Bypasses macOS IME (no Korean/CJK composition '
+        'garbling) and accessibility permissions entirely. Pass '
+        '`elementId` to focus first (chains tap + type), or focus '
+        'manually with `studio.ui.tap` then call without elementId. '
+        'Default `clear: true` replaces content; `false` appends. '
+        'Returns `{ok, text, before?, after, asKeystroke}` — '
+        '`asKeystroke:false` means the value landed on the controller '
+        'only and `onChanged` did not fire.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
@@ -472,28 +474,7 @@ void registerUiControlTools(
         // Give the focus change a frame to settle.
         await Future<void>.delayed(const Duration(milliseconds: 80));
       }
-      final root = WidgetsBinding.instance.rootElement;
-      if (root == null) {
-        return _text('{"ok":false,"error":"no root element"}', isError: true);
-      }
-      // Walk the tree for the focused EditableText. EditableText is
-      // the leaf Flutter exposes the TextEditingController on; both
-      // Material `TextField` and Cupertino variants wrap one.
-      EditableTextState? focused;
-      void visit(Element el) {
-        if (focused != null) return;
-        final w = el.widget;
-        if (w is EditableText) {
-          final state = (el as StatefulElement).state as EditableTextState;
-          if (state.widget.focusNode.hasFocus) {
-            focused = state;
-            return;
-          }
-        }
-        el.visitChildren(visit);
-      }
-
-      root.visitChildren(visit);
+      final focused = findFocusedEditableText();
       if (focused == null) {
         return _text(
           jsonEncode(<String, dynamic>{
@@ -505,23 +486,17 @@ void registerUiControlTools(
           isError: true,
         );
       }
-      final controller = focused!.widget.controller;
-      final before = controller.text;
-      final after = clear ? text : before + text;
-      // Setting controller.text fires listeners → `onChanged` +
-      // ManifestFieldList autosave run the same path a real
-      // keystroke takes.
-      controller.value = TextEditingValue(
-        text: after,
-        selection: TextSelection.collapsed(offset: after.length),
-      );
+      final before = focused.widget.controller.text;
+      final written = typeIntoField(focused, text, clear: clear);
+      final after = written.text;
+      final delivered = written.asKeystroke;
       var submitted = false;
       if (submit) {
         // Fire the field's onSubmitted (Enter handler). Falls back to
         // synthesising a macOS `enter` keyevent so Shortcuts /
         // Focus-bound bindings also respond when the EditableText
         // has no onSubmitted callback.
-        final onSubmitted = focused!.widget.onSubmitted;
+        final onSubmitted = focused.widget.onSubmitted;
         if (onSubmitted != null) {
           try {
             onSubmitted(after);
@@ -543,6 +518,10 @@ void registerUiControlTools(
           'after': after,
           'cleared': clear,
           'submitted': submitted,
+          // False means the edit landed on the controller only, so
+          // `onChanged` did not fire — a caller asserting on an
+          // onChanged-driven behaviour must not read that as a pass.
+          'asKeystroke': delivered,
         }),
       );
     },
@@ -960,13 +939,16 @@ void registerUiControlTools(
   boot.addTool(
     name: 'studio.ui.key',
     description:
-        'Synthesise a keyboard key press. `key` is a named key '
-        '(`enter`, `escape`, `tab`, `arrowUp`, `arrowDown`, '
-        '`arrowLeft`, `arrowRight`, `backspace`, `space`) OR `char` '
-        'is a single printable character. `modifiers` is a list of '
-        '`shift`/`ctrl`/`alt`/`meta`. Dispatched through Flutter\'s '
-        'macOS keyevent platform channel so Focus / Shortcuts / '
-        'CallbackShortcuts handlers fire. Returns `{ok, dispatched}`.',
+        'Synthesise a keyboard key press for shortcut handlers. `key` '
+        'is a named key (`enter`, `escape`, `tab`, `arrowUp`, '
+        '`arrowDown`, `arrowLeft`, `arrowRight`, `backspace`, `space`) '
+        'OR `char` is a single printable character. `modifiers` is a '
+        'list of `shift`/`ctrl`/`alt`/`meta`. Dispatched on the macOS '
+        'keyevent channel so Focus / Shortcuts / CallbackShortcuts '
+        'handlers fire. **Does not type into a text field** — that is '
+        'the text-input channel, not the key channel, so `char` moves '
+        'no cursor and inserts no character. Use `studio.ui.type` to '
+        'enter text. Returns `{ok, dispatched}`.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
@@ -1790,6 +1772,76 @@ _KeySpec? _resolveKey(String? named, String? char) {
     return _KeySpec(keyCode: 0, logical: ch.codeUnitAt(0), characters: ch);
   }
   return null;
+}
+
+/// The `EditableText` that currently holds focus, or null.
+///
+/// `EditableText` is the leaf Flutter exposes the `TextEditingController` on;
+/// both Material `TextField` and Cupertino variants wrap one.
+EditableTextState? findFocusedEditableText() {
+  final root = WidgetsBinding.instance.rootElement;
+  if (root == null) return null;
+  EditableTextState? found;
+  void visit(Element el) {
+    if (found != null) return;
+    if (el.widget is EditableText) {
+      final state = (el as StatefulElement).state as EditableTextState;
+      if (state.widget.focusNode.hasFocus) {
+        found = state;
+        return;
+      }
+    }
+    el.visitChildren(visit);
+  }
+
+  root.visitChildren(visit);
+  return found;
+}
+
+/// What a write into a field actually did.
+class TypedText {
+  const TypedText(this.text, {required this.asKeystroke});
+
+  /// The field's content after the write.
+  final String text;
+
+  /// Whether the value went through the text-input entry point — i.e.
+  /// whether `onChanged` fired. False means it landed on the controller only.
+  final bool asKeystroke;
+}
+
+/// Type [text] into [field] the way the platform text input does.
+///
+/// Writing `controller.value` directly does **not** do this: Flutter calls
+/// `TextField.onChanged` from `EditableTextState._formatAndSetValue`, which
+/// runs only on a *user* edit. A controller write repaints the field and
+/// notifies controller listeners, and nothing else — so anything that records
+/// "the user touched this" from `onChanged` never fired for a driver, and
+/// pages worked around it by hanging logic off controller listeners instead
+/// (`templates_page.dart`, `compose_page.dart` both say so in comments).
+///
+/// `updateEditingValue` runs the input formatters and calls `onChanged`, so a
+/// driver edits exactly like a keystroke. The controller write remains as a
+/// fallback for a focused-but-unattached field, and the caller is told which
+/// path ran rather than being left to assume.
+TypedText typeIntoField(
+  EditableTextState field,
+  String text, {
+  bool clear = true,
+}) {
+  final controller = field.widget.controller;
+  final after = clear ? text : controller.text + text;
+  final value = TextEditingValue(
+    text: after,
+    selection: TextSelection.collapsed(offset: after.length),
+  );
+  try {
+    field.updateEditingValue(value);
+    return TypedText(after, asKeystroke: true);
+  } catch (_) {
+    controller.value = value;
+    return TypedText(after, asKeystroke: false);
+  }
 }
 
 Future<bool> _dispatchMacKey(_KeySpec spec, Set<String> mods) async {
