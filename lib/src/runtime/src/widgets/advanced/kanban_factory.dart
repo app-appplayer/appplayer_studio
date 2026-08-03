@@ -173,9 +173,16 @@ class _BoardState extends State<_Board> {
 
   @override
   Widget build(BuildContext context) {
+    // The board scrolls sideways through its columns; each column scrolls
+    // through its own cards. Without the second axis a column stacked every
+    // card it was given into a fixed-height `Column` and overflowed the
+    // moment a board carried more than a screenful — which is every board
+    // past its first week. `IntrinsicHeight` is gone with it: it sized the
+    // row to the tallest column, which is unbounded by construction.
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: IntrinsicHeight(
+      child: SizedBox(
+        height: double.infinity,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -240,7 +247,6 @@ class _Column extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
@@ -254,7 +260,18 @@ class _Column extends StatelessWidget {
               ],
             ),
           ),
-          ...children,
+          // The header stays put and the cards scroll under it: a column with
+          // eighty cards is normal, and losing the title to reach the last
+          // one is not.
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: children,
+              ),
+            ),
+          ),
         ],
       ),
     );

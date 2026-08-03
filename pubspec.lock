@@ -398,23 +398,26 @@ packages:
   flutter_mcp_ui_core:
     dependency: "direct main"
     description:
-      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_core"
-      relative: false
-    source: path
+      name: flutter_mcp_ui_core
+      sha256: "3e88e46387ade358ddc6fca84e3778524a9f2cff8643bb611d90f3d5ded14c56"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.5.1"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
-      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_generator"
-      relative: false
-    source: path
+      name: flutter_mcp_ui_generator
+      sha256: "7aed844488bba667db7e3fbcb7b242cc14c63ed4194209d013491cadf72c4015"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.5.1"
   flutter_mcp_ui_runtime:
     dependency: "direct main"
     description:
-      path: "/Users/jsha/Desktop/Works/workspace/makemind/packages/mcp_ui/1.3/flutter_mcp_ui_runtime"
-      relative: false
-    source: path
+      name: flutter_mcp_ui_runtime
+      sha256: "9058d22d2c04465ea802d1917cd8d76ca16fd26610a6af7106abb43a1e219fb2"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.6.1"
   flutter_plugin_android_lifecycle:
     dependency: transitive
@@ -566,10 +569,10 @@ packages:
     dependency: transitive
     description:
       name: jni
-      sha256: "5bc9a9daac5ccfbd6a758377600b9f7fdce13d93f26e8012a8941014a5d978d1"
+      sha256: f038e58b4dc2c9037f50e233175086337e0b305e356d28211bf55f21c504cbd3
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.0.3"
   jni_flutter:
     dependency: transitive
     description:
@@ -766,10 +769,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_client
-      sha256: "76007a6a3d79f74ff9e83c16eaf524111abb75f733a0ca3870584e3dfa5b600a"
+      sha256: "979fd51a2af22bb3ab617e0b2626d429fc0f77be8ae41fd55ebaed1d1dd95d09"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.1"
+    version: "2.2.0"
   mcp_datastore:
     dependency: "direct main"
     description:
@@ -902,10 +905,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_server
-      sha256: c516d73e416c59f9771c73938d3d01db9880c091988bbb79f1abcb8c23c7d3e5
+      sha256: "58ab3ac35c97afcabc79c2667750007409b9e8e7e86e5027841679d0be3743ba"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.2"
+    version: "2.2.3"
   mcp_skill:
     dependency: transitive
     description:

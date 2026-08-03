@@ -53,6 +53,29 @@ void main() {
     await settle(tester);
   }
 
+  /// Pump until [ready] holds, instead of a fixed number of rounds.
+  ///
+  /// The add-block step used `settle(tester, 3)` and then tapped Save. Three
+  /// rounds is a guess about how long the block takes to reach the model, and
+  /// under load it was not enough: Save fired first and the readback found the
+  /// template without the new block. The test failed on an assertion, so it
+  /// read like a product defect rather than the harness being early.
+  Future<void> settleUntil(
+    WidgetTester tester,
+    bool Function() ready, {
+    int maxRounds = 60,
+  }) async {
+    for (var i = 0; i < maxRounds; i++) {
+      if (ready()) return;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    expect(ready(), isTrue,
+        reason: 'condition never held within $maxRounds pump rounds');
+  }
+
   Future<void> unmount(WidgetTester tester) async {
     // Dispose the page (cancels the version-poll timer) before the test
     // framework checks for pending timers.
@@ -75,7 +98,7 @@ void main() {
   ) async {
     await pumpPage(tester);
     await tester.tap(find.byTooltip('New template'));
-    await settle(tester, 3);
+    await settleUntil(tester, () => find.text('New template').evaluate().isNotEmpty);
     expect(find.text('New template'), findsWidgets);
     // Create disabled while the name is empty.
     final createBtn = tester.widget<FilledButton>(
@@ -160,7 +183,10 @@ void main() {
     await tester.tap(find.byTooltip('Add block'));
     await tester.pump();
     await tester.tap(find.text('Image (logo / seal)'));
-    await settle(tester, 3);
+    // Wait for the block to reach the page, not for a fixed number of frames:
+    // Save must not fire before the add has landed.
+    await settleUntil(tester, () => find.byTooltip('Add block').evaluate().isNotEmpty
+        && find.text('Image (logo / seal)').evaluate().isEmpty);
     await tester.tap(find.widgetWithText(FilledButton, 'Save v1.0.1'));
     await settle(tester);
     var tpl = await tester.runAsync(() => serverTemplate('harness-quote'));

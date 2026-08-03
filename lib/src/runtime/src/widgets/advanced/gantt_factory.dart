@@ -203,10 +203,17 @@ class _GanttState extends State<_Gantt> {
     final chartWidth = (units.clamp(1, 2000)) * 40.0;
     final scale = _Scale(widget.from, widget.to, chartWidth);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
+    // The chart is as tall as it has rows, which is unbounded: a plan with two
+    // hundred tasks is a normal plan, and it overflowed by three thousand
+    // pixels rather than scrolling. The height stays as the *content* height
+    // and a vertical scroll view carries it, so the timeline keeps its
+    // one-row-per-task geometry and the viewport decides how much is on
+    // screen.
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
         SizedBox(
           height: widget.rowHeight * (widget.tasks.length + 1),
           child: Row(
@@ -277,7 +284,8 @@ class _GanttState extends State<_Gantt> {
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }

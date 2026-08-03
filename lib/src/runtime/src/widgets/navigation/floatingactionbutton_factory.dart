@@ -30,7 +30,14 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
     final autofocus = properties['autofocus'] as bool? ?? false;
     final materialTapTargetSize =
         _parseMaterialTapTargetSize(properties['materialTapTargetSize']);
-    final isExtended = properties['isExtended'] as bool? ?? false;
+    // §2.8.7 documents `label` as "Extended FAB label" and declares no
+    // `isExtended` at all: a document that supplies a label is asking for the
+    // extended form. Requiring an undeclared flag on top meant the label was
+    // accepted, validated, and never drawn. `isExtended` still wins when set,
+    // so a document can ask for the compact form with a label present.
+    final declaredExtended = properties['isExtended'] as bool?;
+    final isExtended = declaredExtended ??
+        (context.resolve<String?>(properties['label'])?.isNotEmpty ?? false);
 
     // Extract child widget or icon/label (support 'child' and 'children')
     final childDef = (properties['child'] ?? definition['child'])

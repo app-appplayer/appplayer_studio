@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart';
 
+import '../utils/mcp_logger.dart';
 import '../state/state_manager.dart';
 import 'theme_builder.dart';
 
@@ -16,6 +17,8 @@ import 'theme_builder.dart';
 /// [setHostBrightness] — useful when an outer launcher wants its own light/
 /// dark choice to win over a server app declaring `mode: 'system'`).
 class ThemeManager with ChangeNotifier {
+  final MCPLogger _logger = MCPLogger('ThemeManager');
+
   static final ThemeManager _instance = ThemeManager._internal();
   factory ThemeManager() => _instance;
   static ThemeManager get instance => _instance;
@@ -139,8 +142,36 @@ class ThemeManager with ChangeNotifier {
 
   /// Set the theme from a JSON map (1.3 — 14 domains).
   void setTheme(Map<String, dynamic> theme) {
+    _reportRetiredRoles(theme);
     final def = ThemeDefinition.fromJson(theme);
     setThemeDefinition(def);
+  }
+
+  /// Roles §5.3.1 keeps readable but no longer stores.
+  ///
+  /// Material 3 folded these into the surface family, so
+  /// `ColorSchemeDefinition` has no field for them: a value written here is
+  /// parsed away and the role answers with its replacement instead. Reading
+  /// them still works, which is the point of keeping them — but *writing*
+  /// one does nothing, and doing nothing quietly is the part that costs an
+  /// author their afternoon. They set `background` to separate the page from
+  /// the cards, both come out the same colour, and the document looks correct.
+  static const _retiredRoles = <String, String>{
+    'background': 'surface',
+    'onBackground': 'onSurface',
+  };
+
+  void _reportRetiredRoles(Map<String, dynamic> theme) {
+    final color = theme['color'];
+    if (color is! Map<String, dynamic>) return;
+    for (final entry in _retiredRoles.entries) {
+      if (!color.containsKey(entry.key)) continue;
+      _logger.warning(
+        'theme.color.${entry.key} is a legacy role (spec §5.3.1): the value '
+        'declared here is not applied — the role resolves as '
+        '${entry.value}. Declare ${entry.value} instead.',
+      );
+    }
   }
 
   /// Set the theme from a strongly-typed [ThemeDefinition].
@@ -267,8 +298,42 @@ class ThemeManager with ChangeNotifier {
       final hit = _resolvePath(override, path);
       if (hit != null) return hit;
     }
-    return _resolvePath(_themeData, path);
+    final hit = _resolvePath(_themeData, path);
+    if (hit != null) return hit;
+
+    // §5.3.1 legacy colour roles. Material 3 folded the background family
+    // into the surface family, so `ColorSchemeDefinition` carries no
+    // `background` / `onBackground` field and a theme map never contains
+    // them. `parseColor` resolves the names through the scheme, but a
+    // document reading `{{theme.color.background}}` went through this path
+    // instead and got nothing — the same name answered in one position and
+    // was empty in the other.
+    if (!path.startsWith('color.')) return null;
+
+    // A theme that declares only `seed` has no `color.<role>` entries at all:
+    // `ColorSchemeDefinition.toJson` emits what the bundle wrote, and the
+    // rest derive. `getColorValue` knew that; `getThemeValue` did not, so a
+    // colour property resolved a role and `{{theme.color.<role>}}` came back
+    // empty for the same role. §5.3.1 says the missing roles derive — that
+    // has to be true from both positions or the theme means two things.
+    // `_colorFromScheme` already answers the §5.3.1 legacy spellings, so the
+    // slot name goes there unchanged — mapping it twice would be a second
+    // register of the same fact.
+    final derived = _colorFromScheme(
+        _ensureColorScheme(mode == 'dark'), path.substring('color.'.length));
+    return derived == null ? null : _hexOf(derived);
   }
+
+
+  /// `#AARRGGBB`, matching the form a bundle writes.
+  static String _hexOf(Color c) {
+    final v = ((c.a * 255).round() << 24) |
+        ((c.r * 255).round() << 16) |
+        ((c.g * 255).round() << 8) |
+        (c.b * 255).round();
+    return '#${v.toRadixString(16).padLeft(8, '0').toUpperCase()}';
+  }
+
 
   /// Spec alias.
   dynamic resolveThemeValue(String path) => getThemeValue(path);

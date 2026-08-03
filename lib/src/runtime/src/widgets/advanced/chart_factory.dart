@@ -22,7 +22,31 @@ class ChartWidgetFactory extends WidgetFactory {
     // Extract visual properties
     final showGrid = context.resolve<bool>(properties['showGrid'] ?? true);
     final showLabels = context.resolve<bool>(properties['showLabels'] ?? true);
-    final showLegend = context.resolve<bool>(properties['showLegend'] ?? false);
+    // §10: `options.legend.position` — `top` (default) · `bottom` · `left` ·
+    // `right` · `none`. The factory used to read only `showLegend`, a name
+    // that appears nowhere in the spec, and defaulted it to false: a chart
+    // written the documented way declared its dataset labels and drew no
+    // legend at all. `showLegend` stays as a legacy override.
+    final options = context.resolve(properties['options']);
+    final legendPosition = (() {
+      final legend = options is Map ? options['legend'] : null;
+      final declared = legend is Map ? legend['position'] : null;
+      if (declared is String && declared.isNotEmpty) return declared;
+      return 'top';
+    })();
+    // The spec property decides when it is present; `showLegend` is only
+    // consulted when it is not. A document that says `position: "none"` and
+    // also carries a legacy flag means the position — reading them the other
+    // way round would let a stale key override the documented one.
+    final legend = options is Map ? options['legend'] : null;
+    final positionDeclared =
+        legend is Map && legend['position'] is String;
+    final legacyShowLegend = properties['showLegend'];
+    final showLegend = positionDeclared
+        ? legendPosition != 'none'
+        : (legacyShowLegend == null
+            ? true
+            : context.resolve<bool?>(legacyShowLegend) ?? false);
 
     // Extract colors — theme-adaptive defaults. `gridColor` and
     // `labelColor` fall back to the active theme so gridlines and axis
@@ -119,6 +143,8 @@ class ChartWidgetFactory extends WidgetFactory {
                 textAlign: TextAlign.center,
               ),
             ),
+          if (showLegend && legendPosition == 'top')
+            _buildLegend(chartData, datasets, colors, primaryColor, labelColor),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -140,7 +166,10 @@ class ChartWidgetFactory extends WidgetFactory {
               ),
             ),
           ),
-          if (showLegend)
+          // `left` / `right` fall to the bottom rail rather than being
+          // dropped: the painter owns the horizontal box, and a legend that
+          // silently disappears is worse than one on the wrong edge.
+          if (showLegend && legendPosition != 'top')
             _buildLegend(chartData, datasets, colors, primaryColor, labelColor),
         ],
       ),
