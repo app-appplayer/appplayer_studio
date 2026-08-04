@@ -592,8 +592,23 @@ class _OwnedEntryRow extends StatelessWidget {
           IconButton(
             tooltip: 'Detach (unassign)',
             icon: const Icon(Icons.link_off, size: 16),
+            // The unassign crosses an async gap and then rebuilds the card
+            // that owns this row. Two things have to be handled or the tap
+            // takes the app down instead of detaching: a failure inside
+            // `unassign` (it touches the kv store) had nowhere to go, and
+            // the callback fired without checking that the element that
+            // scheduled it is still mounted.
             onPressed: () async {
-              await init.system.agents.unassign(agentId, axis, forkedRef);
+              final messenger = ScaffoldMessenger.maybeOf(context);
+              try {
+                await init.system.agents.unassign(agentId, axis, forkedRef);
+              } catch (e) {
+                messenger?.showSnackBar(
+                  SnackBar(content: Text('Detach failed: $e')),
+                );
+                return;
+              }
+              if (!context.mounted) return;
               onDetached();
             },
           ),
