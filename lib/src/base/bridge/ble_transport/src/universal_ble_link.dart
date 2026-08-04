@@ -22,9 +22,24 @@ class UniversalBleLink implements BleLink {
     required String deviceId,
     Duration connectTimeout = const Duration(seconds: 15),
     Duration scanLocateTimeout = const Duration(seconds: 10),
+    BleLocate? locate,
   })  : _deviceId = deviceId,
         _connectTimeout = connectTimeout,
-        _scanLocateTimeout = scanLocateTimeout;
+        _scanLocateTimeout = scanLocateTimeout,
+        _locate = locate;
+
+  /// How the device id gets made known to the radio stack before
+  /// connect-by-id (see [_locateByScan]).
+  ///
+  /// Left null, this link runs its own scan on the global radio —
+  /// `UniversalBle.startScan` / `stopScan` are PROCESS-GLOBAL, so the stop that
+  /// ends it silences whatever else was scanning, and that owner is never told
+  /// and never restarts. Opening one board therefore killed the discovery axis
+  /// and any bundle holding `ble://scan`, every time.
+  ///
+  /// A host that owns one radio passes its own locator and nothing here
+  /// touches the global scan.
+  final BleLocate? _locate;
 
   final String _deviceId;
   final Duration _connectTimeout;
@@ -45,14 +60,22 @@ class UniversalBleLink implements BleLink {
       await UniversalBle.connect(_deviceId, timeout: _connectTimeout);
     } catch (_) {
       // Connecting by device id needs universal_ble to have the peripheral in
-      // its registry, which only a scan populates. Opening a saved board
-      // straight from the launcher does no scan first, so the very first
+      // its registry, which only an advertisement populates. Opening a saved
+      // board straight from the launcher has seen none, so the very first
       // connect fails (deviceNotFound / unknown deviceId) even though the
-      // board is right there advertising. Run a short filtered scan to
-      // register it — the same discovery filter the scanner uses — then retry
-      // once. (The discovery/probe path already scans, which is why it never
-      // hit this.)
-      await _locateByScan();
+      // board is right there advertising. Wait for it to be seen, then retry
+      // once. (The discovery/probe path is already watching, which is why it
+      // never hit this.)
+      //
+      // Without a locator there is no recovery: this link will NOT scan on its
+      // own. `startScan`/`stopScan` are process-global, so doing that would
+      // silence whatever else is watching, and the owner is never told and
+      // never restarts. A connect that cannot be recovered reports the connect
+      // failure — which is the truth — instead of trading someone else's
+      // observation for it.
+      final host = _locate;
+      if (host == null) rethrow;
+      await host(_deviceId, _scanLocateTimeout);
       await UniversalBle.connect(_deviceId, timeout: _connectTimeout);
     }
 
@@ -86,53 +109,6 @@ class UniversalBleLink implements BleLink {
     _writeWithoutResponse =
         rx.properties.contains(CharacteristicProperty.writeWithoutResponse);
     _resolved = true;
-  }
-
-  /// Runs the discovery scan filter ([mcpBleServiceUuid]) until this link's
-  /// [_deviceId] shows up (or [_scanLocateTimeout] elapses), then stops. Its
-  /// only purpose is to register the peripheral with universal_ble so the
-  /// follow-up connect-by-id resolves; the scan results themselves are
-  /// discarded.
-  Future<void> _locateByScan() async {
-    final found = Completer<void>();
-    StreamSubscription<BleDevice>? sub;
-    Timer? timer;
-
-    Future<void> stop() async {
-      timer?.cancel();
-      await sub?.cancel();
-      try {
-        await UniversalBle.stopScan();
-      } catch (_) {
-        // Best-effort — the adapter may already be off/stopped.
-      }
-    }
-
-    sub = UniversalBle.scanStream.listen(
-      (device) {
-        if (device.deviceId == _deviceId && !found.isCompleted) {
-          found.complete();
-        }
-      },
-      onError: (_) {
-        if (!found.isCompleted) found.complete();
-      },
-    );
-    try {
-      await UniversalBle.startScan(
-        scanFilter: ScanFilter(withServices: [mcpBleServiceUuid]),
-      );
-    } catch (_) {
-      // If the scan itself cannot start, fall through — the retry connect will
-      // surface the real error.
-      await stop();
-      return;
-    }
-    timer = Timer(_scanLocateTimeout, () {
-      if (!found.isCompleted) found.complete();
-    });
-    await found.future;
-    await stop();
   }
 
   BleCharacteristic? _findCharacteristic(

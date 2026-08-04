@@ -11,7 +11,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:appplayer_studio/base.dart' show registerDiscoveryTools;
+import 'package:appplayer_studio/base.dart'
+    show BleBoardScan, StudioBleStack, registerDiscoveryTools, studioBleStack;
+import 'package:appplayer_studio/src/base/bridge/ble_scan/ble_scan.dart'
+    show BleAdvertisement, BleScanHub, BleScanRadio;
 import 'package:appplayer_studio/src/base/bridge/ble_transport/ble_transport.dart';
 import 'package:appplayer_studio/src/base/bridge/device_discovery/device_discovery.dart'
     hide NewlineJsonFramer;
@@ -36,17 +39,30 @@ class _FakeMdnsScanner extends MdnsBoardScanner {
       Stream.fromIterable(candidates);
 }
 
-/// BLE scanner fake — emits a scripted candidate list (with repeats).
-class _FakeBleScanner extends BleBoardScanner {
-  _FakeBleScanner(this.candidates);
-  final List<BleBoardCandidate> candidates;
+/// The MCP Serving service UUID as a radio reports it.
+const String _mcpUuidLower = '4d435042-4c45-0001-8000-6d6370626c65';
+
+/// Radio fake that records the physical scan lifecycle — a consumer opening one
+/// of its own shows up here as a start the studio hub never asked for.
+class _RecordingRadio implements BleScanRadio {
+  final _controller = StreamController<BleAdvertisement>.broadcast();
+  int starts = 0;
+  int stops = 0;
+
+  void emit(BleAdvertisement ad) => _controller.add(ad);
 
   @override
-  Stream<BleBoardCandidate> scan({
-    Duration timeout = const Duration(seconds: 15),
-  }) =>
-      Stream.fromIterable(candidates);
+  Stream<BleAdvertisement> get advertisements => _controller.stream;
+  @override
+  Future<void> start() async => starts++;
+  @override
+  Future<void> stop() async => stops++;
 }
+
+/// BLE scan fake — emits a scripted candidate list (with repeats).
+BleBoardScan _fakeBleScan(List<BleBoardCandidate> candidates) =>
+    ({Duration timeout = const Duration(seconds: 15)}) =>
+        Stream.fromIterable(candidates);
 
 MdnsBoardCandidate _cand(String name, String proto, {int port = 6270}) =>
     MdnsBoardCandidate(
@@ -270,7 +286,7 @@ void main() {
     registerDiscoveryTools(
       cap.registry,
       clientHost,
-      bleScanner: _FakeBleScanner(const [
+      bleScan: _fakeBleScan(const [
         BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -40),
         BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -42),
         BleBoardCandidate(deviceId: 'dev-2', localName: '', rssi: 0),
@@ -285,6 +301,36 @@ void main() {
     final first = (out['candidates'] as List).first as Map;
     expect(first['deviceId'], 'dev-1');
     expect((first['connectHint'] as Map)['tool'], 'mcp.connect_ble_board');
+  });
+
+  test('source=ble with NO injected seam takes the studio radio, not its own',
+      () async {
+    // The default seam is the regression that hides: swapping it back to a
+    // private BleBoardScanner changes nothing an ordinary test can see, and the
+    // scan it opens ends everyone else's the moment its window closes.
+    final radio = _RecordingRadio();
+    studioBleStack = StudioBleStack.on(BleScanHub(radio));
+    final cap = _captureRegistry(app, 'disc-ble-default');
+    registerDiscoveryTools(cap.registry, clientHost);
+
+    final pending = _call(
+      cap.handlers['mcp.discover_boards']!,
+      const {'source': 'ble', 'timeoutSeconds': 0.2},
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(radio.starts, 1, reason: 'the studio radio, and only once');
+    radio.emit(const BleAdvertisement(
+      deviceId: 'dev-hub',
+      name: 'Board Hub',
+      rssi: -40,
+      serviceUuids: <String>[_mcpUuidLower],
+    ));
+
+    final out = await pending;
+    expect(out['ok'], isTrue);
+    expect(out['count'], 1);
+    expect(((out['candidates'] as List).first as Map)['deviceId'], 'dev-hub');
+    expect(radio.stops, 1, reason: 'the window released it on the way out');
   });
 
   test('usb discover: every port probed, only confirmed boards surface',

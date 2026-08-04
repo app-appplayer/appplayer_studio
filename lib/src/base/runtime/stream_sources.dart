@@ -18,13 +18,15 @@ library;
 import 'package:appplayer_studio/runtime.dart';
 
 import '../bridge/ble_scan/ble_scan.dart';
+import '../bridge/ble_stack.dart';
 
 /// Process-shared BLE scan hub — one radio for the whole studio, created on
-/// first use. Distinct from device discovery's MCP-UUID scan (the
-/// shared-radio coordination between the two is a known follow-on).
-BleScanHub? _bleScanHub;
-BleScanHub get studioBleScanHub =>
-    _bleScanHub ??= BleScanHub(UniversalBleScanRadio());
+/// first use.
+///
+/// Owned by [studioBleStack], not by this file: provisioning and the connect
+/// path draw on the same radio, and assembling that wiring in one place is what
+/// keeps them from silencing each other.
+BleScanHub get studioBleScanHub => studioBleStack.hub;
 
 /// Register every host stream source on an already-initialized [runtime].
 /// No-op-safe to call repeatedly across runtimes; each registration is scoped

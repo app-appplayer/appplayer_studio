@@ -34,6 +34,7 @@ import 'package:mcp_bridge/mcp_bridge.dart'
     show SerialClientTransport, TcpClientTransport;
 import 'package:mcp_client/mcp_client.dart' show ClientTransport;
 
+import 'ble_stack.dart';
 import 'ble_transport/ble_transport.dart';
 import 'device_discovery/device_discovery.dart';
 import 'discovery_trust.dart';
@@ -72,6 +73,14 @@ typedef ProbeFn = Future<BoardIdentity?> Function({
 /// trust anchor is provisioned.
 typedef TrustEvidenceFn = Future<TrustEvidence?> Function(BoardIdentity);
 
+/// One bounded window of BLE board sightings.
+///
+/// A FUNCTION, not the recipe's [BleBoardScanner]: that scanner owns a scan of
+/// its own, and `startScan` / `stopScan` are process-global, so it would end
+/// whatever else is observing. The default here subscribes to the studio's one
+/// radio; nothing in the studio holds a path back to a private scan.
+typedef BleBoardScan = Stream<BleBoardCandidate> Function({Duration timeout});
+
 /// Register `mcp.discover_boards` + `mcp.connect_ble_board` and hand back
 /// the [StudioDiscovery] surface (tool names + the settings-driven sweep).
 ///
@@ -83,7 +92,7 @@ StudioDiscovery registerDiscoveryTools(
   HostToolRegistry registry,
   KernelClientHost? clientHost, {
   MdnsBoardScanner? mdnsScanner,
-  BleBoardScanner? bleScanner,
+  BleBoardScan? bleScan,
   DirectoryBoardScanner? directoryScanner,
   List<SerialPortCandidate> Function()? enumerateSerialPorts,
   FutureOr<DirectoryConfig?> Function()? directoryConfig,
@@ -100,7 +109,7 @@ StudioDiscovery registerDiscoveryTools(
   final discovery = StudioDiscovery._(
     clientHost: clientHost,
     mdns: mdnsScanner ?? MdnsBoardScanner(),
-    ble: bleScanner ?? BleBoardScanner(),
+    ble: bleScan ?? studioBleStack.boardScan,
     directory: directoryScanner ?? DirectoryBoardScanner(),
     enumeratePorts: enumerateSerialPorts ??
         () => csp
@@ -177,7 +186,7 @@ class StudioDiscovery {
   StudioDiscovery._({
     required this.clientHost,
     required MdnsBoardScanner mdns,
-    required BleBoardScanner ble,
+    required BleBoardScan ble,
     required DirectoryBoardScanner directory,
     required List<SerialPortCandidate> Function() enumeratePorts,
     required FutureOr<DirectoryConfig?> Function() directoryConfig,
@@ -197,7 +206,7 @@ class StudioDiscovery {
 
   final KernelClientHost? clientHost;
   final MdnsBoardScanner _mdns;
-  final BleBoardScanner _ble;
+  final BleBoardScan _ble;
   final DirectoryBoardScanner _directory;
   final List<SerialPortCandidate> Function() _enumeratePorts;
   final FutureOr<DirectoryConfig?> Function() _directoryConfig;
@@ -317,7 +326,7 @@ class StudioDiscovery {
       case 'ble':
         final seen = <String>{};
         final out = <Map<String, dynamic>>[];
-        await for (final c in _ble.scan(timeout: timeout)) {
+        await for (final c in _ble(timeout: timeout)) {
           if (!seen.add(c.deviceId)) continue;
           out.add(<String, dynamic>{
             'source': 'ble',
@@ -629,8 +638,12 @@ class StudioDiscovery {
       };
     }
     final id = (args['id'] as String?) ?? 'ble:$deviceId';
-    final link =
-        _bleLinkFor?.call(deviceId) ?? UniversalBleLink(deviceId: deviceId);
+    // `locate` is a WAIT on the studio's one radio, not a scan of its own: a
+    // private scan's stop is process-global and would silence whatever else is
+    // observing (a bundle holding `ble://scan`, the provisioning sweep) with no
+    // notice to its owner, so it never restarts.
+    final link = _bleLinkFor?.call(deviceId) ??
+        UniversalBleLink(deviceId: deviceId, locate: studioBleStack.locate);
     final transport = BleClientTransport(link: link);
     try {
       await transport.start();

@@ -81,6 +81,7 @@ class MdnsBoardCandidate {
     required this.port,
     required this.instanceName,
     required this.txt,
+    this.address,
   });
 
   /// The SRV target hostname (e.g. `mcp-esp32.local`), NOT a resolved IP.
@@ -89,6 +90,25 @@ class MdnsBoardCandidate {
   /// the device's DHCP address changing, whereas a point-in-time IP would go
   /// stale. (A hand-typed static IP is a separate, manual path.)
   final String host;
+
+  /// The A record seen in the same announcement, when the responder sent one.
+  ///
+  /// [host] assumes the platform resolves `.local`. Android does not — the
+  /// system resolver has no mDNS path, so `mcp-esp32.local` is `unknown host`
+  /// there while the same address pings fine. Discovery then found the board
+  /// and failed to dial it, which reads as "found nothing" on screen.
+  ///
+  /// So the announcement's own answer is kept. [dialHost] prefers it; [host]
+  /// stays the persisted identity so a DHCP move still re-resolves.
+  final String? address;
+
+  /// The host to CONNECT to now: the announced address when there is one,
+  /// otherwise the SRV hostname.
+  ///
+  /// Separate from [host] on purpose — what is stored and what is dialled are
+  /// different questions, and collapsing them is what made a resolvable-only-
+  /// on-some-platforms name the single source of both.
+  String get dialHost => address ?? host;
 
   /// SRV port — authoritative (spec 17 §3).
   final int port;
@@ -122,6 +142,17 @@ class MdnsBoardCandidate {
         ? '/mcp'
         : (rawPath.startsWith('/') ? rawPath : '/$rawPath');
     final authority = port == 80 ? host : '$host:$port';
+    return 'http://$authority$path';
+  }
+
+  /// [httpEndpoint] with [dialHost] in place of [host] — the URL to probe
+  /// right now, on a platform that may not resolve `.local`.
+  String get httpDialEndpoint {
+    final rawPath = txt.path;
+    final path = (rawPath == null || rawPath.isEmpty)
+        ? '/mcp'
+        : (rawPath.startsWith('/') ? rawPath : '/$rawPath');
+    final authority = port == 80 ? dialHost : '$dialHost:$port';
     return 'http://$authority$path';
   }
 

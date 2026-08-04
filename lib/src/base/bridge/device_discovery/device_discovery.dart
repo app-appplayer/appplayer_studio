@@ -15,6 +15,7 @@ library;
 
 export 'src/directory_board_scanner.dart';
 export 'src/mdns_board_scanner.dart';
+export 'src/mdns_platform.dart';
 export 'src/mdns_types.dart';
 export 'src/newline_json_framer.dart';
 export 'src/probe.dart';

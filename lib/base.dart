@@ -93,6 +93,8 @@ export 'src/base/install/atoms/workspace_atom.dart';
 export 'src/base/runtime/tool_widgets.dart' show registerToolWidgets;
 export 'src/base/runtime/vbu_widgets.dart'
     show registerVbuWidgets, resolveIconName;
+export 'src/base/bridge/ble_stack.dart'
+    show StudioBleStack, isProvisioningAdvertisement, studioBleStack;
 export 'src/base/runtime/stream_sources.dart'
     show registerStudioStreamSources, studioBleScanHub;
 export 'src/base/install/host_bundle_activation.dart';

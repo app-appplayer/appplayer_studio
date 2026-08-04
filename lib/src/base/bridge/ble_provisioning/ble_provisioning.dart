@@ -22,6 +22,9 @@ export 'src/provisioning_models.dart'
 export 'src/provisioning_link.dart'
     show ProvisioningUuids, ProvisioningLink, ProvisioningTransport, pageWifiList;
 export 'src/universal_ble_provisioning.dart'
-    show UniversalBleProvisioningTransport, UniversalBleProvisioningLink;
+    show
+        UniversalBleProvisioningTransport,
+        UniversalBleProvisioningLink,
+        decodeStatusPayload;
 export 'src/provisioning_capability.dart' show BleProvisioningCapability;
 export 'src/provisioning_ui.dart' show buildProvisioningUi;

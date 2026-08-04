@@ -36,7 +36,7 @@ import 'dart:isolate';
 import 'package:brain_kernel/brain_kernel.dart' show HostToolRegistry;
 
 import '../bridge/ble_provisioning/ble_provisioning.dart';
-import '../bridge/ble_scan/ble_scan.dart' show UniversalBleScanRadio;
+import '../bridge/ble_stack.dart' show studioBleStack;
 import '../bridge/serial_provisioning/serial_provisioning.dart' as serial;
 import '../bridge/smartconfig_provisioning/smartconfig_provisioning.dart'
     as sc;
@@ -46,12 +46,6 @@ import 'capability_recipes/capability_recipes.dart'
 
 /// Capability id — tools register as `provision.<verb>`.
 const String provisioningCapabilityId = 'provision';
-
-/// BLE device name a node advertises in provisioning mode (firmware
-/// `ble_svc_gap_device_name_set("mcp-prov")`). Part of the provisioning
-/// contract; used as the macOS-reliable candidate match (see
-/// [provisioningCandidates]).
-const String _provisioningAdvertisedName = 'mcp-prov';
 
 /// Register the `provision.*` tool surface on [registry].
 List<String> registerProvisioningCapability(HostToolRegistry registry) {
@@ -197,7 +191,7 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
 
 // ── BLE ────────────────────────────────────────────────────────────
 
-/// On-demand fresh scan for devices in provisioning mode.
+/// One observation window over devices in provisioning mode.
 ///
 /// A device is a candidate if it advertises the provisioning service UUID OR
 /// its name marks it as a provisioning device (`mcp-prov`). Name matching is
@@ -206,22 +200,30 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
 /// Bluetooth / universal_ble do not reliably surface a 128-bit service UUID
 /// from a scan advertisement — the name comes through the active-scan
 /// response. Android surfaces both, so the UUID path covers it there.
-Future<Map<String, Object?>> provisioningCandidates() async {
-  final radio = UniversalBleScanRadio();
+///
+/// The window is a SUBSCRIPTION on the studio's one radio, not a scan of its
+/// own. It used to open a radio here and stop it when the window closed — and
+/// `startScan` / `stopScan` are process-global, so that stop silenced whatever
+/// else was observing (a bundle holding `ble://scan`, the connect path locating
+/// a device). The silenced owner is never told and still believes its scan is
+/// live, so it never restarts: one Refresh press went quiet for the rest of the
+/// session. Through the hub this releases only its own claim, and the radio
+/// stops when the last subscriber lets go.
+///
+/// [observe] overrides the studio stack — tests drive it over a fake radio.
+Future<Map<String, Object?>> provisioningCandidates({
+  Stream<ProvisioningCandidate> Function()? observe,
+  Duration window = const Duration(seconds: 3),
+}) async {
+  final source = observe ?? studioBleStack.provisioningCandidates;
   final seen = <String, Map<String, Object?>>{};
-  final sub = radio.advertisements
-      .where((ad) =>
-          ad.serviceUuids.contains(ProvisioningUuids.serviceUuid) ||
-          ad.name.toLowerCase().startsWith(_provisioningAdvertisedName))
-      .listen((ad) => seen[ad.deviceId] = <String, Object?>{
-            'deviceId': ad.deviceId,
-            'name': ad.name.isEmpty ? ad.deviceId : ad.name,
-            'rssi': ad.rssi,
-          });
-  await radio.start();
-  await Future<void>.delayed(const Duration(seconds: 3));
+  final sub = source().listen((c) => seen[c.deviceId] = <String, Object?>{
+        'deviceId': c.deviceId,
+        'name': c.name,
+        'rssi': c.rssi,
+      });
+  await Future<void>.delayed(window);
   await sub.cancel();
-  await radio.stop();
   return <String, Object?>{'candidates': seen.values.toList()};
 }
 

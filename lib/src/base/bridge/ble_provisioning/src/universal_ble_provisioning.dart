@@ -14,55 +14,89 @@ import 'provisioning_models.dart';
 /// [ProvisioningTransport] over `universal_ble` — the real radio/GATT. Web
 /// degrades where BLE is unavailable.
 class UniversalBleProvisioningTransport implements ProvisioningTransport {
+  UniversalBleProvisioningTransport({this.observe});
+
+  /// Where provisioning advertisements come from.
+  ///
+  /// Null is allowed only because [open] needs none — a GATT session is not a
+  /// scan, and the commission path builds this transport for that alone.
+  /// [candidates] without it REFUSES.
+  ///
+  /// It used to fall back to driving the radio itself, and that default is
+  /// gone: `UniversalBle.startScan` / `stopScan` are PROCESS-GLOBAL, so the
+  /// stop ending a provisioning scan silenced whatever else was scanning (the
+  /// discovery axis, a bundle's `ble://scan`) — and that owner is never told,
+  /// still believes its scan is live, and so never restarts it. The
+  /// observation just goes quiet and stays quiet.
+  ///
+  /// Refusing is the honest answer: this recipe has no way to observe without
+  /// taking a radio it does not own.
+  final Stream<ProvisioningCandidate> Function()? observe;
+
   @override
   Stream<List<ProvisioningCandidate>> candidates() {
-    final seen = <String, ProvisioningCandidate>{};
-    late final StreamController<List<ProvisioningCandidate>> ctrl;
-    StreamSubscription<BleDevice>? sub;
-    ctrl = StreamController<List<ProvisioningCandidate>>(
-      onListen: () async {
-        sub = UniversalBle.scanStream
-            .where(_isProvisioningDevice)
-            .listen((d) {
-          seen[d.deviceId] = ProvisioningCandidate(
-            deviceId: d.deviceId,
-            name: d.name ?? d.rawName ?? '',
-            rssi: d.rssi ?? 0,
-          );
-          ctrl.add(seen.values.toList(growable: false));
-        });
-        await UniversalBle.startScan();
-      },
-      onCancel: () async {
-        await sub?.cancel();
-        await UniversalBle.stopScan();
-      },
-    );
-    return ctrl.stream;
+    final source = observe;
+    if (source == null) {
+      throw StateError(
+        'no observation wired: pass `observe` so candidates come from the '
+        "host's radio — this transport will not start a scan of its own",
+      );
+    }
+    return _accumulate(source());
   }
 
-  /// A device is provisionable when it advertises the provisioning service
-  /// UUID **or** its advertised name marks it as one.
-  ///
-  /// The name branch is load-bearing on macOS / iOS, not a convenience: the
-  /// firmware puts the 128-bit service UUID in the primary advertisement and
-  /// the name in the scan response, and CoreBluetooth does not reliably surface
-  /// a 128-bit service UUID from an advertisement. Filtering on the UUID alone
-  /// therefore finds nothing on a Mac while working fine on Android — the exact
-  /// asymmetry that made a board sitting in provisioning mode invisible to the
-  /// desktop host. Android surfaces both, so the UUID branch still covers it.
-  static bool _isProvisioningDevice(BleDevice d) {
-    final services = d.services.map((s) => s.toLowerCase());
-    if (services.contains(ProvisioningUuids.serviceUuid)) return true;
-    final name = (d.name ?? d.rawName ?? '').toLowerCase();
-    return name.startsWith(ProvisioningUuids.advertisedName);
+  /// A growing, device-deduped snapshot — the contract both sources deliver.
+  Stream<List<ProvisioningCandidate>> _accumulate(
+    Stream<ProvisioningCandidate> ads,
+  ) {
+    final seen = <String, ProvisioningCandidate>{};
+    return ads.map((c) {
+      seen[c.deviceId] = c;
+      return seen.values.toList(growable: false);
+    });
   }
 
   @override
   Future<ProvisioningLink> open(String deviceId) async {
     await UniversalBle.connect(deviceId);
     await UniversalBle.discoverServices(deviceId);
+    // A notification carries at most `MTU - 3` bytes and CANNOT continue like
+    // a read can, so on Android's default MTU of 23 the status JSON is cut at
+    // 20 bytes. `{"state":"idle"}` is 16 and arrives whole; `{"state":
+    // "connecting"}` is 22 and arrives as `{"state":"connecting` — the session
+    // died on `FormatException: Unterminated string` exactly when provisioning
+    // started working. Ask for room; a peer that refuses just keeps the
+    // default and [UniversalBleProvisioningLink.status] still recovers by
+    // reading.
+    try {
+      await UniversalBle.requestMtu(deviceId, _preferredMtu);
+    } catch (_) {
+      // Not fatal and not universally supported (iOS/macOS negotiate on their
+      // own and have no API for it).
+    }
     return UniversalBleProvisioningLink(deviceId);
+  }
+
+  /// Comfortably above any status or credential payload, and within what an
+  /// ESP32 NimBLE peer accepts.
+  static const int _preferredMtu = 247;
+}
+
+/// Decodes a status notification payload, or null when it is not a complete
+/// JSON object.
+///
+/// Incompleteness is the expected case, not a corruption: a notification is
+/// capped at `MTU - 3` bytes and, unlike a read, has no continuation. The
+/// caller answers null with a full read.
+ProvisioningStatus? decodeStatusPayload(Uint8List bytes) {
+  try {
+    return ProvisioningStatus.fromJson(
+        jsonDecode(utf8.decode(bytes)) as Map<String, Object?>);
+  } on FormatException {
+    return null;
+  } on TypeError {
+    // Truncation can also land on a fragment that parses as a non-object.
+    return null;
   }
 }
 
@@ -96,14 +130,25 @@ class UniversalBleProvisioningLink implements ProvisioningLink {
         ProvisioningUuids.credentialsChar, Uint8List.fromList(payload));
   }
 
+  /// Status updates.
+  ///
+  /// A notification is treated as "something changed", not as the whole
+  /// message. Its payload is capped at `MTU - 3` with no continuation, so a
+  /// status longer than that arrives truncated and cannot be parsed. A READ of
+  /// the same characteristic continues over as many ATT Read Blob requests as
+  /// the value needs, so it is the reliable way to get the full value at any
+  /// MTU. The fast path still uses the payload when it parses — that keeps
+  /// short-lived intermediate states that a follow-up read could miss — and
+  /// falls back to a read only when it does not.
   @override
   Stream<ProvisioningStatus> get status async* {
     await UniversalBle.subscribeNotifications(_deviceId,
         ProvisioningUuids.serviceUuid, ProvisioningUuids.statusChar);
-    yield* UniversalBle.characteristicValueStream(
-            _deviceId, ProvisioningUuids.statusChar)
-        .map((bytes) => ProvisioningStatus.fromJson(
-            jsonDecode(utf8.decode(bytes)) as Map<String, Object?>));
+    final stream = UniversalBle.characteristicValueStream(
+        _deviceId, ProvisioningUuids.statusChar);
+    await for (final bytes in stream) {
+      yield decodeStatusPayload(bytes) ?? await readStatus();
+    }
   }
 
   @override

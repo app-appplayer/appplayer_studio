@@ -24,7 +24,7 @@ library;
 
 export 'src/ble_board_scanner.dart' show BleBoardCandidate, BleBoardScanner;
 export 'src/ble_client_transport.dart' show BleClientTransport;
-export 'src/ble_link.dart' show BleLink;
+export 'src/ble_link.dart' show BleLink, BleLocate;
 export 'src/ble_uuids.dart';
 export 'src/newline_json_framer.dart' show NewlineJsonFramer;
 export 'src/universal_ble_link.dart' show UniversalBleLink;
