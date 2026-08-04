@@ -32,9 +32,15 @@ class ResourcesPage extends ConsumerWidget {
               IconButton(
                 tooltip: 'Migrate credentials (export / import)',
                 icon: const Icon(Icons.import_export),
+                // The dialog is pushed on the root navigator, which sits
+                // *above* this app's `ProviderScope` — a `ConsumerState`
+                // inside it therefore finds no scope and every action dies
+                // with "Bad state: No ProviderScope found". Hand it the ref
+                // we already hold, the way the sibling dialogs in this file
+                // do, so the dialog needs no scope of its own.
                 onPressed: () => showDialog<void>(
                   context: context,
-                  builder: (_) => const _MigrateDialog(),
+                  builder: (_) => _MigrateDialog(ref: ref),
                 ),
               ),
               IconButton(
@@ -301,14 +307,20 @@ class _CredentialButton extends ConsumerWidget {
 /// (`credentials_export`); import restores them into this machine's keychain
 /// (`credentials_import`). The keychain key never travels — only the passphrase
 /// and the encrypted blob. Secrets are never shown in plaintext either way.
-class _MigrateDialog extends ConsumerStatefulWidget {
-  const _MigrateDialog();
+class _MigrateDialog extends StatefulWidget {
+  const _MigrateDialog({required this.ref});
+
+  /// The page's ref. Carried in rather than read from this widget's own
+  /// element — see the call site.
+  final WidgetRef ref;
 
   @override
-  ConsumerState<_MigrateDialog> createState() => _MigrateDialogState();
+  State<_MigrateDialog> createState() => _MigrateDialogState();
 }
 
-class _MigrateDialogState extends ConsumerState<_MigrateDialog> {
+class _MigrateDialogState extends State<_MigrateDialog> {
+  WidgetRef get ref => widget.ref;
+
   final _exportPass = TextEditingController();
   final _importPass = TextEditingController();
   final _blob = TextEditingController();
