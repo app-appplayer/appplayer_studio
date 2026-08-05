@@ -662,22 +662,29 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // (visible regression: returning to an earlier tab loses its
       // text styling). Per-runtime brightness still flows through
       // `setHostBrightness` from `_applyHostBrightness` below.
-      // Disable schema validation — the studio extensively uses
-      // host-registered custom widgets (Vbu*) that aren't in the
-      // mcp_ui core widgets schema. Schema gating rejects them up
-      // front even though the factories are registered. Validation
-      // is the wrong gate for a host with custom widget catalogue;
-      // missing/typo'd widgets surface as render-time fallbacks.
+      // Host widgets are registered BEFORE `initialize`, and that order is
+      // what lets schema validation stay on. The runtime masks any type its
+      // widget registry claims before checking the document against the spec
+      // schema, so a registered `Vbu*` is not read as a malformed node — but
+      // the masking consults the registry at validation time, which is inside
+      // `initialize`. Registering afterwards (as this call site used to) left
+      // the registry empty for the check, every `Vbu*` document was rejected,
+      // and the fix taken at the time was to turn the gate off entirely.
+      // Measured on the bundle corpus: 10 of 54 documents rejected under the
+      // old order, 0 under this one.
+      //
+      // With the gate on, a typo'd widget type, a scalar where a list belongs,
+      // and an out-of-range enum fail at mount instead of rendering as a
+      // silent fallback.
       //
       // pageLoader stays registered for any nested `use` widget or
       // future multi-route case the runtime may invoke.
-      await runtime.initialize(
-        mountDef,
-        validateSchema: false,
-        pageLoader: loadPage,
-      );
       base.registerToolWidgets(runtime);
       base.registerVbuWidgets(runtime);
+      await runtime.initialize(
+        mountDef,
+        pageLoader: loadPage,
+      );
       // Host stream sources for `client.mcpStream` channels (e.g. `ble://scan`
       // → shared BLE advertisement hub). Must run AFTER initialize —
       // registerStreamSource asserts an initialized runtime.
