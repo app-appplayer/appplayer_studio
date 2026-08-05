@@ -13,8 +13,17 @@
 #    re-sign with ad-hoc identity so Gatekeeper still loads the
 #    app on dev machines.
 #
-# Run after every `flutter build macos --release`. CI / package
-# distribution should also call this before shipping the .app.
+# Run after every
+#
+#   flutter build macos --release --no-tree-shake-icons
+#
+# CI / package distribution should also call this before shipping the .app.
+#
+# The flag is required, not a preference: a bundle names its icons, so the
+# runtime builds `IconData` from a string at render time and the icon
+# tree-shaker refuses the build ("Avoid non-constant invocations of
+# IconData"). Debug builds and the test suite do not tree-shake, so neither
+# says anything about this — the release build is the first place it shows.
 
 set -e
 

@@ -1438,7 +1438,25 @@ flutter run
 ```
 
 `flutter run` picks the entry point from `lib/main.dart` automatically.
-Use `flutter build <platform>` for release artifacts.
+
+Release artifacts — **every** target, web included:
+
+```sh
+flutter build <platform> --no-tree-shake-icons
+```
+
+The flag is required, not a preference. A bundle names its icons
+(`{"type":"icon","icon":"home"}`), so the runtime builds `IconData` from a
+string at render time, and Flutter's icon tree-shaker refuses any build that
+holds a non-constant `IconData`:
+
+```
+Avoid non-constant invocations of IconData or try to build again
+with --no-tree-shake-icons
+```
+
+`flutter run` and `flutter test` do not tree-shake, so passing there says
+nothing about this — the first failure comes at release build time.
 
 ## Custom tools / resources / domain code
 

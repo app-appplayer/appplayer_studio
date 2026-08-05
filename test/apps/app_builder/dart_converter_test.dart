@@ -284,6 +284,38 @@ void main() {
       expect(await File(p.join(outDir, 'README.md')).exists(), isTrue);
     });
 
+    test('README gives a release build command that actually works', () async {
+      // The emitted README used to say `flutter build <platform>` — a command
+      // that fails for every app this converter writes. A bundle names its
+      // icons, so the runtime builds `IconData` from a string and Flutter's
+      // icon tree-shaker refuses the build. Nothing upstream catches it:
+      // `flutter run` and `flutter test` do not tree-shake, so the first
+      // failure is at release build time, in someone else's project.
+      final converter = DartConverterImpl();
+      // Both Flutter targets — they are the ones that render, so they are the
+      // ones the icon tree-shaker refuses.
+      for (final target in <DartTarget>[
+        DartTarget.nativeBundle,
+        DartTarget.nativeInline,
+      ]) {
+        final outDir = p.join(tmp.path, 'dc10c_${target.name}');
+        await converter.run(
+          canonical: _bundle(name: 'My Bundle App'),
+          target: target,
+          outDir: outDir,
+        );
+        final readme = await File(p.join(outDir, 'README.md')).readAsString();
+        expect(readme, contains('--no-tree-shake-icons'),
+            reason: '${target.name} README must carry the flag');
+        expect(
+          RegExp(r'flutter build [^\n]*\n').allMatches(readme).where(
+              (m) => !m.group(0)!.contains('--no-tree-shake-icons')),
+          isEmpty,
+          reason: '${target.name}: every `flutter build` line needs the flag',
+        );
+      }
+    });
+
     test('pubspec.yaml includes mcp_bundle dep for bundle variant', () async {
       final converter = DartConverterImpl();
       final outDir = p.join(tmp.path, 'dc10b_bundle');
