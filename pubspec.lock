@@ -399,26 +399,26 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: "3e88e46387ade358ddc6fca84e3778524a9f2cff8643bb611d90f3d5ded14c56"
+      sha256: "59f2f458cbe3287f346c901b90ad1e156660662f026ad70ffed19af9bfa66ff2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1"
+    version: "0.6.0"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_generator
-      sha256: "7aed844488bba667db7e3fbcb7b242cc14c63ed4194209d013491cadf72c4015"
+      sha256: "7bec7b170cf7abfb7f4edf50defd62756b08d23b23f564e31325c821aa7ddfb6"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1"
+    version: "0.6.0"
   flutter_mcp_ui_runtime:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: "9058d22d2c04465ea802d1917cd8d76ca16fd26610a6af7106abb43a1e219fb2"
+      sha256: db993bf4665c4d2b74beaf82ded38544a1f97700dc660af48fad38b71a4b07f9
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.7.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -483,6 +483,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.2"
+  flutter_svg:
+    dependency: transitive
+    description:
+      name: flutter_svg
+      sha256: "35882981abcbfb8c15b286f0cd690ff25bac12d95eff3e25ee207f37d4c42e7f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -973,6 +981,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.1"
+  path_parsing:
+    dependency: transitive
+    description:
+      name: path_parsing
+      sha256: "883402936929eac138ee0a45da5b0f2c80f89913e6dc3bf77eb65b84b409c6ca"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   path_provider:
     dependency: transitive
     description:
@@ -1290,6 +1306,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.6.0"
+  vector_graphics:
+    dependency: transitive
+    description:
+      name: vector_graphics
+      sha256: "9d0e3b9cb16542ad660daee871e726a10d13a93b7b5391677c3160e8f5e83935"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.3"
+  vector_graphics_codec:
+    dependency: transitive
+    description:
+      name: vector_graphics_codec
+      sha256: "99fd9fbd34d9f9a32efd7b6a6aae14125d8237b10403b422a6a6dfeac2806146"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.13"
+  vector_graphics_compiler:
+    dependency: transitive
+    description:
+      name: vector_graphics_compiler
+      sha256: "4dca4feb77dc3ec7f6e27e49c53241eb8217f55e4f9b12599a27f8903bca5682"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.0"
   vector_math:
     dependency: transitive
     description:

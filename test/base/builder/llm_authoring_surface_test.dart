@@ -136,6 +136,189 @@ void main() {
     expect(variant.enumValues, contains('titleLarge'));
   });
 
+  test('v9 an enum slot takes a BINDING as well as a literal', () async {
+    // Spec 1.4 widened enum string slots to "literal OR binding". The range
+    // check ran on the raw string, so `"{{state.variant}}"` was measured
+    // against the enum list and rejected — a form that renders correctly could
+    // not be authored. A binding's value is not known until the runtime
+    // resolves it, so there is nothing to range-check.
+    final bound = await validator.validateNode(<String, dynamic>{
+      'type': 'text',
+      'text': 'x',
+      'variant': '{{state.variant}}',
+    });
+    expect(bound.ok, isTrue, reason: 'a binding stands in for any literal');
+
+    // The check still bites on a literal that is not in the set — widening it
+    // to bindings must not widen it to anything else.
+    final bad = await validator.validateNode(<String, dynamic>{
+      'type': 'text',
+      'text': 'x',
+      'variant': 'fancy',
+    });
+    expect(bad.ok, isFalse);
+    expect(bad.rejection!['code'], 'enumOutOfRange');
+
+    // A string that merely mentions braces is not a binding.
+    final notBinding = await validator.validateNode(<String, dynamic>{
+      'type': 'text',
+      'text': 'x',
+      'variant': 'a {{b}} c',
+    });
+    expect(notBinding.ok, isFalse,
+        reason: 'the whole value must be the binding expression');
+  });
+
+  test('v10 §2.6.0 shared input rows are part of every input widget', () async {
+    // The section is normative and says the per-widget tables OMIT these rows.
+    // Reading the yaml literally therefore concludes `binding` is not a
+    // property of `checkbox` — and the surface rejected the canonical spelling
+    // of two-way binding on every input widget while the runtime required it.
+    const shared = <String>['binding', 'value', 'enabled', 'onChange'];
+
+    final checkbox = await catalog.schema('checkbox');
+    final keys = checkbox!.properties.map((p) => p.key).toSet();
+    expect(keys, containsAll(shared));
+    expect(keys, containsAll(<String>['label', 'change']),
+        reason: 'the widget\'s own yaml rows must survive');
+
+    final bound = await validator.validateNode(<String, dynamic>{
+      'type': 'checkbox',
+      'label': 'A',
+      'binding': 'form.a',
+    });
+    expect(bound.ok, isTrue);
+
+    // A legacy alias spelling the factory still reads is NOT canon: 1.3 took
+    // it out of the spec and left it in code for compatibility, so authoring
+    // keeps rejecting it. (`tristate` was the other half of this pair until
+    // 1.4.1 judged it a feature rather than an alias — it has no other
+    // spelling — and declared it, so it is canon now and checked as boolean.)
+    final legacy = await validator.validateNode(<String, dynamic>{
+      'type': 'checkbox',
+      'label': 'A',
+      'bindTo': 'f.a',
+    });
+    expect(legacy.ok, isFalse, reason: '`bindTo` is a compat read, not spec');
+    expect(legacy.rejection!['code'], 'extraProperty');
+
+    final tristate = await validator.validateNode(<String, dynamic>{
+      'type': 'checkbox',
+      'label': 'A',
+      'tristate': true,
+    });
+    expect(tristate.ok, isTrue, reason: '1.4.1 declared `checkbox.tristate`');
+
+    // §2.6.0 names its own exceptions — a button has no user-changeable value.
+    final button = await catalog.schema('button');
+    expect(button!.properties.map((p) => p.key), isNot(contains('binding')));
+
+    // And the rows belong to §2.6 only — a layout widget does not take a
+    // two-way binding, so injecting them everywhere would hand authors a
+    // property the runtime never reads.
+    final linear = await catalog.schema('linear');
+    expect(linear!.properties.map((p) => p.key), isNot(contains('binding')));
+    final onLayout = await validator.validateNode(<String, dynamic>{
+      'type': 'linear',
+      'direction': 'vertical',
+      'binding': 'form.a',
+      'children': <dynamic>[],
+    });
+    expect(onLayout.ok, isFalse);
+    expect(onLayout.rejection!['code'], 'extraProperty');
+
+    // Every other input widget carries them.
+    final all = await catalog.list(source: 'standard');
+    final inputs = all.where((w) =>
+        w.category == 'input' &&
+        !DslSpecLoader.kCommonInputRowExceptions.contains(w.type));
+    expect(inputs, isNotEmpty);
+    for (final w in inputs) {
+      final spec = await catalog.schema(w.type);
+      expect(spec!.properties.map((p) => p.key), containsAll(shared),
+          reason: '${w.type} is an input widget');
+    }
+  });
+
+  test('v11 a union honours its scalar branch as well as its primitive',
+      () async {
+    // `box.padding` is `["string", "EdgeInsets"]`: the spec takes an M3 spacing
+    // token there (`md`, or any custom slot in `theme.spacing`) OR the inset
+    // object. Once `EdgeInsets` became a named primitive the check ran on that
+    // half alone and rejected `padding: "md"` — a spelling the spec documents.
+    for (final ok in <Object>['md', 8, <String, dynamic>{'all': 8}]) {
+      final r = await validator.validateNode(<String, dynamic>{
+        'type': 'box',
+        'padding': ok,
+      });
+      expect(r.ok, isTrue, reason: 'padding accepts $ok');
+    }
+
+    // `margin` is `EdgeInsets` ALONE — no scalar branch, so the primitive
+    // verdict stands and a bare string is rejected.
+    final bad = await validator.validateNode(<String, dynamic>{
+      'type': 'box',
+      'margin': 'hello world',
+    });
+    expect(bad.ok, isFalse);
+    expect(bad.rejection!['code'], 'primitiveOutOfRange');
+
+    for (final ok in <Object>[8, '{{layout.pad}}', <String, dynamic>{'all': 8}]) {
+      final r = await validator.validateNode(<String, dynamic>{
+        'type': 'box',
+        'margin': ok,
+      });
+      expect(r.ok, isTrue, reason: 'margin accepts $ok');
+    }
+  });
+
+  test('v12 an item-list slot must actually hold a list', () async {
+    // `checkboxGroup.options` is `array<Option>`. Only `Array<Widget>` was
+    // recognised as a list, so `options: "notalist"` authored clean while
+    // `dataTable.columns` was caught — and only because it happens to carry a
+    // nested `columns[].key` declaration. The shape check belongs to the slot,
+    // not to whether something else declared its innards.
+    final scalar = await validator.validateNode(<String, dynamic>{
+      'type': 'checkboxGroup',
+      'options': 'notalist',
+    });
+    expect(scalar.ok, isFalse);
+    expect(scalar.rejection!['code'], 'propTypeMismatch');
+
+    // Items stay permissive about EXTRA keys — a document may carry its own
+    // bookkeeping — but the keys the shape requires still have to be there.
+    for (final options in <Object>[
+      <dynamic>[<String, dynamic>{'value': 'a', 'label': 'A'}],
+      <dynamic>[<String, dynamic>{'value': 'a'}], // label falls back to value
+      <dynamic>[<String, dynamic>{'value': 'a', 'mine': 1}], // extra key is fine
+      <dynamic>['a', 'b'], // the scalar form is not an Option object
+    ]) {
+      final r = await validator.validateNode(<String, dynamic>{
+        'type': 'checkboxGroup',
+        'options': options,
+      });
+      expect(r.ok, isTrue, reason: 'options accepts $options');
+    }
+
+    // A misspelling is an extra key AND a missing required one. The runtime
+    // turns a missing `value` into `''`, so two such entries answer to the
+    // same value — it renders, and one click checks both.
+    final typo = await validator.validateNode(<String, dynamic>{
+      'type': 'checkboxGroup',
+      'options': <dynamic>[<String, dynamic>{'lable': 'A'}],
+    });
+    expect(typo.ok, isFalse);
+    expect(typo.rejection!['code'], 'missingRequired');
+
+    // Widget lists keep the stricter element check.
+    final badChild = await validator.validateNode(<String, dynamic>{
+      'type': 'linear',
+      'direction': 'vertical',
+      'children': <dynamic>['not-a-node'],
+    });
+    expect(badChild.ok, isFalse);
+  });
+
   test('v6 a well-formed tree passes', () async {
     final r = await validator.validateNode(<String, dynamic>{
       'type': 'linear',

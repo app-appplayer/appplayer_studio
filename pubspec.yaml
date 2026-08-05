@@ -37,8 +37,8 @@ dependencies:
   mcp_server: ^2.1.2
   mcp_client: ^2.1.1
   mcp_llm: ^2.1.1
-  flutter_mcp_ui_runtime: ^0.6.0
-  flutter_mcp_ui_core: ^0.5.0
+  flutter_mcp_ui_runtime: ^0.7.0
+  flutter_mcp_ui_core: ^0.6.0
   json_schema: ^5.1.1
   flutter_js: ^0.8.7
   ffmpeg_kit_flutter_new: ^3.0.0
@@ -62,7 +62,7 @@ dependencies:
   mcp_analysis: ^0.1.4
   mcp_datastore: ^0.1.0
   mcp_datastore_sqlite: ^0.1.0
-  flutter_mcp_ui_generator: ^0.5.0
+  flutter_mcp_ui_generator: ^0.6.0
   mcp_knowledge: ^0.2.5
   mcp_fact_graph: ^0.2.3
   # Direct dep (was transitive via mcp_knowledge) so the host can wire the

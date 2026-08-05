@@ -417,6 +417,11 @@ class SchemaValidator {
   Map<String, dynamic>? _checkType(Object? value, WidgetPropSpec prop) {
     // Enum first — overrides the raw type check.
     if (prop.enumValues.isNotEmpty) {
+      // A binding stands in for any literal: the value is not known until the
+      // runtime resolves it, so there is nothing to range-check here. Rejecting
+      // it made every `variant: "{{state.x}}"` unauthorable even though it
+      // renders (spec 1.4 widened enum slots to literal OR binding).
+      if (isBindingExpression(value)) return null;
       if (value is! String || !prop.enumValues.contains(value)) {
         return <String, dynamic>{
           'code': 'enumOutOfRange',
@@ -442,13 +447,31 @@ class SchemaValidator {
       if (value is! Map || value['type'] is! String) {
         return _mismatch(prop, 'Widget object (with `type`)', value);
       }
-    } else if (_isWidgetListType(t)) {
+    } else if (_isListType(t)) {
+      // Every `array<X>` / `Array<X>` / `List<X>` slot must hold a list. The
+      // element check is stricter only for widgets; an item shape (`Option`,
+      // `Column`, …) is checked by the nested-declaration pass, and a scalar
+      // element list is left alone. Before this, `array<Option>` had no shape
+      // check at all — `options: "notalist"` authored clean, because only
+      // `Array<Widget>` was recognised as a list.
       if (value is! List) {
-        return _mismatch(prop, 'Array<Widget>', value);
+        return _mismatch(prop, t, value);
       }
-      for (final e in value) {
-        if (e is! Map || e['type'] is! String) {
-          return _mismatch(prop, 'Array of Widget objects', e);
+      if (_listElementIsWidget(t)) {
+        for (final e in value) {
+          if (e is! Map || e['type'] is! String) {
+            return _mismatch(prop, 'Array of Widget objects', e);
+          }
+        }
+      } else {
+        final item = _primitiveFor(_listElementType(t));
+        if (item != null) {
+          for (final e in value) {
+            final missing = item.missingRequiredKeys(e);
+            if (missing.isNotEmpty) {
+              return _missingItemKey(prop, item.name, missing.first, e);
+            }
+          }
         }
       }
     } else if (_isActionType(t)) {
@@ -460,8 +483,12 @@ class SchemaValidator {
       // contract lives in `configs/_primitive/<Name>.yaml`; read it rather
       // than keep a copy here that goes stale the next time the spec moves.
       final prim = _primitiveFor(t);
+      final missing = prim?.missingRequiredKeys(value) ?? const <String>[];
+      if (missing.isNotEmpty) {
+        return _missingItemKey(prop, prim!.name, missing.first, value);
+      }
       final verdict = prim?.accepts(value);
-      if (verdict == false) {
+      if (verdict == false && !_unionAlsoAccepts(t, value)) {
         return <String, dynamic>{
           'code': 'primitiveOutOfRange',
           'expected': prim!.expectation,
@@ -475,6 +502,49 @@ class SchemaValidator {
     }
     // Object / unknown / list / map types are permissive — fine.
     return null;
+  }
+
+  /// The element type a list slot names — `array<Option>` → `Option`.
+  String _listElementType(String t) {
+    final open = t.indexOf('<');
+    if (open < 0) return '';
+    return t.substring(open + 1, t.length - 1).trim();
+  }
+
+  Map<String, dynamic> _missingItemKey(
+    WidgetPropSpec prop,
+    String shape,
+    String key,
+    Object? item,
+  ) => <String, dynamic>{
+    'code': 'missingRequired',
+    'expected': '$shape with `$key`',
+    'actual': item,
+    'message': '`${prop.key}` holds a $shape that is missing required '
+        'property `$key`.',
+    'suggestion': 'Every $shape must declare `$key`; a misspelled key is kept '
+        'as an extra rather than read, so the entry ends up without one.',
+  };
+
+  /// Whether a union type has a SCALAR branch that takes [value] on its own.
+  ///
+  /// `box.padding` is declared `["string", "EdgeInsets"]` because the spec
+  /// accepts an M3 spacing token there (`md`, or any custom slot in
+  /// `theme.spacing`) as well as the inset object. Checking only the named
+  /// primitive rejected `padding: "md"` — a spelling the spec documents — so
+  /// the scalar branch has to be honoured before the primitive verdict stands.
+  ///
+  /// Deliberately narrow: only the branch kinds a scalar can satisfy. A union
+  /// of two named primitives still has to satisfy one of them.
+  bool _unionAlsoAccepts(String declared, Object? value) {
+    final parts = declared.split('|').map((p) => p.trim().replaceAll('"', ''));
+    for (final t in parts) {
+      if (_isStringType(t) && value is String) return true;
+      if (_isNumberType(t) && value is num) return true;
+      if (_isBoolType(t) && value is bool) return true;
+      if (t == 'any') return true;
+    }
+    return false;
   }
 
   /// The primitive a declared type names, if any. A union (`Color | binding`)
@@ -512,7 +582,15 @@ class SchemaValidator {
       t == 'number' || t == 'num' || t == 'int' || t == 'double';
   bool _isBoolType(String t) => t == 'boolean' || t == 'bool' || t == 'Boolean';
   bool _isWidgetType(String t) => t == 'Widget';
-  bool _isWidgetListType(String t) =>
-      t.startsWith('Array<') || t.startsWith('List<');
+  bool _isListType(String t) =>
+      t.startsWith('Array<') || t.startsWith('List<') || t.startsWith('array<');
+
+  /// Whether a list slot's ELEMENTS are widgets — `array<Widget>` and the
+  /// bare `Array<…>` shorthand the 1.3 specs used for children.
+  bool _listElementIsWidget(String t) {
+    final open = t.indexOf('<');
+    final inner = t.substring(open + 1, t.length - 1).trim();
+    return inner.isEmpty || inner == 'Widget';
+  }
   bool _isActionType(String t) => t == 'Action' || t.startsWith('Action<');
 }

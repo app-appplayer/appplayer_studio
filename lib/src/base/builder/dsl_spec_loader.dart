@@ -197,6 +197,8 @@ class DslSpecLoader {
       }
     }
 
+    _addCommonInputRows(type, category, props);
+
     return WidgetSpec(
       type: type,
       category: category,
@@ -208,6 +210,74 @@ class DslSpecLoader {
       examples: examples,
     );
   }
+
+  /// Applies §2.6.0 "Common input behavior" — the shared rows every input
+  /// widget carries.
+  ///
+  /// The section is normative and says so explicitly: *"The per-widget property
+  /// tables below omit the shared rows; assume they apply to every input
+  /// widget."* So the yaml for an input widget is COMPLETE without them, and a
+  /// reader that takes the yaml literally concludes `binding` is not a property
+  /// of `checkbox` — which is how the authoring surface came to reject the
+  /// canonical spelling of two-way binding on every input widget while the
+  /// runtime required it. (The published registry carries these because codegen
+  /// injects them; nothing injects them here.)
+  ///
+  /// Only these four, and only where §2.6.0's own exception list does not
+  /// apply. Legacy alias spellings the factories still read (`bindTo`,
+  /// `tristate`, …) are deliberately NOT added — 1.3 removed them from the
+  /// canon and left them in code for compatibility, so authoring must keep
+  /// rejecting them.
+  static void _addCommonInputRows(
+    String type,
+    String category,
+    List<WidgetPropSpec> props,
+  ) {
+    if (category != 'input') return;
+    if (kCommonInputRowExceptions.contains(type)) return;
+    final have = props.map((p) => p.key).toSet();
+    for (final row in _commonInputRows) {
+      if (have.contains(row.key)) continue; // a widget may override its own.
+      props.add(row);
+    }
+  }
+
+  /// §2.6.0 exceptions — widgets the section names as not carrying the shared
+  /// rows: no user-changeable value (`button`, `iconButton`), a pure container
+  /// (`form`), a subcomponent bound by its group (`radio`), or a widget that
+  /// binds through two paths of its own (`dateRangePicker`).
+  static const Set<String> kCommonInputRowExceptions = <String>{
+    'button',
+    'iconButton',
+    'form',
+    'radio',
+    'dateRangePicker',
+  };
+
+  static final List<WidgetPropSpec> _commonInputRows = <WidgetPropSpec>[
+    WidgetPropSpec(
+      key: 'binding',
+      type: 'string',
+      description: "State path bound two-way to the widget's value (§2.6.0).",
+    ),
+    WidgetPropSpec(
+      key: 'value',
+      type: 'any',
+      description: 'One-way initial/display value, used when `binding` is not '
+          'set (§2.6.0).',
+    ),
+    WidgetPropSpec(
+      key: 'enabled',
+      type: 'boolean',
+      description: 'Whether the widget accepts user input (§2.6.0).',
+      defaultValue: true,
+    ),
+    WidgetPropSpec(
+      key: 'onChange',
+      type: 'Action',
+      description: "Fired when the widget's value changes (§2.6.0).",
+    ),
+  ];
 
   /// Convert a yaml `type:` value to a single descriptive string.
   /// Some 1.3 widget specs use a list form (`type: ["number",
