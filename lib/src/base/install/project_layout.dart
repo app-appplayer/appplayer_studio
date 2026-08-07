@@ -72,6 +72,27 @@ Future<Map<String, Object?>> createProjectFolder({
     await metaFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(meta),
     );
+    // A bundle directory without a manifest is not a bundle: every mutator
+    // that follows (`writeUI`, `patchManifest`, the ui/* surface) loads the
+    // manifest first and refuses without one, so a project created here could
+    // not be authored by the very next call. Seeded BEFORE [initialFiles] so a
+    // caller that supplies its own manifest still wins — domain wrappers that
+    // want a `library` bundle, extra `requires`, or a real id overwrite this.
+    final seedManifest = File(
+      p.join(projectPath, effectiveBundleSubdir, 'manifest.json'),
+    );
+    await seedManifest.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+        'schemaVersion': '1.0.0',
+        'manifest': <String, dynamic>{
+          'id': '$name.project',
+          'name': name,
+          'version': '0.1.0',
+          'type': 'application',
+        },
+      }),
+    );
+
     for (final entry in initialFiles) {
       final relPath = entry['path'];
       final content = entry['content'];

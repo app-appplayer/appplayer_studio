@@ -192,6 +192,26 @@ void main() {
       expect(out['error'], contains('bundle not found'));
     });
 
+    test('a bundle with no manifest is refused with NOTHING written',
+        () async {
+      // The manifest patch runs after the ui/app.json write, so this refusal
+      // used to arrive with the page already on disk — `ok:false` while the
+      // bundle had in fact changed, which reads to any caller as "nothing
+      // happened". The precondition belongs before the write.
+      final out = await _call(host, 'studio.builder.writeUI', {
+        'mbdPath': mbdPath, // created by setUp, but with no manifest.json
+        'json': <String, dynamic>{
+          'type': 'page',
+          'content': <String, dynamic>{'type': 'text', 'text': 'hi'},
+        },
+      });
+
+      expect(out['ok'], isFalse);
+      expect(out['error'], contains('manifest.json missing'));
+      expect(File(p.join(mbdPath, 'ui', 'app.json')).existsSync(), isFalse,
+          reason: 'refused, but the page was written anyway');
+    });
+
     test('success writes ui/app.json + seeds manifest.ui + reloads',
         () async {
       await writeManifest(baseManifest());

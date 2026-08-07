@@ -98,6 +98,26 @@ void registerBuilderMutatorTools(
           isError: true,
         );
       }
+      // The manifest patch below refuses a bundle with no manifest.json — and
+      // the ui/app.json write happens FIRST, so that refusal used to land after
+      // the page was already on disk. A caller that trusts `ok:false` then
+      // believes nothing happened while the file is sitting there. Check the
+      // precondition before writing anything.
+      if (!await File(p.join(mbd, 'manifest.json')).exists()) {
+        return mk.KernelToolResult(
+          content: <mk.KernelContent>[
+            mk.KernelTextContent(
+              text: jsonEncode(<String, dynamic>{
+                'ok': false,
+                'error': 'manifest.json missing under $mbd',
+                'reason': 'conflict',
+                'tool': 'studio.builder.writeUI',
+              }),
+            ),
+          ],
+          isError: true,
+        );
+      }
       final uiDir = Directory(p.join(mbd, 'ui'));
       if (!await uiDir.exists()) await uiDir.create(recursive: true);
       final uiFile = File(p.join(uiDir.path, 'app.json'));
