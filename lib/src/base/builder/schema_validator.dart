@@ -415,14 +415,19 @@ class SchemaValidator {
   /// Returns null on success, or a rejection map (without `path`)
   /// when the value doesn't match the prop's declared type / enum.
   Map<String, dynamic>? _checkType(Object? value, WidgetPropSpec prop) {
-    // Enum first — overrides the raw type check.
-    if (prop.enumValues.isNotEmpty) {
+    // Enum first — overrides the raw type check. Gated on the ACCEPTED set so
+    // a property that carries only legacy spellings is still range-checked.
+    if (prop.allowedValues.isNotEmpty) {
       // A binding stands in for any literal: the value is not known until the
       // runtime resolves it, so there is nothing to range-check here. Rejecting
       // it made every `variant: "{{state.x}}"` unauthorable even though it
       // renders (spec 1.4 widened enum slots to literal OR binding).
       if (isBindingExpression(value)) return null;
-      if (value is! String || !prop.enumValues.contains(value)) {
+      // `allowedValues`, not `enumValues`: a spelling the spec keeps accepting
+      // renders fine, and this check runs when a document LOADS — rejecting it
+      // would stop an already-published bundle from opening. The message still
+      // names only the documented values, so an author is never taught one.
+      if (value is! String || !prop.allowedValues.contains(value)) {
         return <String, dynamic>{
           'code': 'enumOutOfRange',
           'expected': prop.enumValues,

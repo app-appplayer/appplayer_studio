@@ -34,6 +34,7 @@ class WidgetPropSpec {
     this.defaultValue,
     this.required = false,
     this.enumValues = const <String>[],
+    this.legacyValues = const <String>[],
     this.aliases = const <String>[],
   });
 
@@ -61,6 +62,23 @@ class WidgetPropSpec {
   /// Allowed enum values if [type] is `enum<...>` or the prop yaml
   /// declared an `enum` list. Empty otherwise.
   final List<String> enumValues;
+
+  /// Spellings the spec still ACCEPTS but no longer teaches — the kebab
+  /// `space-between` for `linear.distribution`, `light`/`dark` for
+  /// `codeEditor.theme`. Kept apart from [enumValues] rather than merged into
+  /// it because the two answer different questions: what may a document
+  /// contain (both), and what should an author be offered (only [enumValues]).
+  ///
+  /// Folding them together would put undocumented spellings in the palette and
+  /// the generated tables; dropping them instead makes the authoring surface
+  /// REJECT documents the runtime renders, and validation runs at load, so a
+  /// published bundle using the old spelling stops opening. See
+  /// [allowedValues], which is what a check must consult.
+  final List<String> legacyValues;
+
+  /// Every value a document may carry here. The check uses this; anything that
+  /// SUGGESTS a value uses [enumValues].
+  List<String> get allowedValues => <String>[...enumValues, ...legacyValues];
 
   /// Spellings §17.3.2 registers for this property (`child` for
   /// `dragTarget.builder`, `content` for `markdown.text`). The runtime

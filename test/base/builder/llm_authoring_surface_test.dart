@@ -283,6 +283,31 @@ void main() {
     expect(bad.rejection!['code'], 'primitiveOutOfRange');
   });
 
+  test('v13 a legacy spelling loads; an unknown one still does not', () async {
+    // End-to-end over the real spec tree: the kebab form the spec keeps in
+    // `legacyValues` must pass the same check that rejects a typo, or every
+    // published document using it stops opening in the studio.
+    for (final ok in <String>['spaceBetween', 'space-between']) {
+      final r = await validator.validateNode(<String, dynamic>{
+        'type': 'linear',
+        'direction': 'vertical',
+        'children': <dynamic>[],
+        'distribution': ok,
+      });
+      expect(r.ok, isTrue, reason: 'distribution accepts $ok');
+    }
+    final bad = await validator.validateNode(<String, dynamic>{
+      'type': 'linear',
+      'direction': 'vertical',
+      'children': <dynamic>[],
+      'distribution': 'space_between',
+    });
+    expect(bad.ok, isFalse);
+    expect(bad.rejection!['code'], 'enumOutOfRange');
+    // The author is pointed at the documented values only.
+    expect(bad.rejection!['expected'], isNot(contains('space-between')));
+  });
+
   test('v12 an item-list slot must actually hold a list', () async {
     // `checkboxGroup.options` is `array<Option>`. Only `Array<Widget>` was
     // recognised as a list, so `options: "notalist"` authored clean while

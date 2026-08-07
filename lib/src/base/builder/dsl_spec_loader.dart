@@ -168,6 +168,10 @@ class DslSpecLoader {
                   rawEnum.whereType<String>().toList(),
                 )
                 : documentedEnumValues(propDesc);
+        // Values the spec still accepts but no longer documents. Read them
+        // separately so the check can allow what the runtime renders while the
+        // palette keeps offering only what the spec teaches.
+        final rawLegacy = v['legacyValues'];
         final rawAliases = v['aliases'];
         props.add(
           WidgetPropSpec(
@@ -177,6 +181,9 @@ class DslSpecLoader {
             defaultValue: v['default'],
             required: isRequired,
             enumValues: enumValues,
+            legacyValues: rawLegacy is List
+                ? List<String>.unmodifiable(rawLegacy.whereType<String>())
+                : const <String>[],
             aliases: rawAliases is List
                 ? List<String>.unmodifiable(rawAliases.whereType<String>())
                 : const <String>[],
