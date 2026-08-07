@@ -43,8 +43,11 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     // wins, so nothing that named its kind changes.
     final declaredType = context.resolve<String?>(
         properties['type'] ?? properties['mediaType']);
+    // Inferred from the SAME value the player opens — reading `source` here
+    // while the player reads `src ?? source` meant a document written with the
+    // alias inferred from nothing and fell back to video.
     final mediaType = (declaredType == null || declaredType.isEmpty)
-        ? _inferMediaType(context.resolve<String?>(properties['source']))
+        ? _inferMediaType(source)
         : declaredType;
     // Spec §10.6 canonical `autoPlay`; `autoplay` kept as lowercase legacy.
     final autoplay = context.resolve<bool>(
