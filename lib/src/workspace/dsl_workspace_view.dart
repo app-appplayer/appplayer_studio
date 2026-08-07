@@ -24,6 +24,8 @@ import 'package:path/path.dart' as p;
 // WidgetCache). Without the fork, opening a workspace tab while a
 // preview tab is alive produced a duplicate-key crash.
 import 'package:appplayer_studio/runtime.dart' as studio;
+import 'package:appplayer_studio/src/base/media/studio_media_capabilities.dart'
+    show studioRuntimeCapabilities;
 import 'package:appplayer_studio/base.dart' as base;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:appplayer_studio/ui.dart' as ui;
@@ -653,6 +655,13 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
                 widgetWrapper: _wrapForInspector,
               )
               : studio.MCPUIRuntime();
+      // UI DSL §6.13 — the platform powers this workspace runtime can perform.
+      // With none wired the engine declares every media capability absent and
+      // `mediaPlayer` / `lottieAnimation` / `map` render NOTHING (§6.13.1 bans
+      // drawing a stand-in), so an author checking their work saw blank space
+      // where the widget they just placed should be. Set before `initialize`
+      // so the first build already has them.
+      runtime.engine.capabilities = studioRuntimeCapabilities();
       // No host-side theme injection. AppPlayer pattern: only the
       // bundle's own `ui.theme` (if any) reaches the runtime;
       // otherwise mcp_ui's default ThemeData applies. Injecting

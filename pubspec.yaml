@@ -104,6 +104,16 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.5.5
   watcher: ^1.2.1
+  # §6.13 host media ports (see lib/src/base/media/, vendored from the
+  # `host_media` recipe). Preview must actually play what it renders.
+  just_audio: ^0.10.6
+  # video_player is already declared above (^2.9.1) — its caret range covers
+  # what the recipe needs, and a second key here would be a duplicate.
+  webview_flutter: ^4.14.1
+  lottie: ^3.3.0
+  pdfrx: ^1.0.0
+  web: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
