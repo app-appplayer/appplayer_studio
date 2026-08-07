@@ -20,7 +20,35 @@ class NavigationService extends RuntimeService {
     return instance;
   }
 
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  /// The navigator this service drives.
+  ///
+  /// It used to be ONE key held by this singleton, handed to every
+  /// `MaterialApp` the runtime builds. Two app sessions on screen at once —
+  /// a launcher opening a second app over the first, a harness pushing a
+  /// probe over a running document — then put the same GlobalKey in two
+  /// places, and Flutter truncates the tree at the second one: the page never
+  /// appears, the first app is torn out of its parent, and the only trace is
+  /// a `Duplicate GlobalKey` line in the log. Measured live, and it silently
+  /// made a screen-reading gate report on the wrong screen.
+  ///
+  /// So each runtime brings its own key and [attach]es it while its UI is
+  /// mounted; navigation actions act on the one attached most recently, which
+  /// is the app in front.
+  GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  GlobalKey<NavigatorState> get navigatorKey => _navigatorKey;
+
+  /// Point the service at [key]. Called by a runtime as it builds its
+  /// `MaterialApp`; the last caller wins, which is the front-most app.
+  void attach(
+    GlobalKey<NavigatorState> key, {
+    RouteObserver<ModalRoute<void>>? routeObserver,
+  }) {
+    if (routeObserver != null) _routeObserver = routeObserver;
+    if (identical(_navigatorKey, key)) return;
+    _navigatorKey = key;
+    _logger.debug('navigator attached: ${key.hashCode}');
+  }
 
   /// Tells a mounted page when another route covers it and when it is
   /// uncovered again — Flutter's own mechanism for exactly that question
@@ -31,7 +59,18 @@ class NavigationService extends RuntimeService {
   /// nothing else in the framework reports the change. Without this observer
   /// a covered page hears nothing on the way out and nothing on the way back,
   /// which is why those two hooks had never fired for a routed page.
-  final RouteObserver<ModalRoute<void>> routeObserver =
+  /// The observer handed to the front app's `MaterialApp`.
+  ///
+  /// A `RouteObserver` may be attached to ONE navigator at a time — Flutter
+  /// asserts `observer.navigator == null` when a second one takes it. Two
+  /// documents mounted at once therefore cannot share this instance, and the
+  /// assertion fires while the second app is being built. [attach] swaps in
+  /// the front app's observer, the same way it swaps the navigator key; a
+  /// page subscribes through [routeObserver], so it always reaches the one
+  /// its own navigator is reporting to.
+  RouteObserver<ModalRoute<void>> get routeObserver => _routeObserver;
+
+  RouteObserver<ModalRoute<void>> _routeObserver =
       RouteObserver<ModalRoute<void>>();
   final List<Route<dynamic>> _routeStack = [];
   final Map<String, WidgetBuilder> _routes = {};

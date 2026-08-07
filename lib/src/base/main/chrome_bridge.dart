@@ -72,6 +72,12 @@ class DomainLifecycleState {
   final String? projectName;
 }
 
+/// Returned by [ChromeBridge.closeTab] when the tab raised a confirmation
+/// dialog instead of closing. Distinct from `-1` (not closeable) because the
+/// caller's next move differs: `-1` is a bad request, this is "a human has to
+/// answer, or pass `force`".
+const int kCloseTabConfirmRequired = -2;
+
 class ChromeBridge {
   /// Toggle the chat / project-header column on the left edge of the
   /// shell. Mounted by `StandardStudioShell`. Returns the resulting
@@ -140,7 +146,17 @@ class ChromeBridge {
   /// when the index is out of range / refers to the home tab (which
   /// is never closable). Same code path as the user clicking the ×
   /// on a tab pill — runs the activation teardown.
-  int Function(int index)? closeTab;
+  /// Close a tab by index. Returns the new active index, `-1` when the index
+  /// is not closeable (out of range, or home), and [kCloseTabConfirmRequired]
+  /// when the tab needs a human answer first (an unsaved draft or a touched
+  /// tab raises a confirmation dialog).
+  ///
+  /// That third case is the whole reason this is not a bool: an MCP caller
+  /// cannot answer a dialog and used to be told `closed: true` while the tab
+  /// was still there — every scripted "close the tab and start clean" silently
+  /// did nothing. `force: true` skips the prompt for callers that have already
+  /// decided (a probe tearing down its own scratch tab).
+  int Function(int index, {bool force})? closeTab;
 
   /// Snapshot of currently-open tabs — `[{key, name}]` where key is
   /// `'home'` for the home tab or the package path for opened packages.

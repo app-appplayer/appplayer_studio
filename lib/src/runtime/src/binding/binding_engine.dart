@@ -630,13 +630,19 @@ class BindingEngine {
   dynamic _evaluateLambdaBody(
     BindingExpression lambdaExpr,
     dynamic paramValue,
-    RenderContext context,
-  ) {
+    RenderContext context, {
+    dynamic secondValue,
+  }) {
     final paramName = lambdaExpr.parameterName!;
     final body = lambdaExpr.left!;
 
-    // Create a child context with the lambda parameter bound
-    final childContext = context.createChildContext(variables: {paramName: paramValue});
+    // Create a child context with the lambda parameter bound. The accumulator
+    // form `(acc, item) => …` (§3.6.3) binds both; `secondValue` is ignored
+    // when the lambda declares one parameter.
+    final variables = <String, dynamic>{paramName: paramValue};
+    final second = lambdaExpr.parameterName2;
+    if (second != null) variables[second] = secondValue;
+    final childContext = context.createChildContext(variables: variables);
     return _evaluateExpression(body, childContext);
   }
 
@@ -1148,6 +1154,13 @@ class BindingEngine {
               return result != null;
             }).toList();
           }
+          // Property shorthand: items.filter('completed') — §3.6.2's truthy
+          // form, in the method spelling.
+          if (args.length == 1 && args[0] is String) {
+            final prop = args[0] as String;
+            return capped.where((item) => item is Map && _isTruthy(item[prop]))
+                .toList();
+          }
           // Support property/value shorthand: items.filter(prop, value)
           if (args.length >= 2) {
             final prop = args[0].toString();
@@ -1444,6 +1457,19 @@ class BindingEngine {
             return result != null;
           }).toList();
         }
+        // filter(list, property) — §3.6.2: "filter items whose `active`
+        // property is truthy". Only the 3-argument and lambda forms existed,
+        // so §3.6.1's own example `length(filter(items, 'completed'))` fell
+        // through to null and answered 0 for every input — a count that reads
+        // like real data.
+        if (args.length == 2 && args[0] is List) {
+          final list = args[0] as List;
+          final limit = sandbox.maxIterations;
+          final capped = list.length > limit ? list.sublist(0, limit) : list;
+          final prop = args[1].toString();
+          return capped.where((item) => item is Map && _isTruthy(item[prop]))
+              .toList();
+        }
         // filter(list, property, value) - filter list items where item[property] == value
         if (args.length >= 3 && args[0] is List) {
           final list = args[0] as List;
@@ -1470,6 +1496,21 @@ class BindingEngine {
             initialValue = args[2] as num;
           }
           dynamic accumulator = initialValue;
+          // Two parameters means the lambda REDUCES: it is handed the running
+          // accumulator and the item, and its result IS the next accumulator
+          // (§3.6.3's `(acc, i) => acc + i.price * i.qty`). One parameter keeps
+          // the mapper meaning: each result is summed.
+          if (lambdaExpr.parameterName2 != null) {
+            for (final item in capped) {
+              accumulator = _evaluateLambdaBody(
+                lambdaExpr,
+                accumulator,
+                context,
+                secondValue: item,
+              );
+            }
+            return accumulator;
+          }
           for (final item in capped) {
             final mapped = _evaluateLambdaBody(lambdaExpr, item, context);
             if (mapped is num) {

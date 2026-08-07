@@ -18,6 +18,11 @@ class BindingExpression {
   /// Lambda parameter name (e.g., 'item' in `item => item.price > 100`)
   final String? parameterName;
 
+  /// Second lambda parameter, for the accumulator form §3.6.3 writes:
+  /// `reduce(items, (acc, i) => acc + i.price * i.qty, 0)`. Null for the
+  /// single-parameter lambdas `filter`/`map` take.
+  final String? parameterName2;
+
   /// The original expression string before parsing, useful for debugging
   /// and logging purposes. Only set on the root expression returned by
   /// [parse]; sub-expressions will have this as `null`.
@@ -37,6 +42,7 @@ class BindingExpression {
     this.methodName,
     this.arguments,
     this.parameterName,
+    this.parameterName2,
     this.source,
   });
 
@@ -61,6 +67,7 @@ class BindingExpression {
       methodName: result.methodName,
       arguments: result.arguments,
       parameterName: result.parameterName,
+      parameterName2: result.parameterName2,
       source: expression,
     );
   }
@@ -236,6 +243,14 @@ class BindingExpression {
         final oneChar = baseExpr[i];
         if (precedenceMap.containsKey(oneChar)) {
           final precedence = precedenceMap[oneChar]!;
+          // `-` and `+` are also the sign of a literal. A sign has nothing on
+          // its left to be a binary operator OF, so splitting there produced an
+          // empty left operand: `-1.57 + (value / max) * 6.28` (§10's gauge
+          // needle) split at index 0 and answered with the right-hand term
+          // alone — a needle drawn at the wrong angle, reported by nothing.
+          if (_isSignPosition(baseExpr, i)) {
+            continue;
+          }
           if (precedence <= lowestPrecedence) {
             // Use <= for left-to-right associativity at same precedence
             lowestPrecedence = precedence;
@@ -432,6 +447,49 @@ class BindingExpression {
     );
   }
 
+  /// Whether the `+`/`-` at [index] is a SIGN rather than a binary operator:
+  /// nothing precedes it, or what precedes it is another operator or an open
+  /// paren/comma, which cannot be a left operand.
+  static bool _isSignPosition(String expr, int index) {
+    if (expr[index] != '-' && expr[index] != '+') return false;
+    var i = index - 1;
+    while (i >= 0 && expr[i] == ' ') {
+      i--;
+    }
+    if (i < 0) return true;
+    return '+-*/%<>=!&|?(,'.contains(expr[i]);
+  }
+
+  /// Whether [expr] has a binary operator at its top level — the same scan the
+  /// parser uses, asked as a question. Arguments need it: §3.2.1's grammar
+  /// makes an argument an `Expression`, so `round(price * quantity, 2)` is
+  /// legal, and treating it as a path made it a lookup for a variable *named*
+  /// `price * quantity`.
+  static bool _hasTopLevelBinaryOperator(String expr) {
+    const operators = '+-*/%<>=!&|?';
+    var depth = 0;
+    String? quote;
+    for (var i = 0; i < expr.length; i++) {
+      final char = expr[i];
+      if (quote != null) {
+        if (char == quote && (i == 0 || expr[i - 1] != '\\')) quote = null;
+        continue;
+      }
+      if (char == '"' || char == "'") {
+        quote = char;
+      } else if (char == '(' || char == '[') {
+        depth++;
+      } else if (char == ')' || char == ']') {
+        depth--;
+      } else if (depth == 0 &&
+          operators.contains(char) &&
+          !_isSignPosition(expr, i)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Parse function/method arguments
   static List<BindingExpression> _parseArguments(String argsString) {
     if (argsString.trim().isEmpty) return [];
@@ -485,7 +543,7 @@ class BindingExpression {
   static BindingExpression _parseValue(String value) {
     value = value.trim();
 
-    // Check for lambda expression: param => body
+    // Check for lambda expression: param => body, or (acc, item) => body
     final arrowIndex = value.indexOf('=>');
     if (arrowIndex > 0) {
       final paramPart = value.substring(0, arrowIndex).trim();
@@ -496,6 +554,21 @@ class BindingExpression {
           type: ExpressionType.lambda,
           path: '',
           parameterName: paramPart,
+          left: _parse(bodyPart),
+        );
+      }
+      // `(acc, item) => body` — the accumulator form §3.6.3 writes for
+      // `reduce`. Only the one-parameter spelling parsed, so the spec's own
+      // example fell through to a path lookup and reduce answered with its
+      // initial value: a total of 0 that reads like an empty cart.
+      final pair = RegExp(r'^\(\s*([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)\s*\)$')
+          .firstMatch(paramPart);
+      if (pair != null && bodyPart.isNotEmpty) {
+        return BindingExpression(
+          type: ExpressionType.lambda,
+          path: '',
+          parameterName: pair.group(1),
+          parameterName2: pair.group(2),
           left: _parse(bodyPart),
         );
       }
@@ -587,6 +660,16 @@ class BindingExpression {
     // §3.6.1 shows in its own example (`length(filter(items, 'completed'))`)
     // answered 0 for every input.
     if (RegExp(r'^[\w\.]+\(.*\)$').hasMatch(value)) {
+      return _parse(value);
+    }
+
+    // An argument is an Expression (§3.2.1), so it may be an operation — the
+    // spec's own §3.6.1 example is `round(price * quantity, 2)`. This branch
+    // was missing while its two neighbours (quoted commas, nested calls) were
+    // each added after a document failed in someone's hands; the shape kept
+    // returning null, which renders as an empty string and ships a wrong
+    // screen without a word.
+    if (_hasTopLevelBinaryOperator(value)) {
       return _parse(value);
     }
 

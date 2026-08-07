@@ -403,17 +403,51 @@ void main() {
     });
 
     test('c33 wired slot reports closed true on success', () async {
-      bridge.closeTab = (i) => 0;
+      bridge.closeTab = (i, {bool force = false}) => 0;
       final out = await _call(boot, 'studio.chrome.close_tab', {'index': 1});
       expect(out['active'], 0);
       expect(out['closed'], isTrue);
     });
 
     test('c34 wired slot reports closed false on -1', () async {
-      bridge.closeTab = (i) => -1;
+      bridge.closeTab = (i, {bool force = false}) => -1;
       final out = await _call(boot, 'studio.chrome.close_tab', {'index': 0});
       expect(out['active'], -1);
       expect(out['closed'], isFalse);
+    });
+
+    test('c34a a tab that raised a dialog is NOT reported closed', () async {
+      // The defect this pins: a draft / edited tab shows a confirmation dialog
+      // and stays open, but the slot returned the active index and the tool
+      // answered `closed: true`. Every scripted teardown then believed the tab
+      // was gone — and an MCP caller cannot answer a dialog to find out.
+      bridge.closeTab =
+          (i, {bool force = false}) => kCloseTabConfirmRequired;
+      final r = await _callRaw(boot, 'studio.chrome.close_tab', {'index': 1});
+      expect(r.isError, isTrue);
+      final out = jsonDecode(
+        (r.content.first as mk.KernelTextContent).text,
+      ) as Map<String, dynamic>;
+      expect(out['closed'], isFalse);
+      expect(out['reason'], 'confirmRequired');
+      expect(out['suggestion'], contains('force'));
+    });
+
+    test('c34b force is passed through to the slot', () async {
+      // Without this the escape hatch is unreachable: the tool would keep
+      // asking for a prompt the caller has already decided to skip.
+      bool? sawForce;
+      bridge.closeTab = (i, {bool force = false}) {
+        sawForce = force;
+        return 0;
+      };
+      await _call(boot, 'studio.chrome.close_tab',
+          {'index': 1, 'force': true});
+      expect(sawForce, isTrue);
+
+      sawForce = null;
+      await _call(boot, 'studio.chrome.close_tab', {'index': 1});
+      expect(sawForce, isFalse, reason: 'force must default to off');
     });
   });
 

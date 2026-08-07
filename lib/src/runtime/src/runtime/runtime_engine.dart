@@ -3,6 +3,7 @@ import '../capabilities/media_registry.dart';
 import '../capabilities/runtime_capabilities.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import '../renderer/render_context.dart';
 import '../renderer/renderer.dart';
 import 'lifecycle_manager.dart';
@@ -40,6 +41,24 @@ import '../permissions/permission_manager.dart';
 /// The main runtime engine that manages the MCP UI Runtime lifecycle
 /// and coordinates all runtime services.
 class RuntimeEngine with ChangeNotifier {
+  /// The navigator key for the `MaterialApp` this engine's document builds
+  /// when it declares routes. One per engine — the key used to come from the
+  /// `NavigationService` singleton, so two documents mounted at once put the
+  /// same GlobalKey in two places and Flutter truncated the tree at the
+  /// second: its page never appeared and the first was torn out of its
+  /// parent. This is the collision the comment further down called "a
+  /// separate refactor track"; it is what a second app on screen actually
+  /// hits.
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  /// This engine's route observer — what feeds `onPause` / `onResume` for its
+  /// pages. Per engine for the same reason as [navigatorKey], and one more:
+  /// a `RouteObserver` may be attached to a single navigator at a time, so a
+  /// shared one trips `observer.navigator == null` the moment a second
+  /// document mounts.
+  final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
   RuntimeEngine({
     this.enableDebugMode = kDebugMode,
     RenderInspector? widgetWrapper,

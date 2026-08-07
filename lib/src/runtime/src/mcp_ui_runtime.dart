@@ -84,6 +84,12 @@ class MCPUIRuntime {
   })  : _logger = MCPLogger('MCPUIRuntime', enableLogging: enableDebugMode),
         _engine = RuntimeEngine(enableDebugMode: enableDebugMode);
 
+  /// This runtime's navigator key — the engine holds it, one per document.
+  /// Never shared: one key in two mounted apps truncates the widget tree at
+  /// the second, and the only trace is a `Duplicate GlobalKey` line. See
+  /// [NavigationService.navigatorKey].
+  GlobalKey<NavigatorState> get navigatorKey => _engine.navigatorKey;
+
   /// Inspector entry point for editor tooling. Each rendered widget is
   /// paired with its source JSON node via [widgetWrapper] so the host can
   /// hit-test back from the rendered tree to the canonical document. The
@@ -881,7 +887,11 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
 
             if (appDefinition.navigationDefinition != null) {
               // Build with navigation wrapper
-              final navKey = NavigationService.instance.navigatorKey;
+              final navKey = widget.engine.navigatorKey;
+              NavigationService.instance.attach(
+                navKey,
+                routeObserver: widget.engine.routeObserver,
+              );
               MCPLogger('MCPRuntimeWidget').debug(
                   'Creating MaterialApp with navigatorKey for ApplicationShell: $navKey');
 
@@ -902,7 +912,7 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 // Feeds `onPause` / `onResume`: a page covered by a pushed
                 // route is not disposed, so this is the only report of it.
                 navigatorObservers: <NavigatorObserver>[
-                  NavigationService.instance.routeObserver,
+                  widget.engine.routeObserver,
                 ],
                 routes: shellRoutes,
                 title: appDefinition.title,
@@ -923,7 +933,11 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
               );
             } else {
               // Build simple routing without navigation wrapper
-              final navKey = NavigationService.instance.navigatorKey;
+              final navKey = widget.engine.navigatorKey;
+              NavigationService.instance.attach(
+                navKey,
+                routeObserver: widget.engine.routeObserver,
+              );
               MCPLogger('MCPRuntimeWidget').debug(
                   'Creating MaterialApp with navigatorKey for routing: $navKey');
 
@@ -933,7 +947,7 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 // Feeds `onPause` / `onResume`: a page covered by a pushed
                 // route is not disposed, so this is the only report of it.
                 navigatorObservers: <NavigatorObserver>[
-                  NavigationService.instance.routeObserver,
+                  widget.engine.routeObserver,
                 ],
                 title: appDefinition.title,
                 theme: widget.engine.themeManager.toFlutterTheme(),

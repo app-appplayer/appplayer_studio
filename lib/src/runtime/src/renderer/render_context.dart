@@ -277,6 +277,17 @@ class RenderContext {
       final result = stateManager.get<T>(globalPath);
       _logger.debug('getState app.$globalPath: $result');
       return result;
+    } else if (path.startsWith('page.') || path.startsWith('state.')) {
+      // §3.5 / §17.2.5 — `page.` is the EXPLICIT ALIAS of the bare resolution
+      // target (v1.0), and `state.` is its synonym in the prefix catalogue;
+      // §16.1.1 writes `{{state.isActive ? 1.0 : 0.3}}` as its own example.
+      // Neither branch existed, so the store was asked for a key literally
+      // called `page.count`, and every document written in the explicit form
+      // read null — the widget then drew its default and said nothing.
+      final scopedPath = path.substring(path.indexOf('.') + 1);
+      final result = stateManager.get<T>(scopedPath);
+      _logger.debug('getState $path: $result');
+      return result;
     } else {
       // No prefix - default to global state for backward compatibility
       final result = stateManager.get<T>(path);
@@ -303,6 +314,11 @@ class RenderContext {
       final globalPath = path.substring(4);
       stateManager.set(globalPath, value, source: source);
       _logger.debug('setState app.$globalPath: $value');
+    } else if (path.startsWith('page.') || path.startsWith('state.')) {
+      // §3.5 / §17.2.5 — read-write, and the same target as the bare form.
+      final scopedPath = path.substring(path.indexOf('.') + 1);
+      stateManager.set(scopedPath, value, source: source);
+      _logger.debug('setState $path: $value');
     } else {
       // No prefix - default to global state for backward compatibility
       stateManager.set(path, value, source: source);

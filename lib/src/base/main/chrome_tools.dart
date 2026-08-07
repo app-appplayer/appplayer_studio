@@ -604,7 +604,10 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
   boot.addTool(
     name: 'studio.chrome.close_tab',
     description:
-        'Close a tab by index (0 = home is rejected). Runs the '
+        'Close a tab by index (0 = home is rejected). A draft or edited '
+        'tab raises a confirmation dialog and is NOT closed — that returns '
+        '`{closed:false, reason:"confirmRequired"}`; pass `force: true` to '
+        'close it anyway. Runs the '
         'activation teardown — every tool / agent / UI mount the '
         'bundle registered via its `BundleActivationContext` is '
         'unregistered, and the tab is removed from the strip. '
@@ -613,6 +616,12 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       'type': 'object',
       'properties': <String, dynamic>{
         'index': <String, dynamic>{'type': 'integer', 'minimum': 0},
+        'force': <String, dynamic>{
+          'type': 'boolean',
+          'description':
+              'Close without the confirmation dialog a draft / edited tab '
+              'would otherwise raise. Discards that work.',
+        },
       },
       'required': <String>['index'],
     },
@@ -643,7 +652,32 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
           isError: true,
         );
       }
-      final active = fn(i);
+      final force = args['force'] == true;
+      final active = fn(i, force: force);
+      if (active == kCloseTabConfirmRequired) {
+        // The tab put a confirmation dialog on screen and stayed open. Saying
+        // `closed: true` here is what made scripted teardown silently leave
+        // tabs behind — and the caller cannot answer a dialog, so it needs to
+        // be told to pass `force` (or to leave it to the person at the app).
+        return mk.KernelToolResult(
+          content: <mk.KernelContent>[
+            mk.KernelTextContent(
+              text: jsonEncode(<String, dynamic>{
+                'closed': false,
+                'reason': 'confirmRequired',
+                'message':
+                    'The tab has unsaved or edited work, so closing it raised '
+                    'a confirmation dialog and the tab is still open.',
+                'suggestion':
+                    'Pass `force: true` to close it without the prompt '
+                    '(discards the draft/edits), or answer the dialog in the '
+                    'app.',
+              }),
+            ),
+          ],
+          isError: true,
+        );
+      }
       final closed = active != -1;
       return mk.KernelToolResult(
         content: <mk.KernelContent>[

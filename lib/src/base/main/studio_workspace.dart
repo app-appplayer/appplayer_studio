@@ -324,10 +324,23 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       _selectTab(i);
       return _active;
     };
-    widget.chromeBridge.closeTab = (i) {
+    widget.chromeBridge.closeTab = (i, {bool force = false}) {
       if (i < 0 || i >= _tabs.length) return -1;
       if (_tabs[i].isHome) return -1;
-      _closeTab(i);
+      // A draft or a touched tab raises a confirmation dialog and does NOT
+      // close. Reporting the active index here made the MCP tool answer
+      // `closed: true` while the tab was still on screen waiting for a human —
+      // so every scripted teardown quietly left its tab behind.
+      final needsAnswer = _tabs[i].isDraft || _tabs[i].isModified;
+      if (needsAnswer && !force) {
+        _closeTab(i); // raises the prompt for the user in front of the app
+        return kCloseTabConfirmRequired;
+      }
+      if (force) {
+        _doCloseTab(i);
+      } else {
+        _closeTab(i);
+      }
       return _active;
     };
     widget.chromeBridge.closeTabsByMbdPath = (mbdPath) {
