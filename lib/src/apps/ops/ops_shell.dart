@@ -157,6 +157,29 @@ enum OpsRoute {
   final OpsGroup group;
 }
 
+/// The project kind a directory looks like, when it is not an Ops project.
+///
+/// Only the marker file is read — no loading, no validation. The point is to
+/// turn "this is not mine" into "this is a `<kind>`, open it over there",
+/// which is the difference between a dead end and a next step.
+String? foreignProjectKindForTest(String path) {
+  const markers = <String, String>{
+    'project.sbproj': 'App Builder',
+    'project.opspack': 'Ops pack',
+  };
+  for (final entry in markers.entries) {
+    if (File(p.join(path, entry.key)).existsSync()) return entry.value;
+  }
+  // A bare bundle directory beside the folder is the other common shape.
+  final dir = Directory(path);
+  if (dir.existsSync()) {
+    for (final e in dir.listSync()) {
+      if (e is Directory && e.path.endsWith('.mbd')) return 'bundle';
+    }
+  }
+  return null;
+}
+
 class OpsShell extends StatefulWidget {
   const OpsShell({
     super.key,
@@ -609,15 +632,34 @@ class _OpsShellState extends State<OpsShell> {
     // that wasn't created through `_newProject` (or migrated by hand).
     // The user gets a clear error instead of a half-booted Ops state.
     if (!isOpsProjectDir(path)) {
+      // `studio.project.open` routes to whichever package tab is ACTIVE, so a
+      // caller holding a perfectly good project of another kind lands here
+      // simply because Ops was on screen. Saying only "not an Ops project"
+      // sends them looking for a fault in the project; the routing is the
+      // fault, and it is fixed by selecting the matching tab first.
+      final kind = _foreignProjectKind(path);
       return <String, dynamic>{
         'ok': false,
         'error':
-            'Not an Ops project (missing project.opsproj marker): '
-            '$path',
+            'Not an Ops project (missing project.opsproj marker): $path',
+        'reason': 'wrongActiveTab',
+        if (kind != null) 'projectKind': kind,
+        'suggestion': kind == null
+            ? 'studio.project.open opens into the ACTIVE package tab, which is '
+                  'Ops. Select the tab that owns this project first '
+                  '(studio.chrome.select_tab), or pass the bundle directly '
+                  'via `mbdPath` on the builder tools.'
+            : 'This looks like a $kind project. `studio.project.open` opens '
+                  'into the ACTIVE package tab, which is Ops — select the '
+                  '$kind tab first (studio.chrome.select_tab), or pass the '
+                  'bundle directly via `mbdPath` on the builder tools.',
       };
     }
     return _bindProject(path);
   }
+
+  static String? _foreignProjectKind(String path) =>
+      foreignProjectKindForTest(path);
 
   Map<String, dynamic> _closeProject() {
     if (!mounted) return <String, dynamic>{'ok': true, 'closed': false};
