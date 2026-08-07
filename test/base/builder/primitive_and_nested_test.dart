@@ -150,4 +150,187 @@ properties:
           'propTypeMismatch');
     });
   });
+
+  group(r'composed primitives ($ref)', () {
+    // A `$ref` to another primitive used to be dropped, which made the
+    // composed type STRICTER than the spec rather than merely unmodelled:
+    // losing the referenced object form left one form behind, so ITS
+    // `required` became enforceable. That is how `box.padding: {all: 8}` — a
+    // spelling accepted since 1.4 — started failing authoring while it kept
+    // rendering fine.
+    void writeComposedSpec() {
+      final specDir = p.join(tmp.path, 'mcp_ui_dsl', 'spec', kDslSpecVersion);
+      File(p.join(specDir, 'configs', '_primitive', 'Inset.yaml'))
+          .writeAsStringSync(r'''
+name: Inset
+description: probe inset
+definition:
+  {
+    "anyOf": [
+      { "type": "number" },
+      {
+        "type": "object",
+        "properties": { "value": { "type": "number" } },
+        "required": ["value"]
+      },
+      { "type": "object", "properties": { "all": { "type": "number" } } }
+    ]
+  }
+''');
+      File(p.join(specDir, 'configs', '_primitive', 'Spacing.yaml'))
+          .writeAsStringSync(r'''
+name: Spacing
+description: probe spacing
+definition:
+  {
+    "anyOf": [
+      { "type": "string" },
+      {
+        "type": "object",
+        "properties": { "token": { "type": "string" } },
+        "required": ["token"]
+      },
+      { "$ref": "#/$defs/Inset" }
+    ]
+  }
+''');
+      File(p.join(specDir, 'widgets', 'test', 'probe.yaml'))
+          .writeAsStringSync('''
+type: probe
+category: test
+description: probe widget
+properties:
+  pad:
+    type: "Spacing"
+    description: "Composed inset."
+  edge:
+    type: "Inset"
+    description: "Plain inset."
+''');
+    }
+
+    test('r1: a referenced object form is honoured by the composed type',
+        () async {
+      writeComposedSpec();
+      // `{all: 8}` satisfies Inset's second object form. Before the fix this
+      // was rejected for missing `token` — a key only the OTHER form asks for.
+      expect(await ok({'type': 'probe', 'pad': {'all': 8}}), isTrue);
+      expect(await ok({'type': 'probe', 'pad': {'value': 8}}), isTrue);
+    });
+
+    test('r2: the composed type keeps its own branches too', () async {
+      writeComposedSpec();
+      expect(await ok({'type': 'probe', 'pad': 'md'}), isTrue);
+      expect(await ok({'type': 'probe', 'pad': {'token': 'md'}}), isTrue);
+      // The number branch arrives through the ref, not from Spacing itself.
+      expect(await ok({'type': 'probe', 'pad': 8}), isTrue);
+    });
+
+    test('r3: the referenced primitive still enforces where declared alone',
+        () async {
+      writeComposedSpec();
+      // Widening the composed type must not switch the plain one off — without
+      // this, "everything passes" would read the same as the fix working.
+      expect(await code({'type': 'probe', 'edge': 'hello world'}),
+          'primitiveOutOfRange');
+    });
+
+    test('r5: a ref is the ONLY source of the object form', () async {
+      // Spacing has an object branch of its own, so it cannot tell whether the
+      // ref contributed one. This type has none: if the ref stops carrying the
+      // object form across, `{all: 8}` has nothing left to satisfy.
+      final specDir = p.join(tmp.path, 'mcp_ui_dsl', 'spec', kDslSpecVersion);
+      File(p.join(specDir, 'configs', '_primitive', 'Inset.yaml'))
+          .writeAsStringSync(r'''
+name: Inset
+description: probe inset
+definition:
+  {
+    "anyOf": [
+      { "type": "object", "properties": { "all": { "type": "number" } } }
+    ]
+  }
+''');
+      File(p.join(specDir, 'configs', '_primitive', 'Wrapped.yaml'))
+          .writeAsStringSync(r'''
+name: Wrapped
+description: probe wrapper with no object form of its own
+definition:
+  {
+    "anyOf": [
+      { "enum": ["none"] },
+      { "$ref": "#/$defs/Inset" }
+    ]
+  }
+''');
+      File(p.join(specDir, 'widgets', 'test', 'probe.yaml'))
+          .writeAsStringSync('''
+type: probe
+category: test
+description: probe widget
+properties:
+  gap:
+    type: "Wrapped"
+    description: "Wrapper whose object form comes only from the ref."
+''');
+      expect(await ok({'type': 'probe', 'gap': {'all': 8}}), isTrue);
+      expect(await ok({'type': 'probe', 'gap': 'none'}), isTrue);
+      expect(await code({'type': 'probe', 'gap': 'nope'}),
+          'primitiveOutOfRange');
+    });
+
+    test('r6: a ref carries the enum/pattern that does the rejecting',
+        () async {
+      // The composed type declares nothing of its own, so every verdict here
+      // is the ref's. If the ref stops contributing, the type has no modelled
+      // branch left and goes PERMISSIVE — the failure mode is silent
+      // acceptance, which is why this asserts a rejection rather than a pass.
+      final specDir = p.join(tmp.path, 'mcp_ui_dsl', 'spec', kDslSpecVersion);
+      File(p.join(specDir, 'configs', '_primitive', 'Alias.yaml'))
+          .writeAsStringSync(r'''
+name: Alias
+description: probe alias with no branches of its own
+definition:
+  { "anyOf": [ { "$ref": "#/$defs/Tint" } ] }
+''');
+      File(p.join(specDir, 'widgets', 'test', 'probe.yaml'))
+          .writeAsStringSync('''
+type: probe
+category: test
+description: probe widget
+properties:
+  shade:
+    type: "Alias"
+    description: "Alias of Tint."
+''');
+      expect(await ok({'type': 'probe', 'shade': 'primary'}), isTrue,
+          reason: "the ref's enum did not come across");
+      expect(await ok({'type': 'probe', 'shade': '#aabbcc'}), isTrue,
+          reason: "the ref's pattern did not come across");
+      expect(await code({'type': 'probe', 'shade': 'nope'}),
+          'primitiveOutOfRange');
+    });
+
+    test('r4: a self-referential primitive does not hang the loader', () async {
+      final specDir = p.join(tmp.path, 'mcp_ui_dsl', 'spec', kDslSpecVersion);
+      File(p.join(specDir, 'configs', '_primitive', 'Loop.yaml'))
+          .writeAsStringSync(r'''
+name: Loop
+description: probe cycle
+definition:
+  { "anyOf": [ { "type": "number" }, { "$ref": "#/$defs/Loop" } ] }
+''');
+      File(p.join(specDir, 'widgets', 'test', 'probe.yaml'))
+          .writeAsStringSync('''
+type: probe
+category: test
+description: probe widget
+properties:
+  spin:
+    type: "Loop"
+    description: "Cyclic primitive."
+''');
+      expect(await ok({'type': 'probe', 'spin': 4}), isTrue);
+    });
+  });
 }

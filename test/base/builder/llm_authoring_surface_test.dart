@@ -254,22 +254,33 @@ void main() {
       expect(r.ok, isTrue, reason: 'padding accepts $ok');
     }
 
-    // `margin` is `EdgeInsets` ALONE — no scalar branch, so the primitive
-    // verdict stands and a bare string is rejected.
-    final bad = await validator.validateNode(<String, dynamic>{
-      'type': 'box',
-      'margin': 'hello world',
-    });
-    expect(bad.ok, isFalse);
-    expect(bad.rejection!['code'], 'primitiveOutOfRange');
-
-    for (final ok in <Object>[8, '{{layout.pad}}', <String, dynamic>{'all': 8}]) {
+    // `box.margin` took the same widening in the 1.4.1 follow-up — the widget
+    // always resolved both slots through one helper, so declaring less there
+    // only made the token unauthorable, never unrenderable. It accepts every
+    // padding spelling now, the open string branch included.
+    for (final ok in <Object>[
+      'md',
+      8,
+      '{{layout.pad}}',
+      <String, dynamic>{'all': 8},
+    ]) {
       final r = await validator.validateNode(<String, dynamic>{
         'type': 'box',
         'margin': ok,
       });
       expect(r.ok, isTrue, reason: 'margin accepts $ok');
     }
+
+    // The primitive verdict still STANDS where the spec declares `EdgeInsets`
+    // alone — `linear.padding` has no scalar branch, so a bare word there is
+    // rejected. Without this half, widening `box` would look identical to the
+    // primitive check having stopped working altogether.
+    final bad = await validator.validateNode(<String, dynamic>{
+      'type': 'linear',
+      'padding': 'hello world',
+    });
+    expect(bad.ok, isFalse);
+    expect(bad.rejection!['code'], 'primitiveOutOfRange');
   });
 
   test('v12 an item-list slot must actually hold a list', () async {

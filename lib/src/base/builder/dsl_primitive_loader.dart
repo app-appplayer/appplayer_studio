@@ -36,7 +36,13 @@ class DslPrimitive {
     required this.acceptsNumber,
     required this.acceptsBareString,
     this.requiredKeys = const <String>[],
+    this.objectBranches = 0,
   });
+
+  /// How many distinct OBJECT forms this type has, counting the ones it
+  /// inherits through a `$ref`. Carried because a composed type asks for it:
+  /// `required` is only enforceable when there is exactly one form to satisfy.
+  final int objectBranches;
 
   final String name;
   final List<RegExp> patterns;
@@ -115,6 +121,35 @@ bool isBindingExpression(Object? value) =>
 
 final RegExp _binding = RegExp(r'^\{\{.*\}\}$');
 
+/// One primitive as READ, before composition. Separate from [DslPrimitive]
+/// because a `$ref` branch cannot be turned into a check until the type it
+/// names has also been read.
+class _RawPrimitive {
+  _RawPrimitive({
+    required this.patterns,
+    required this.enumValues,
+    required this.acceptsBinding,
+    required this.acceptsObject,
+    required this.acceptsNumber,
+    required this.acceptsBareString,
+    required this.requiredKeys,
+    required this.objectBranches,
+    required this.refs,
+  });
+
+  final List<RegExp> patterns;
+  final List<String> enumValues;
+  final bool acceptsBinding;
+  final bool acceptsObject;
+  final bool acceptsNumber;
+  final bool acceptsBareString;
+  final List<String> requiredKeys;
+  final int objectBranches;
+
+  /// Names of other primitives this one folds in (`#/$defs/EdgeInsets`).
+  final List<String> refs;
+}
+
 class DslPrimitiveLoader {
   DslPrimitiveLoader({this.version = kDslSpecVersion, String? specsRoot})
     : _specsRoot = specsRoot;
@@ -135,7 +170,7 @@ class DslPrimitiveLoader {
     // (`Color`, `Dimension`, …). Read `widget/` FIRST so a name declared in
     // both resolves to the `_primitive/` entry — the scalar definition is the
     // narrower of the two, so losing it would silently widen a check.
-    final out = <String, DslPrimitive>{};
+    final raws = <String, _RawPrimitive>{};
     for (final sub in const <String>['widget', '_primitive']) {
       final dir = Directory(p.join(configs, sub));
       if (!dir.existsSync()) continue;
@@ -146,18 +181,94 @@ class DslPrimitiveLoader {
           if (doc is! YamlMap) continue;
           final name = doc['name'];
           if (name is! String) continue;
-          final prim = _parse(name, doc['definition']);
-          if (prim != null) out[name] = prim;
+          final raw = _parseRaw(name, doc['definition']);
+          if (raw != null) raws[name] = raw;
         } catch (_) {
           // A primitive that will not parse is left out — the property it
           // types stays permissive, which is the pre-existing behaviour.
         }
       }
     }
+    // Second pass: a branch that is `$ref`d to another primitive only becomes
+    // a check once that primitive is known, so composition cannot be resolved
+    // while reading. See [_resolve] for what dropping it used to cost.
+    final out = <String, DslPrimitive>{
+      for (final name in raws.keys) name: _resolve(name, raws, <String>{}),
+    };
     return _cache = Map<String, DslPrimitive>.unmodifiable(out);
   }
 
-  static DslPrimitive? _parse(String name, Object? definition) {
+  /// Folds a primitive's own branches together with every primitive it
+  /// `$ref`s, so a composed type is exactly as permissive as its parts.
+  ///
+  /// This is not a refinement — dropping the ref made a composed primitive
+  /// STRICTER than the spec, in a way that only showed on one spelling.
+  /// `BoxSpacing` is `token string | {token} | EdgeInsets`: with the third
+  /// branch discarded it looked like a type with a SINGLE object form, so the
+  /// `required: [token]` on that form became enforceable and `{all: 8}` — a
+  /// plain EdgeInsets the spec has accepted on `box.padding` since 1.4 — was
+  /// rejected by the authoring surface. Bundles that render fine failed to
+  /// author, which is the same class of harm as narrowing the DSL itself.
+  static DslPrimitive _resolve(
+    String name,
+    Map<String, _RawPrimitive> raws,
+    Set<String> seen,
+  ) {
+    final raw = raws[name];
+    if (raw == null || !seen.add(name)) {
+      // Unknown or cyclic: contribute nothing rather than guess. A primitive
+      // this checker cannot model stays permissive.
+      return DslPrimitive(
+        name: name,
+        patterns: const <RegExp>[],
+        enumValues: const <String>[],
+        acceptsBinding: false,
+        acceptsObject: false,
+        acceptsNumber: false,
+        acceptsBareString: false,
+      );
+    }
+
+    final patterns = <RegExp>[...raw.patterns];
+    final enums = <String>[...raw.enumValues];
+    final requiredKeys = <String>[...raw.requiredKeys];
+    var objectBranches = raw.objectBranches;
+    var binding = raw.acceptsBinding;
+    var object = raw.acceptsObject;
+    var number = raw.acceptsNumber;
+    var bareString = raw.acceptsBareString;
+
+    for (final ref in raw.refs) {
+      final merged = _resolve(ref, raws, seen);
+      patterns.addAll(merged.patterns);
+      enums.addAll(merged.enumValues);
+      binding = binding || merged.acceptsBinding;
+      object = object || merged.acceptsObject;
+      number = number || merged.acceptsNumber;
+      bareString = bareString || merged.acceptsBareString;
+      // The referenced type's object forms count here: two forms between them
+      // is what makes neither one's `required` enforceable.
+      objectBranches += merged.objectBranches;
+      requiredKeys.addAll(merged.requiredKeys);
+    }
+    seen.remove(name);
+
+    return DslPrimitive(
+      name: name,
+      requiredKeys: objectBranches == 1
+          ? List<String>.unmodifiable(requiredKeys)
+          : const <String>[],
+      patterns: patterns,
+      enumValues: enums,
+      acceptsBinding: binding,
+      acceptsObject: object,
+      acceptsNumber: number,
+      acceptsBareString: bareString,
+      objectBranches: objectBranches,
+    );
+  }
+
+  static _RawPrimitive? _parseRaw(String name, Object? definition) {
     Object? defn = definition;
     if (defn is YamlMap) defn = json.decode(json.encode(defn));
     if (defn is String) {
@@ -186,11 +297,20 @@ class DslPrimitiveLoader {
     final enums = <String>[];
     var binding = false, object = false, number = false, bareString = false;
     final requiredKeys = <String>[];
+    final refs = <String>[];
     var objectBranches = 0;
     for (final b in branches) {
       final ref = b[r'$ref'];
       if (ref is String && ref.endsWith('Binding')) {
         binding = true;
+        continue;
+      }
+      if (ref is String) {
+        // `#/$defs/EdgeInsets` → `EdgeInsets`. Recorded rather than applied:
+        // the referenced primitive may not be read yet, and a branch silently
+        // dropped here makes this type stricter than the spec (see [_resolve]).
+        final target = ref.split('/').last;
+        if (target.isNotEmpty) refs.add(target);
         continue;
       }
       final pattern = b['pattern'];
@@ -221,16 +341,17 @@ class DslPrimitiveLoader {
         bareString = true;
       }
     }
-    return DslPrimitive(
-      name: name,
-      // Required keys are only enforceable when the primitive has ONE object
-      // form. `EdgeInsets` has two — `{value, unit}` (which requires `value`)
-      // and `{all, horizontal, …}` (which requires nothing) — and a value only
-      // has to satisfy one of them, so a union of their required sets would
-      // reject `{all: 8}` for missing a key its own branch never asked for.
-      requiredKeys: objectBranches == 1
-          ? List<String>.unmodifiable(requiredKeys)
-          : const <String>[],
+    // Required keys are only enforceable when the primitive has ONE object
+    // form. `EdgeInsets` has two — `{value, unit}` (which requires `value`)
+    // and `{all, horizontal, …}` (which requires nothing) — and a value only
+    // has to satisfy one of them, so a union of their required sets would
+    // reject `{all: 8}` for missing a key its own branch never asked for.
+    // The decision is deferred to [_resolve], because a `$ref`d type brings
+    // object forms of its own into that same count.
+    return _RawPrimitive(
+      requiredKeys: requiredKeys,
+      objectBranches: objectBranches,
+      refs: refs,
       patterns: patterns,
       enumValues: enums,
       acceptsBinding: binding,

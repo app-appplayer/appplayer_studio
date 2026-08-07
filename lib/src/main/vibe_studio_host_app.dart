@@ -33,6 +33,8 @@ import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
 import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_store.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_manager.dart';
+import 'package:appplayer_studio/src/base/servers/reconnect_signals.dart'
+    show bindStudioReachabilitySignals;
 import 'package:appplayer_studio/src/base/servers/composition_seam.dart'
     show StudioCompositionSeam, kernelToolCallFrom;
 import 'package:appplayer_studio/src/base/servers/connect_server_dialog.dart'
@@ -1045,6 +1047,21 @@ class VibeStudioHostApp extends StudioApp {
       _extensionTileProviders.add(() async => localServerManager.tiles());
       _chromeBridge.connectServer = localServerManager.connect;
 
+      // Reconnect signals (spec 17 §7.6e). The watch inside the manager already
+      // keeps dialling a dropped connection for as long as a view is open; this
+      // lets a board's own advertisement cut the remaining wait instead of the
+      // interval deciding how long the error stays on screen. Scoped to the
+      // stalled set, so the shared radio runs only while something waits.
+      //
+      // Resume is bound too, and the network-regain edge
+      // (`StudioReconnectWatch.bindOnlineChanges`) is not: reading it would
+      // mean a connectivity plugin in the open tree, and it would buy seconds
+      // here because an open screen is already dialled every few seconds with
+      // no backoff and no cap. Waking from sleep is the case where that floor
+      // is not enough — the timers slept with the machine — and the framework
+      // reports it for free.
+      bindStudioReachabilitySignals(localServerManager.reconnect);
+
       // Discover tab (Connect Server dialog) — scan the settings-enabled
       // sources through the same StudioDiscovery the boot sweep uses, and
       // connect a picked board. A board (connectHint present) goes through the
@@ -1095,7 +1112,14 @@ class VibeStudioHostApp extends StudioApp {
             return;
           }
           final connId = await disc.connectCandidate(raw);
-          localServerManager.openServed(connId, title: server.name);
+          // The same candidate is the route back (spec 17 §7.6d): a discovered
+          // board has no store record, so this closure is the only way the
+          // reconnect watch can re-open it after a drop.
+          localServerManager.openServed(
+            connId,
+            title: server.name,
+            redial: () => disc.connectCandidate(raw),
+          );
         };
       }
     }

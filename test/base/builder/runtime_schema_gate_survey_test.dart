@@ -147,7 +147,7 @@ void main() {
             rejected++;
             if (samples.length < 10) {
               samples.add('${p.relative(entry.key, from: root)}\n'
-                  '      ${(failure as StateError).message.split('\n').skip(1).take(3).join('\n      ')}');
+                  '      ${failure.message.split('\n').skip(1).take(3).join('\n      ')}');
             }
           }
         } else {

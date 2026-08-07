@@ -109,6 +109,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   async: ^2.13.1
+  # Reconnect-watch tests assert on intervals measured in minutes (spec 17
+  # §7.6d has no attempt cap, so "keeps dialling" is a claim about elapsed
+  # time). Virtual time keeps that deterministic instead of slow and flaky.
+  fake_async: ^1.3.3
 # Local dev-latest overrides live in `pubspec_overrides.yaml` (gitignored)
 # so this committed pubspec stays release-clean (published versions only)
 # and a fresh clone resolves everything from pub.dev.

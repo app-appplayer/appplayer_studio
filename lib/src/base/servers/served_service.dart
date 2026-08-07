@@ -22,6 +22,7 @@ import 'package:appplayer_ui_view/appplayer_ui_view.dart' show UiTargetSnapshot;
 
 import '../main/chrome_bridge.dart' show WorkspaceTabActiveScope;
 import '../widgets/preview_mcp_ui.dart' show McpUiRuntimePort;
+import 'reconnect_watch.dart' show StudioReconnectWatch;
 import 'composition_seam.dart'
     show StudioCompositionSeam, applyCompositionHooks;
 import '../../ui/theme.dart' show VbuTheme;
@@ -145,10 +146,18 @@ class ServedServiceBody extends StatefulWidget {
     required this.clientHost,
     required this.connectionId,
     this.themeReinjectTick,
+    this.reconnect,
   });
 
   final mk.KernelClientHost clientHost;
   final String connectionId;
+
+  /// The host's reconnect watch (platform spec 17 §7.6d). Mounting HOLDS
+  /// [connectionId] and disposing RELEASES it — that hold is what tells the
+  /// watch an app is open and waiting, which is both the licence to keep
+  /// dialling and the bound on how long it may. Null in mount paths with no
+  /// host wiring (tests, standalone), where the view behaves as before.
+  final StudioReconnectWatch? reconnect;
 
   /// Cross-tab "the shared singleton ThemeManager was just reset" signal
   /// (`ChromeBridge.themeReinjectTick`). Bumped when ANY served/authoring
@@ -169,15 +178,29 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
   // ThemeManager). Captured once the runtime is ready.
   void Function(Brightness)? _reapplyTheme;
   Brightness _lastBrightness = Brightness.dark;
+  // Last liveness this view acted on, so the watch's ticks are turned into the
+  // dead→live edge rather than a rebuild storm.
+  bool _lastLive = false;
 
   @override
   void initState() {
     super.initState();
     widget.themeReinjectTick?.addListener(_onThemeReinjectTick);
+    final reconnect = widget.reconnect;
+    if (reconnect != null) {
+      _lastLive = _isLive();
+      reconnect.hold(widget.connectionId);
+      reconnect.changes.addListener(_onReconnectChanged);
+    }
   }
 
   @override
   void dispose() {
+    final reconnect = widget.reconnect;
+    if (reconnect != null) {
+      reconnect.changes.removeListener(_onReconnectChanged);
+      reconnect.release(widget.connectionId);
+    }
     widget.themeReinjectTick?.removeListener(_onThemeReinjectTick);
     // This tab is closing — its runtime tears down and resets the process-
     // singleton ThemeManager behind the surviving active tab's back. Signal
@@ -196,9 +219,32 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
     });
   }
 
-  void _retry() {
+  bool _isLive() => widget.clientHost.connections
+      .any((c) => c.id == widget.connectionId && c.isConnected);
+
+  /// The watch reports a change. Re-render on the dead→live EDGE only: that is
+  /// the moment the error screen has something new to show, and rebuilding on
+  /// every tick would restart a healthy render.
+  void _onReconnectChanged() {
+    final live = _isLive();
+    if (live == _lastLive) return;
+    _lastLive = live;
+    if (!live || !mounted) return;
     setState(() {
-      _rendered = _renderServedApp(Theme.of(context).brightness);
+      _rendered = _startRender(_lastBrightness);
+    });
+  }
+
+  /// Manual Retry. Re-rendering alone cannot recover a dropped connection —
+  /// [liveServiceConnection] throws on a dead one, so the old behaviour handed
+  /// back the same error however many times it was pressed. The press is a
+  /// reachability hint: it cuts the watch's remaining interval so the dial
+  /// happens now, and the re-render either succeeds (the connection was live
+  /// again already) or shows the error until the watch gets it back.
+  void _retry() {
+    widget.reconnect?.hintReachable(widget.connectionId);
+    setState(() {
+      _rendered = _startRender(Theme.of(context).brightness);
     });
   }
 
@@ -235,7 +281,7 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
     if (!active) {
       return Container(color: scheme.surface);
     }
-    _rendered ??= _renderServedApp(brightness);
+    _rendered ??= _startRender(brightness);
     return Container(
       color: scheme.surface,
       child: FutureBuilder<Widget>(
@@ -275,6 +321,21 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
 
   mk.KernelClientHost get clientHost => widget.clientHost;
   String get connectionId => widget.connectionId;
+
+  /// Starts a render and marks its failure as already accounted for.
+  ///
+  /// A dead connection makes this future reject, which is the intended path —
+  /// [build]'s FutureBuilder turns it into the actionable error + Retry. But a
+  /// future created inside `setState` rejects during the microtask BEFORE the
+  /// rebuild attaches the FutureBuilder's listener, and an error with no
+  /// listener yet is reported as an unhandled async error. The rejection is
+  /// still delivered when the builder does listen (a completed future replays
+  /// to later listeners), so nothing is swallowed — only the false alarm is.
+  Future<Widget> _startRender(Brightness hostBrightness) {
+    final rendering = _renderServedApp(hostBrightness);
+    rendering.ignore();
+    return rendering;
+  }
 
   Future<Widget> _renderServedApp(Brightness hostBrightness) async {
     final conn = liveServiceConnection(clientHost, connectionId);

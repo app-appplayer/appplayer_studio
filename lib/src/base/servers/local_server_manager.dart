@@ -15,6 +15,7 @@ import 'package:brain_kernel/brain_kernel.dart' as mk;
 import '../main/studio_workspace.dart' show HomeInstalledTile;
 import 'connect_server_dialog.dart' show ConnectServerRequest;
 import 'local_server_store.dart';
+import 'reconnect_watch.dart' show StudioReconnectWatch;
 import 'served_service.dart';
 
 /// Opens an extension tab with a custom body (the host's chrome seam).
@@ -44,8 +45,43 @@ class LocalServerManager {
   final OpenServerTab _openTab;
   final ValueNotifier<int>? _themeReinjectTick;
 
+  /// Re-dial routes for connections that are NOT recorded servers — a board
+  /// reached through discovery has no store record, so [reopen] cannot open it
+  /// and the caller (which holds the candidate) supplies the route instead.
+  /// Without this, exactly the connections most likely to drop are the ones
+  /// with no way back.
+  final Map<String, Future<void> Function()> _adhocDial =
+      <String, Future<void> Function()>{};
+
   bool _isLive(String id) =>
       _clientHost.connections.any((c) => c.id == id && c.isConnected);
+
+  /// Whether [id] has any route back. An id with neither a record nor an ad-hoc
+  /// route cannot be recovered by a timer or by a signal, so the watch must not
+  /// pretend otherwise (a watched-but-undialable id would keep a radio on for a
+  /// recovery that cannot happen).
+  bool _canDial(String id) =>
+      _adhocDial.containsKey(id) ||
+      _store.list().any((e) => e.id == id);
+
+  Future<void> _dial(String id) async {
+    if (_isLive(id)) return;
+    final adhoc = _adhocDial[id];
+    if (adhoc != null) {
+      await adhoc();
+      return;
+    }
+    await reopen(id);
+  }
+
+  /// The host's reconnect watch (platform spec 17 §7.6d). Owned here because
+  /// this is where both halves of a dial live: liveness off the kernel host,
+  /// and the routes above.
+  late final StudioReconnectWatch reconnect = StudioReconnectWatch(
+    isLive: _isLive,
+    dial: _dial,
+    canDial: _canDial,
+  );
 
   /// Raw kernel connect, shaped per transport (stdio → command/args; HTTP/SSE →
   /// endpoint + optional bearer token).
@@ -129,9 +165,15 @@ class LocalServerManager {
   /// Open the served app of an already-live connection [id] as a tab — used
   /// for discovered boards (connected through the extension / BLE seam) that
   /// aren't recorded local servers. [title] labels the tab (falls back to the
-  /// connection id). No reconnect: the caller connected it moments ago; if it
-  /// drops, [ServedServiceBody] surfaces the error + Retry.
-  void openServed(String id, {String? title}) {
+  /// connection id).
+  ///
+  /// [redial] is how this connection is opened again after a drop. It is what
+  /// makes a discovered board recoverable at all: there is no store record to
+  /// [reopen] from, so without a route the tab could only ever show its error.
+  /// Callers that genuinely cannot re-dial pass nothing, and the watch leaves
+  /// the id alone rather than running a radio for an impossible recovery.
+  void openServed(String id, {String? title, Future<void> Function()? redial}) {
+    if (redial != null) _adhocDial[id] = redial;
     _openTab(
       key: 'local-server:$id',
       label: title ?? id,
@@ -139,6 +181,7 @@ class LocalServerManager {
         clientHost: _clientHost,
         connectionId: id,
         themeReinjectTick: _themeReinjectTick,
+        reconnect: reconnect,
       ),
     );
   }
@@ -174,6 +217,7 @@ class LocalServerManager {
         clientHost: _clientHost,
         connectionId: r.id,
         themeReinjectTick: _themeReinjectTick,
+        reconnect: reconnect,
       ),
     );
   }
@@ -221,6 +265,9 @@ class LocalServerManager {
     if (r.credentialRef != null) {
       await _vault.delete(r.credentialRef!);
     }
+    // Drop the route before the record: removing a server must end its retry
+    // loop, and the loop exits on the first turn where no route remains.
+    _adhocDial.remove(r.id);
     _store.remove(r.id);
   }
 }
