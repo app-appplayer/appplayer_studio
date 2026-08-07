@@ -74,16 +74,20 @@ class SystemActionExecutor {
             'text': data?.text,
             'hasContent': data?.text != null,
             'format': 'html',
-            'note': 'HTML clipboard read uses text fallback; full HTML requires platform-specific implementation',
+            'note': 'HTML clipboard read returns the text flavour; the HTML flavour is not read by this runtime',
           });
 
         case 'image':
           // Image clipboard requires platform-specific implementation
-          return ActionResult.success(data: {
-            'hasContent': false,
-            'format': 'image',
-            'note': 'Image clipboard read requires platform-specific implementation',
-          });
+          // §6.13.1 — reporting success for something not performed is the
+          // failure this rule exists to stop. `hasContent: false` reads as "the
+          // clipboard is empty", which is a different fact from "this runtime
+          // cannot look".
+          return ActionResult.error(
+            'client.clipboard cannot read images in this runtime',
+            errorCode: 'UNSUPPORTED',
+            errorDetails: <String, dynamic>{'format': 'image'},
+          );
 
         case 'text':
         default:
@@ -129,7 +133,7 @@ class SystemActionExecutor {
             'success': true,
             'text': content,
             'format': 'html',
-            'note': 'HTML clipboard write uses text fallback; full HTML requires platform-specific implementation',
+            'note': 'HTML clipboard write stores the text flavour only',
           });
 
         case 'image':
@@ -166,15 +170,23 @@ class SystemActionExecutor {
           action['body'] as String? ?? '';
       final severity = action['severity'] as String?;
 
-      // For now, just return success with the notification data
-      // Actual notification implementation would require platform-specific setup
-      return ActionResult.success(data: {
-        'title': title,
-        'body': body,
-        if (severity != null) 'severity': severity,
-        'shown': true,
-        'note': 'Platform notification requires additional setup',
-      });
+      // No OS notification is posted here, and saying `shown: true` claimed
+      // one had been. §8.2.5 defines `UNSUPPORTED` for exactly this: a
+      // document that asks for a system notification and gets a success it
+      // can read as "the user saw it" will not fall back to its in-app
+      // `notification` widget, so the message reaches no one.
+      return ActionResult.error(
+        'client.notification is not implemented by this runtime: no OS-level '
+        'notification was posted. Use the in-app `notification` widget, or a '
+        'host that provides this capability.',
+        errorCode: 'UNSUPPORTED',
+        errorDetails: <String, dynamic>{
+          'title': title,
+          'body': body,
+          if (severity != null) 'severity': severity,
+          'shown': false,
+        },
+      );
     } catch (e) {
       return ActionResult.error('Failed to show notification: $e');
     }

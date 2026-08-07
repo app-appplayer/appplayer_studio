@@ -10,21 +10,21 @@ class NumberFieldFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final label = properties['label'] as String?;
-    final hint = properties['hint'] as String?;
+    final label = stringOf(properties['label'], context);
+    final hint = stringOf(properties['hint'], context);
     final helperText = context.resolve(properties['helperText']) as String?;
-    final suffix = properties['suffix'] as String?;
-    final prefix = properties['prefix'] as String?;
-    final min = properties['min'] as num?;
-    final max = properties['max'] as num?;
-    final step = properties['step'] as num? ?? 1;
-    final decimals = properties['decimals'] as int? ?? 0;
+    final suffix = stringOf(properties['suffix'], context);
+    final prefix = stringOf(properties['prefix'], context);
+    final min = dimensionOf(properties['min'], context);
+    final max = dimensionOf(properties['max'], context);
+    final step = dimensionOf(properties['step'], context) ?? 1;
+    final decimals = intOf(properties['decimals'], context) ?? 0;
     // Support 'decimalPlaces' as alias for 'decimals'
-    final decimalPlaces = properties['decimalPlaces'] as int?;
+    final decimalPlaces = dimensionOf(properties['decimalPlaces'], context)?.toInt();
     final effectiveDecimals = decimalPlaces ?? decimals;
-    final format = properties['format'] as String?;
+    final format = readEnum(properties['format'], context);
     final thousandSeparator =
-        properties['thousandSeparator'] as String? ?? '';
+        stringOf(properties['thousandSeparator'], context) ?? '';
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
     
     // Handle error property
@@ -39,7 +39,7 @@ class NumberFieldFactory extends WidgetFactory {
     }
 
     // Spec §2.6.0: binding shorthand — read from state path if set.
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final currentValue = binding != null
         ? context.getState(binding)
         : context.resolve(properties['value']);
@@ -147,8 +147,11 @@ class NumberFieldFactory extends WidgetFactory {
       },
     );
 
-    // Add increment/decrement buttons if step is defined
-    if (step > 0) {
+    // Add increment/decrement buttons if step is defined.
+    // `showStepper: false` leaves keyboard entry only — the document says the
+    // field takes numbers, not that it must offer buttons for them.
+    final showStepper = context.resolve<bool>(properties['showStepper'] ?? true);
+    if (step > 0 && showStepper) {
       textField = Row(
         children: [
           IconButton(

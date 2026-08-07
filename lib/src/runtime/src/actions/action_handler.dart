@@ -1,3 +1,5 @@
+import '../utils/color_parser.dart';
+import '../theme/theme_manager.dart';
 import 'dart:async' show Future, TimeoutException;
 import 'dart:convert' show jsonDecode;
 import 'dart:math' show pow;
@@ -7,6 +9,8 @@ import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
     show ActionDefinition, ActionTypes, IdentityPromotion, PromotionOutcome;
 
 import '../renderer/render_context.dart';
+import '../assets/asset_ref.dart';
+import '../capabilities/runtime_capabilities.dart';
 import '../utils/mcp_logger.dart';
 import '../services/dialog_service.dart';
 import '../services/navigation_service.dart';
@@ -98,6 +102,21 @@ class ActionHandler {
     _executors['sequence'] = sequenceExecutor;
 
     _executors['notification'] = NotificationActionExecutor();
+
+    // v1.4 Sound actions (spec §4.9a). Core Profile: a served application and a
+    // browser-rendered one need to be heard too, and a sound carries none of
+    // the user's data. Canonical dotted keys — there is no sub-operation field.
+    final soundExecutor = SoundActionExecutor();
+    _executors['sound.play'] = soundExecutor;
+    _executors['sound.stop'] = soundExecutor;
+
+    // v1.4 media transport (spec §4.9b) — drives a mounted `mediaPlayer` by id
+    // so `controls: false` is a design choice rather than a dead end.
+    final mediaExecutor = MediaActionExecutor();
+    _executors['media.play'] = mediaExecutor;
+    _executors['media.pause'] = mediaExecutor;
+    _executors['media.toggle'] = mediaExecutor;
+    _executors['media.seek'] = mediaExecutor;
 
     // v1.1 Event bus executor
     _executors['event'] = EventActionExecutor();
@@ -324,7 +343,6 @@ class ToolActionExecutor extends ActionExecutor {
   // Deprecation-notice gates: emit once per process per legacy path to
   // alert tool authors / hosts without flooding logs.
   static bool _warnedEnvelopeUnwrap = false;
-  static bool _warnedNamespacedMirror = false;
 
   /// Test-only hook for resetting the deprecation latch so unit tests that
   /// assert the warning fires repeatedly can isolate their state. Not part
@@ -332,7 +350,6 @@ class ToolActionExecutor extends ActionExecutor {
   @visibleForTesting
   static void resetDeprecationWarningsForTesting() {
     _warnedEnvelopeUnwrap = false;
-    _warnedNamespacedMirror = false;
   }
 
   /// Unwrap the MCP wire shape `{content: [{type: 'text', text: S}], isError}`
@@ -440,9 +457,22 @@ class ToolActionExecutor extends ActionExecutor {
     // Try to find specific tool executor, fallback to 'default' handler
     final toolExecutor = _toolExecutors?[tool] ?? _toolExecutors?['default'];
     if (toolExecutor == null) {
-      _logger.error(
-          'Tool executor not found: $tool, available: ${_toolExecutors?.keys}');
-      return ActionResult.error('Tool executor not found: $tool');
+      // An empty map is a different failure from a missing name: no executor
+      // has been registered at all, which is what an application-level
+      // `onInit` hits when the host passes `onToolCall` only to `buildUI`.
+      // Reported apart because "not found" reads as a host that forgot to
+      // register, and sends the reader looking in the wrong place.
+      final none = _toolExecutors == null || _toolExecutors!.isEmpty;
+      final message = none
+          ? 'Tool executor not found: $tool — no executor is registered at '
+              'all. If this call came from a definition-level `onInit`, that '
+              'hook runs during initialize(): pass `onToolCall` to '
+              '`initialize`, because passing it only to `buildUI` registers '
+              'after the hook has already run.'
+          : 'Tool executor not found: $tool, '
+              'available: ${_toolExecutors?.keys}';
+      _logger.error(message);
+      return ActionResult.error(message);
     }
 
     _logger.debug('Found tool executor for: $tool');
@@ -682,13 +712,12 @@ class ToolActionExecutor extends ActionExecutor {
         // LEGACY mirror: namespaced `tools.<tool>.result`. See deprecation
         // note above. Behavior preserved for one release.
         if (isSuccess) {
-          if (!_warnedNamespacedMirror) {
-            _warnedNamespacedMirror = true;
-            _logger.warning(
-                'Writing legacy namespaced mirror at `tools.$tool.result`. '
-                'This mirror is DEPRECATED and slated for removal in 0.6.0. '
-                'Use explicit `bindResult` or auto-merged top-level keys.');
-          }
+          // The mirror is still written; what moved is the warning. It used to
+          // fire here, on every successful tool call, which told authors who
+          // never read the namespace about a deprecation they cannot act on
+          // and told the ones who do read it nothing. `BindingEngine` reports
+          // it at the read instead — that is where the dependency is, and
+          // where removing the mirror would actually break something.
           context.setValue('tools.$tool.result', resultData);
         }
 
@@ -726,13 +755,7 @@ class ToolActionExecutor extends ActionExecutor {
       //
       // LEGACY mirror: namespaced `tools.<tool>.result`. See deprecation
       // note above. Behavior preserved for one release.
-      if (!_warnedNamespacedMirror) {
-        _warnedNamespacedMirror = true;
-        _logger.warning(
-            'Writing legacy namespaced mirror at `tools.$tool.result`. '
-            'This mirror is DEPRECATED and slated for removal in 0.6.0. '
-            'Use explicit `bindResult` or auto-merged top-level keys.');
-      }
+      // Warned at the read, not here — see the note on the other mirror write.
       context.setValue('tools.$tool.result', result);
 
       // Explicit bindResult overrides auto-merge path
@@ -995,17 +1018,23 @@ class NavigationActionExecutor extends ActionExecutor {
           .debug('Using global handler: ${handler != null}');
     }
 
-    // If custom handler is available, use it
+    // If a custom handler is available it gets first refusal.
+    //
+    // `false` means "not mine" — the shell's handler says so in its own
+    // comment, returning false for any route its tab strip does not carry.
+    // Reading that as a rejection ended navigation there: a page declared in
+    // `routes` but not pinned to a tab could not be reached from a button, a
+    // scan, or a deep link, and the author got nothing on screen and nothing
+    // in the log. Fall through to the navigator instead, which is what the
+    // handler expected to happen.
     if (handler != null) {
       final navParams = Map<String, dynamic>.from(params ?? {});
       if (index != null) {
         navParams['index'] = index;
       }
-      final handled = handler(actionType, route ?? '', navParams);
-      if (!handled) {
-        return ActionResult.error('Navigation handler rejected the navigation');
+      if (handler(actionType, route ?? '', navParams)) {
+        return ActionResult.success();
       }
-      return ActionResult.success();
     }
 
     // Otherwise, use the global navigator key for actual navigation
@@ -1529,8 +1558,15 @@ class BatchActionExecutor extends ActionExecutor {
     }
 
     final actions = action['actions'] as List<dynamic>?;
-    if (actions == null || actions.isEmpty) {
+    if (actions == null) {
       return ActionResult.error('Actions list is required for batch');
+    }
+    // An empty list is a batch with nothing to do, which is what a document
+    // that builds its actions from a filtered list produces. Treating that as
+    // an authoring error made a correct document fail on an empty input; a
+    // *missing* list is still an error, because that is a typo.
+    if (actions.isEmpty) {
+      return ActionResult.success();
     }
 
     final parallel = action['parallel'] as bool? ?? false;
@@ -1824,12 +1860,16 @@ class DialogActionExecutor extends ActionExecutor {
     }
   }
 
-  Color? _parseColor(String colorString) {
-    if (colorString.startsWith('#')) {
-      return Color(int.parse(colorString.substring(1), radix: 16));
-    }
-    return null;
-  }
+  /// Dialog colors through the one §5.3.4 parser.
+  ///
+  /// The previous copy read `#RRGGBB` with `int.parse` and no alpha channel,
+  /// so a six-digit hex became `0x00RRGGBB` — fully transparent. A dialog
+  /// asked for a background and got none.
+  Color? _parseColor(String colorString) => DslColor.parse(
+        colorString,
+        slotResolver: ThemeManager.instance.getColorValue,
+        where: 'dialog color',
+      );
 
   /// Resolves the widget content for `customDialog` / `bottomSheet`.
   /// Canonical key is `child` per spec §2.11; legacy authors may pass a
@@ -1962,9 +2002,18 @@ class ChannelActionExecutor extends ActionExecutor {
     final manager = channelManager!;
 
     if (!manager.hasChannel(channelName)) {
-      // Graceful degradation: warn and skip instead of error (P2)
-      _logger.warning('Channel not found: $channelName - skipping action');
-      return ActionResult.success();
+      // Reported, not skipped. The log line existed, but the *document* was
+      // told the action succeeded: `channel.start` on a channel that was
+      // never declared left a page waiting for data that could not arrive,
+      // with `onError` never firing because nothing failed. §8.2.5 has a
+      // result shape for this, and a host that wants to shrug can ignore it.
+      _logger.warning('Channel not found: $channelName');
+      return ActionResult.error(
+        'Channel "$channelName" is not declared, so channel.$op has nothing '
+        'to act on.',
+        errorCode: 'NOT_FOUND',
+        errorDetails: <String, dynamic>{'channel': channelName, 'action': op},
+      );
     }
 
     try {
@@ -2105,6 +2154,131 @@ class SequenceActionExecutor extends ActionExecutor {
 }
 
 /// Executes notification actions (v1.1)
+/// `sound.play` / `sound.stop` (spec §4.9a).
+///
+/// The runtime resolves the binding and the scheme (§6.12.2) and hands the host
+/// a reference; producing the sound is the host's power. With no [SoundPort]
+/// wired the action does NOT quietly succeed — it reports, because a beep that
+/// silently does nothing is indistinguishable from a device with the volume
+/// down, and the author has no way to learn which one they shipped.
+class SoundActionExecutor extends ActionExecutor {
+  @override
+  Future<ActionResult> execute(
+    Map<String, dynamic> action,
+    RenderContext context,
+  ) async {
+    final type = action['type'] as String?;
+    final port = context.capabilities.sound;
+
+    if (type == 'sound.stop') {
+      if (port == null) {
+        return ActionResult.error(
+            const CapabilityUnavailable(RuntimeCapability.sound).toString());
+      }
+      await port.stop(id: context.resolve<String?>(action['id']));
+      return ActionResult.success();
+    }
+
+    final rawSource = action['source'];
+    final resolved =
+        rawSource is String ? context.resolve<String>(rawSource) : rawSource;
+    final ref = AssetRef.parse(resolved);
+    if (ref == null) {
+      return ActionResult.error('sound.play requires a source (AssetRef)');
+    }
+
+    final loop = context.resolve<bool>(action['loop'] ?? false);
+    final id = context.resolve<String?>(action['id']);
+    if (loop && (id == null || id.isEmpty)) {
+      // §4.9a — an unnamed loop cannot be stopped, so it is a document error
+      // rather than a sound that plays until the app closes.
+      return ActionResult.error('a looping sound.play requires an id');
+    }
+
+    if (port == null) {
+      // The handler fires this action's `onError` for any error result, with
+      // `event.code` / `event.message` — the shape every other action already
+      // uses. Firing our own would be a second spelling of the same event.
+      const failure = CapabilityUnavailable(RuntimeCapability.sound);
+      return ActionResult.error(failure.toString(),
+          errorCode: 'CAPABILITY_UNAVAILABLE');
+    }
+
+    try {
+      await port.play(SoundRequest(
+        source: ref,
+        // A bundled beep is the normal case. The same reader that makes a
+        // `bundle://` image appear is what lets it be heard.
+        readBytes: () => context.assetResolver.bytesFor(ref),
+        volume: (context.resolve<num?>(action['volume']) ?? 1.0).toDouble(),
+        id: id,
+        loop: loop,
+      ));
+      return ActionResult.success();
+    } catch (e) {
+      // A host refusal — a browser before the first gesture, a muted device, a
+      // policy — is an error the document can see (§4.9a), never a rendering.
+      return ActionResult.error(e.toString(), errorCode: 'SOUND_REFUSED');
+    }
+  }
+
+}
+
+/// `media.play` / `media.pause` / `media.toggle` / `media.seek` (spec §4.9b).
+class MediaActionExecutor extends ActionExecutor {
+  @override
+  Future<ActionResult> execute(
+    Map<String, dynamic> action,
+    RenderContext context,
+  ) async {
+    final type = action['type'] as String?;
+    final id = context.resolve<String?>(action['id']);
+    if (id == null || id.isEmpty) {
+      return ActionResult.error('$type requires the target player id');
+    }
+
+    final registry = context.mediaRegistry;
+    final session = registry?[id];
+    if (session == null) {
+      // Naming a player that is not mounted and doing nothing would look
+      // exactly like a player that is there and refusing.
+      return ActionResult.error(
+        'no mounted mediaPlayer with id "$id"',
+        errorCode: 'MEDIA_TARGET_NOT_FOUND',
+        errorDetails: <String, dynamic>{
+          'id': id,
+          'mounted': registry?.mountedIds.toList() ?? const <String>[],
+        },
+      );
+    }
+
+    try {
+      switch (type) {
+        case 'media.play':
+          await session.play();
+        case 'media.pause':
+          await session.pause();
+        case 'media.toggle':
+          final playing = await session.playing.first
+              .timeout(const Duration(milliseconds: 200), onTimeout: () => false);
+          await (playing ? session.pause() : session.play());
+        case 'media.seek':
+          final seconds = context.resolve<num?>(action['position']);
+          if (seconds == null) {
+            return ActionResult.error('media.seek requires `position` seconds');
+          }
+          await session.seek(
+              Duration(milliseconds: (seconds * 1000).round()));
+        default:
+          return ActionResult.error('unknown media action: $type');
+      }
+      return ActionResult.success();
+    } catch (e) {
+      return ActionResult.error(e.toString(), errorCode: 'MEDIA_FAILED');
+    }
+  }
+}
+
 class NotificationActionExecutor extends ActionExecutor {
   @override
   Future<ActionResult> execute(

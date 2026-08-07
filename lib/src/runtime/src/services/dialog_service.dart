@@ -170,7 +170,12 @@ class DialogService extends RuntimeService {
       ],
     );
 
-    controller.dispose();
+    // Disposed after the frame, not on the spot. `show` returns as the route
+    // starts its exit animation, and the TextField is still mounted against
+    // this controller until that finishes — disposing here trips
+    // `_dependents.isEmpty` in debug and leaves a listener attached to a dead
+    // object in release.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     return result;
   }
 
@@ -281,8 +286,16 @@ class DialogService extends RuntimeService {
     bool opaque = false,
     bool maintainState = false,
   }) {
-    final context = _getContext();
-    final overlay = Overlay.of(context);
+    // The overlay comes from the navigator state, not from a context lookup.
+    // `_getContext()` returns the overlay's *own* context, and `Overlay.of`
+    // searches upward from there — so it looked for an overlay above the
+    // overlay and threw "No Overlay widget found" every time. This surface
+    // had never worked.
+    final overlay = navigatorKey.currentState?.overlay;
+    if (overlay == null) {
+      throw StateError(
+          'No overlay available. Make sure navigatorKey is set in MaterialApp');
+    }
 
     final entry = OverlayEntry(
       opaque: opaque,

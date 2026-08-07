@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/ui_definition.dart' show LifecycleDefinition;
 import '../renderer/render_context.dart';
+import '../routing/page_activity_scope.dart';
 import '../runtime/lifecycle_runner.dart';
 
 /// Runs the **instance-level** lifecycle of a widget (§6.8.2) — the hooks a
@@ -63,7 +65,7 @@ class _LifecycleHostState extends State<LifecycleHost> {
   late final LifecycleRunner _runner = LifecycleRunner(
     lifecycle: widget.hooks,
     label: widget.label,
-    execute: (action) => widget.context.actionHandler.execute(
+    execute: (action, hook) => widget.context.actionHandler.execute(
       action,
       widget.context,
     ),
@@ -79,8 +81,29 @@ class _LifecycleHostState extends State<LifecycleHost> {
     });
   }
 
+  ValueListenable<bool>? _pageActive;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Follow the page. A paused page stays mounted, so a widget that started
+    // a timer or a subscription in `onMount` would otherwise keep running
+    // while nobody is looking at it — and would never hear the `onResume`
+    // that its own `lifecycle` block declares.
+    final active = PageActivityScope.of(context);
+    if (identical(active, _pageActive)) return;
+    _pageActive?.removeListener(_onPageActivityChanged);
+    _pageActive = active?..addListener(_onPageActivityChanged);
+  }
+
+  void _onPageActivityChanged() {
+    final active = _pageActive?.value ?? true;
+    unawaited(active ? _runner.resume() : _runner.pause());
+  }
+
   @override
   void dispose() {
+    _pageActive?.removeListener(_onPageActivityChanged);
     // §18 makes running `onUnmount` a MUST for template instances, and a
     // widget that acquired something on mount has no other place to release it.
     unawaited(_runner.unmount());

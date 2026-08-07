@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for OfflineFallback widgets (v1.1)
@@ -12,9 +13,11 @@ class OfflineFallbackWidgetFactory extends WidgetFactory {
     final online = properties['online'] as Map<String, dynamic>?;
     final offline = properties['offline'] as Map<String, dynamic>?;
     final message = context.resolve<String?>(properties['message']);
-    final icon = properties['icon'] as String?;
+    final icon = properties['icon'] == null
+        ? null
+        : resolveIconRef(context.resolve<Object?>(properties['icon']));
     final showRetry = context.resolve<bool>(properties['showRetry'] ?? true);
-    final onRetry = properties['onRetry'] as Map<String, dynamic>?;
+    final onRetry = actionOf(properties['onRetry'], context);
 
     // Check connectivity binding
     final isOnline = context.resolve<bool?>(properties['isOnline']);
@@ -48,7 +51,7 @@ class OfflineFallbackWidgetFactory extends WidgetFactory {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              icon == 'wifi_off' ? Icons.wifi_off : Icons.cloud_off,
+              icon ?? Icons.cloud_off,
               size: 48,
               color: onSurface?.withValues(alpha: 0.38) ??
                   Colors.grey.shade400,

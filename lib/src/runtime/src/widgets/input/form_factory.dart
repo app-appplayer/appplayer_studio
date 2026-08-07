@@ -39,7 +39,8 @@ class _StatefulFormState extends State<_StatefulForm> {
 
   Map<String, dynamic>? _currentSubmitAction(
       Map<String, dynamic> properties, Map<String, dynamic>? actions) {
-    return (properties['onSubmit'] ?? properties['submit']) as Map<String, dynamic>? ??
+    return readAction(
+            properties['onSubmit'] ?? properties['submit'], widget.context) ??
         (actions?['onSubmit'] ?? actions?['submit']) as Map<String, dynamic>?;
   }
 
@@ -84,7 +85,8 @@ class _StatefulFormState extends State<_StatefulForm> {
       widget.context.setLocal('_formSubmitAction', submitAction);
     }
 
-    final showErrorsOn = properties['showErrorsOn'] as String?;
+    final showErrorsOn =
+        readEnum(properties['showErrorsOn'], widget.context);
     final mode = showErrorsOn != null
         ? _resolveShowErrorsOn(showErrorsOn)
         : _resolveAutovalidateMode(properties['autovalidateMode']);

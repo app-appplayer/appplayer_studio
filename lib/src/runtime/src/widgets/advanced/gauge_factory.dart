@@ -11,10 +11,10 @@ class GaugeWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final value = context.resolve<num>(properties['value'] ?? 0).toDouble();
-    final minValue = properties['min']?.toDouble() ?? 0.0;
-    final maxValue = properties['max']?.toDouble() ?? 100.0;
-    final size = properties['size']?.toDouble() ?? 200.0;
-    final strokeWidth = properties['strokeWidth']?.toDouble() ?? 10.0;
+    final minValue = numberOf(properties['min'], context) ?? 0.0;
+    final maxValue = numberOf(properties['max'], context) ?? 100.0;
+    final size = numberOf(properties['size'], context) ?? 200.0;
+    final strokeWidth = numberOf(properties['strokeWidth'], context) ?? 10.0;
     // The gauge's background arc ("track") falls back to the theme's
     // divider slot so it stays subtle in both light and dark modes
     // (previously a hardcoded `Colors.grey[300]` that blended with
@@ -27,10 +27,10 @@ class GaugeWidgetFactory extends WidgetFactory {
         parseColor(context.resolve(properties['valueColor']), context) ??
             context.themeManager.getColorValue('primary') ??
             Colors.blue;
-    final showLabel = properties['showLabel'] as bool? ?? true;
-    final labelFormat = properties['labelFormat'] as String? ?? '{value}%';
-    final startAngle = properties['startAngle']?.toDouble() ?? -220.0;
-    final sweepAngle = properties['sweepAngle']?.toDouble() ?? 260.0;
+    final showLabel = boolOf(properties['showLabel'], context) ?? true;
+    final labelFormat = stringOf(properties['labelFormat'], context) ?? '{value}%';
+    final startAngle = numberOf(properties['startAngle'], context) ?? -220.0;
+    final sweepAngle = numberOf(properties['sweepAngle'], context) ?? 260.0;
 
     // Parse segments: List of {from, to, color}
     final segmentsData = properties['segments'] as List<dynamic>?;

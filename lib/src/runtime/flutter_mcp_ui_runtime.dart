@@ -20,6 +20,15 @@ export 'src/routing/page_state_scope.dart';
 
 // Runtime exports
 export 'src/runtime/runtime_engine.dart';
+
+// Host-wired capabilities (spec §6.13) and the asset types their APIs speak.
+// Exported because a port that cannot be constructed outside this package
+// cannot be wired by the host that owns the platform power — the seam would
+// exist and be unreachable, which is how `AssetResolver` sat unused.
+export 'src/capabilities/runtime_capabilities.dart';
+export 'src/capabilities/media_registry.dart';
+export 'src/assets/asset_ref.dart';
+export 'src/assets/asset_resolver.dart';
 export 'src/runtime/lifecycle_manager.dart';
 export 'src/runtime/lifecycle_runner.dart';
 export 'src/runtime/service_registry.dart' hide ServiceStatus;

@@ -14,7 +14,7 @@ class PaginationFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final total = context.resolve<num?>(properties['total'])?.toInt() ?? 0;
     final pageSize = context.resolve<num?>(properties['pageSize'])?.toInt() ?? 20;
     final siblings = context.resolve<num?>(properties['siblingCount'])?.toInt() ?? 1;
@@ -23,7 +23,7 @@ class PaginationFactory extends WidgetFactory {
         context.resolve<bool?>(properties['showSizeChanger']) ?? false;
     final sizeOptions =
         context.resolve<List<dynamic>?>(properties['pageSizeOptions']) ?? const [10, 20, 50];
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'], context);
 
     final pageCount = pageSize <= 0 ? 1 : (total / pageSize).ceil().clamp(1, 1 << 30);
     final rawCurrent = binding != null

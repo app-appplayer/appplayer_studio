@@ -146,6 +146,12 @@ class ComputedManager {
   final StateManager _stateManager;
   final BindingEngine _bindingEngine;
   final Map<String, StreamSubscription> _subscriptions = {};
+
+  /// Every listener this manager installed on the shared [StateManager].
+  /// Kept so [dispose] can take them off again: clearing our own maps left
+  /// the closures attached, and a discarded manager went on delivering for
+  /// the life of the state object.
+  final List<VoidCallback> _stateListeners = [];
   final MCPLogger _logger = MCPLogger('ComputedManager');
 
   ComputedManager({
@@ -168,10 +174,13 @@ class ComputedManager {
 
     // Listen to dependencies
     for (final _ in config.dependencies) {
-      _stateManager.addListener(() {
+      void listener() {
         computed.invalidate();
         _notifyWatchers(key);
-      });
+      }
+
+      _stateListeners.add(listener);
+      _stateManager.addListener(listener);
     }
 
     _logger.debug(
@@ -191,15 +200,24 @@ class ComputedManager {
     _watchers[path]!.add(watcher);
 
     // Listen to changes
-    _stateManager.addListener(() {
+    void listener() {
       final value = _getValue(path);
       watcher.update(value);
-    });
+    }
+
+    _stateListeners.add(listener);
+    _stateManager.addListener(listener);
+
+    // The baseline is what the path holds *now*, whether or not the caller
+    // asked for immediate delivery. Priming only in the immediate case left
+    // the first comparison against null: an unchanged value read as a change,
+    // and the first real change reported "was nothing" for a path that had a
+    // value all along.
+    final current = _getValue(path);
+    watcher._lastValue = watcher._cloneValue(current);
 
     if (watcher.immediate) {
-      final value = _getValue(path);
-      watcher._lastValue = watcher._cloneValue(value);
-      watcher.handler(value, null);
+      watcher.handler(current, null);
     }
 
     _logger.debug(
@@ -239,6 +257,10 @@ class ComputedManager {
       subscription.cancel();
     }
     _subscriptions.clear();
+    for (final listener in _stateListeners) {
+      _stateManager.removeListener(listener);
+    }
+    _stateListeners.clear();
     _computedProperties.clear();
     _watchers.clear();
   }
@@ -252,8 +274,10 @@ class ComputedManager {
 /// null, making misuse easier to detect during development.
 class SimpleComputedContext implements RenderContext {
   final StateManager _stateManager;
+  final ThemeManager _themeManager;
 
-  SimpleComputedContext(this._stateManager);
+  SimpleComputedContext(this._stateManager, {ThemeManager? themeManager})
+      : _themeManager = themeManager ?? ThemeManager.instance;
 
   @override
   T getValue<T>(String path) {
@@ -303,9 +327,12 @@ class SimpleComputedContext implements RenderContext {
   ActionHandler get actionHandler => throw UnsupportedError(
       'SimpleComputedContext does not support action handling');
 
+  /// A computed expression can name a theme value, and [BindingEngine]'s
+  /// resolution chain consults the theme for any path it did not find in
+  /// state. Refusing here threw on *every* computed property, not just the
+  /// ones that mention a theme — the chain asks before it knows.
   @override
-  ThemeManager get themeManager => throw UnsupportedError(
-      'SimpleComputedContext does not support theme access');
+  ThemeManager get themeManager => _themeManager;
 
   @override
   ThemeData get theme => throw UnsupportedError(

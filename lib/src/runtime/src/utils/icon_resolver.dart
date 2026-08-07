@@ -8,6 +8,205 @@ import 'package:flutter/material.dart';
 /// https://fonts.google.com/icons and Flutter's `Icons` class. Unknown names
 /// fall back to `Icons.help_outline` so authors get an obvious "missing
 /// icon" cue rather than a generic black dot.
+
+/// Short aliases that were only understood inside the page renderer.
+///
+/// `renderer.dart` carried its own 580-line icon switch. Two names resolved to
+/// a *different* glyph than the shared map (`camera`, `copy`), so one document
+/// name drew one icon in a page slot and another in a widget — and the rest of
+/// its vocabulary (`car`, `cafe`, `calendar`, …) existed nowhere else, so the
+/// same string that worked on an app bar drew the missing-icon cue in a
+/// `button`. The canonical Material names stay authoritative in [_map]; these
+/// are the legacy short forms, resolved after it.
+const Map<String, IconData> _aliases = {
+  'accessible': Icons.accessible,
+  'account': Icons.account_circle,
+  'air': Icons.air,
+  'api': Icons.api,
+  'archive': Icons.archive,
+  'attach': Icons.attach_file,
+  'audio': Icons.audiotrack,
+  'baby': Icons.child_friendly,
+  'backup': Icons.backup,
+  'badge': Icons.badge,
+  'barcode': Icons.barcode_reader,
+  'battery': Icons.battery_full,
+  'beach': Icons.beach_access,
+  'bike': Icons.directions_bike,
+  'biotech': Icons.biotech,
+  'book': Icons.book,
+  'branch': Icons.merge_type,
+  'brightness': Icons.brightness_6,
+  'bug': Icons.bug_report,
+  'build_circle': Icons.build_circle,
+  'business': Icons.business,
+  'cafe': Icons.local_cafe,
+  'cake': Icons.cake,
+  'calendar': Icons.calendar_today,
+  'car': Icons.directions_car,
+  'casino': Icons.casino,
+  'celebration': Icons.celebration,
+  'chart': Icons.insert_chart,
+  'child': Icons.child_care,
+  'class': Icons.class_,
+  'clone': Icons.file_copy,
+  'cloud_sync': Icons.cloud_sync,
+  'cloud_weather': Icons.cloud,
+  'commit': Icons.commit,
+  'compass': Icons.explore,
+  'contacts': Icons.contacts,
+  'cut': Icons.content_cut,
+  'dashboard_customize': Icons.dashboard_customize,
+  'data': Icons.data_usage,
+  'database': Icons.storage,
+  'dependencies': Icons.account_tree,
+  'deploy': Icons.cloud_upload,
+  'desktop': Icons.desktop_windows,
+  'developer': Icons.developer_mode,
+  'diff': Icons.difference,
+  'directions_boat': Icons.directions_boat,
+  'directions_railway': Icons.directions_railway,
+  'directions_subway': Icons.directions_subway,
+  'directions_transit': Icons.directions_transit,
+  'discount': Icons.discount,
+  'dns': Icons.dns,
+  'eco': Icons.eco,
+  'elderly': Icons.elderly,
+  'elevator': Icons.elevator,
+  'emergency': Icons.emergency,
+  'emoji': Icons.emoji_emotions,
+  'energy': Icons.bolt,
+  'escalator': Icons.escalator,
+  'file': Icons.insert_drive_file,
+  'fingerprint': Icons.fingerprint,
+  'fire': Icons.local_fire_department,
+  'firewall': Icons.security,
+  'fitness': Icons.fitness_center,
+  'flower': Icons.local_florist,
+  'fork': Icons.call_split,
+  'forum': Icons.forum,
+  'forward': Icons.forward,
+  'functions': Icons.functions,
+  'games': Icons.games,
+  'gift': Icons.card_giftcard,
+  'gift_card': Icons.card_giftcard,
+  'git': Icons.account_tree,
+  'golf': Icons.golf_course,
+  'gps': Icons.gps_fixed,
+  'healing': Icons.healing,
+  'hospital': Icons.local_hospital,
+  'hotel': Icons.hotel,
+  'inbox': Icons.inbox,
+  'integration': Icons.integration_instructions,
+  'invoice': Icons.receipt_long,
+  'layers': Icons.layers,
+  'layers_clear': Icons.layers_clear,
+  'library': Icons.library_books,
+  'local_activity': Icons.local_activity,
+  'local_airport': Icons.local_airport,
+  'local_atm': Icons.local_atm,
+  'local_bar': Icons.local_bar,
+  'local_cafe': Icons.local_cafe,
+  'local_convenience': Icons.local_convenience_store,
+  'local_dining': Icons.local_dining,
+  'local_drink': Icons.local_drink,
+  'local_gas': Icons.local_gas_station,
+  'local_grocery': Icons.local_grocery_store,
+  'local_hotel': Icons.local_hotel,
+  'local_laundry': Icons.local_laundry_service,
+  'local_library': Icons.local_library,
+  'local_movies': Icons.local_movies,
+  'local_parking': Icons.local_parking,
+  'local_pharmacy': Icons.local_pharmacy,
+  'local_pizza': Icons.local_pizza,
+  'local_play': Icons.local_play,
+  'local_post': Icons.local_post_office,
+  'local_print': Icons.local_printshop,
+  'local_see': Icons.local_see,
+  'local_taxi': Icons.local_taxi,
+  'loyalty': Icons.loyalty,
+  'medical': Icons.medical_services,
+  'merge': Icons.merge,
+  'mood': Icons.mood,
+  'nature': Icons.nature,
+  'night': Icons.nights_stay,
+  'package': Icons.inventory_2,
+  'park': Icons.park,
+  'paste': Icons.content_paste,
+  'pets': Icons.pets,
+  'pharmacy': Icons.local_pharmacy,
+  'pipeline': Icons.double_arrow,
+  'pivot_table': Icons.pivot_table_chart,
+  'play': Icons.play_arrow,
+  'playlist': Icons.playlist_play,
+  'police': Icons.local_police,
+  'pool': Icons.pool,
+  'pregnant': Icons.pregnant_woman,
+  'printer': Icons.print,
+  'psychology': Icons.psychology,
+  'pull_request': Icons.compare_arrows,
+  'puzzle': Icons.extension,
+  'qr_code': Icons.qr_code,
+  'queue_music': Icons.queue_music,
+  'radio': Icons.radio,
+  'rain': Icons.grain,
+  'release': Icons.new_releases,
+  'repeat': Icons.repeat,
+  'reply': Icons.reply,
+  'restaurant': Icons.restaurant,
+  'rollback': Icons.history,
+  'router': Icons.router,
+  'satellite': Icons.satellite,
+  'scanner': Icons.scanner,
+  'school': Icons.school,
+  'science': Icons.science,
+  'select_all': Icons.select_all,
+  'sentiment': Icons.sentiment_satisfied,
+  'settings_bluetooth': Icons.settings_bluetooth,
+  'settings_brightness': Icons.settings_brightness,
+  'settings_input': Icons.settings_input_composite,
+  'settings_power': Icons.settings_power,
+  'settings_system': Icons.settings_system_daydream,
+  'settings_voice': Icons.settings_voice,
+  'shopping': Icons.shopping_cart,
+  'shuffle': Icons.shuffle,
+  'signal': Icons.signal_cellular_4_bar,
+  'sim_card': Icons.sim_card,
+  'snooze': Icons.snooze,
+  'snow': Icons.ac_unit,
+  'source': Icons.source,
+  'spa': Icons.spa,
+  'speaker': Icons.speaker,
+  'sports': Icons.sports,
+  'stairs': Icons.stairs,
+  'storage': Icons.storage,
+  'stroller': Icons.stroller,
+  'tag': Icons.label,
+  'terrain': Icons.terrain,
+  'test': Icons.bug_report,
+  'toys': Icons.toys,
+  'traffic': Icons.traffic,
+  'train': Icons.train,
+  'trending': Icons.trending_up,
+  'unlock': Icons.lock_open,
+  'update': Icons.update,
+  'variables': Icons.code,
+  'version': Icons.label,
+  'video': Icons.videocam,
+  'videocall': Icons.video_call,
+  'volume': Icons.volume_up,
+  'vpn': Icons.vpn_key,
+  'walk': Icons.directions_walk,
+  'wallet': Icons.account_balance_wallet,
+  'water': Icons.water_drop,
+  'weather': Icons.wb_sunny,
+  'webhook': Icons.webhook,
+  'weekend': Icons.weekend,
+  'wheelchair': Icons.wheelchair_pickup,
+  'work': Icons.work,
+  'workspace': Icons.workspaces,
+};
+
 IconData resolveIconData(String name) {
   // Tolerate the `material:` informational prefix that authoring tools
   // (vibe asset picker, LLM patches) sometimes emit. Spec form is the
@@ -15,8 +214,45 @@ IconData resolveIconData(String name) {
   final raw = name.startsWith('material:')
       ? name.substring('material:'.length)
       : name;
-  final data = _map[raw] ?? _map[raw.toLowerCase()];
+  final data = _map[raw] ??
+      _map[raw.toLowerCase()] ??
+      _aliases[raw] ??
+      _aliases[raw.toLowerCase()];
   if (data != null) return data;
+  return Icons.help_outline;
+}
+
+/// Resolves any `IconRef` form to [IconData].
+///
+/// `IconRef` (configs/_primitive) declares three forms — a name, a codepoint
+/// object `{codepoint, fontFamily?, fontPackage?}`, and a resource object
+/// `{uri, origin?}` — and says they are accepted *anywhere an icon is taken*.
+/// Every icon slot therefore has to read all three: a factory that does
+/// `properties['icon'] as String?` throws on the two object forms, which is a
+/// document the schema plainly allows.
+///
+/// The resource form has no [IconData] to resolve to; a slot that can draw an
+/// image should reach for [AssetRef] itself (as the `icon` widget does), and
+/// one that cannot gets the same missing-icon cue an unknown name gets.
+IconData resolveIconRef(Object? value) {
+  if (value is String) return resolveIconData(value);
+  if (value is Map) {
+    final codepoint = value['codepoint'];
+    if (codepoint is int) {
+      // Runtime codepoint: the const-inferring context cannot apply here.
+      // ignore: prefer_const_constructors
+      return IconData(
+        // ignore: non_const_argument_for_const_parameter
+        codepoint,
+        // ignore: non_const_argument_for_const_parameter
+        fontFamily: (value['fontFamily'] as String?) ?? 'MaterialIcons',
+        // ignore: non_const_argument_for_const_parameter
+        fontPackage: value['fontPackage'] as String?,
+      );
+    }
+    final name = value['name'];
+    if (name is String) return resolveIconData(name);
+  }
   return Icons.help_outline;
 }
 

@@ -17,11 +17,11 @@ class GraphWidgetFactory extends WidgetFactory {
     // collides with the widget-type discriminator, so `chartType` is the
     // preferred form.
     final type =
-        (properties['chartType'] ?? properties['type']) as String? ?? 'line';
-    final width = properties['width']?.toDouble() ?? 300.0;
-    final height = properties['height']?.toDouble() ?? 200.0;
-    final showGrid = properties['showGrid'] as bool? ?? true;
-    final showLabels = properties['showLabels'] as bool? ?? true;
+        readEnum(properties['chartType'] ?? properties['type'], context) ?? 'line';
+    final width = numberOf(properties['width'], context) ?? 300.0;
+    final height = numberOf(properties['height'], context) ?? 200.0;
+    final showGrid = boolOf(properties['showGrid'], context) ?? true;
+    final showLabels = boolOf(properties['showLabels'], context) ?? true;
     final themePrimary =
         context.themeManager.getColorValue('primary') ?? Colors.blue;
     final lineColor =
@@ -39,7 +39,7 @@ class GraphWidgetFactory extends WidgetFactory {
             context.resolve(properties['labelColor']), context) ??
         context.themeManager.getColorValue('onSurface') ??
         Colors.grey[600]!;
-    final strokeWidth = properties['strokeWidth']?.toDouble() ?? 2.0;
+    final strokeWidth = numberOf(properties['strokeWidth'], context) ?? 2.0;
 
     // Parse data points
     List<double> values = [];
@@ -50,8 +50,12 @@ class GraphWidgetFactory extends WidgetFactory {
         values.add(item.toDouble());
         labels.add('');
       } else if (item is Map) {
-        values.add((item['value'] as num?)?.toDouble() ?? 0.0);
-        labels.add(item['label']?.toString() ?? '');
+        // `{x, y}` is the first form §10.12 names and this read only
+        // `{label, value}`, so a graph written the documented way plotted a
+        // flat line of zeros. Both forms are read now.
+        final value = item['value'] ?? item['y'];
+        values.add(value is num ? value.toDouble() : 0.0);
+        labels.add((item['label'] ?? item['x'])?.toString() ?? '');
       }
     }
 

@@ -16,10 +16,10 @@ class NavigationRailWidgetFactory extends WidgetFactory {
     final selectedIndex = selectedIndexRaw is int
         ? selectedIndexRaw
         : (selectedIndexRaw is num ? selectedIndexRaw.toInt() : 0);
-    final extended = properties['extended'] as bool? ?? false;
-    final minWidth = properties['minWidth']?.toDouble();
-    final minExtendedWidth = properties['minExtendedWidth']?.toDouble();
-    final groupAlignment = properties['groupAlignment']?.toDouble() ?? -1.0;
+    final extended = boolOf(properties['extended'], context) ?? false;
+    final minWidth = numberOf(properties['minWidth'], context);
+    final minExtendedWidth = numberOf(properties['minExtendedWidth'], context);
+    final groupAlignment = numberOf(properties['groupAlignment'], context) ?? -1.0;
     final labelType = _parseLabelType(properties['labelType']);
     final unselectedLabelTextStyle =
         _parseTextStyle(properties['unselectedLabelTextStyle'], context);
@@ -31,7 +31,7 @@ class NavigationRailWidgetFactory extends WidgetFactory {
         _parseIconThemeData(properties['selectedIconTheme'], context);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
-    final elevation = properties['elevation']?.toDouble();
+    final elevation = numberOf(properties['elevation'], context);
 
     // Extract destinations
     final destinationsData = (properties['items'] ?? properties['destinations']) as List<dynamic>? ?? [];
@@ -49,7 +49,7 @@ class NavigationRailWidgetFactory extends WidgetFactory {
 
     // Extract action handler
     final onDestinationSelected =
-        (properties['onChange'] ?? properties['onSelect'] ?? properties['change'] ?? properties['select'] ?? properties['onDestinationSelected']) as Map<String, dynamic>?;
+        actionOf(properties['onChange'] ?? properties['onSelect'] ?? properties['change'] ?? properties['select'] ?? properties['onDestinationSelected'], context);
 
     Widget navigationRail = NavigationRail(
       selectedIndex: selectedIndex.clamp(0, destinations.length - 1),

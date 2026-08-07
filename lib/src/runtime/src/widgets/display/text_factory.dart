@@ -249,19 +249,27 @@ class TextWidgetFactory extends WidgetFactory {
         case 'w900':
           return FontWeight.w900;
         default:
+          // The CSS numeric spelling the registry accepts (`"700"`), which is
+          // what a document carrying web-authored styles writes. Falling
+          // through to null here left the text at its inherited weight while
+          // the schema reported the document valid.
+          final numeric = int.tryParse(value);
+          if (numeric != null) return _weightFromNumber(numeric);
           return null;
       }
     }
 
-    if (value is int) {
-      final index = (value ~/ 100) - 1;
-      if (index >= 0 && index < FontWeight.values.length) {
-        return FontWeight.values[index];
-      }
-      return null;
-    }
+    if (value is int) return _weightFromNumber(value);
 
     return null;
+  }
+
+  /// `100`–`900` in hundreds, the one numeric vocabulary CSS and Flutter share.
+  FontWeight? _weightFromNumber(int value) {
+    if (value % 100 != 0) return null;
+    final index = (value ~/ 100) - 1;
+    if (index < 0 || index >= FontWeight.values.length) return null;
+    return FontWeight.values[index];
   }
 
   FontStyle? _parseFontStyle(String? value) {

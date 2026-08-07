@@ -13,7 +13,7 @@ class ErrorRecoveryWidgetFactory extends WidgetFactory {
     final handlers =
         properties['handlers'] as Map<String, dynamic>? ?? {};
     final fallback = properties['fallback'] as Map<String, dynamic>?;
-    final onError = properties['onError'] as Map<String, dynamic>?;
+    final onError = actionOf(properties['onError'], context);
     final showDetails =
         context.resolve<bool>(properties['showDetails'] ?? false);
 

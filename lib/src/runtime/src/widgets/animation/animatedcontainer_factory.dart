@@ -11,12 +11,12 @@ class AnimatedContainerWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final duration =
-        Duration(milliseconds: properties['duration'] as int? ?? 300);
-    final curve = _parseCurve(properties['curve'] as String?);
+        Duration(milliseconds: dimensionOf(properties['duration'], context)?.toInt() ?? 300);
+    final curve = _parseCurve(stringOf(properties['curve'], context));
     final width = parseDimension(properties['width']);
     final height = parseDimension(properties['height']);
-    final padding = parseEdgeInsets(properties['padding']);
-    final margin = parseEdgeInsets(properties['margin']);
+    final padding = edgeInsetsOf(properties['padding'], context);
+    final margin = edgeInsetsOf(properties['margin'], context);
     final alignment = parseAlignment(properties['alignment']);
     final decoration = _parseDecoration(properties['decoration'], context);
     final foregroundDecoration =
@@ -39,7 +39,7 @@ class AnimatedContainerWidgetFactory extends WidgetFactory {
     }
 
     // Extract action handlers
-    final onEnd = properties['onEnd'] as Map<String, dynamic>?;
+    final onEnd = actionOf(properties['onEnd'], context);
 
     Widget animatedContainer = AnimatedContainer(
       duration: duration,

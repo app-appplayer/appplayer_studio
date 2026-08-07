@@ -8,12 +8,18 @@ import '../../utils/icon_resolver.dart';
 
 /// Factory for TextField widgets
 class TextFieldWidgetFactory extends WidgetFactory {
+  /// Controllers whose obscured field is currently revealed. Keyed by
+  /// controller so two password fields on a page toggle independently, and
+  /// held here rather than in a local so the flag survives the rebuild the
+  /// toggle itself triggers.
+  static final Set<Object> _revealed = <Object>{};
+
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
     // Check if debouncing is enabled
-    final debounceDelay = properties['debounce'] as int?;
+    final debounceDelay = readInt(properties['debounce'], context);
 
     if (debounceDelay != null && debounceDelay > 0) {
       return _DebouncedTextField(
@@ -38,18 +44,18 @@ class TextFieldWidgetFactory extends WidgetFactory {
     final hint = context.resolve<String?>(properties['hint']) ??
         context.resolve<String?>(properties['placeholder']) ??
         '';
-    final label = properties['label'] as String?;
-    final helperText = properties['helperText'] as String?;
-    final prefixIcon = properties['prefixIcon'] as String?;
-    final suffixIcon = properties['suffixIcon'] as String?;
-    final obscureText = properties['obscureText'] as bool? ?? false;
-    final enabled = properties['enabled'] as bool? ?? true;
-    final readOnly = properties['readOnly'] as bool? ?? false;
-    final maxLines = properties['maxLines'] as int? ?? 1;
-    final maxLength = properties['maxLength'] as int?;
+    final label = readString(properties['label'], context);
+    final helperText = readString(properties['helperText'], context);
+    final prefixIcon = readString(properties['prefixIcon'], context);
+    final suffixIcon = readString(properties['suffixIcon'], context);
+    final obscureText = readBool(properties['obscureText'], context) ?? false;
+    final enabled = readBool(properties['enabled'], context) ?? true;
+    final readOnly = readBool(properties['readOnly'], context) ?? false;
+    final maxLines = dimensionOf(properties['maxLines'], context)?.toInt() ?? 1;
+    final maxLength = dimensionOf(properties['maxLength'], context)?.toInt();
     // spec v1.0: 'inputType', legacy: 'keyboardType'
     final keyboardType = _parseKeyboardType(
-        properties['inputType'] ?? properties['keyboardType']);
+        readEnum(properties['inputType'] ?? properties['keyboardType'], context));
     final textInputAction =
         _parseTextInputAction(properties['textInputAction']);
 
@@ -71,13 +77,13 @@ class TextFieldWidgetFactory extends WidgetFactory {
     }
 
     // Get event handlers - MCP UI DSL v1.0 spec
-    final changeAction = (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
-    final submitAction = (properties['onSubmit'] ?? properties['submit']) as Map<String, dynamic>?;
-    final blurAction = (properties['onBlur'] ?? properties['blur']) as Map<String, dynamic>?;
-    final focusAction = (properties['onFocus'] ?? properties['focus']) as Map<String, dynamic>?;
+    final changeAction = actionOf(properties['onChange'] ?? properties['change'], context);
+    final submitAction = actionOf(properties['onSubmit'] ?? properties['submit'], context);
+    final blurAction = actionOf(properties['onBlur'] ?? properties['blur'], context);
+    final focusAction = actionOf(properties['onFocus'] ?? properties['focus'], context);
 
     // Get initial value from binding or value property
-    final bindingPath = properties['binding'] as String?;
+    final bindingPath = readString(properties['binding'], context);
     String initialValue = '';
     if (bindingPath != null) {
       initialValue = context.getState(bindingPath)?.toString() ?? '';
@@ -104,8 +110,27 @@ class TextFieldWidgetFactory extends WidgetFactory {
       );
     }
 
-    // Build text field - always use TextField for consistency with tests
-    Widget textField = TextField(
+    // `showToggle` offers a reveal control alongside an obscured field
+    // (§2.6.5). The field is rebuilt through this closure so the toggle can
+    // flip `obscureText` without a second copy of the widget drifting from
+    // the first.
+    final showToggle =
+        context.resolve<bool>(properties['showToggle'] ?? false) && obscureText;
+
+    // `defaultCountry` (ISO 3166-1 alpha-2) seeds the dialling code on a phone
+    // field. Declared in 1.4 and never read, so a document naming a country
+    // got an empty field and no prefix.
+    final inputTypeName =
+        readEnum(properties['inputType'] ?? properties['keyboardType'], context);
+    final defaultCountry = inputTypeName == 'phone'
+        ? readEnum(properties['defaultCountry'], context)
+        : null;
+    final diallingPrefix = _diallingCodes[defaultCountry?.toUpperCase()];
+    if (diallingPrefix != null && controller.text.isEmpty) {
+      controller.text = diallingPrefix;
+    }
+
+    Widget buildField({required bool obscure, Widget? extraSuffix}) => TextField(
       controller: controller,
       style: style,
       decoration: InputDecoration(
@@ -113,12 +138,14 @@ class TextFieldWidgetFactory extends WidgetFactory {
         labelText: label,
         helperText: helperText,
         prefixIcon: prefixIcon != null ? Icon(_parseIcon(prefixIcon)) : null,
-        suffixIcon: suffixIcon != null ? Icon(_parseIcon(suffixIcon)) : null,
+        prefixText: diallingPrefix,
+        suffixIcon: extraSuffix ??
+            (suffixIcon != null ? Icon(_parseIcon(suffixIcon)) : null),
         border: const OutlineInputBorder(),
         counterText: maxLength != null ? null : '',
         errorText: errorText,
       ),
-      obscureText: obscureText,
+      obscureText: obscure,
       enabled: enabled,
       readOnly: readOnly,
       maxLines: maxLines,
@@ -133,7 +160,7 @@ class TextFieldWidgetFactory extends WidgetFactory {
         }
 
         // Update state if binding is specified
-        final path = properties['binding'] as String?;
+        final path = readString(properties['binding'], context);
         if (path != null) {
           context.setValue(path, newValue);
         }
@@ -154,7 +181,7 @@ class TextFieldWidgetFactory extends WidgetFactory {
       },
       onSubmitted: (newValue) {
         // Update state if binding is specified
-        final path = properties['binding'] as String?;
+        final path = readString(properties['binding'], context);
         if (path != null) {
           context.setValue(path, newValue);
         }
@@ -174,6 +201,24 @@ class TextFieldWidgetFactory extends WidgetFactory {
         }
       },
     );
+
+    Widget textField = showToggle
+        ? StatefulBuilder(
+            builder: (_, setLocal) {
+              return buildField(
+                obscure: !_revealed.contains(controller),
+                extraSuffix: IconButton(
+                  icon: Icon(_revealed.contains(controller)
+                      ? Icons.visibility_off
+                      : Icons.visibility),
+                  onPressed: () => setLocal(() {
+                    if (!_revealed.remove(controller)) _revealed.add(controller);
+                  }),
+                ),
+              );
+            },
+          )
+        : buildField(obscure: obscureText);
 
     // Wrap in Focus widget if blur or focus action is needed.
     if (blurAction != null || focusAction != null) {
@@ -204,26 +249,28 @@ class TextFieldWidgetFactory extends WidgetFactory {
     Map<String, dynamic> definition,
     RenderContext context,
     TextEditingController controller,
-    Function(String) onValueChanged,
-  ) {
+    Function(String) onValueChanged, {
+    String? validationMessage,
+    void Function(String? message)? onValidated,
+  }) {
     final properties = extractProperties(definition);
 
     // Extract properties
     final hint = context.resolve<String?>(properties['hint']) ??
         context.resolve<String?>(properties['placeholder']) ??
         '';
-    final label = properties['label'] as String?;
-    final helperText = properties['helperText'] as String?;
-    final prefixIcon = properties['prefixIcon'] as String?;
-    final suffixIcon = properties['suffixIcon'] as String?;
-    final obscureText = properties['obscureText'] as bool? ?? false;
-    final enabled = properties['enabled'] as bool? ?? true;
-    final readOnly = properties['readOnly'] as bool? ?? false;
-    final maxLines = properties['maxLines'] as int? ?? 1;
-    final maxLength = properties['maxLength'] as int?;
+    final label = readString(properties['label'], context);
+    final helperText = readString(properties['helperText'], context);
+    final prefixIcon = readString(properties['prefixIcon'], context);
+    final suffixIcon = readString(properties['suffixIcon'], context);
+    final obscureText = readBool(properties['obscureText'], context) ?? false;
+    final enabled = readBool(properties['enabled'], context) ?? true;
+    final readOnly = readBool(properties['readOnly'], context) ?? false;
+    final maxLines = dimensionOf(properties['maxLines'], context)?.toInt() ?? 1;
+    final maxLength = dimensionOf(properties['maxLength'], context)?.toInt();
     // spec v1.0: 'inputType', legacy: 'keyboardType'
     final keyboardType = _parseKeyboardType(
-        properties['inputType'] ?? properties['keyboardType']);
+        readEnum(properties['inputType'] ?? properties['keyboardType'], context));
     final textInputAction =
         _parseTextInputAction(properties['textInputAction']);
 
@@ -244,11 +291,12 @@ class TextFieldWidgetFactory extends WidgetFactory {
     }
 
     // Get event handlers
-    final changeAction = (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
-    final submitAction = (properties['onSubmit'] ?? properties['submit']) as Map<String, dynamic>?;
-    final blurAction = (properties['onBlur'] ?? properties['blur']) as Map<String, dynamic>?;
-    // ignore: unused_local_variable
-    final focusAction = (properties['onFocus'] ?? properties['focus']) as Map<String, dynamic>?;
+    final changeAction = actionOf(properties['onChange'] ?? properties['change'], context);
+    final submitAction = actionOf(properties['onSubmit'] ?? properties['submit'], context);
+    final blurAction = actionOf(properties['onBlur'] ?? properties['blur'], context);
+    // Read and dropped: a field declaring `onFocus` never fired it, while
+    // `onBlur` beside it worked.
+    final focusAction = actionOf(properties['onFocus'] ?? properties['focus'], context);
 
     // Parse style
     TextStyle? style;
@@ -278,7 +326,9 @@ class TextFieldWidgetFactory extends WidgetFactory {
         suffixIcon: suffixIcon != null ? Icon(_parseIcon(suffixIcon)) : null,
         border: const OutlineInputBorder(),
         counterText: maxLength != null ? null : '',
-        errorText: errorText,
+        // An explicit `error` wins; otherwise the field shows what its own
+        // validation rules said about the current value.
+        errorText: errorText ?? validationMessage,
       ),
       obscureText: obscureText,
       enabled: enabled,
@@ -293,11 +343,12 @@ class TextFieldWidgetFactory extends WidgetFactory {
 
         // Validate if rules are defined
         if (hasValidation) {
-          ValidationEngine.validate(newValue, validationRules);
+          final result = ValidationEngine.validate(newValue, validationRules);
+          onValidated?.call(result.isValid ? null : result.message);
         }
 
         // Update state if binding is specified
-        final path = properties['binding'] as String?;
+        final path = readString(properties['binding'], context);
         if (path != null) {
           context.setValue(path, newValue);
         }
@@ -317,7 +368,7 @@ class TextFieldWidgetFactory extends WidgetFactory {
       },
       onSubmitted: (newValue) {
         // Update state if binding is specified
-        final path = properties['binding'] as String?;
+        final path = readString(properties['binding'], context);
         if (path != null) {
           context.setValue(path, newValue);
         }
@@ -337,21 +388,21 @@ class TextFieldWidgetFactory extends WidgetFactory {
       },
     );
 
-    // Wrap in Focus if blur action is specified
-    if (blurAction != null) {
+    // Wrap in Focus when either focus action is specified
+    if (blurAction != null || focusAction != null) {
       textField = Focus(
         onFocusChange: (hasFocus) {
-          if (!hasFocus) {
-            final eventContext = context.createChildContext(
-              variables: {
-                'event': {
-                  'value': controller.text,
-                  'type': 'blur',
-                },
+          final action = hasFocus ? focusAction : blurAction;
+          if (action == null) return;
+          final eventContext = context.createChildContext(
+            variables: {
+              'event': {
+                'value': controller.text,
+                'type': hasFocus ? 'focus' : 'blur',
               },
-            );
-            eventContext.handleAction(blurAction);
-          }
+            },
+          );
+          eventContext.handleAction(action);
         },
         child: textField,
       );
@@ -455,12 +506,16 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
   void initState() {
     super.initState();
 
+    // The registry key is `textInput` (the canonical widget name); asking for
+    // `TextField` returned null and the `!` threw, so *any* field declaring
+    // `debounce` took the page down with a null-check error the author could
+    // not connect to the property they had just added.
     final properties = widget.context.renderer.widgetRegistry
-        .get('TextField')!
+        .get('textInput')!
         .extractProperties(widget.definition);
 
     // Get initial value
-    final bindingPath = properties['binding'] as String?;
+    final bindingPath = readString(properties['binding'], widget.context);
     String initialValue = '';
     if (bindingPath != null) {
       initialValue = widget.context.getState(bindingPath)?.toString() ?? '';
@@ -481,8 +536,12 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
   }
 
   void _handleChange(String newValue) {
+    // The registry key is `textInput` (the canonical widget name); asking for
+    // `TextField` returned null and the `!` threw, so *any* field declaring
+    // `debounce` took the page down with a null-check error the author could
+    // not connect to the property they had just added.
     final properties = widget.context.renderer.widgetRegistry
-        .get('TextField')!
+        .get('textInput')!
         .extractProperties(widget.definition);
 
     // Update local value immediately for responsive UI
@@ -500,13 +559,14 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
       }
 
       // Update state if binding is specified
-      final path = properties['binding'] as String?;
+      final path = readString(properties['binding'], widget.context);
       if (path != null) {
         widget.context.setValue(path, newValue);
       }
 
       // Execute action if change is specified
-      final changeAction = (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
+      final changeAction = readAction(
+          properties['onChange'] ?? properties['change'], widget.context);
       if (changeAction != null) {
         final eventContext = widget.context.createChildContext(
           variables: {
@@ -523,7 +583,8 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final factory = widget.context.renderer.widgetRegistry.get('TextField')
+    // Same registry key as initState — `textInput`.
+    final factory = widget.context.renderer.widgetRegistry.get('textInput')
         as TextFieldWidgetFactory;
     final properties = factory.extractProperties(widget.definition);
 
@@ -598,6 +659,7 @@ class _StatefulTextField extends StatefulWidget {
 }
 
 class _StatefulTextFieldState extends State<_StatefulTextField> {
+  String? _validationMessage;
   late TextEditingController _controller;
   late String _currentValue;
 
@@ -613,7 +675,7 @@ class _StatefulTextFieldState extends State<_StatefulTextField> {
     final properties = factory.extractProperties(widget.definition);
 
     // Get initial value from binding or value property
-    final bindingPath = properties['binding'] as String?;
+    final bindingPath = readString(properties['binding'], widget.context);
     String initialValue = '';
     if (bindingPath != null) {
       initialValue = widget.context.getState(bindingPath)?.toString() ?? '';
@@ -634,7 +696,7 @@ class _StatefulTextFieldState extends State<_StatefulTextField> {
     final properties = factory.extractProperties(widget.definition);
 
     // Check if value from state has changed
-    final bindingPath = properties['binding'] as String?;
+    final bindingPath = readString(properties['binding'], widget.context);
     String newValue = '';
     if (bindingPath != null) {
       newValue = widget.context.getState(bindingPath)?.toString() ?? '';
@@ -679,7 +741,29 @@ class _StatefulTextFieldState extends State<_StatefulTextField> {
       (value) {
         // Update our internal state
         _currentValue = value;
-      }
+      },
+      validationMessage: _validationMessage,
+      onValidated: (message) {
+        if (message == _validationMessage) return;
+        // Validation used to run and its result was dropped on the floor —
+        // `ValidationEngine.validate(...)` was called and the answer thrown
+        // away under a comment saying it would be used "later if needed". A
+        // declared `validation` block therefore did nothing at all, which
+        // reads as input that was always valid.
+        setState(() => _validationMessage = message);
+      },
     );
   }
 }
+
+/// Dialling codes for the countries a `phone` field can seed from
+/// `defaultCountry`. Kept to the ISO alpha-2 codes the spec names; an
+/// unlisted country simply seeds nothing rather than guessing a prefix.
+const Map<String, String> _diallingCodes = <String, String>{
+  'KR': '+82', 'US': '+1', 'CA': '+1', 'JP': '+81', 'CN': '+86',
+  'GB': '+44', 'DE': '+49', 'FR': '+33', 'IT': '+39', 'ES': '+34',
+  'NL': '+31', 'SE': '+46', 'NO': '+47', 'DK': '+45', 'FI': '+358',
+  'AU': '+61', 'NZ': '+64', 'IN': '+91', 'SG': '+65', 'HK': '+852',
+  'TW': '+886', 'BR': '+55', 'MX': '+52', 'AR': '+54', 'ZA': '+27',
+  'AE': '+971', 'SA': '+966', 'RU': '+7', 'PL': '+48', 'CH': '+41',
+};

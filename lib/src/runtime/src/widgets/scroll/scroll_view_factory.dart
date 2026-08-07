@@ -10,18 +10,18 @@ class ScrollViewFactory extends WidgetFactory {
 
     // Get scroll direction (spec v1.0: 'direction', legacy: 'scrollDirection')
     final scrollDirectionStr =
-        (properties['direction'] ?? properties['scrollDirection']) as String?;
+        readEnum(properties['direction'] ?? properties['scrollDirection'], context);
     final scrollDirection =
         scrollDirectionStr == 'horizontal' ? Axis.horizontal : Axis.vertical;
 
     // Get other properties
-    final reverse = properties['reverse'] as bool? ?? false;
-    final padding = parseEdgeInsets(properties['padding']);
-    final primary = properties['primary'] as bool?;
+    final reverse = boolOf(properties['reverse'], context) ?? false;
+    final padding = edgeInsetsOf(properties['padding'], context);
+    final primary = boolOf(properties['primary'], context);
     // Spec § scrollView v1.3 — `scrollPhysics` (canonical) replaces
     // the legacy `physics` key. Both accepted for backward compat.
     final physics = _parseScrollPhysics(
-        properties['scrollPhysics'] ?? properties['physics']);
+        readEnum(properties['scrollPhysics'] ?? properties['physics'], context));
 
     // The registry declares `child`, `children` **and** `slivers`; this
     // factory read only the first, so a document written with `children` —

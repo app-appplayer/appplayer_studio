@@ -12,8 +12,8 @@ class AlignWidgetFactory extends WidgetFactory {
     // Extract properties
     final alignment =
         parseAlignment(properties['alignment']) ?? Alignment.center;
-    final widthFactor = properties['widthFactor']?.toDouble();
-    final heightFactor = properties['heightFactor']?.toDouble();
+    final widthFactor = numberOf(properties['widthFactor'], context);
+    final heightFactor = numberOf(properties['heightFactor'], context);
 
     // Align is a single-child widget, so child should be in properties
     Widget? child;

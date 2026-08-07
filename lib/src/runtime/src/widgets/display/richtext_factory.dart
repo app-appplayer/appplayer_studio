@@ -11,15 +11,15 @@ class RichTextWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final textAlign =
-        _parseTextAlign(properties['textAlign']) ?? TextAlign.start;
-    final textDirection = _parseTextDirection(properties['textDirection']);
-    final softWrap = properties['softWrap'] as bool? ?? true;
+        _parseTextAlign(readEnum(properties['textAlign'], context)) ?? TextAlign.start;
+    final textDirection = _parseTextDirection(readEnum(properties['textDirection'], context));
+    final softWrap = boolOf(properties['softWrap'], context) ?? true;
     final overflow =
-        _parseTextOverflow(properties['overflow']) ?? TextOverflow.clip;
+        _parseTextOverflow(readEnum(properties['overflow'], context)) ?? TextOverflow.clip;
     final textScaler = properties['textScaleFactor'] != null
         ? TextScaler.linear(properties['textScaleFactor'].toDouble())
         : TextScaler.noScaling;
-    final maxLines = properties['maxLines'] as int?;
+    final maxLines = dimensionOf(properties['maxLines'], context)?.toInt();
 
     // Build text spans
     final spans = properties['spans'] as List<dynamic>? ?? [];

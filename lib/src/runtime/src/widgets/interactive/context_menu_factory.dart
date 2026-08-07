@@ -19,7 +19,7 @@ class ContextMenuFactory extends WidgetFactory {
 
     final items = context.resolve<List<dynamic>?>(properties['items']) ?? const [];
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
-    final onSelect = properties['onSelect'] as Map<String, dynamic>?;
+    final onSelect = actionOf(properties['onSelect'], context);
 
     final child = context.renderer.renderWidget(childDef, context);
     if (!enabled) return child;

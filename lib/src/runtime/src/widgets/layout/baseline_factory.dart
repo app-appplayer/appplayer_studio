@@ -10,7 +10,7 @@ class BaselineWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final baseline = properties['baseline']?.toDouble() ?? 0.0;
+    final baseline = numberOf(properties['baseline'], context) ?? 0.0;
     final baselineType = _parseTextBaseline(properties['baselineType']) ??
         TextBaseline.alphabetic;
 

@@ -28,6 +28,18 @@ class ChartWidgetFactory extends WidgetFactory {
     // written the documented way declared its dataset labels and drew no
     // legend at all. `showLegend` stays as a legacy override.
     final options = context.resolve(properties['options']);
+    // §10 `options.animation.duration` (ms, default 1000) and
+    // `options.responsive` (default true). Both were declared in the registry,
+    // documented in the prose example, and read by nobody: a chart asking for
+    // a one-second reveal appeared instantly, and `responsive: false` filled
+    // its parent exactly like `true`.
+    final animation = options is Map ? options['animation'] : null;
+    final animationMs = animation is Map
+        ? (readNumber(animation['duration'], context) ?? 1000).round()
+        : 1000;
+    final responsive = options is Map
+        ? (readBool(options['responsive'], context) ?? true)
+        : true;
     final legendPosition = (() {
       final legend = options is Map ? options['legend'] : null;
       final declared = legend is Map ? legend['position'] : null;
@@ -76,12 +88,16 @@ class ChartWidgetFactory extends WidgetFactory {
 
     if (isMultiDataset) {
       datasets = _parseDatasets(rawData, context);
-      dataLabels = _parseLabels(rawData);
+      dataLabels = _parseLabels(rawData, context);
       // Convert first dataset to ChartDataPoint for backward compat
       chartData = _datasetToPoints(datasets.isNotEmpty ? datasets.first : null, dataLabels);
     } else {
-      final data = context.resolve<List<dynamic>?>(rawData ?? []) ??
-          [];
+      // `data` is `object | array`. An object without `datasets` reached the
+      // list cast and threw — a shapeless object is schema-legal, so it draws
+      // an empty chart rather than taking the page down with it.
+      final resolvedData =
+          rawData is Map ? null : context.resolve<Object?>(rawData ?? []);
+      final data = resolvedData is List ? resolvedData : const <dynamic>[];
       chartData = _parseChartData(data, chartType);
       datasets = [];
       dataLabels = chartData.map((p) => p.label).toList();
@@ -118,9 +134,11 @@ class ChartWidgetFactory extends WidgetFactory {
       );
     }
 
-    // Build chart widget
+    // Build chart widget. `responsive: false` means "do not resize with the
+    // container", so a chart that declared no width takes a fixed one instead
+    // of filling whatever it is put in.
     Widget chart = Container(
-      width: width,
+      width: width ?? (responsive ? null : 300.0),
       height: height,
       decoration: BoxDecoration(
         border: Border.all(color: effectiveBorder),
@@ -148,21 +166,25 @@ class ChartWidgetFactory extends WidgetFactory {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: CustomPaint(
-                painter: _ChartPainter(
-                  chartType: chartType,
-                  data: chartData,
-                  datasets: datasets,
-                  dataLabels: dataLabels,
-                  showGrid: showGrid,
-                  showLabels: showLabels,
-                  primaryColor: primaryColor,
-                  colors: colors,
-                  gridColor: gridColor,
-                  labelColor: labelColor,
-                  backgroundColor: effectiveBackground,
+              child: _ChartReveal(
+                duration: Duration(milliseconds: animationMs.clamp(0, 60000)),
+                builder: (progress) => CustomPaint(
+                  painter: _ChartPainter(
+                    progress: progress,
+                    chartType: chartType,
+                    data: chartData,
+                    datasets: datasets,
+                    dataLabels: dataLabels,
+                    showGrid: showGrid,
+                    showLabels: showLabels,
+                    primaryColor: primaryColor,
+                    colors: colors,
+                    gridColor: gridColor,
+                    labelColor: labelColor,
+                    backgroundColor: effectiveBackground,
+                  ),
+                  size: Size.infinite,
                 ),
-                size: Size.infinite,
               ),
             ),
           ),
@@ -203,33 +225,57 @@ class ChartWidgetFactory extends WidgetFactory {
     Colors.indigo,
   ];
 
-  List<String> _parseLabels(dynamic rawData) {
+  List<String> _parseLabels(dynamic rawData, RenderContext context) {
     if (rawData is! Map) return [];
-    return (rawData['labels'] as List<dynamic>?)
-            ?.map((l) => l.toString())
-            .toList() ??
-        [];
+    final labels = context.resolve<Object?>(rawData['labels']);
+    if (labels is! List) return [];
+    return labels
+        .map((l) => context.resolve<Object?>(l)?.toString() ?? '')
+        .toList();
   }
 
   List<ChartDataset> _parseDatasets(dynamic rawData, RenderContext context) {
     if (rawData is! Map) return [];
-    final datasets = rawData['datasets'] as List<dynamic>?;
-    if (datasets == null || datasets.isEmpty) return [];
+    // One resolve for the whole list: `resolve` walks maps and lists, so this
+    // covers `datasets: "{{series}}"` and a literal list whose dataset values
+    // are themselves bindings. Reading the raw map — which is what this did —
+    // meant a chart fed from state drew nothing at all.
+    final resolved = context.resolve<Object?>(rawData['datasets']);
+    if (resolved is! List || resolved.isEmpty) return [];
 
-    return datasets.map((ds) {
-      final dsMap = ds as Map<String, dynamic>;
-      final values = (dsMap['data'] as List<dynamic>?)
-              ?.map((v) => (v as num).toDouble())
-              .toList() ??
-          [];
-      return ChartDataset(
-        label: dsMap['label']?.toString() ?? '',
-        data: values,
-        color: parseColor(context.resolve(dsMap['color']), context),
-        borderColor: parseColor(context.resolve(dsMap['borderColor']), context),
-        fill: dsMap['fill'] as bool? ?? false,
-      );
-    }).toList();
+    return resolved
+        .map((ds) {
+          if (ds is! Map) return null;
+          final dsMap = Map<String, dynamic>.from(ds);
+          final rawValues = dsMap['data'];
+          final values = <double>[];
+          if (rawValues is List) {
+            for (final value in rawValues) {
+              // A live feed carries gaps and strings. One of them must not
+              // throw the page away — the point that cannot be read is the
+              // only thing lost.
+              if (value is num) {
+                values.add(value.toDouble());
+              } else if (value is String) {
+                final parsed = double.tryParse(value);
+                if (parsed != null) values.add(parsed);
+              }
+            }
+          }
+          // Spec §10: `borderColor` is the line, `backgroundColor` is the
+          // fill. `color` is neither — it is a legacy spelling this factory
+          // invented, kept as a fallback so documents carrying it still draw.
+          final legacy = parseColor(dsMap['color'], context);
+          return ChartDataset(
+            label: dsMap['label']?.toString() ?? '',
+            data: values,
+            color: parseColor(dsMap['backgroundColor'], context) ?? legacy,
+            borderColor: parseColor(dsMap['borderColor'], context) ?? legacy,
+            fill: dsMap['fill'] == true,
+          );
+        })
+        .whereType<ChartDataset>()
+        .toList();
   }
 
   List<ChartDataPoint> _datasetToPoints(
@@ -354,8 +400,68 @@ class ChartDataset {
   });
 }
 
+
+/// Runs the entry reveal once, and keeps its progress across rebuilds.
+///
+/// A `TweenAnimationBuilder` here would restart on every rebuild — the runtime
+/// rebuilds a page whenever its state changes — and the chart would draw
+/// itself from the left forever without arriving. The controller lives in a
+/// State, so the reveal happens once and stays finished.
+class _ChartReveal extends StatefulWidget {
+  const _ChartReveal({required this.duration, required this.builder});
+
+  final Duration duration;
+  final Widget Function(double progress) builder;
+
+  @override
+  State<_ChartReveal> createState() => _ChartRevealState();
+}
+
+class _ChartRevealState extends State<_ChartReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+    value: widget.duration == Duration.zero ? 1 : 0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.duration > Duration.zero) _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(_ChartReveal old) {
+    super.didUpdateWidget(old);
+    if (old.duration != widget.duration) {
+      _controller.duration = widget.duration;
+      if (widget.duration == Duration.zero) {
+        _controller.value = 1;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        builder: (_, __) => widget.builder(
+          Curves.easeOutCubic.transform(_controller.value.clamp(0.0, 1.0)),
+        ),
+      );
+}
+
 /// Custom painter for rendering charts
 class _ChartPainter extends CustomPainter {
+  /// 0 → 1 while the chart is revealing. Values are scaled by it, which is
+  /// what "the chart animates in" means for every type here.
+  final double progress;
   final String chartType;
   final List<ChartDataPoint> data;
   final List<ChartDataset> datasets;
@@ -374,6 +480,7 @@ class _ChartPainter extends CustomPainter {
   final Color backgroundColor;
 
   _ChartPainter({
+    this.progress = 1.0,
     required this.chartType,
     required this.data,
     required this.datasets,
@@ -391,9 +498,26 @@ class _ChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty && datasets.isEmpty) return;
 
+    // The reveal: a left-to-right wipe over the whole drawing. One clip
+    // rather than a progress term threaded through eleven painters — the
+    // effect is the same and there is nowhere for it to be forgotten.
+    final revealing = progress < 1.0;
+    if (revealing) {
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(0, 0, size.width * progress, size.height));
+    }
+
     switch (chartType.toLowerCase()) {
       case 'bar':
-        _paintBarChart(canvas, size);
+        // The canonical data shape is `{labels, datasets}`, and a bar chart
+        // drawn from it used to show the first dataset only — flattened to
+        // points, in palette colours, with every other series missing and no
+        // sign that anything had been dropped.
+        if (datasets.isNotEmpty) {
+          _paintGroupedBarChart(canvas, size);
+        } else {
+          _paintBarChart(canvas, size);
+        }
         break;
       case 'pie':
         _paintPieChart(canvas, size);
@@ -431,10 +555,12 @@ class _ChartPainter extends CustomPainter {
         }
         break;
     }
+
+    if (revealing) canvas.restore();
   }
 
   void _paintLineChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final graphWidth = size.width - padding * 2;
     final graphHeight = size.height - padding * 2;
 
@@ -515,7 +641,7 @@ class _ChartPainter extends CustomPainter {
 
   /// Paint multi-dataset line chart
   void _paintMultiLineChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final graphWidth = size.width - padding * 2;
     final graphHeight = size.height - padding * 2;
 
@@ -617,7 +743,7 @@ class _ChartPainter extends CustomPainter {
 
   /// Paint area chart (line chart with filled area, no data points)
   void _paintAreaChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final graphWidth = size.width - padding * 2;
     final graphHeight = size.height - padding * 2;
 
@@ -913,8 +1039,24 @@ class _ChartPainter extends CustomPainter {
     }
   }
 
+  /// Axis gutter, never more than the box can spare.
+  ///
+  /// This was a flat 40 when labels are shown, and every paint method starts
+  /// by returning early if the padding leaves no room. A chart 140 tall with a
+  /// legend has 77 for the plot, 40 + 40 takes more than that, and the widget
+  /// drew a panel with nothing in it — no error, no warning, just an empty
+  /// box. Turning the legend on by default is what pushed the common case
+  /// over that line; the flat number was the thing that made it silent.
+  double _paddingFor(Size size) {
+    final wanted = showLabels ? 40.0 : 20.0;
+    // Leave at least half the box to the data. Below that the labels are
+    // worth less than the thing they label.
+    final affordable = math.min(size.width, size.height) / 4;
+    return math.max(4.0, math.min(wanted, affordable));
+  }
+
   void _paintBarChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final graphWidth = size.width - padding * 2;
     final graphHeight = size.height - padding * 2;
 
@@ -984,6 +1126,81 @@ class _ChartPainter extends CustomPainter {
             barSpacing * i +
             (barSpacing - textPainter.width) / 2;
         textPainter.paint(canvas, Offset(x, padding + graphHeight + 8));
+      }
+    }
+  }
+
+  /// Bars grouped by label, one colour per dataset.
+  ///
+  /// `datasets[].backgroundColor` is the fill the spec declares; the palette
+  /// only fills in for a dataset that named no colour.
+  void _paintGroupedBarChart(Canvas canvas, Size size) {
+    final padding = _paddingFor(size);
+    final graphWidth = size.width - padding * 2;
+    final graphHeight = size.height - padding * 2;
+    if (graphWidth <= 0 || graphHeight <= 0) return;
+
+    final series = datasets.where((d) => d.data.isNotEmpty).toList();
+    if (series.isEmpty) return;
+    final groups = series.map((d) => d.data.length).reduce(math.max);
+
+    var minValue = 0.0;
+    var maxValue = double.negativeInfinity;
+    for (final d in series) {
+      for (final v in d.data) {
+        if (v < minValue) minValue = v;
+        if (v > maxValue) maxValue = v;
+      }
+    }
+    if (maxValue == double.negativeInfinity) return;
+    final range = maxValue - minValue;
+    final adjustedRange = range > 0 ? range : 1.0;
+
+    if (showGrid) {
+      _drawGrid(canvas, size, padding, graphWidth, graphHeight);
+    }
+
+    final groupWidth = graphWidth / groups;
+    final barWidth =
+        (groupWidth * 0.8 / series.length).clamp(2.0, 50.0);
+    final zeroY =
+        padding + graphHeight - (-minValue / adjustedRange * graphHeight);
+
+    for (var g = 0; g < groups; g++) {
+      final groupLeft =
+          padding + groupWidth * g + (groupWidth - barWidth * series.length) / 2;
+      for (var s = 0; s < series.length; s++) {
+        final ds = series[s];
+        if (g >= ds.data.length) continue;
+        final paint = Paint()
+          ..color = ds.color ?? colors[s % colors.length]
+          ..style = PaintingStyle.fill;
+        final normalized = (ds.data[g] - minValue) / adjustedRange;
+        final barHeight = normalized * graphHeight;
+        final rect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+              groupLeft + barWidth * s, zeroY - barHeight, barWidth, barHeight),
+          const Radius.circular(2),
+        );
+        canvas.drawRRect(rect, paint);
+      }
+    }
+
+    if (showLabels) {
+      final textPainter = TextPainter(textDirection: TextDirection.ltr);
+      for (var g = 0; g < groups; g++) {
+        final label = g < dataLabels.length ? dataLabels[g] : '${g + 1}';
+        textPainter.text = TextSpan(
+          text: label,
+          style:
+              TextStyle(color: labelColor.withValues(alpha: 0.6), fontSize: 10),
+        );
+        textPainter.layout(maxWidth: groupWidth);
+        textPainter.paint(
+          canvas,
+          Offset(padding + groupWidth * g + (groupWidth - textPainter.width) / 2,
+              padding + graphHeight + 8),
+        );
       }
     }
   }
@@ -1064,7 +1281,7 @@ class _ChartPainter extends CustomPainter {
   }
 
   void _paintScatterChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final graphWidth = size.width - padding * 2;
     final graphHeight = size.height - padding * 2;
 
@@ -1180,7 +1397,7 @@ class _ChartPainter extends CustomPainter {
   /// Bubble — scatter where each marker's radius is proportional to
   /// the data value (relative to the maximum value in the dataset).
   void _paintBubbleChart(Canvas canvas, Size size) {
-    final padding = showLabels ? 40.0 : 20.0;
+    final padding = _paddingFor(size);
     final w = size.width - padding * 2;
     final h = size.height - padding * 2;
     if (w <= 0 || h <= 0 || data.isEmpty) return;
@@ -1319,6 +1536,7 @@ class _ChartPainter extends CustomPainter {
         data.length != oldDelegate.data.length ||
         datasets.length != oldDelegate.datasets.length ||
         showGrid != oldDelegate.showGrid ||
+        progress != oldDelegate.progress ||
         showLabels != oldDelegate.showLabels ||
         primaryColor != oldDelegate.primaryColor;
   }

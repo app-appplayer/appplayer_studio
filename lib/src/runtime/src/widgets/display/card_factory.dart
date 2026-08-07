@@ -35,10 +35,10 @@ class CardWidgetFactory extends WidgetFactory {
       shape = _parseShape(rawShape) ?? parseThemeShapeMap(rawShape);
     }
     final clipBehavior = _parseClipBehavior(properties['clipBehavior']);
-    final semanticContainer = properties['semanticContainer'] as bool? ?? true;
+    final semanticContainer = boolOf(properties['semanticContainer'], context) ?? true;
 
     // Extract margin (external spacing)
-    final margin = parseEdgeInsets(properties['margin']);
+    final margin = edgeInsetsOf(properties['margin'], context);
 
     // Card is a single-child widget, so child should be in properties
     Widget? child;

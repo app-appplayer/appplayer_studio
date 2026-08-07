@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/binding_path.dart';
 import '../widget_factory.dart';
 
 /// Factory for `resizable` (spec §10.29).
@@ -15,25 +16,20 @@ class ResizableFactory extends WidgetFactory {
     final childDef = properties['child'] as Map<String, dynamic>?;
     if (childDef == null) return const SizedBox.shrink();
 
-    final widthBinding = properties['width'] as String?;
-    final heightBinding = properties['height'] as String?;
+    final widthBinding = twoWayPath(properties['width']);
+    final heightBinding = twoWayPath(properties['height']);
     final handles = (context.resolve<List<dynamic>?>(properties['handles']) ??
             const ['bottomEnd'])
         .map((e) => e.toString())
         .toSet();
     final keepRatio =
         context.resolve<bool?>(properties['keepAspectRatio']) ?? false;
-    final onResize = properties['onResize'] as Map<String, dynamic>?;
-    final onResizeEnd = properties['onResizeEnd'] as Map<String, dynamic>?;
+    final onResize = actionOf(properties['onResize'], context);
+    final onResizeEnd = actionOf(properties['onResizeEnd'], context);
 
-    double? read(String? binding, dynamic fallback) {
-      if (binding != null) {
-        final v = context.getState(binding);
-        if (v is num) return v.toDouble();
-      }
-      final resolved = context.resolve<num?>(fallback);
-      return resolved?.toDouble();
-    }
+    // `resolve` handles both branches — a literal number and a binding
+    // expression — so the read needs no special case for the bound form.
+    double? read(dynamic raw) => context.resolve<num?>(raw)?.toDouble();
 
     void emit(Map<String, dynamic>? action, double w, double h, String type) {
       if (action == null) return;
@@ -48,8 +44,8 @@ class ResizableFactory extends WidgetFactory {
     }
 
     return _Resizable(
-      width: read(widthBinding, properties['width']),
-      height: read(heightBinding, properties['height']),
+      width: read(properties['width']),
+      height: read(properties['height']),
       minWidth: context.resolve<num?>(properties['minWidth'])?.toDouble(),
       maxWidth: context.resolve<num?>(properties['maxWidth'])?.toDouble(),
       minHeight: context.resolve<num?>(properties['minHeight'])?.toDouble(),

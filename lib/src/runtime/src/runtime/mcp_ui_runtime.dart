@@ -1,3 +1,15 @@
+// **Superseded duplicate — not the class hosts get.**
+//
+// `flutter_mcp_ui_runtime.dart` exports `MCPUIRuntime` from
+// `lib/src/mcp_ui_runtime.dart`. This file declares a second class of the
+// same name that nothing in `lib/` imports and that no consumer can reach;
+// it was last changed for 0.3.0 (2026-04-28) while the exported one carried
+// every cut since. Anything fixed there — the definition-level `onInit`
+// executor, page lifecycle, the navigation shell — is absent here, so a test
+// importing this path is measuring a runtime nobody runs.
+//
+// Kept rather than deleted: removal is the owner's call, and the file is the
+// only record of the older shape. Do not add to it.
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';

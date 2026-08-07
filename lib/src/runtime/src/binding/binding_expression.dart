@@ -439,12 +439,25 @@ class BindingExpression {
     final args = <BindingExpression>[];
     var depth = 0;
     var currentArg = '';
+    String? quote;
 
-    // Split by comma, but respect nested parentheses
+    // Split by comma, respecting nested parentheses *and* quoted strings. A
+    // comma inside a quoted argument used to end the argument: §3.6.1's own
+    // example `format(price, '#,##0.00')` arrived as three arguments, so the
+    // pattern lost its grouping and its decimals and the number came back
+    // rounded to an integer. `split(text, ',')` had the same shape.
     for (var i = 0; i < argsString.length; i++) {
       final char = argsString[i];
 
-      if (char == '(') {
+      if (quote != null) {
+        currentArg += char;
+        if (char == quote) quote = null;
+        continue;
+      }
+
+      if (char == '"' || char == "'") {
+        quote = char;
+      } else if (char == '(') {
         depth++;
       } else if (char == ')') {
         depth--;
@@ -566,6 +579,15 @@ class BindingExpression {
         value: null,
         hasValue: true,
       );
+    }
+
+    // A nested call is an expression, not a path. Falling through to the path
+    // branch turned `length(filter(rows, …))` into a lookup for a variable
+    // *named* `filter(rows, …)`, which resolves to null — so the composition
+    // §3.6.1 shows in its own example (`length(filter(items, 'completed'))`)
+    // answered 0 for every input.
+    if (RegExp(r'^[\w\.]+\(.*\)$').hasMatch(value)) {
+      return _parse(value);
     }
 
     // Otherwise, treat as a path expression

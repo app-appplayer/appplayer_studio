@@ -4,6 +4,8 @@
 /// with lifecycle states, caching strategies, and fallback behavior.
 library client_resource_manager;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../utils/mcp_logger.dart';
@@ -376,12 +378,14 @@ class TransformationEngine {
     }
   }
 
-  /// Decode JSON string
-  dynamic _jsonDecode(String data) {
-    // Using dart:convert would require an import; inline minimal decode
-    // The runtime already imports dart:convert at the top level
-    return data;
-  }
+  /// Decode JSON string.
+  ///
+  /// This returned its own argument, under a comment claiming the runtime
+  /// imported `dart:convert` "at the top level" — it did not. A pipeline that
+  /// asked for a json parse got the raw text back and every step after it
+  /// (`select`, `sort`) then saw a String and passed it along untouched, so
+  /// the failure surfaced as a widget bound to nothing.
+  dynamic _jsonDecode(String data) => jsonDecode(data);
 
   /// Parse CSV text into a list of maps (header row as keys)
   List<Map<String, String>> _parseCsv(String data) {
@@ -426,21 +430,43 @@ class TransformationEngine {
     return data ?? defaults;
   }
 
-  /// Transform each element (for lists)
+  /// Transform each element (for lists).
+  ///
+  /// Not applied here: the step needs the binding engine to evaluate its
+  /// expression, and this pipeline runs without one. It used to return the
+  /// list unchanged in silence, so a document that mapped rows got the raw
+  /// rows and looked like the mapping had simply done nothing useful.
   dynamic _applyMap(dynamic data, Map<String, dynamic> config) {
-    // Map transform requires expression evaluation from binding engine;
-    // return data unchanged when used standalone
-    if (data is! List) return data;
+    _reportUnapplied('map', config);
     return data;
   }
 
-  /// Filter elements (for lists)
+  /// Filter elements (for lists).
+  ///
+  /// Same as [_applyMap]: an unevaluated filter returns every element, which
+  /// reads as "nothing matched the filter's opposite" rather than as a step
+  /// that never ran.
   dynamic _applyFilter(dynamic data, Map<String, dynamic> config) {
-    // Filter transform requires expression evaluation from binding engine;
-    // return data unchanged when used standalone
-    if (data is! List) return data;
+    _reportUnapplied('filter', config);
     return data;
   }
+
+  /// Says that a declared step was not applied. Once per step type: a
+  /// pipeline runs per resource fetch, and a per-fetch log is noise.
+  static final Set<String> _reportedUnapplied = <String>{};
+
+  void _reportUnapplied(String step, Map<String, dynamic> config) {
+    if (!_reportedUnapplied.add(step)) return;
+    MCPLogger('TransformationEngine').warning(
+      'transform step "$step" was not applied — it needs expression '
+      'evaluation, which this pipeline does not have. The data passes through '
+      'unchanged; a document relying on it is reading unfiltered input.',
+    );
+  }
+
+  /// Test seam for the warn-once set.
+  @visibleForTesting
+  static void resetUnappliedReports() => _reportedUnapplied.clear();
 
   /// Sort elements by field and order
   dynamic _applySort(dynamic data, Map<String, dynamic> config) {

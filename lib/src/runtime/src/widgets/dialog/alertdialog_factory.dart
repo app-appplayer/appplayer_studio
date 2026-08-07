@@ -14,16 +14,16 @@ class AlertDialogWidgetFactory extends WidgetFactory {
     final contentData = properties['content'];
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
-    final elevation = properties['elevation']?.toDouble();
+    final elevation = numberOf(properties['elevation'], context);
     final shadowColor = parseColor(context.resolve(properties['shadowColor']), context);
     final surfaceTintColor =
         parseColor(context.resolve(properties['surfaceTintColor']), context);
     final shape = _parseShapeBorder(properties['shape']);
     final alignment = parseAlignment(properties['alignment']);
-    final insetPadding = parseEdgeInsets(properties['insetPadding']) ??
+    final insetPadding = edgeInsetsOf(properties['insetPadding'], context) ??
         const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0);
     final clipBehavior = _parseClip(properties['clipBehavior']);
-    final scrollable = properties['scrollable'] as bool? ?? false;
+    final scrollable = boolOf(properties['scrollable'], context) ?? false;
 
     // Extract actions
     final actionsData = properties['actions'] as List<dynamic>?;

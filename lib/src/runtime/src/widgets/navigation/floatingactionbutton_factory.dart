@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for FloatingActionButton widgets
@@ -19,15 +20,15 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
     final hoverColor = parseColor(context.resolve(properties['hoverColor']), context);
     final splashColor = parseColor(context.resolve(properties['splashColor']), context);
     final heroTag = properties['heroTag'];
-    final elevation = properties['elevation']?.toDouble();
-    final focusElevation = properties['focusElevation']?.toDouble();
-    final hoverElevation = properties['hoverElevation']?.toDouble();
-    final highlightElevation = properties['highlightElevation']?.toDouble();
-    final disabledElevation = properties['disabledElevation']?.toDouble();
-    final mini = properties['mini'] as bool? ?? false;
+    final elevation = numberOf(properties['elevation'], context);
+    final focusElevation = numberOf(properties['focusElevation'], context);
+    final hoverElevation = numberOf(properties['hoverElevation'], context);
+    final highlightElevation = numberOf(properties['highlightElevation'], context);
+    final disabledElevation = numberOf(properties['disabledElevation'], context);
+    final mini = boolOf(properties['mini'], context) ?? false;
     final shape = _parseShapeBorder(properties['shape']);
     final clipBehavior = _parseClip(properties['clipBehavior']) ?? Clip.none;
-    final autofocus = properties['autofocus'] as bool? ?? false;
+    final autofocus = boolOf(properties['autofocus'], context) ?? false;
     final materialTapTargetSize =
         _parseMaterialTapTargetSize(properties['materialTapTargetSize']);
     // §2.8.7 documents `label` as "Extended FAB label" and declares no
@@ -35,7 +36,7 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
     // extended form. Requiring an undeclared flag on top meant the label was
     // accepted, validated, and never drawn. `isExtended` still wins when set,
     // so a document can ask for the compact form with a label present.
-    final declaredExtended = properties['isExtended'] as bool?;
+    final declaredExtended = boolOf(properties['isExtended'], context);
     final isExtended = declaredExtended ??
         (context.resolve<String?>(properties['label'])?.isNotEmpty ?? false);
 
@@ -51,26 +52,28 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
       child = context.buildWidget(childrenDef.first as Map<String, dynamic>);
     } else {
       // Build from icon and label
-      final icon = properties['icon'] as String?;
+      final icon = properties['icon'] == null
+          ? null
+          : resolveIconRef(context.resolve<Object?>(properties['icon']));
       final label = context.resolve<String?>(properties['label']);
 
       if (isExtended && label != null) {
         child = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) Icon(_parseIconData(icon)),
+            if (icon != null) Icon(icon),
             if (icon != null && label.isNotEmpty) const SizedBox(width: 8),
             if (label.isNotEmpty) Text(label),
           ],
         );
       } else if (icon != null) {
-        child = Icon(_parseIconData(icon));
+        child = Icon(icon);
       }
     }
 
     // Extract action handler
-    final onPressed = (properties['onTap'] ?? properties['click'] ?? properties['onPressed']) as Map<String, dynamic>?;
-    final onLongPress = (properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress']) as Map<String, dynamic>?;
+    final onPressed = actionOf(properties['onTap'] ?? properties['click'] ?? properties['onPressed'], context);
+    final onLongPress = actionOf(properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress'], context);
 
     Widget fab;
 
@@ -100,7 +103,7 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
         label:
             Text(context.resolve<String?>(properties['label']) ?? ''),
         icon: properties['icon'] != null
-            ? Icon(_parseIconData(properties['icon']))
+            ? Icon(resolveIconRef(context.resolve<Object?>(properties['icon'])))
             : null,
       );
     } else {
@@ -145,30 +148,6 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
     return applyCommonWrappers(fab, properties, context);
   }
 
-  IconData _parseIconData(String iconName) {
-    switch (iconName) {
-      case 'add':
-        return Icons.add;
-      case 'edit':
-        return Icons.edit;
-      case 'delete':
-        return Icons.delete;
-      case 'save':
-        return Icons.save;
-      case 'share':
-        return Icons.share;
-      case 'favorite':
-        return Icons.favorite;
-      case 'star':
-        return Icons.star;
-      case 'thumb_up':
-        return Icons.thumb_up;
-      case 'navigation':
-        return Icons.navigation;
-      default:
-        return Icons.add;
-    }
-  }
 
   ShapeBorder? _parseShapeBorder(dynamic shape) {
     if (shape == null) return null;

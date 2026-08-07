@@ -1,11 +1,33 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../../assets/asset_ref.dart';
+import '../../capabilities/runtime_capabilities.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
 /// Factory for Media Player widgets (Advanced conformance level)
 /// Implements a functional media player UI with controls
-/// Actual playback requires platform integration
+/// Playback is performed by the host's [MediaPort] (spec §6.13). With none
+/// wired this widget draws no transport and reports through `onError` — it
+/// never advances a position bar over silence.
+/// Audio or video, read from the source's extension.
+///
+/// Unknown stays `video`: that is what this widget did for every source before
+/// inference existed, and a stream with no extension is more often a video.
+String _inferMediaType(String? source) {
+  if (source == null) return 'video';
+  final path = source.split('?').first.toLowerCase();
+  const audio = <String>[
+    '.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.oga', '.opus', '.wma',
+    '.aiff', '.aif', '.mid', '.midi',
+  ];
+  for (final ext in audio) {
+    if (path.endsWith(ext)) return 'audio';
+  }
+  if (path.startsWith('data:audio/')) return 'audio';
+  return 'video';
+}
+
 class MediaPlayerWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -14,25 +36,29 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     // Extract media player properties - support design doc keys and implementation keys
     // Design: src → Implementation: source
     final source = context.resolve<String?>(properties['src'] ?? properties['source']);
-    // Design: type → Implementation: mediaType
-    final mediaType =
-        context.resolve<String>(properties['type'] ?? properties['mediaType'] ?? 'video');
+    // §10.6 declares the default `inferred`, and this read `video` — so a
+    // document that pointed at an mp3 and said nothing asked the host for the
+    // VIDEO capability and got a black rectangle with sound. Absent means
+    // inferred from the source, which is what the word says; declared still
+    // wins, so nothing that named its kind changes.
+    final declaredType = context.resolve<String?>(
+        properties['type'] ?? properties['mediaType']);
+    final mediaType = (declaredType == null || declaredType.isEmpty)
+        ? _inferMediaType(context.resolve<String?>(properties['source']))
+        : declaredType;
     // Spec §10.6 canonical `autoPlay`; `autoplay` kept as lowercase legacy.
     final autoplay = context.resolve<bool>(
         properties['autoPlay'] ?? properties['autoplay'] ?? false);
-    // ignore: unused_local_variable
-    final volume = (properties['volume'] as num?)?.toDouble();
-    // ignore: unused_local_variable
-    final onTimeUpdate = properties['onTimeUpdate'] as Map<String, dynamic>?;
-    // ignore: unused_local_variable
-    final onErrorAction = properties['onError'] as Map<String, dynamic>?;
+    final volume = (dimensionOf(properties['volume'], context))?.toDouble() ?? 1.0;
+    final onTimeUpdate = actionOf(properties['onTimeUpdate'], context);
+    final onErrorAction = actionOf(properties['onError'], context);
     final controls = context.resolve<bool>(properties['controls'] ?? true);
     final loop = context.resolve<bool>(properties['loop'] ?? false);
     final muted = context.resolve<bool>(properties['muted'] ?? false);
-    // Spec § mediaPlayer v1.3 — `waveform` (audio mode only). Read
-    // so the resolver records the author's intent; the actual
-    // waveform rendering ships in a later runtime cycle.
-    final _ = context.resolve(properties['waveform']);
+    // Spec §10.6 — `waveform` (audio only). Drawn from the host's amplitude
+    // data; reported absent when the host has none.
+    final wantsWaveform = context.resolve<bool>(properties['waveform'] ?? false);
+    final playerId = context.resolve<String?>(properties['id']);
     final poster = context.resolve<String?>(properties['poster']);
     final title = context.resolve<String?>(properties['title']);
     final duration =
@@ -50,10 +76,10 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
         parseColor(context.resolve(properties['accentColor']), context) ?? Colors.blue;
 
     // Extract action handlers
-    final onPlay = properties['onPlay'] as Map<String, dynamic>?;
-    final onPause = properties['onPause'] as Map<String, dynamic>?;
-    final onEnded = properties['onEnded'] as Map<String, dynamic>?;
-    final onSeek = properties['onSeek'] as Map<String, dynamic>?;
+    final onPlay = actionOf(properties['onPlay'], context);
+    final onPause = actionOf(properties['onPause'], context);
+    final onEnded = actionOf(properties['onEnded'], context);
+    final onSeek = actionOf(properties['onSeek'], context);
 
     // Build media player widget
     Widget player = _MediaPlayerWidget(
@@ -73,6 +99,11 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
       onPause: onPause,
       onEnded: onEnded,
       onSeek: onSeek,
+      onTimeUpdate: onTimeUpdate,
+      onError: onErrorAction,
+      playerId: playerId,
+      wantsWaveform: wantsWaveform,
+      volume: volume,
       context: context,
     );
 
@@ -104,6 +135,17 @@ class _MediaPlayerWidget extends StatefulWidget {
   final Map<String, dynamic>? onPause;
   final Map<String, dynamic>? onEnded;
   final Map<String, dynamic>? onSeek;
+  final Map<String, dynamic>? onTimeUpdate;
+  final Map<String, dynamic>? onError;
+
+  /// Names this player for §4.9b media actions. Null when the document did not
+  /// name it — such a player can only be driven by its own controls.
+  final String? playerId;
+
+  /// The document asked for a waveform. Whether one can be drawn depends on
+  /// the host supplying amplitude data (§10.6).
+  final bool wantsWaveform;
+  final double volume;
   final RenderContext context;
 
   const _MediaPlayerWidget({
@@ -123,6 +165,11 @@ class _MediaPlayerWidget extends StatefulWidget {
     this.onPause,
     this.onEnded,
     this.onSeek,
+    this.onTimeUpdate,
+    this.onError,
+    this.playerId,
+    this.wantsWaveform = false,
+    this.volume = 1.0,
     required this.context,
   });
 
@@ -138,27 +185,169 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
   bool _showControls = true;
   bool _isFullscreen = false;
   Timer? _hideControlsTimer;
-  Timer? _playbackTimer;
+
+  /// The real playback. Null while opening, and forever when this runtime has
+  /// no media capability — in which case nothing is drawn that suggests
+  /// otherwise (spec §6.13.1).
+  MediaSession? _session;
+  /// Amplitude envelope, once the host has produced one.
+  List<double>? _peaks;
+  final List<StreamSubscription<dynamic>> _sessionSubs = [];
+  bool _unavailable = false;
+  double _durationSeconds = 0.0;
 
   @override
   void initState() {
     super.initState();
     _isMuted = widget.muted;
-    if (widget.autoplay) {
-      _play();
+    _volume = widget.volume;
+    _openSession();
+  }
+
+  bool get _wantsVideo => widget.mediaType.toLowerCase() != 'audio';
+
+  Future<void> _openSession() async {
+    final caps = widget.context.capabilities;
+    final needed =
+        _wantsVideo ? RuntimeCapability.video : RuntimeCapability.audio;
+    final ref = AssetRef.parse(widget.source);
+
+    if (ref == null) {
+      _reportUnavailable(const CapabilityUnavailable(RuntimeCapability.audio,
+          detail: 'source is not an asset reference'));
+      return;
     }
+    if (caps.media == null || !caps.supports(needed)) {
+      // §6.13.2 — the absence is a capability fact reported to the document,
+      // never a message drawn where the media belongs.
+      _reportUnavailable(CapabilityUnavailable(needed));
+      return;
+    }
+
+    try {
+      final session = await caps.media!.open(
+        source: ref,
+        readBytes: () => widget.context.assetResolver.bytesFor(ref),
+        isVideo: _wantsVideo,
+        wantsWaveform: widget.wantsWaveform,
+        loop: widget.loop,
+        muted: widget.muted,
+        volume: widget.volume,
+      );
+      if (!mounted) {
+        await session.dispose();
+        return;
+      }
+      _session = session;
+      final id = widget.playerId;
+      if (id != null && id.isNotEmpty) {
+        widget.context.mediaRegistry?.register(id, session);
+      }
+      // §10.6 — a waveform needs per-sample amplitude, which only the host can
+      // produce. Accepting the property and drawing nothing is what §6.13.1
+      // forbids, so an unmet request is reported once.
+      final waveform = session.waveform;
+      if (widget.wantsWaveform && waveform == null) {
+        _reportError(const CapabilityUnavailable(RuntimeCapability.audio,
+            detail: 'waveform data'));
+      } else if (widget.wantsWaveform && waveform != null) {
+        _sessionSubs.add(waveform.listen((peaks) {
+          if (mounted) setState(() => _peaks = peaks);
+        }));
+      }
+      _sessionSubs.addAll([
+        session.position.listen((p) {
+          if (mounted) setState(() => _currentPosition = p.inMilliseconds / 1000);
+          // §4.9b — an author building their own scrubber has no other way to
+          // know where playback is.
+          _emitTimeUpdate(p);
+        }),
+        session.duration.listen((d) {
+          if (mounted && d != null) {
+            setState(() => _durationSeconds = d.inMilliseconds / 1000);
+          }
+        }),
+        session.playing.listen((p) {
+          if (mounted) setState(() => _isPlaying = p);
+          _triggerEvent(p ? widget.onPlay : widget.onPause);
+        }),
+        session.ended.listen((_) => _triggerEvent(widget.onEnded)),
+        session.errors.listen(_reportError),
+      ]);
+      if (widget.autoplay) await session.play();
+      if (mounted) setState(() {});
+    } catch (e) {
+      _reportUnavailable(e);
+    }
+  }
+
+  void _reportUnavailable(Object error) {
+    // After the frame: the capability check runs inside initState, and both
+    // setState and firing the document's `onError` would otherwise land while
+    // the tree is still building.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _unavailable = true);
+      _reportError(error);
+    });
+  }
+
+  void _emitTimeUpdate(Duration position) {
+    final action = widget.onTimeUpdate;
+    if (action == null) return;
+    final child = widget.context.createChildContext(
+      variables: {
+        'event': {
+          'currentTime': position.inMilliseconds / 1000,
+          'duration': _effectiveDuration,
+        },
+      },
+    );
+    widget.context.actionHandler.execute(action, child);
+  }
+
+  void _reportError(Object error) {
+    final onError = widget.onError;
+    if (onError == null) return;
+    final eventContext = widget.context.createChildContext(
+      variables: {'event': {'error': error.toString()}},
+    );
+    widget.context.actionHandler.execute(onError, eventContext);
   }
 
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
-    _playbackTimer?.cancel();
+    for (final sub in _sessionSubs) {
+      sub.cancel();
+    }
+    final id = widget.playerId;
+    final session = _session;
+    if (id != null && id.isNotEmpty && session != null) {
+      widget.context.mediaRegistry?.unregister(id, session);
+    }
+    session?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isAudio = widget.mediaType.toLowerCase() == 'audio';
+
+    // §6.13.1/§6.13.2 — with no capability there is no player. Not a transport
+    // that cannot transport, and not a box reading "unsupported": the failure
+    // went to `onError` and the diagnostic channel. A declared `poster` is the
+    // author's own content, so it still shows.
+    if (_unavailable) {
+      final poster = widget.poster;
+      if (!isAudio && poster != null && poster.isNotEmpty) {
+        final image = widget.context.resolveAssetImage(poster);
+        if (image != null) {
+          return Image(image: image, fit: BoxFit.contain);
+        }
+      }
+      return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       onTap: _toggleControlsVisibility,
@@ -216,6 +405,25 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // The waveform when the document asked for one and the host
+            // produced it — drawing the artwork square over real amplitude
+            // data would accept the property and show nothing (§6.13.1).
+            if (_peaks != null)
+              SizedBox(
+                height: 96,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _WaveformPainter(
+                    peaks: _peaks!,
+                    progress: _durationSeconds > 0
+                        ? (_currentPosition / _durationSeconds).clamp(0.0, 1.0)
+                        : 0.0,
+                    played: widget.accentColor,
+                    remaining: widget.controlsColor.withValues(alpha: 0.35),
+                  ),
+                ),
+              )
+            else
             // Album art or music icon
             Container(
               width: 120,
@@ -374,7 +582,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
                   ),
                 ),
                 Text(
-                  _formatDuration(widget.duration),
+                  _formatDuration(_effectiveDuration),
                   style: TextStyle(
                     fontSize: 12,
                     color: widget.controlsColor.withValues(alpha: 0.8),
@@ -440,8 +648,8 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
   }
 
   Widget _buildProgressBar() {
-    final progress = widget.duration > 0
-        ? (_currentPosition / widget.duration).clamp(0.0, 1.0)
+    final progress = _effectiveDuration > 0
+        ? (_currentPosition / _effectiveDuration).clamp(0.0, 1.0)
         : 0.0;
 
     return SliderTheme(
@@ -457,7 +665,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
       child: Slider(
         value: progress,
         onChanged: (value) {
-          _seek(value * widget.duration);
+          _seek(value * _effectiveDuration);
         },
       ),
     );
@@ -555,42 +763,15 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
   }
 
   void _play() {
-    setState(() {
-      _isPlaying = true;
-    });
-
-    // Simulate playback progression
-    _playbackTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (!_isPlaying) {
-        timer.cancel();
-        return;
-      }
-
-      setState(() {
-        _currentPosition += 0.1;
-        if (_currentPosition >= widget.duration) {
-          if (widget.loop) {
-            _currentPosition = 0;
-          } else {
-            _isPlaying = false;
-            _currentPosition = widget.duration;
-            timer.cancel();
-            _triggerEvent(widget.onEnded);
-          }
-        }
-      });
-    });
-
-    _triggerEvent(widget.onPlay);
-    _resetHideControlsTimer();
+    final session = _session;
+    if (session == null) return; // nothing is playing, so nothing is shown as playing
+    unawaited(session.play());
   }
 
   void _pause() {
-    setState(() {
-      _isPlaying = false;
-    });
-    _playbackTimer?.cancel();
-    _triggerEvent(widget.onPause);
+    final session = _session;
+    if (session == null) return;
+    unawaited(session.pause());
   }
 
   void _togglePlayPause() {
@@ -602,17 +783,16 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
   }
 
   void _seek(double position) {
-    setState(() {
-      _currentPosition = position.clamp(0.0, widget.duration);
-    });
+    final session = _session;
+    final max = _durationSeconds > 0 ? _durationSeconds : widget.duration;
+    final target = position.clamp(0.0, max);
+    if (session == null) return;
+    unawaited(session.seek(Duration(milliseconds: (target * 1000).round())));
 
     if (widget.onSeek != null) {
       final eventContext = widget.context.createChildContext(
         variables: {
-          'event': {
-            'position': _currentPosition,
-            'duration': widget.duration,
-          },
+          'event': {'position': target, 'duration': max},
         },
       );
       widget.context.actionHandler.execute(widget.onSeek!, eventContext);
@@ -662,6 +842,11 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
     }
   }
 
+  /// What the platform reported, falling back to the declared `duration` only
+  /// while nothing has been reported yet.
+  double get _effectiveDuration =>
+      _durationSeconds > 0 ? _durationSeconds : widget.duration;
+
   String _formatDuration(double seconds) {
     final mins = (seconds / 60).floor();
     final secs = (seconds % 60).floor();
@@ -672,4 +857,56 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
     final parts = path.split('/');
     return parts.last;
   }
+}
+
+/// Draws the amplitude envelope the host produced, with the played part in
+/// the accent colour.
+///
+/// Bars rather than a filled curve: a waveform is read for where the loud
+/// parts are, and bars keep that legible at any width without smoothing the
+/// peaks away.
+class _WaveformPainter extends CustomPainter {
+  const _WaveformPainter({
+    required this.peaks,
+    required this.progress,
+    required this.played,
+    required this.remaining,
+  });
+
+  final List<double> peaks;
+  final double progress;
+  final Color played;
+  final Color remaining;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (peaks.isEmpty || size.width <= 0) return;
+    final slot = size.width / peaks.length;
+    final barWidth = slot * 0.6;
+    final mid = size.height / 2;
+    final playedUpTo = size.width * progress;
+    final paint = Paint()..strokeCap = StrokeCap.round;
+    for (var i = 0; i < peaks.length; i++) {
+      final x = slot * i + slot / 2;
+      // A silent bucket still gets a hairline: a gap in the middle of a
+      // waveform reads as missing data rather than as quiet.
+      final half = (peaks[i].clamp(0.0, 1.0) * mid).clamp(1.0, mid);
+      paint.color = x <= playedUpTo ? played : remaining;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(x - barWidth / 2, mid - half, x + barWidth / 2,
+              mid + half),
+          Radius.circular(barWidth / 2),
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WaveformPainter old) =>
+      old.progress != progress ||
+      old.peaks != peaks ||
+      old.played != played ||
+      old.remaining != remaining;
 }

@@ -30,11 +30,19 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
   StackTrace? _stackTrace;
   final MCPLogger _logger = MCPLogger('ErrorBoundary');
 
+  /// What `FlutterError.onError` was before this boundary took it over.
+  /// Restored on dispose: the handler is global and the closure outlives the
+  /// State, so a boundary that came and went used to leave the framework
+  /// reporting into a widget that is no longer mounted — every later error
+  /// hit the `mounted` guard and vanished, shown nowhere and logged nowhere.
+  FlutterExceptionHandler? _previousOnError;
+
   @override
   void initState() {
     super.initState();
 
     if (widget.catchAsync) {
+      _previousOnError = FlutterError.onError;
       // Catch async errors
       FlutterError.onError = (FlutterErrorDetails details) {
         _handleError(details.exception, details.stack);
@@ -67,6 +75,14 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
       _error = null;
       _stackTrace = null;
     });
+  }
+
+  @override
+  void dispose() {
+    if (widget.catchAsync) {
+      FlutterError.onError = _previousOnError;
+    }
+    super.dispose();
   }
 
   @override
@@ -154,7 +170,15 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
 }
 
 /// Internal error widget to catch synchronous errors
-class _ErrorWidget extends StatelessWidget {
+/// Installs the build-error surface for the subtree.
+///
+/// `ErrorWidget.builder` is global. This used to be assigned from `build`,
+/// which runs on every frame and never undoes itself: the last boundary to
+/// build owned the builder for the whole application, and it kept owning it
+/// after being disposed. Installing in `initState` and restoring in `dispose`
+/// keeps the override to the lifetime it was meant to have — and keeps `build`
+/// free of side effects.
+class _ErrorWidget extends StatefulWidget {
   final Widget child;
   final void Function(Object error, StackTrace? stackTrace) onError;
 
@@ -164,14 +188,30 @@ class _ErrorWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_ErrorWidget> createState() => _ErrorWidgetState();
+}
+
+class _ErrorWidgetState extends State<_ErrorWidget> {
+  late final ErrorWidgetBuilder _previousBuilder;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousBuilder = ErrorWidget.builder;
     ErrorWidget.builder = (FlutterErrorDetails details) {
-      onError(details.exception, details.stack);
+      widget.onError(details.exception, details.stack);
       return const SizedBox.shrink();
     };
-
-    return child;
   }
+
+  @override
+  void dispose() {
+    ErrorWidget.builder = _previousBuilder;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Error recovery strategies

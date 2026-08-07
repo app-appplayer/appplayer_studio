@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/binding_path.dart';
 import '../widget_factory.dart';
 
 /// Factory for `popover` (spec §2.11.6). Alias: `hoverCard`.
@@ -22,17 +23,15 @@ class PopoverFactory extends WidgetFactory {
     final trigger = context.resolve<String?>(properties['trigger']) ?? 'tap';
     // Two-way: binding it lets an action drive the surface, which is the only
     // way `trigger: manual` is usable at all.
-    final openBinding = properties['open'] as String?;
-    final open = openBinding != null
-        ? context.getState(openBinding) == true
-        : context.resolve<bool?>(properties['open']) ?? false;
+    final openBinding = twoWayPath(properties['open']);
+    final open = context.resolve<bool?>(properties['open']) ?? false;
     final placement = context.resolve<String?>(properties['placement']) ?? 'auto';
     final openDelay = context.resolve<num?>(properties['openDelay'])?.toInt() ?? 0;
     final closeDelay = context.resolve<num?>(properties['closeDelay'])?.toInt() ?? 0;
     final dismissOnOutside =
         context.resolve<bool?>(properties['dismissOnOutside']) ?? true;
-    final onOpen = properties['onOpen'] as Map<String, dynamic>?;
-    final onClose = properties['onClose'] as Map<String, dynamic>?;
+    final onOpen = actionOf(properties['onOpen'], context);
+    final onClose = actionOf(properties['onClose'], context);
 
     void emit(Map<String, dynamic>? action) {
       if (action == null) return;

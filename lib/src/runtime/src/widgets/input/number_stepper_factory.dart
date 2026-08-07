@@ -14,7 +14,7 @@ class NumberStepperWidgetFactory extends WidgetFactory {
     final maxValue = context.resolve<num?>(properties['max']);
     final step = context.resolve<num?>(properties['step']) ?? 1;
     final label = context.resolve<String?>(properties['label']);
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final onChange = properties['onChange'] ?? properties['change'];
     final color = parseColor(context.resolve(properties['color']), context) ??
         context.themeManager.getColorValue('primary') ??

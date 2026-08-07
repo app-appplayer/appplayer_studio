@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../form_factor/app_tokens.dart';
 import '../../assets/asset_ref.dart';
+import '../../assets/asset_resolver.dart';
 import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
@@ -16,9 +17,11 @@ import '../widget_factory.dart';
 ///   2. A codepoint object `{codepoint, fontFamily?, fontPackage?}` for any
 ///      Material Icons codepoint that isn't in the resolver map.
 ///      `{"codepoint": 0xe88a}` renders the same glyph as `"home"`.
-///   3. An `http://` / `https://` URL pointing at a raster icon. The
-///      runtime fetches via [Image.network], caches, and tints when the
-///      color channel allows. SVG is not rendered natively.
+///   3. Any `AssetRef` — a network URL, `bundle://`, `assets/`, an inline
+///      `data:` payload, or a host resource. Raster payloads go through
+///      [Image]; vector payloads (`.svg`, `data:image/svg+xml`) are drawn as
+///      pictures and tinted through a colour filter, so `color` applies to
+///      every form alike.
 class IconWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -92,6 +95,22 @@ class IconWidgetFactory extends WidgetFactory {
     // rather than only an http(s) URL.
     final ref = value is String ? AssetRef.parse(value) : null;
     if (ref != null && !ref.looksLikeIconName) {
+      // A vector icon is the form the spec's own example uses
+      // (`assets/icons/heart.svg`), and `data:image/svg+xml` is named in
+      // `IconRef` itself. It is drawn by a picture widget and tinted through
+      // a colour filter, which is what makes `color` apply to it the way
+      // §2.5 says it does for the named and codepoint forms.
+      if (AssetResolver.isVector(ref)) {
+        final vector = context.assetResolver.vectorWidgetFor(
+          ref,
+          width: size,
+          height: size,
+          color: color,
+        );
+        if (vector != null) {
+          return SizedBox(width: size, height: size, child: vector);
+        }
+      }
       final provider = context.assetResolver.imageProviderFor(ref);
       if (provider != null) {
         return SizedBox(

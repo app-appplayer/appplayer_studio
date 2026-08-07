@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for Chip widgets
@@ -14,18 +15,20 @@ class ChipWidgetFactory extends WidgetFactory {
     final avatar = properties['avatar'] as Map<String, dynamic>?;
     final selected = context.resolve<bool>(properties['selected'] ?? false);
     final variant = context.resolve<String?>(properties['variant']);
-    final deleteIcon = properties['deleteIcon'] as String?;
+    // `IconRef` — a name, a `{codepoint}` object, or a binding to either.
+    // Reading it `as String?` threw on the object form the registry declares.
+    final deleteIcon = context.resolve<dynamic>(properties['deleteIcon']);
     // Per DDD spec §5.9, canonical name is 'onDelete'
-    final onDelete = properties['onDelete'] as Map<String, dynamic>?;
-    final onDeleteLegacy = properties['onDeleted'] as Map<String, dynamic>?;
+    final onDelete = actionOf(properties['onDelete'], context);
+    final onDeleteLegacy = actionOf(properties['onDeleted'], context);
     final deleteAlias = properties['delete'] as Map<String, dynamic>?;
     final effectiveDeleteAction = onDelete ?? onDeleteLegacy ?? deleteAlias;
-    final onPressed = (properties['onTap'] ?? properties['click'] ?? properties['onPressed']) as Map<String, dynamic>?;
+    final onPressed = actionOf(properties['onTap'] ?? properties['click'] ?? properties['onPressed'], context);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final labelStyle = _parseTextStyle(properties['labelStyle'], context);
-    final padding = parseEdgeInsets(properties['padding']);
-    final elevation = properties['elevation']?.toDouble();
+    final padding = edgeInsetsOf(properties['padding'], context);
+    final elevation = numberOf(properties['elevation'], context);
     final shadowColor = parseColor(context.resolve(properties['shadowColor']), context);
     final side = _parseBorderSide(properties['side'], context);
     final shape = _parseOutlinedBorder(properties['shape']);
@@ -58,7 +61,7 @@ class ChipWidgetFactory extends WidgetFactory {
     // Build delete icon
     Widget? deleteIconWidget;
     if (deleteIcon != null) {
-      deleteIconWidget = Icon(_parseIconData(deleteIcon), size: 18);
+      deleteIconWidget = Icon(resolveIconRef(deleteIcon), size: 18);
     }
 
     // Build the appropriate chip variant

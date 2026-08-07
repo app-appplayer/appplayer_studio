@@ -13,23 +13,31 @@ class ListViewWidgetFactory extends WidgetFactory {
     // Extract properties (spec v1.0: 'orientation', legacy: 'scrollDirection')
     final scrollDirection = _parseAxis(
         properties['orientation'] ?? properties['scrollDirection']);
-    final reverse = properties['reverse'] as bool? ?? false;
+    final reverse = boolOf(properties['reverse'], context) ?? false;
     // Follow MCP UI DSL v1.0 spec: shrinkWrap defaults to false
-    final shrinkWrap = properties['shrinkWrap'] as bool? ?? false;
+    final shrinkWrap = boolOf(properties['shrinkWrap'], context) ?? false;
     final physics = _parseScrollPhysics(properties['physics']);
-    final padding = parseEdgeInsets(properties['padding']);
+    final padding = edgeInsetsOf(properties['padding'], context);
     // spec v1.0: 'spacing', legacy: 'itemSpacing'
     final itemSpacing = parseDimension(
         properties['spacing'] ?? properties['itemSpacing']) ?? 0.0;
     final emptyMessage = context.resolve<String?>(properties['emptyMessage']);
-    final virtual = properties['virtual'] as bool? ?? false;
+    final virtual = boolOf(properties['virtual'], context) ?? false;
     // `cacheExtent` was deprecated in favour of the typed `ScrollCacheExtent`;
     // the DSL still expresses it as a plain pixel number.
-    final cacheExtentPx = parseDimension(properties['scrollCacheExtent']);
+    final itemExtent = parseDimension(properties['itemExtent']);
+    // `overscan` (1.4) counts *items* kept beyond the viewport on each side.
+    // Flutter caches by pixels, so it converts through the item extent when
+    // the document gives one — and is ignored when it cannot, rather than
+    // guessing a row height and caching the wrong amount.
+    final overscan = context.resolve<num?>(properties['overscan']);
+    final overscanPx =
+        (overscan != null && itemExtent != null) ? overscan * itemExtent : null;
+    final cacheExtentPx =
+        parseDimension(properties['scrollCacheExtent']) ?? overscanPx?.toDouble();
     final scrollCacheExtent = cacheExtentPx == null
         ? null
         : ScrollCacheExtent.pixels(cacheExtentPx);
-    final itemExtent = parseDimension(properties['itemExtent']);
 
     // Get data source - support both static children and dynamic items
     final childrenProp = definition['children'];

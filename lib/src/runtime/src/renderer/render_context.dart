@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'renderer.dart';
 import '../assets/asset_ref.dart';
 import '../assets/asset_resolver.dart';
+import '../capabilities/media_registry.dart';
+import '../capabilities/runtime_capabilities.dart';
 import '../binding/binding_engine.dart';
 import '../actions/action_handler.dart';
 import '../state/state_manager.dart';
@@ -541,6 +543,31 @@ class RenderContext {
       // Host exposes no resolver — builtin forms only.
     }
     return AssetResolver.builtin;
+  }
+
+  /// Behaviours the host wired (spec §6.13). Same shape as [assetResolver]:
+  /// read from the engine, and a host that wired nothing gets
+  /// [RuntimeCapabilities.none] — every affected widget then reports the
+  /// capability absent instead of drawing something that looks like it works.
+  RuntimeCapabilities get capabilities {
+    try {
+      final fromEngine = engine?.capabilities;
+      if (fromEngine is RuntimeCapabilities) return fromEngine;
+    } catch (_) {
+      // Host predates this seam.
+    }
+    return RuntimeCapabilities.none;
+  }
+
+  /// Mounted media players (§4.9b). Same read path as [capabilities].
+  MediaRegistry? get mediaRegistry {
+    try {
+      final fromEngine = engine?.mediaRegistry;
+      if (fromEngine is MediaRegistry) return fromEngine;
+    } catch (_) {
+      // Host predates this seam.
+    }
+    return null;
   }
 
   /// Resolves a raw DSL value to an [ImageProvider], or `null` when the value

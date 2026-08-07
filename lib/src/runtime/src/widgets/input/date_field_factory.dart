@@ -9,19 +9,19 @@ class DateFieldFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final label = properties['label'] as String?;
-    final binding = properties['binding'] as String?;
+    final label = stringOf(properties['label'], context);
+    final binding = stringOf(properties['binding'], context);
     final errorText = context.resolve(properties['errorText']) as String?;
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
     // Spec §2.6.13: `format` controls displayed date string; `mode` chooses
     // between calendar dialog and input, `locale` for localization.
-    final formatStr = (properties['format'] as String?) ?? 'yyyy-MM-dd';
-    final modeStr = (properties['mode'] as String?) ?? 'calendar';
-    final localeStr = properties['locale'] as String?;
+    final formatStr = readEnum(properties['format'], context) ?? 'yyyy-MM-dd';
+    final modeStr = readEnum(properties['mode'], context) ?? 'calendar';
+    final localeStr = stringOf(properties['locale'], context);
 
     // Parse date constraints
-    final firstDateStr = properties['firstDate'] as String?;
-    final lastDateStr = properties['lastDate'] as String?;
+    final firstDateStr = stringOf(properties['firstDate'], context);
+    final lastDateStr = stringOf(properties['lastDate'], context);
 
     DateTime? firstDate;
     DateTime? lastDate;

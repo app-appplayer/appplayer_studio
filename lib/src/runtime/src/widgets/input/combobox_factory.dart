@@ -16,7 +16,7 @@ class ComboboxFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final options = context.resolve<List<dynamic>?>(properties['options']) ?? const [];
     final allowCustom = context.resolve<bool?>(properties['allowCustom']) ?? true;
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
@@ -25,8 +25,8 @@ class ComboboxFactory extends WidgetFactory {
     final minChars = context.resolve<num?>(properties['minChars'])?.toInt() ?? 1;
     final debounceMs =
         context.resolve<num?>(properties['debounceMs'])?.toInt() ?? 250;
-    final onSearch = properties['onSearch'] as Map<String, dynamic>?;
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
+    final onSearch = actionOf(properties['onSearch'], context);
+    final onChange = actionOf(properties['onChange'], context);
 
     final current = binding != null
         ? (context.getState(binding)?.toString() ?? '')

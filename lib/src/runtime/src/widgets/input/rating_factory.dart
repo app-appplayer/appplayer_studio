@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 import '../../renderer/render_context.dart';
 
@@ -22,7 +23,7 @@ class RatingFactory extends WidgetFactory {
 
     // Spec §2.6.0: binding shorthand — read from state path when no
     // explicit `value` is provided.
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final dynamic rawValue = properties['value'] != null
         ? context.resolve(properties['value'])
         : (binding != null ? context.getState(binding) : null);
@@ -31,10 +32,11 @@ class RatingFactory extends WidgetFactory {
     final maxRating =
         ((properties['max'] ?? properties['maxRating']) as num? ?? 5).toInt();
     final iconSize = parseDimension(properties['size']) ?? 24.0;
-    // Spec canonical `icon` (optional). Accepted; current painter renders
-    // stars regardless of icon name (custom icons tracked separately).
-    // ignore: unused_local_variable
-    final iconName = properties['icon'] as String?;
+    // Spec canonical `icon` (optional). It was resolved and then dropped —
+    // a rating declaring hearts drew stars, and said nothing.
+    final iconName = properties['icon'] == null
+        ? null
+        : resolveIconRef(context.resolve<Object?>(properties['icon']));
     final filledColor =
         parseColor(context.resolve(properties['color']), context) ?? Colors.amber;
     // Filled star stays amber (universal convention). Empty star pulls
@@ -44,11 +46,12 @@ class RatingFactory extends WidgetFactory {
         parseColor(context.resolve(properties['emptyColor']), context) ??
             context.themeManager.getColorValue('outlineVariant') ??
             Colors.grey;
-    final allowHalf = properties['allowHalf'] as bool? ?? false;
-    final readOnly = properties['readOnly'] as bool? ?? false;
+    final allowHalf = boolOf(properties['allowHalf'], context) ?? false;
+    final readOnly = boolOf(properties['readOnly'], context) ?? false;
     Widget widget = _RatingWidget(
       value: value,
       maxRating: maxRating,
+      icon: iconName,
       iconSize: iconSize,
       filledColor: filledColor,
       emptyColor: emptyColor,
@@ -75,6 +78,10 @@ class _RatingWidget extends StatelessWidget {
   final double value;
   final int maxRating;
   final double iconSize;
+
+  /// The glyph the document asked for. Null keeps the star, which is what a
+  /// rating means when nobody says otherwise.
+  final IconData? icon;
   final Color filledColor;
   final Color emptyColor;
   final bool allowHalf;
@@ -85,6 +92,7 @@ class _RatingWidget extends StatelessWidget {
     required this.value,
     required this.maxRating,
     required this.iconSize,
+    this.icon,
     required this.filledColor,
     required this.emptyColor,
     required this.allowHalf,
@@ -98,21 +106,24 @@ class _RatingWidget extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: List.generate(maxRating, (index) {
         final starValue = index + 1.0;
-        IconData icon;
+        IconData glyph;
         Color color;
 
+        // A named icon has no half or outline variant to fall back on, so it
+        // carries the state in its colour — filled or dimmed — which is how
+        // every heart rating in the world reads.
         if (value >= starValue) {
-          icon = Icons.star;
+          glyph = icon ?? Icons.star;
           color = filledColor;
         } else if (allowHalf && value >= starValue - 0.5) {
-          icon = Icons.star_half;
+          glyph = icon ?? Icons.star_half;
           color = filledColor;
         } else {
-          icon = Icons.star_border;
+          glyph = icon ?? Icons.star_border;
           color = emptyColor;
         }
 
-        final starWidget = Icon(icon, size: iconSize, color: color);
+        final starWidget = Icon(glyph, size: iconSize, color: color);
 
         if (readOnly || onChanged == null) {
           return starWidget;

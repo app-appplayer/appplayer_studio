@@ -21,7 +21,7 @@ class RichTextEditorFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final format = context.resolve<String?>(properties['format']) ?? 'html';
     final placeholder = context.resolve<String?>(properties['placeholder']);
     final minHeight =
@@ -32,7 +32,7 @@ class RichTextEditorFactory extends WidgetFactory {
             const ['bold', 'italic', 'link', 'bulletList', 'heading'])
         .map((e) => e.toString())
         .toSet();
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'], context);
 
     final current = binding != null
         ? (context.getState(binding)?.toString() ?? '')

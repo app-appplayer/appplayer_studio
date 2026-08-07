@@ -11,24 +11,30 @@ class HeatmapWidgetFactory extends WidgetFactory {
     // Extract properties. Use nullable resolve for Lists — non-nullable
     // generic `resolve<List<dynamic>>(null)` throws on absent properties.
     final data = (context.resolve<List<dynamic>?>(properties['data'])) ?? [];
-    final columns = properties['columns'] as int?;
-    final cellSize = properties['cellSize']?.toDouble() ?? 40.0;
-    final cellGap = properties['cellGap']?.toDouble() ?? 2.0;
-    final minValue = properties['minValue']?.toDouble() ?? 0.0;
-    final maxValue = properties['maxValue']?.toDouble() ?? 1.0;
-    final showLabels = properties['showLabels'] as bool? ?? false;
+    final columns = intOf(properties['columns'], context);
+    final cellSize = numberOf(properties['cellSize'], context) ?? 40.0;
+    final cellGap = numberOf(properties['cellGap'], context) ?? 2.0;
+    final minValue = numberOf(properties['minValue'], context) ?? 0.0;
+    final maxValue = numberOf(properties['maxValue'], context) ?? 1.0;
+    final showLabels = boolOf(properties['showLabels'], context) ?? false;
     final rowLabels =
         (context.resolve<List<dynamic>?>(properties['rowLabels'])) ?? [];
     final columnLabels =
         (context.resolve<List<dynamic>?>(properties['columnLabels'])) ?? [];
-    final colorScheme = properties['colorScheme'] as String? ?? 'blue';
-    // Spec §10.10: `colorRange: {low, high}`, `showValues`, `onCellTap`.
-    // ignore: unused_local_variable
-    final colorRange = properties['colorRange'] as Map<String, dynamic>?;
-    // ignore: unused_local_variable
-    final showValues = properties['showValues'] as bool? ?? false;
-    // ignore: unused_local_variable
-    final onCellTap = properties['onCellTap'] as Map<String, dynamic>?;
+    final colorScheme = stringOf(properties['colorScheme'], context) ?? 'blue';
+    // Spec §10.10 — all three were read into variables and then discarded
+    // behind an `unused_local_variable` ignore: the scale a document declared
+    // had no effect, every cell printed its number whatever `showValues` said,
+    // and a declared `onCellTap` gave the cell nothing to tap.
+    final rawRange = context.resolve<Object?>(properties['colorRange']);
+    final rangeLow = rawRange is Map
+        ? parseColor(context.resolve(rawRange['low']), context)
+        : null;
+    final rangeHigh = rawRange is Map
+        ? parseColor(context.resolve(rawRange['high']), context)
+        : null;
+    final showValues = boolOf(properties['showValues'], context) ?? true;
+    final onCellTap = actionOf(properties['onCellTap'], context);
 
     // Parse data into 2D array
     List<List<double>> heatmapData = [];
@@ -122,28 +128,59 @@ class HeatmapWidgetFactory extends WidgetFactory {
         final value = heatmapData[i][j];
         final normalizedValue =
             ((value - minValue) / (maxValue - minValue)).clamp(0.0, 1.0);
-        final color =
-            _getColorForValue(normalizedValue, colorScheme, lowEnd);
+        // A declared `colorRange` is the scale; `colorScheme` names one of
+        // the built-in scales and only applies when no range was given.
+        final color = rangeLow != null || rangeHigh != null
+            ? Color.lerp(rangeLow ?? lowEnd,
+                    rangeHigh ?? _schemeHigh(colorScheme), normalizedValue) ??
+                lowEnd
+            : _getColorForValue(normalizedValue, colorScheme, lowEnd);
 
-        rowWidgets.add(
-          Container(
-            width: cellSize,
-            height: cellSize,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Center(
-              child: Text(
-                value.toStringAsFixed(0),
-                style: TextStyle(
-                  color: normalizedValue > 0.5 ? Colors.white : Colors.black,
-                  fontSize: 10,
-                ),
-              ),
-            ),
+        final row = i;
+        final column = j;
+        Widget cell = Container(
+          width: cellSize,
+          height: cellSize,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
           ),
+          child: showValues
+              ? Center(
+                  child: Text(
+                    value.toStringAsFixed(0),
+                    style: TextStyle(
+                      color:
+                          normalizedValue > 0.5 ? Colors.white : Colors.black,
+                      fontSize: 10,
+                    ),
+                  ),
+                )
+              : null,
         );
+        if (onCellTap != null) {
+          cell = InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: () {
+              // Which cell — a heatmap tap that does not say where it landed
+              // tells the document nothing it could act on.
+              final child = context.createChildContext(variables: {
+                'event': {
+                  'row': row,
+                  'column': column,
+                  'value': value,
+                  if (row < rowLabels.length)
+                    'rowLabel': rowLabels[row].toString(),
+                  if (column < columnLabels.length)
+                    'columnLabel': columnLabels[column].toString(),
+                },
+              });
+              context.actionHandler.execute(onCellTap, child);
+            },
+            child: cell,
+          );
+        }
+        rowWidgets.add(cell);
 
         if (j < heatmapData[i].length - 1) {
           rowWidgets.add(SizedBox(width: cellGap));
@@ -169,7 +206,12 @@ class HeatmapWidgetFactory extends WidgetFactory {
   /// (chosen at the call site) flips to white once the value crosses
   /// the midpoint and the cell becomes dark enough to need contrast.
   Color _getColorForValue(double value, String colorScheme, Color lowEnd) {
-    final highEnd = switch (colorScheme) {
+    return Color.lerp(lowEnd, _schemeHigh(colorScheme), value) ??
+        _schemeHigh(colorScheme);
+  }
+
+  Color _schemeHigh(String colorScheme) {
+    return switch (colorScheme) {
       'red' => Colors.red.shade700,
       'green' => Colors.green.shade700,
       'blue' => Colors.blue.shade700,
@@ -178,6 +220,5 @@ class HeatmapWidgetFactory extends WidgetFactory {
       'grayscale' => Colors.grey.shade800,
       _ => Colors.blue.shade700,
     };
-    return Color.lerp(lowEnd, highEnd, value) ?? highEnd;
   }
 }

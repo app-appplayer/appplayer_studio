@@ -21,6 +21,18 @@ class NavigationService extends RuntimeService {
   }
 
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Tells a mounted page when another route covers it and when it is
+  /// uncovered again — Flutter's own mechanism for exactly that question
+  /// (`didPushNext` / `didPopNext`), rather than a second one invented here.
+  ///
+  /// This is what `onPause` / `onResume` need. A pushed-over page is *not*
+  /// disposed: its element stays in the tree, so `dispose` never runs and
+  /// nothing else in the framework reports the change. Without this observer
+  /// a covered page hears nothing on the way out and nothing on the way back,
+  /// which is why those two hooks had never fired for a routed page.
+  final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
   final List<Route<dynamic>> _routeStack = [];
   final Map<String, WidgetBuilder> _routes = {};
   final Map<String, dynamic> _routeGuards = {};

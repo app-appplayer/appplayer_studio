@@ -17,17 +17,17 @@ class TerminalWidgetFactory extends WidgetFactory {
     // Extract properties
     final lines =
         context.resolve<List<dynamic>?>(properties['lines']) ?? [];
-    final prompt = properties['prompt'] as String? ?? '\$ ';
-    final showInput = properties['showInput'] as bool? ?? true;
-    final width = (properties['width'] as num?)?.toDouble();
-    final height = (properties['height'] as num?)?.toDouble() ?? 300.0;
-    final fontSize = (properties['fontSize'] as num?)?.toDouble() ?? 14.0;
-    final maxLines = properties['maxLines'] as int? ?? 1000;
+    final prompt = stringOf(properties['prompt'], context) ?? '\$ ';
+    final showInput = boolOf(properties['showInput'], context) ?? true;
+    final width = (dimensionOf(properties['width'], context))?.toDouble();
+    final height = (dimensionOf(properties['height'], context))?.toDouble() ?? 300.0;
+    final fontSize = (dimensionOf(properties['fontSize'], context))?.toDouble() ?? 14.0;
+    final maxLines = dimensionOf(properties['maxLines'], context)?.toInt() ?? 1000;
 
     // Theme palette — author-supplied properties win, then the optional
     // `theme: 'light' | 'dark'` prop chooses between palettes. Defaults
     // to 'dark' to match the terminal-emulator convention.
-    final theme = (properties['theme'] as String?) ?? 'dark';
+    final theme = readEnum(properties['theme'], context) ?? 'dark';
     final isLightTerminal = theme == 'light';
     final defaultBg = isLightTerminal
         ? const Color(0xFFFFFFFF)
@@ -46,7 +46,7 @@ class TerminalWidgetFactory extends WidgetFactory {
         parseColor(properties['promptColor'], context) ?? defaultPrompt;
 
     // Action handlers
-    final onCommand = (properties['onCommand'] ?? properties['command']) as Map<String, dynamic>?;
+    final onCommand = actionOf(properties['onCommand'] ?? properties['command'], context);
 
     Widget terminal = _Terminal(
       lines: lines.map((l) => l.toString()).toList(),

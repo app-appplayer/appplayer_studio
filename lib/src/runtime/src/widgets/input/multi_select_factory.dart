@@ -14,7 +14,7 @@ class MultiSelectFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final options = context.resolve<List<dynamic>?>(properties['options']) ?? const [];
     final placeholder = context.resolve<String?>(properties['placeholder']);
     final label = context.resolve<String?>(properties['label']);
@@ -22,7 +22,7 @@ class MultiSelectFactory extends WidgetFactory {
     final showChips = context.resolve<bool?>(properties['showChips']) ?? true;
     final selectAll = context.resolve<bool?>(properties['selectAll']) ?? false;
     final maxSelections = context.resolve<num?>(properties['maxSelections'])?.toInt();
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'], context);
 
     final selected = _selectedValues(binding, properties, context);
 

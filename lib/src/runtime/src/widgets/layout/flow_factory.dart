@@ -11,8 +11,8 @@ class FlowWidgetFactory extends WidgetFactory {
 
     // Extract flow configuration properties
     final spacing = context.resolve(properties['spacing'])?.toDouble() ?? 8.0;
-    final direction = properties['direction'] as String? ?? 'horizontal';
-    final alignment = properties['alignment'] as String? ?? 'start';
+    final direction = readEnum(properties['direction'], context) ?? 'horizontal';
+    final alignment = readEnum(properties['alignment'], context) ?? 'start';
 
     return Flow(
       delegate: _ConfigurableFlowDelegate(

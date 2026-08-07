@@ -10,8 +10,8 @@ class IntrinsicWidthWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final stepWidth = properties['stepWidth']?.toDouble();
-    final stepHeight = properties['stepHeight']?.toDouble();
+    final stepWidth = numberOf(properties['stepWidth'], context);
+    final stepHeight = numberOf(properties['stepHeight'], context);
 
     // Extract child widget (support both 'child' and 'children' per MCP UI DSL spec)
     final childDef = (properties['child'] ?? definition['child'])

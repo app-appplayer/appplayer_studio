@@ -1,3 +1,4 @@
+import '../../utils/icon_resolver.dart';
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
@@ -22,7 +23,7 @@ class AvatarWidgetFactory extends WidgetFactory {
     final backgroundImage = (properties['src'] ?? properties['backgroundImage']) as String?;
     // Design: label → Implementation: text
     final text = context.resolve<String?>(properties['label'] ?? properties['text']);
-    final icon = properties['icon'] as String?;
+    final icon = properties['icon'];
 
     // Build child widget
     Widget? child;
@@ -35,7 +36,7 @@ class AvatarWidgetFactory extends WidgetFactory {
       );
     } else if (icon != null) {
       child = Icon(
-        _parseIconData(icon),
+        resolveIconRef(icon),
         color: foregroundColor,
         size: radius,
       );
@@ -58,17 +59,5 @@ class AvatarWidgetFactory extends WidgetFactory {
     return applyCommonWrappers(avatar, properties, context);
   }
 
-  IconData _parseIconData(String iconName) {
-    // Reuse icon mapping from icon_factory
-    switch (iconName) {
-      case 'person':
-        return Icons.person;
-      case 'group':
-        return Icons.group;
-      case 'account_circle':
-        return Icons.account_circle;
-      default:
-        return Icons.person;
-    }
-  }
+  // `_parseIconData` moved to `resolveIconRef` — one icon vocabulary.
 }

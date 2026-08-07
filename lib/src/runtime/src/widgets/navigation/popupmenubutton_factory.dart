@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
 import '../../theme/menu_tokens.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for PopupMenuButton widgets.
@@ -21,11 +22,11 @@ class PopupMenuButtonWidgetFactory extends WidgetFactory {
     // Extract properties
     final tooltip = context.resolve<String?>(properties['tooltip']);
     final padding =
-        parseEdgeInsets(properties['padding']) ?? const EdgeInsets.all(8.0);
+        edgeInsetsOf(properties['padding'], context) ?? const EdgeInsets.all(8.0);
     final splashRadius = parseDimension(properties['splashRadius']);
     final iconSize = parseDimension(properties['iconSize']);
     final offset = _parseOffset(properties['offset']);
-    final enabled = properties['enabled'] as bool? ?? true;
+    final enabled = boolOf(properties['enabled'], context) ?? true;
     final color = parseColor(context.resolve(properties['color']), context);
     final shadowColor = parseColor(context.resolve(properties['shadowColor']), context);
     final surfaceTintColor =
@@ -63,9 +64,9 @@ class PopupMenuButtonWidgetFactory extends WidgetFactory {
       child = context.renderer
           .renderWidget(childrenDef.first as Map<String, dynamic>, context);
     } else {
-      final icon = properties['icon'] as String?;
+      final icon = properties['icon'];
       if (icon != null) {
-        child = Icon(_parseIconData(icon));
+        child = Icon(resolveIconRef(context.resolve<Object?>(icon)));
       } else {
         // If no child or icon is specified, use default icon
         child = const Icon(Icons.more_vert);
@@ -73,9 +74,9 @@ class PopupMenuButtonWidgetFactory extends WidgetFactory {
     }
 
     // Extract action handlers
-    final onSelected = (properties['onSelected'] ?? properties['onChange'] ?? properties['onSelect'] ?? properties['select'] ?? properties['change']) as Map<String, dynamic>?;
-    final onOpened = properties['onOpened'] as Map<String, dynamic>?;
-    final onCanceled = properties['onCanceled'] as Map<String, dynamic>?;
+    final onSelected = actionOf(properties['onSelected'] ?? properties['onChange'] ?? properties['onSelect'] ?? properties['select'] ?? properties['change'], context);
+    final onOpened = actionOf(properties['onOpened'], context);
+    final onCanceled = actionOf(properties['onCanceled'], context);
 
     Widget popupMenuButton = PopupMenuButton<String>(
       itemBuilder: (BuildContext ctx) => items,
@@ -179,20 +180,6 @@ class PopupMenuButtonWidgetFactory extends WidgetFactory {
     return null;
   }
 
-  IconData _parseIconData(String iconName) {
-    switch (iconName) {
-      case 'more_vert':
-        return Icons.more_vert;
-      case 'more_horiz':
-        return Icons.more_horiz;
-      case 'menu':
-        return Icons.menu;
-      case 'settings':
-        return Icons.settings;
-      default:
-        return Icons.more_vert;
-    }
-  }
 
   Offset _parseOffset(dynamic offset) {
     if (offset == null) return Offset.zero;

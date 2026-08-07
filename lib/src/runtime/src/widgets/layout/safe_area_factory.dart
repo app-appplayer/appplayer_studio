@@ -28,17 +28,17 @@ class SafeAreaWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // SafeArea edge toggles (default to true)
-    final top = properties['top'] as bool? ?? true;
-    final bottom = properties['bottom'] as bool? ?? true;
-    final left = properties['left'] as bool? ?? true;
-    final right = properties['right'] as bool? ?? true;
+    final top = boolOf(properties['top'], context) ?? true;
+    final bottom = boolOf(properties['bottom'], context) ?? true;
+    final left = boolOf(properties['left'], context) ?? true;
+    final right = boolOf(properties['right'], context) ?? true;
 
     // Minimum padding
-    final minimum = parseEdgeInsets(properties['minimum']) ?? EdgeInsets.zero;
+    final minimum = edgeInsetsOf(properties['minimum'], context) ?? EdgeInsets.zero;
 
     // Maintain bottom view padding (useful for keyboard avoidance)
     final maintainBottomViewPadding =
-        properties['maintainBottomViewPadding'] as bool? ?? false;
+        boolOf(properties['maintainBottomViewPadding'], context) ?? false;
 
     // Build child widget
     Widget? child;

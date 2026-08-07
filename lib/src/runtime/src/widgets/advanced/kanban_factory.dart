@@ -27,8 +27,8 @@ class KanbanFactory extends WidgetFactory {
     final optimistic = context.resolve<bool?>(properties['optimistic']) ?? false;
     final columnWidth =
         context.resolve<num?>(properties['columnWidth'])?.toDouble() ?? 280.0;
-    final onCardMove = properties['onCardMove'] as Map<String, dynamic>?;
-    final onCardClick = properties['onCardClick'] as Map<String, dynamic>?;
+    final onCardMove = actionOf(properties['onCardMove'], context);
+    final onCardClick = actionOf(properties['onCardClick'], context);
 
     if (itemTemplate == null) return const SizedBox.shrink();
 

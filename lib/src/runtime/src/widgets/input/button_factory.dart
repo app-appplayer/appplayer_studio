@@ -24,7 +24,7 @@ class ButtonWidgetFactory extends WidgetFactory {
     final iconPosition = iconPosValue is String ? iconPosValue : 'start';
 
     // Canonical `variant` (spec v1.0); §17.3.2 legacy alias `style`.
-    final variantValue = properties['variant'] ?? properties['style'];
+    final variantValue = readEnum(properties['variant'] ?? properties['style'], context);
     final variant = variantValue is String ? variantValue : 'elevated';
 
     final sizeValue = properties['size'];
@@ -57,16 +57,15 @@ class ButtonWidgetFactory extends WidgetFactory {
 
     // MCP UI DSL callback properties (on + PascalCase, event name fallback)
     final onTap =
-        (properties[core.PropertyKeys.onTap] ?? properties[core.PropertyKeys.click]) as Map<String, dynamic>?;
+        actionOf(
+            properties[core.PropertyKeys.onTap] ??
+                properties[core.PropertyKeys.click],
+            context);
     final onDoubleTap =
-        (properties[core.PropertyKeys.onDoubleTap] ?? properties[core.PropertyKeys.doubleClick] ??
-            properties[core.PropertyKeys.doubleClickLegacy])
-            as Map<String, dynamic>?;
+        actionOf(properties[core.PropertyKeys.onDoubleTap] ?? properties[core.PropertyKeys.doubleClick] ?? properties[core.PropertyKeys.doubleClickLegacy], context);
     final onLongPress =
-        (properties[core.PropertyKeys.onLongPress] ?? properties[core.PropertyKeys.longPress] ??
-            properties[core.PropertyKeys.longPressLegacy])
-            as Map<String, dynamic>?;
-    final submit = (properties['onSubmit'] ?? properties['submit']) as Map<String, dynamic>?;
+        actionOf(properties[core.PropertyKeys.onLongPress] ?? properties[core.PropertyKeys.longPress] ?? properties[core.PropertyKeys.longPressLegacy], context);
+    final submit = actionOf(properties['onSubmit'] ?? properties['submit'], context);
 
     // Use click or submit action
     final primaryAction = onTap ?? submit;

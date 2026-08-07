@@ -148,7 +148,7 @@ class _SimpleButtonFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
     final label = properties['label'] ?? '';
-    final onTap = (properties['onTap'] ?? properties['click'] ?? properties['onTap']) as Map<String, dynamic>?;
+    final onTap = actionOf(properties['onTap'] ?? properties['click'] ?? properties['onTap'], context);
 
     return ElevatedButton(
       onPressed: onTap != null

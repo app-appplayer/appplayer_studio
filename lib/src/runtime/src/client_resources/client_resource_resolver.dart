@@ -79,7 +79,15 @@ class CustomResourceProviderRegistry {
     if (provider == null) {
       return ResourceResult.error('No provider registered for scheme: $scheme');
     }
-    return provider.handler(path, provider.config);
+    try {
+      return await provider.handler(path, provider.config);
+    } catch (e) {
+      // A provider is host code. Letting its failure escape turns a resource
+      // read into an unhandled exception at whatever call site asked — the
+      // caller expects a result envelope either way, and §8.2.5 gives it one.
+      return ResourceResult.error(
+          'Resource provider "$scheme" failed for "$path": $e');
+    }
   }
 
   /// Return all registered scheme names
@@ -157,7 +165,13 @@ class ResourceContentType {
       case 'wav':
         return const ResourceContentType(isBinary: true, mimeType: 'audio/wav');
       default:
-        return const ResourceContentType(isBinary: false, mimeType: 'application/octet-stream');
+        // The MIME type already said `application/octet-stream` while
+        // `isBinary` said false, so an unknown extension was read as UTF-8
+        // text and handed back under a binary content type — the two halves
+        // of the same answer disagreed, and arbitrary bytes decoded as text
+        // are corrupt without anything failing.
+        return const ResourceContentType(
+            isBinary: true, mimeType: 'application/octet-stream');
     }
   }
 }
@@ -396,9 +410,18 @@ class ClientResourceResolver {
         );
       }
 
-      // Symlink resolution: ensure resolved path stays within workspace
-      final resolvedPath = file.resolveSymbolicLinksSync();
-      if (!p.normalize(resolvedPath).startsWith(normalizedWorkspace)) {
+      // Symlink resolution: ensure resolved path stays within workspace.
+      //
+      // Both sides have to be resolved. Comparing a symlink-resolved target
+      // against an unresolved root rejects every file in a workspace that is
+      // itself reached through a link — `/var/folders/...` on macOS resolves
+      // to `/private/var/folders/...`, so a workspace under the system temp
+      // directory could be written to and never read back.
+      final resolvedPath = p.normalize(file.resolveSymbolicLinksSync());
+      final resolvedWorkspace = p.normalize(
+          Directory(workingDirectory!).resolveSymbolicLinksSync());
+      if (!resolvedPath.startsWith(resolvedWorkspace) &&
+          !resolvedPath.startsWith(normalizedWorkspace)) {
         return ResourceResult.error(
           'Symlink target escapes workspace directory',
         );
@@ -463,9 +486,16 @@ class ClientResourceResolver {
         );
       }
 
-      // Symlink resolution: ensure resolved path stays within temp directory
-      final resolvedPath = file.resolveSymbolicLinksSync();
-      if (!p.normalize(resolvedPath).startsWith(normalizedTemp)) {
+      // Symlink resolution: ensure resolved path stays within temp directory.
+      // Both sides resolved — see the workspace check above; the system temp
+      // directory is itself a link on macOS, so comparing a resolved target
+      // against an unresolved root rejected every temp file that was written
+      // through this same resolver.
+      final resolvedPath = p.normalize(file.resolveSymbolicLinksSync());
+      final resolvedTemp =
+          p.normalize(Directory(normalizedTemp).resolveSymbolicLinksSync());
+      if (!resolvedPath.startsWith(resolvedTemp) &&
+          !resolvedPath.startsWith(normalizedTemp)) {
         return ResourceResult.error(
           'Symlink target escapes temp directory',
         );

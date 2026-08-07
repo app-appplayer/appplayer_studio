@@ -10,7 +10,7 @@ class AspectRatioWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final aspectRatio = properties['aspectRatio']?.toDouble() ?? 1.0;
+    final aspectRatio = numberOf(properties['aspectRatio'], context) ?? 1.0;
 
     // Extract child widget (support both 'child' and 'children' per MCP UI DSL spec)
     final childDef = (properties['child'] ?? definition['child'])

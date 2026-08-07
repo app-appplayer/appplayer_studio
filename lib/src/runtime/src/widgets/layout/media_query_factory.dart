@@ -44,9 +44,32 @@ class MediaQueryWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Check for conditional mode (condition + then/else)
-    final condition = properties['condition'] as Map<String, dynamic>?;
-    if (condition != null) {
-      return _buildConditional(properties, context, condition);
+    // `condition` is `object | binding`. Reading it as a Map threw on the
+    // bound form, which the schema allows: a binding may land on the
+    // constraint object or, per the property's own description, on a plain
+    // boolean expression. A boolean decides directly — there is nothing to
+    // measure against the viewport.
+    final resolved = context.resolve<Object?>(properties['condition']);
+    if (resolved is Map) {
+      return _buildConditional(
+        properties,
+        context,
+        Map<String, dynamic>.from(resolved),
+      );
+    }
+    if (resolved != null) {
+      final matched = resolved == true || resolved.toString() == 'true';
+      final branch = matched
+          ? properties['then']
+          : (properties['else'] ?? properties['orElse']);
+      if (branch is Map<String, dynamic>) {
+        return applyCommonWrappers(
+          context.buildWidget(branch),
+          properties,
+          context,
+        );
+      }
+      return const SizedBox.shrink();
     }
 
     // Breakpoint mode (legacy)

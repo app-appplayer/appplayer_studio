@@ -15,8 +15,8 @@ class BadgeWidgetFactory extends WidgetFactory {
     final backgroundColor =
         parseColor(context.resolve(properties['color'] ?? properties['backgroundColor']), context);
     final textColor = parseColor(context.resolve(properties['textColor']), context);
-    final smallSize = properties['smallSize'] as bool? ?? false;
-    final isLabelVisible = properties['isLabelVisible'] as bool? ?? true;
+    final smallSize = boolOf(properties['smallSize'], context) ?? false;
+    final isLabelVisible = boolOf(properties['isLabelVisible'], context) ?? true;
     final offset = _parseOffset(properties['offset']);
     final alignment = parseAlignment(properties['alignment']);
 

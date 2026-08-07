@@ -11,13 +11,13 @@ class PageViewWidgetFactory extends WidgetFactory {
 
     // Spec §2.9.4 canonical `direction`; `scrollDirection` kept as legacy alias.
     final scrollDirection =
-        _parseAxis(properties['direction'] ?? properties['scrollDirection']) ??
+        _parseAxis(readEnum(properties['direction'] ?? properties['scrollDirection'], context)) ??
             Axis.horizontal;
-    final reverse = properties['reverse'] as bool? ?? false;
-    final pageSnapping = properties['pageSnapping'] as bool? ?? true;
+    final reverse = boolOf(properties['reverse'], context) ?? false;
+    final pageSnapping = boolOf(properties['pageSnapping'], context) ?? true;
     final allowImplicitScrolling =
-        properties['allowImplicitScrolling'] as bool? ?? false;
-    final padEnds = properties['padEnds'] as bool? ?? true;
+        boolOf(properties['allowImplicitScrolling'], context) ?? false;
+    final padEnds = boolOf(properties['padEnds'], context) ?? true;
     final clipBehavior =
         _parseClip(properties['clipBehavior']) ?? Clip.hardEdge;
 
@@ -37,8 +37,7 @@ class PageViewWidgetFactory extends WidgetFactory {
 
     // Spec §2.9.4 canonical `onPageChanged`. `onChange` accepted as alias.
     final onPageChanged =
-        (properties['onPageChanged'] ?? properties['onChange'])
-            as Map<String, dynamic>?;
+        actionOf(properties['onPageChanged'] ?? properties['onChange'], context);
 
     final controller = PageController(initialPage: initialPage);
     final onPageHandler = onPageChanged != null

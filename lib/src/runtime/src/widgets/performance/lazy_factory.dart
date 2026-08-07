@@ -15,13 +15,13 @@ class LazyWidgetFactory extends WidgetFactory {
         as Map<String, dynamic>?;
     final trigger = context.resolve<String>(properties['trigger'] ?? 'visible');
     final delay = context.resolve<int?>(properties['delay']);
-    // ignore: unused_local_variable
-    final onLoad = properties['onLoad'] as Map<String, dynamic>?;
-    // ignore: unused_local_variable
-    final onError = properties['onError'] as Map<String, dynamic>?;
+    final onLoad = actionOf(properties['onLoad'], context);
+    final onError = actionOf(properties['onError'], context);
 
     return _LazyWidget(
       childDefinition: child,
+      onLoad: onLoad,
+      onError: onError,
       placeholderDefinition: placeholder,
       trigger: trigger,
       delay: delay,
@@ -35,6 +35,8 @@ class LazyWidgetFactory extends WidgetFactory {
 class _LazyWidget extends StatefulWidget {
   final Map<String, dynamic>? childDefinition;
   final Map<String, dynamic>? placeholderDefinition;
+  final Map<String, dynamic>? onLoad;
+  final Map<String, dynamic>? onError;
   final String trigger;
   final int? delay;
   final Map<String, dynamic> properties;
@@ -44,6 +46,8 @@ class _LazyWidget extends StatefulWidget {
   const _LazyWidget({
     this.childDefinition,
     this.placeholderDefinition,
+    this.onLoad,
+    this.onError,
     required this.trigger,
     this.delay,
     required this.properties,
@@ -78,15 +82,51 @@ class _LazyWidgetState extends State<_LazyWidget> {
   }
 
   void _loadContent() {
-    if (!_loaded && mounted) {
-      setState(() {
-        _loaded = true;
-        if (widget.childDefinition != null) {
-          _cachedChild = widget.context.renderer
-              .renderWidget(widget.childDefinition!, widget.context);
-        }
-      });
+    if (_loaded || !mounted) return;
+    setState(() {
+      _loaded = true;
+      final definition = widget.childDefinition;
+      if (definition != null) {
+        _cachedChild = widget.context.renderer
+            .renderWidget(_materialize(definition), widget.context);
+      }
+    });
+    // §10.22: fired after `content` is materialized. It was read and then
+    // silenced with an `unused_local_variable` ignore, so a document that
+    // declared it waited for something that never came.
+    final onLoad = widget.onLoad;
+    if (onLoad != null) {
+      widget.context.actionHandler.execute(
+        onLoad,
+        widget.context.createChildContext(
+          variables: <String, dynamic>{
+            'event': <String, dynamic>{'type': 'load'},
+          },
+        ),
+      );
     }
+  }
+
+  /// §10.22 gives `content` two forms: an inline widget, or
+  /// `{ source: "ui://..." }` naming a fragment to fetch. Only the first was
+  /// implemented — the second was handed to the renderer as-is, which
+  /// answered `Widget type is required`, because a source is not a widget.
+  ///
+  /// Resolution is `view`'s job (§2.13.1) and is not rebuilt here: `lazy`
+  /// decides *when* a subtree is built, `view` decides *what* a source
+  /// resolves to. Delegating also carries `placeholder` and `onError`
+  /// through to the surfaces that already implement them.
+  Map<String, dynamic> _materialize(Map<String, dynamic> definition) {
+    if (definition.containsKey('type')) return definition;
+    if (!definition.containsKey('source')) return definition;
+    return <String, dynamic>{
+      'type': 'view',
+      'source': definition['source'],
+      if (definition['props'] != null) 'props': definition['props'],
+      if (widget.placeholderDefinition != null)
+        'loading': widget.placeholderDefinition,
+      if (widget.onError != null) 'onError': widget.onError,
+    };
   }
 
   @override

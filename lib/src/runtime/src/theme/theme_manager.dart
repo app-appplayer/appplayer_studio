@@ -1,3 +1,4 @@
+import '../utils/color_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart';
 
@@ -616,30 +617,15 @@ class ThemeManager with ChangeNotifier {
     );
   }
 
-  Color? _parseColor(dynamic value) {
-    if (value is! String) return null;
-    final v = value.trim();
-    if (v.startsWith('#')) {
-      final hex = v.substring(1);
-      if (hex.length == 6) return Color(int.parse('FF$hex', radix: 16));
-      if (hex.length == 8) return Color(int.parse(hex, radix: 16));
-      return null;
-    }
-    if (v.startsWith('rgb(') || v.startsWith('rgba(')) {
-      final inside =
-          v.substring(v.indexOf('(') + 1, v.indexOf(')')).split(',');
-      if (inside.length < 3) return null;
-      final r = int.tryParse(inside[0].trim());
-      final g = int.tryParse(inside[1].trim());
-      final b = int.tryParse(inside[2].trim());
-      if (r == null || g == null || b == null) return null;
-      final a = inside.length == 4
-          ? ((double.tryParse(inside[3].trim()) ?? 1.0) * 255).round()
-          : 255;
-      return Color.fromARGB(a, r, g, b);
-    }
-    return null;
-  }
+  /// Theme literals through the one §5.3.4 parser.
+  ///
+  /// No slot resolver here on purpose: this is what [getColorValue] calls to
+  /// read a raw theme value, so resolving a slot from inside it would ask the
+  /// theme to define itself. It used to take `rgb()` and nothing else — no
+  /// three-digit hex, none of the ten names — which is why the same string
+  /// was a color in a theme and not in a widget.
+  Color? _parseColor(dynamic value) =>
+      DslColor.parse(value, where: 'theme color');
 
   FontWeight? _parseFontWeight(dynamic value) {
     if (value is num) {

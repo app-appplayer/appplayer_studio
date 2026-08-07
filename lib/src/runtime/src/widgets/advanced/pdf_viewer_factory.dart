@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../assets/asset_ref.dart';
 import '../../renderer/render_context.dart';
+import '../capability_absent.dart';
 import '../widget_factory.dart';
 import 'platform/pdf_view.dart';
 
@@ -18,22 +19,36 @@ class PdfViewerFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
+    // §6.13 — PDF rendering is a platform power. With a host surface wired this draws
+    // the real thing; without one it reports the absence rather than drawing
+    // something that looks like a rendered document.
+    final surface = context.capabilities.pdfBuilder;
+    if (surface != null) {
+      return applyCommonWrappers(
+        Builder(
+          builder: (ctx) =>
+              surface(ctx, properties, surfaceEventsFor(properties, context),
+                  surfaceAssetsFor(context)) ??
+              const SizedBox.shrink(),
+        ),
+        properties,
+        context,
+      );
+    }
+
     final raw = context.resolve<dynamic>(properties['src']);
     final ref = AssetRef.parse(raw);
     final height = context.resolve<num?>(properties['height'])?.toDouble();
-    final onError = properties['onError'] as Map<String, dynamic>?;
+    final onError = actionOf(properties['onError'], context);
 
     // PDF open parameters — the standard fragment every browser viewer reads,
     // which is how page, zoom and chrome stay addressable from the DSL rather
     // than belonging to the viewer.
-    final pageBinding = properties['page'] as String?;
-    final page = pageBinding != null
-        ? (context.getState(pageBinding) as num?)?.toInt()
-        : context.resolve<num?>(properties['page'])?.toInt();
-    final zoomBinding = properties['zoom'] as String?;
-    final zoom = zoomBinding != null
-        ? (context.getState(zoomBinding) as num?)?.toDouble()
-        : context.resolve<num?>(properties['zoom'])?.toDouble();
+    // One-way: the fragment carries page/zoom *into* the embedded viewer and
+    // the viewer reports nothing back, so there is no change to write to
+    // state. `resolve` covers both declared branches.
+    final page = context.resolve<num?>(properties['page'])?.toInt();
+    final zoom = context.resolve<num?>(properties['zoom'])?.toDouble();
     final showToolbar = context.resolve<bool?>(properties['showToolbar']) ?? true;
     final showPageNav = context.resolve<bool?>(properties['showPageNav']) ?? true;
     final showZoom = context.resolve<bool?>(properties['showZoom']) ?? true;

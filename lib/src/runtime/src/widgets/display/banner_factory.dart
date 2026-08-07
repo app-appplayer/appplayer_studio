@@ -17,7 +17,7 @@ class BannerWidgetFactory extends WidgetFactory {
     final message = properties['message'] != null
         ? context.resolve<String?>(properties['message']) ?? ''
         : '';
-    final severity = properties['severity'] != null
+    final severity = readEnum(properties['severity'], context) != null
         ? context.resolve<String?>(properties['severity']) ?? 'info'
         : 'info';
 

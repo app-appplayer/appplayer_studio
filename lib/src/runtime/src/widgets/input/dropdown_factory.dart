@@ -18,9 +18,9 @@ class DropdownWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final label = properties['label'] as String?;
+    final label = stringOf(properties['label'], context);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final value = binding != null
         ? context.resolve("{{$binding}}")
         : context.resolve(properties['value']);
@@ -32,13 +32,13 @@ class DropdownWidgetFactory extends WidgetFactory {
         [];
     // Spec §2.6.5 canonical `placeholder`; `hint` kept as legacy alias.
     final hint = (properties['placeholder'] ?? properties['hint']) as String?;
-    final disabledHint = properties['disabledHint'] as String?;
-    final isExpanded = properties['isExpanded'] as bool? ?? false;
-    final iconSize = properties['iconSize']?.toDouble() ?? 18.0;
+    final disabledHint = stringOf(properties['disabledHint'], context);
+    final isExpanded = boolOf(properties['isExpanded'], context) ?? false;
+    final iconSize = numberOf(properties['iconSize'], context) ?? 18.0;
     final style = _parseTextStyle(properties['style'], context);
 
     final onChange =
-        (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
+        actionOf(properties['onChange'] ?? properties['change'], context);
 
     // Resolve compact menu tokens. Spec-bound dropdown props are
     // `{type, binding, value, options, items, placeholder, onChange,
@@ -48,8 +48,8 @@ class DropdownWidgetFactory extends WidgetFactory {
     // props are read here.
     final tokens = MenuTokens.resolve(
       context.themeManager,
-      itemHeight: properties['itemHeight']?.toDouble(),
-      elevation: properties['elevation']?.toDouble(),
+      itemHeight: numberOf(properties['itemHeight'], context),
+      elevation: numberOf(properties['elevation'], context),
     );
 
     // Build a (label, value) pair list for menu items + trigger lookup.

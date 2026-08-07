@@ -19,9 +19,9 @@ class AccessibleWrapperFactory extends WidgetFactory {
     Widget child = context.renderer.renderWidget(childDef, context);
 
     // Apply focus management if specified
-    final focusGroup = properties['focusGroup'] as String?;
-    final focusOrder = properties['focusOrder'] as int?;
-    final autoFocus = properties['autoFocus'] as bool? ?? false;
+    final focusGroup = stringOf(properties['focusGroup'], context);
+    final focusOrder = intOf(properties['focusOrder'], context);
+    final autoFocus = boolOf(properties['autoFocus'], context) ?? false;
 
     if (focusGroup != null || focusOrder != null) {
       // Create a focus node for this widget
@@ -49,15 +49,15 @@ class AccessibleWrapperFactory extends WidgetFactory {
     }
 
     // Apply live region if specified
-    final liveRegion = properties['liveRegion'] as String?;
-    final announceOnChange = properties['announceOnChange'] as bool? ?? false;
+    final liveRegion = stringOf(properties['liveRegion'], context);
+    final announceOnChange = boolOf(properties['announceOnChange'], context) ?? false;
 
     if (liveRegion != null) {
       final liveRegionType = _parseLiveRegionType(liveRegion);
 
       if (announceOnChange) {
         // Monitor for changes and announce
-        final watchPath = properties['watchPath'] as String?;
+        final watchPath = stringOf(properties['watchPath'], context);
         if (watchPath != null) {
           // Create a stateful widget that watches for changes
           child = _LiveRegionWatcher(
@@ -78,9 +78,9 @@ class AccessibleWrapperFactory extends WidgetFactory {
 
     // Apply navigation announcements if specified
     final announceNavigation =
-        properties['announceNavigation'] as bool? ?? false;
+        boolOf(properties['announceNavigation'], context) ?? false;
     if (announceNavigation) {
-      final message = properties['navigationMessage'] as String?;
+      final message = stringOf(properties['navigationMessage'], context);
       if (message != null) {
         // Announce when widget is built
         WidgetsBinding.instance.addPostFrameCallback((_) {

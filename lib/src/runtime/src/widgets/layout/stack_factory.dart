@@ -26,7 +26,7 @@ class StackWidgetFactory extends WidgetFactory {
     Widget stack = Stack(
       alignment: _parseAlignment(properties['alignment']),
       textDirection: _parseTextDirection(properties['textDirection']),
-      fit: _parseStackFit(properties['fit']),
+      fit: _parseStackFit(readEnum(properties['fit'], context)),
       clipBehavior: _parseClipBehavior(properties['clipBehavior']),
       children: children,
     );

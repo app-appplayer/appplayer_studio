@@ -1,3 +1,4 @@
+import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' as core;
 import 'dart:async';
 import 'dart:convert';
 
@@ -53,6 +54,30 @@ class ExpressionSandbox {
 
 /// Engine for handling data bindings
 class BindingEngine {
+
+  /// Paths already reported, so a document that reads one every frame says it
+  /// once.
+  static final Set<String> _warnedLegacyMirrors = <String>{};
+
+  /// A read of the legacy `tools.<tool>.result` mirror.
+  ///
+  /// The warning used to fire where the mirror is *written*, which is on every
+  /// successful tool call — so an author who never touches the namespace was
+  /// told about a deprecation they cannot act on, while an author who does
+  /// read it heard nothing, because reading a value that is present succeeds
+  /// quietly. The day the mirror goes, the second author is the one whose
+  /// document breaks. Reported here, where the dependency actually is.
+  void _warnIfLegacyToolMirror(String path) {
+    if (!path.startsWith('tools.')) return;
+    if (!_warnedLegacyMirrors.add(path)) return;
+    _logger.warning(
+      '`$path` reads the legacy namespaced tool mirror. It is deprecated and '
+      'will be removed; a document that depends on it stops resolving when it '
+      'goes. Use `bindResult` to name where the result lands, or read the '
+      "response's top-level keys, which auto-merge (spec §3.10).",
+    );
+  }
+
   final Map<String, Binding> _bindings = {};
   final Map<String, StreamSubscription> _subscriptions = {};
   final Map<String, Function> _transforms = {};
@@ -688,6 +713,8 @@ class BindingEngine {
       return binding.defaultValue;
     }
 
+    _warnIfLegacyToolMirror(path);
+
     // Handle prefixed paths (app.*, local.*, page.*) via context
     if (path.contains('.')) {
       final prefix = path.substring(0, path.indexOf('.'));
@@ -798,8 +825,11 @@ class BindingEngine {
   dynamic _resolveRuntimeBinding(String path, RenderContext context) {
     switch (path) {
       case 'version':
-        // Return the detected MCP UI DSL version
-        return '1.1';
+        // Core owns the version contract; this used to answer a hardcoded
+        // '1.1', which was two cuts stale and disagreed with both the schema
+        // and `MCPUIDSLVersion.current`. A document branching on it was
+        // branching on a number nothing else in the system used.
+        return core.MCPUIDSLVersion.current;
       case 'platform':
         return _clientBindingResolver.resolve('{{client.platform}}');
       case 'locale':
@@ -1222,14 +1252,24 @@ class BindingEngine {
     // Handle built-in functions
     switch (expr.methodName) {
       case 'min':
-        if (args.length == 2 && args[0] is num && args[1] is num) {
-          return args[0] < args[1] ? args[0] : args[1];
+        // §3.6.1 writes these as `min(a, b, ...)` — the smallest *argument*,
+        // not the smaller of two. A third argument used to make the whole call
+        // resolve to null, which reads as "no data" in whatever the document
+        // was showing.
+        {
+          final nums = args.whereType<num>().toList();
+          if (nums.length == args.length && nums.isNotEmpty) {
+            return nums.reduce((a, b) => a < b ? a : b);
+          }
         }
         break;
 
       case 'max':
-        if (args.length == 2 && args[0] is num && args[1] is num) {
-          return args[0] > args[1] ? args[0] : args[1];
+        {
+          final nums = args.whereType<num>().toList();
+          if (nums.length == args.length && nums.isNotEmpty) {
+            return nums.reduce((a, b) => a > b ? a : b);
+          }
         }
         break;
 
@@ -1362,6 +1402,22 @@ class BindingEngine {
         break;
 
       case 'map':
+        // map(array, lambda) - derive each item.
+        //
+        // `filter` and `reduce` both read a lambda here; `map` did not, so a
+        // lambda fell through to the property branch below, was stringified
+        // into a property name no item carries, and every item came back
+        // unchanged. The result is the input list — which reads as "the
+        // mapping did nothing useful" rather than "the mapping never ran".
+        if (args.length >= 2 && args[0] is List && args[1] is BindingExpression) {
+          final list = args[0] as List;
+          final limit = sandbox.maxIterations;
+          final capped = list.length > limit ? list.sublist(0, limit) : list;
+          final lambdaExpr = args[1] as BindingExpression;
+          return capped
+              .map((item) => _evaluateLambdaBody(lambdaExpr, item, context))
+              .toList();
+        }
         // map(array, key) - extract property from each item
         if (args.length >= 2 && args[0] is List) {
           final list = args[0] as List;

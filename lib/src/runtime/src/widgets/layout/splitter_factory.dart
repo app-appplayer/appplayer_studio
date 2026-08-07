@@ -32,7 +32,7 @@ class SplitterFactory extends WidgetFactory {
     // goes through the normal resolver.
     final rawSizesProperty = properties['sizes'];
     final sizesBinding = rawSizesProperty is String ? rawSizesProperty : null;
-    final onDragEnd = properties['onDragEnd'] as Map<String, dynamic>?;
+    final onDragEnd = actionOf(properties['onDragEnd'], context);
 
     final rawSizes = sizesBinding != null
         ? context.getState(sizesBinding)

@@ -15,9 +15,9 @@ class SingleChildScrollViewWidgetFactory extends WidgetFactory {
     final scrollDirection =
         _parseAxis(properties['direction'] ?? properties['scrollDirection']) ??
             Axis.vertical;
-    final reverse = properties['reverse'] as bool? ?? false;
-    final padding = parseEdgeInsets(properties['padding']);
-    final primary = properties['primary'] as bool?;
+    final reverse = boolOf(properties['reverse'], context) ?? false;
+    final padding = edgeInsetsOf(properties['padding'], context);
+    final primary = boolOf(properties['primary'], context);
     final physics = _parseScrollPhysics(properties['physics']);
     final clipBehavior =
         _parseClip(properties['clipBehavior']) ?? Clip.hardEdge;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../assets/asset_ref.dart';
+import '../../assets/asset_resolver.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
@@ -17,14 +18,14 @@ class ImageWidgetFactory extends WidgetFactory {
         '');
     final width = parseDimension(properties['width']);
     final height = parseDimension(properties['height']);
-    final fit = _parseBoxFit(properties['fit']);
+    final fit = _parseBoxFit(readEnum(properties['fit'], context));
     final alignment = _parseAlignment(properties['alignment']);
-    final placeholder = properties['placeholder'] as String?;
-    final errorWidget = properties['errorWidget'] as String?;
+    final placeholder = stringOf(properties['placeholder'], context);
+    final errorWidget = stringOf(properties['errorWidget'], context);
     final fallback = properties['fallback'] as Map<String, dynamic>?;
     final fallbackUrl = context.resolve<String?>(properties['fallbackUrl']);
     final fallbackBehavior =
-        properties['fallbackBehavior'] as String? ?? 'placeholder';
+        stringOf(properties['fallbackBehavior'], context) ?? 'placeholder';
     final loading = properties['loading'] as Map<String, dynamic>?;
 
     Widget image;
@@ -64,9 +65,26 @@ class ImageWidgetFactory extends WidgetFactory {
     // synchronous loader can build, so `data:` rendered a placeholder naming
     // the runtime's limitation and `bundle://` / `client://` fell through to
     // the fallback despite being declared by the spec.
+    final ref = src.isEmpty ? null : AssetRef.parse(src);
+
+    // A vector is drawn by a picture widget, not an `ImageProvider`. Same
+    // reference, same fallback contract — only the painter differs.
+    if (ref != null && AssetResolver.isVector(ref)) {
+      final vector = context.assetResolver.vectorWidgetFor(
+        ref,
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: alignment,
+        loadingBuilder: () => buildLoadingWidget(width, height),
+      );
+      if (vector != null) {
+        return applyCommonWrappers(vector, properties, context);
+      }
+    }
+
     final provider =
-        src.isEmpty ? null : context.assetResolver.imageProviderFor(
-            AssetRef.parse(src)!);
+        ref == null ? null : context.assetResolver.imageProviderFor(ref);
 
     if (provider == null) {
       // Unsupported scheme, malformed reference, or no source: take the

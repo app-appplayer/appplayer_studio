@@ -23,11 +23,11 @@ class InkWellWidgetFactory extends WidgetFactory {
     // final splashRadius = context.resolve<num?>(properties['splashRadius'])?.toDouble();
     final borderRadius = _parseBorderRadius(properties['borderRadius']);
     final customBorder = _parseShapeBorder(properties['customBorder']);
-    final enableFeedback = properties['enableFeedback'] as bool? ?? true;
+    final enableFeedback = boolOf(properties['enableFeedback'], context) ?? true;
     final excludeFromSemantics =
-        properties['excludeFromSemantics'] as bool? ?? false;
-    final canRequestFocus = properties['canRequestFocus'] as bool? ?? true;
-    final autofocus = properties['autofocus'] as bool? ?? false;
+        boolOf(properties['excludeFromSemantics'], context) ?? false;
+    final canRequestFocus = boolOf(properties['canRequestFocus'], context) ?? true;
+    final autofocus = boolOf(properties['autofocus'], context) ?? false;
 
     // Extract child widget (support both 'child' and 'children' per MCP UI DSL spec)
     final childDef = (properties['child'] ?? definition['child'])
@@ -42,15 +42,15 @@ class InkWellWidgetFactory extends WidgetFactory {
     }
 
     // Extract action handlers
-    final onTap = (properties['onTap'] ?? properties['click'] ?? properties['onTap']) as Map<String, dynamic>?;
-    final onDoubleTap = (properties['onDoubleTap'] ?? properties['double-click'] ?? properties['onDoubleTap']) as Map<String, dynamic>?;
-    final onLongPress = (properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress']) as Map<String, dynamic>?;
-    final onTapDown = properties['onTapDown'] as Map<String, dynamic>?;
-    final onTapUp = properties['onTapUp'] as Map<String, dynamic>?;
-    final onTapCancel = properties['onTapCancel'] as Map<String, dynamic>?;
+    final onTap = actionOf(properties['onTap'] ?? properties['click'] ?? properties['onTap'], context);
+    final onDoubleTap = actionOf(properties['onDoubleTap'] ?? properties['double-click'] ?? properties['onDoubleTap'], context);
+    final onLongPress = actionOf(properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress'], context);
+    final onTapDown = actionOf(properties['onTapDown'], context);
+    final onTapUp = actionOf(properties['onTapUp'], context);
+    final onTapCancel = actionOf(properties['onTapCancel'], context);
     final onHighlightChanged =
-        properties['onHighlightChanged'] as Map<String, dynamic>?;
-    final onHover = (properties['onHover'] ?? properties['hover']) as Map<String, dynamic>?;
+        actionOf(properties['onHighlightChanged'], context);
+    final onHover = actionOf(properties['onHover'] ?? properties['hover'], context);
 
     Widget inkWell = InkWell(
       onTap: onTap != null
@@ -130,6 +130,18 @@ class InkWellWidgetFactory extends WidgetFactory {
       autofocus: autofocus,
       child: child,
     );
+
+    // Ink is painted by the nearest `Material`, which is normally the app's —
+    // *below* everything the document paints on the way down. A page that
+    // gives itself a background therefore covered the splash, the focus and
+    // the hover overlay completely: the properties validated, rendered no
+    // error, and drew nothing. Measured three ways (opaque child, transparent
+    // child, no page background) the deciding factor was not the child but
+    // any painting ancestor at all, so the ink layer has to live here.
+    //
+    // `MaterialType.transparency` adds no paint of its own and no layout, so
+    // this is the ink layer moving, not a surface appearing.
+    inkWell = Material(type: MaterialType.transparency, child: inkWell);
 
     return applyCommonWrappers(inkWell, properties, context);
   }

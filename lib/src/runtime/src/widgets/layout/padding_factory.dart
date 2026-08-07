@@ -10,7 +10,7 @@ class PaddingWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract padding
-    final padding = parseEdgeInsets(properties['padding']) ?? EdgeInsets.zero;
+    final padding = edgeInsetsOf(properties['padding'], context) ?? EdgeInsets.zero;
 
     // Padding is a single-child widget, so child should be in properties
     Widget? child;

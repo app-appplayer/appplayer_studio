@@ -9,10 +9,10 @@ class VerticalDividerWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     return VerticalDivider(
-      width: properties['width']?.toDouble(),
-      thickness: properties['thickness']?.toDouble(),
-      indent: properties['indent']?.toDouble(),
-      endIndent: properties['endIndent']?.toDouble(),
+      width: numberOf(properties['width'], context),
+      thickness: numberOf(properties['thickness'], context),
+      indent: numberOf(properties['indent'], context),
+      endIndent: numberOf(properties['endIndent'], context),
       color: resolveColor(properties['color'], context),
     );
   }

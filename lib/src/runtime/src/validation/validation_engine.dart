@@ -51,6 +51,13 @@ enum ValidationRuleType {
   match,
   custom,
   async,
+  // Published by `07_Security.md` §7.2.1 and absent here until 1.4.1, so a
+  // document declaring them parsed to nothing and the field validated
+  // against an empty rule set.
+  phone,
+  number,
+  integer,
+  date,
 }
 
 /// Validation rule
@@ -76,11 +83,16 @@ class ValidationEngine {
 
     final rules = <ValidationRule>[];
 
-    // Handle array format (newer spec)
+    // Handle array format — §7.2.1 Shape B.
     if (validation is List) {
       for (final rule in validation) {
         if (rule is Map<String, dynamic>) {
-          final type = rule['type'] as String?;
+          // §7.2.1 names the key `rule`. This engine only ever read `type`,
+          // so every array written to the published spec parsed to nothing —
+          // silently, because the switch has no default and an empty rule
+          // set validates everything. `type` stays accepted: it is what
+          // shipped, and documents using it validate today.
+          final type = (rule['rule'] ?? rule['type']) as String?;
           final message = rule['message'] as String?;
 
           switch (type) {
@@ -169,19 +181,104 @@ class ValidationEngine {
                 message: message ?? 'Async validation failed',
               ));
               break;
+            case 'phone':
+              rules.add(ValidationRule(
+                type: ValidationRuleType.phone,
+                message: message ?? 'Invalid phone number',
+              ));
+              break;
+            case 'number':
+              rules.add(ValidationRule(
+                type: ValidationRuleType.number,
+                message: message ?? 'Enter a number',
+              ));
+              break;
+            case 'integer':
+              rules.add(ValidationRule(
+                type: ValidationRuleType.integer,
+                message: message ?? 'Enter a whole number',
+              ));
+              break;
+            case 'date':
+              rules.add(ValidationRule(
+                type: ValidationRuleType.date,
+                message: message ?? 'Enter a valid date',
+              ));
+              break;
+            default:
+              // A rule nobody parses is a constraint the author believes is
+              // being applied. Saying so is the difference between a typo
+              // and a field that quietly accepts anything.
+              _logger.warning(
+                  'validation: unknown rule "$type" — no constraint applied. '
+                  'See 07_Security.md §7.2.1 for the published set.');
           }
         }
       }
       return rules;
     }
 
-    // Reject legacy object format - MCP UI DSL v1.0 only supports array format
+    // §7.2.1 Shape A — the constraint object. The section says runtimes MUST
+    // support both shapes; this branch used to log "legacy format" and return
+    // nothing, so a sanitization-oriented block validated against no rules at
+    // all. Each declared constraint becomes one rule, in the order the
+    // section lists them.
     if (validation is! Map<String, dynamic>) return [];
 
-    // Log warning about legacy format usage and return empty rules
-    _logger.warning(
-        'Legacy validation format detected. MCP UI DSL v1.0 only supports array format for validation rules.');
-    return [];
+    final message = validation['message'] as String?;
+    final kind = validation['kind'] as String?;
+    switch (kind) {
+      case 'email':
+        rules.add(ValidationRule(
+            type: ValidationRuleType.email,
+            message: message ?? 'Invalid email address'));
+        break;
+      case 'url':
+        rules.add(ValidationRule(
+            type: ValidationRuleType.url, message: message ?? 'Invalid URL'));
+        break;
+      case 'phone':
+        rules.add(ValidationRule(
+            type: ValidationRuleType.phone,
+            message: message ?? 'Invalid phone number'));
+        break;
+      case 'number':
+        rules.add(ValidationRule(
+            type: ValidationRuleType.number,
+            message: message ?? 'Enter a number'));
+        break;
+      case 'date':
+        rules.add(ValidationRule(
+            type: ValidationRuleType.date,
+            message: message ?? 'Enter a valid date'));
+        break;
+      case 'text':
+      case null:
+        // `text` declares no constraint of its own; the sibling fields carry
+        // it. `sanitize` is a normalization hint, not a rejection rule.
+        break;
+      default:
+        _logger.warning(
+            'validation: unknown kind "$kind" — no constraint applied. '
+            'See 07_Security.md §7.2.1 for the published set.');
+    }
+    final maxLength = validation['maxLength'];
+    if (maxLength is num) {
+      rules.add(ValidationRule(
+        type: ValidationRuleType.maxLength,
+        value: maxLength.toInt(),
+        message: message ?? 'Too long',
+      ));
+    }
+    final pattern = validation['pattern'];
+    if (pattern is String) {
+      rules.add(ValidationRule(
+        type: ValidationRuleType.pattern,
+        value: pattern,
+        message: message ?? 'Invalid format',
+      ));
+    }
+    return rules;
   }
 
   /// Validate a value against rules
@@ -275,6 +372,48 @@ class ValidationEngine {
 
       case ValidationRuleType.async:
         // Async validation is handled by validateAsync method
+        break;
+
+      // An empty field is the `required` rule's business, not these. Each
+      // checks shape only, so a rule set of `[phone]` alone accepts blank —
+      // which is what "optional but must look like a phone number" means.
+      case ValidationRuleType.phone:
+        if (value is String && value.trim().isNotEmpty) {
+          // Digits, with the separators a person actually types, and an
+          // optional leading `+`. Length is bounded by E.164 (15 digits)
+          // with room for a country prefix.
+          final digits = value.replaceAll(RegExp(r'[\s\-().]'), '');
+          final phoneRegex = RegExp(r'^\+?[0-9]{4,15}$');
+          if (!phoneRegex.hasMatch(digits)) {
+            return ValidationResult.invalid(rule.message!);
+          }
+        }
+        break;
+
+      case ValidationRuleType.number:
+        if (value is String && value.trim().isNotEmpty) {
+          if (num.tryParse(value.trim()) == null) {
+            return ValidationResult.invalid(rule.message!);
+          }
+        }
+        break;
+
+      case ValidationRuleType.integer:
+        if (value is String && value.trim().isNotEmpty) {
+          if (int.tryParse(value.trim()) == null) {
+            return ValidationResult.invalid(rule.message!);
+          }
+        } else if (value is num && value != value.roundToDouble()) {
+          return ValidationResult.invalid(rule.message!);
+        }
+        break;
+
+      case ValidationRuleType.date:
+        if (value is String && value.trim().isNotEmpty) {
+          if (DateTime.tryParse(value.trim()) == null) {
+            return ValidationResult.invalid(rule.message!);
+          }
+        }
         break;
     }
 

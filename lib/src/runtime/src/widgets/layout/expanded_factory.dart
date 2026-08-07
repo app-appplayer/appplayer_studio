@@ -27,7 +27,7 @@ class ExpandedWidgetFactory extends WidgetFactory {
     }
 
     // Extract flex value
-    final flex = properties['flex'] as int? ?? 1;
+    final flex = dimensionOf(properties['flex'], context)?.toInt() ?? 1;
 
     if (child == null) {
       return Container(); // Return empty container if no child

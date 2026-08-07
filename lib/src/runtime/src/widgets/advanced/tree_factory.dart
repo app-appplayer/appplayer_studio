@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
+import '../../utils/binding_path.dart';
 import '../widget_factory.dart';
 
 /// Factory for Tree widgets (Advanced conformance level)
@@ -17,19 +18,26 @@ class TreeWidgetFactory extends WidgetFactory {
     // Spec §10.11 canonical `initiallyExpanded`; `expandAll` kept as legacy.
     final expandAll = context.resolve<bool>(
         properties['initiallyExpanded'] ?? properties['expandAll'] ?? false);
-    // ignore: unused_local_variable
-    final childrenKey = properties['childrenKey'] as String? ?? 'children';
-    // ignore: unused_local_variable
-    final onNodeTap = properties['onNodeTap'] as Map<String, dynamic>?;
+    // Both were read and discarded. `childrenKey` meant a tree over data
+    // keyed anything other than `children` showed only its roots, and
+    // `onNodeTap` meant a declared tap handler never fired — `onSelect` only
+    // fires when `selectable` is on, so a plain tree had no working tap at all.
+    final childrenKey = stringOf(properties['childrenKey'], context) ?? 'children';
+    final onNodeTap = actionOf(properties['onNodeTap'], context);
+    // §10.11 `draggable` — declared, and the factory did not read it: a tree
+    // marked draggable could not be dragged, and the `onDrop` its own
+    // description names was not in the registry at all.
+    final draggable = boolOf(properties['draggable'], context) ?? false;
+    final onDrop = actionOf(properties['onDrop'], context);
     final showLines = context.resolve<bool>(properties['showLines'] ?? true);
     final selectable = context.resolve<bool>(properties['selectable'] ?? false);
     final width = parseDimension(context.resolve((properties['width'])));
     final height = parseDimension(context.resolve((properties['height'])));
-    final indentation = (properties['indentation'] as num?)?.toDouble() ?? 24.0;
+    final indentation = (dimensionOf(properties['indentation'], context))?.toDouble() ?? 24.0;
     // Spec §10.11 `itemPadding`: EdgeInsets applied inside every row so the
     // vertical component drives row height. Falls back to the design-doc
     // default of 4px vertical + 8px right.
-    final itemPadding = parseEdgeInsets(properties['itemPadding']) ??
+    final itemPadding = edgeInsetsOf(properties['itemPadding'], context) ??
         const EdgeInsets.only(top: 4, bottom: 4, right: 8);
     final expandable =
         context.resolve<bool>(properties['expandable'] ?? true);
@@ -51,9 +59,9 @@ class TreeWidgetFactory extends WidgetFactory {
         context.themeManager.getColorValue('onSurface') ?? Colors.black87;
 
     // Extract action handlers
-    final onSelect = (properties['onSelect'] ?? properties['select']) as Map<String, dynamic>?;
-    final onExpand = properties['onExpand'] as Map<String, dynamic>?;
-    final onCollapse = properties['onCollapse'] as Map<String, dynamic>?;
+    final onSelect = actionOf(properties['onSelect'] ?? properties['select'], context);
+    final onExpand = actionOf(properties['onExpand'], context);
+    final onCollapse = actionOf(properties['onCollapse'], context);
 
     if (data.isEmpty) {
       return applyCommonWrappers(
@@ -72,8 +80,26 @@ class TreeWidgetFactory extends WidgetFactory {
     }
 
     // Build tree nodes
+    // `checkable` / `checkedKeys` (1.4): a checkbox per node, with the checked
+    // set carried in state. Declared and never wired — a document asking for
+    // selection by checkbox got a plain tree and no diagnostic.
+    final checkable = context.resolve<bool>(properties['checkable'] ?? false);
+    final checkedKeysPath = properties['checkedKeys'] is String &&
+            (properties['checkedKeys'] as String).contains('{{')
+        ? twoWayPath(properties['checkedKeys'])
+        : null;
+    final checkedKeys = <String>{
+      ...?(context.resolve<dynamic>(properties['checkedKeys']) as List?)
+          ?.map((e) => e.toString()),
+    };
+
     Widget tree = _TreeView(
       nodes: data,
+      checkable: checkable,
+      checkedKeys: checkedKeys,
+      onCheckedChanged: checkedKeysPath == null
+          ? null
+          : (keys) => context.setValue(checkedKeysPath, keys.toList()),
       expandAll: expandAll,
       expandable: expandable,
       showLines: showLines,
@@ -84,6 +110,10 @@ class TreeWidgetFactory extends WidgetFactory {
       lineColor: lineColor,
       selectedColor: selectedColor,
       onSelect: onSelect,
+      onNodeTap: onNodeTap,
+      draggable: draggable,
+      onDrop: onDrop,
+      childrenKey: childrenKey,
       onExpand: onExpand,
       onCollapse: onCollapse,
       context: context,
@@ -120,13 +150,23 @@ class _TreeView extends StatefulWidget {
   final Color lineColor;
   final Color selectedColor;
   final Map<String, dynamic>? onSelect;
+  final Map<String, dynamic>? onNodeTap;
+  final bool draggable;
+  final Map<String, dynamic>? onDrop;
+  final String childrenKey;
   final Map<String, dynamic>? onExpand;
   final Map<String, dynamic>? onCollapse;
   final RenderContext context;
   final int depth;
+  final bool checkable;
+  final Set<String> checkedKeys;
+  final void Function(Set<String>)? onCheckedChanged;
 
   const _TreeView({
     required this.nodes,
+    this.checkable = false,
+    this.checkedKeys = const <String>{},
+    this.onCheckedChanged,
     required this.expandAll,
     required this.expandable,
     required this.showLines,
@@ -137,6 +177,10 @@ class _TreeView extends StatefulWidget {
     required this.lineColor,
     required this.selectedColor,
     this.onSelect,
+    this.onNodeTap,
+    this.draggable = false,
+    this.onDrop,
+    this.childrenKey = 'children',
     this.onExpand,
     this.onCollapse,
     required this.context,
@@ -159,6 +203,74 @@ class _TreeViewState extends State<_TreeView> {
     );
   }
 
+
+  /// Runs the node's tap handlers. `onNodeTap` fires for every node —
+  /// selection is a separate idea, and gating the tap on `selectable` left a
+  /// declared handler that could never run.
+  void _tapNode(String id, Map<String, dynamic> node) {
+    if (widget.selectable) {
+      setState(() => _selectedNodeId = id);
+      final onSelect = widget.onSelect;
+      if (onSelect != null) {
+        widget.context.actionHandler.execute(
+          onSelect,
+          widget.context.createChildContext(variables: {'event': node}),
+        );
+      }
+    }
+    final onNodeTap = widget.onNodeTap;
+    if (onNodeTap != null) {
+      widget.context.actionHandler.execute(
+        onNodeTap,
+        widget.context.createChildContext(variables: {'event': node}),
+      );
+    }
+  }
+
+  /// Makes [row] draggable and a drop target, when the tree says so.
+  ///
+  /// The drop reports which edge it landed on — dropping *on* a node means
+  /// reparenting, dropping near its top or bottom means ordering — because a
+  /// move that cannot say where it landed is a move the document cannot apply.
+  Widget _draggableRow(Map<String, dynamic> node, Widget row) {
+    if (!widget.draggable) return row;
+    final target = DragTarget<Map<String, dynamic>>(
+      onWillAcceptWithDetails: (details) => details.data != node,
+      onAcceptWithDetails: (details) {
+        final onDrop = widget.onDrop;
+        if (onDrop == null) return;
+        final box = context.findRenderObject() as RenderBox?;
+        var position = 'inside';
+        if (box != null && box.hasSize) {
+          final local = box.globalToLocal(details.offset);
+          final third = box.size.height / 3;
+          if (local.dy < third) {
+            position = 'before';
+          } else if (local.dy > box.size.height - third) {
+            position = 'after';
+          }
+        }
+        widget.context.createChildContext(variables: {
+          'event': {
+            'item': details.data,
+            'target': node,
+            'position': position,
+          },
+        }).handleAction(onDrop);
+      },
+      builder: (_, __, ___) => row,
+    );
+    return LongPressDraggable<Map<String, dynamic>>(
+      data: node,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Opacity(opacity: 0.8, child: row),
+      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: row),
+      child: target,
+    );
+  }
+
   Widget _buildNode(dynamic nodeData) {
     if (nodeData is! Map) return const SizedBox.shrink();
 
@@ -166,7 +278,7 @@ class _TreeViewState extends State<_TreeView> {
     final id = node['id']?.toString() ?? '';
     final label = widget.context.resolve<String>(node['label'] ?? '');
     final iconName = node['icon'] as String?;
-    final children = node['children'] as List<dynamic>?;
+    final children = node[widget.childrenKey] as List<dynamic>?;
     final hasChildren = children != null && children.isNotEmpty;
     final isSelected = _selectedNodeId == id;
 
@@ -175,6 +287,7 @@ class _TreeViewState extends State<_TreeView> {
 
     // Build label widget - use itemTemplate if provided
     Widget labelWidget;
+    // (checkbox is prepended below once the label is built)
     if (widget.itemTemplate != null) {
       final childContext = widget.context.createChildContext(
         variables: {
@@ -205,6 +318,28 @@ class _TreeViewState extends State<_TreeView> {
       );
     }
 
+    if (widget.checkable) {
+      final checked = widget.checkedKeys.contains(id);
+      labelWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Checkbox(
+            value: checked,
+            onChanged: (v) {
+              final next = Set<String>.from(widget.checkedKeys);
+              if (v == true) {
+                next.add(id);
+              } else {
+                next.remove(id);
+              }
+              widget.onCheckedChanged?.call(next);
+            },
+          ),
+          Flexible(child: labelWidget),
+        ],
+      );
+    }
+
     if (hasChildren && widget.expandable) {
       // File-explorer-style expandable row: chevron + optional icon + label,
       // with children rendered directly below (not as a Material
@@ -219,20 +354,9 @@ class _TreeViewState extends State<_TreeView> {
         selectable: widget.selectable,
         selected: isSelected,
         selectedColor: widget.selectedColor,
-        onSelect: widget.selectable
-            ? () {
-                setState(() {
-                  _selectedNodeId = id;
-                });
-                if (widget.onSelect != null) {
-                  final eventContext = widget.context.createChildContext(
-                    variables: {'event': node},
-                  );
-                  widget.context.actionHandler
-                      .execute(widget.onSelect!, eventContext);
-                }
-              }
-            : null,
+        // The expandable row's tap: selection when the tree is selectable,
+        // and `onNodeTap` either way.
+        onSelect: () => _tapNode(id, node),
         onExpansionChanged: (expanded) {
           final action = expanded ? widget.onExpand : widget.onCollapse;
           if (action != null) {
@@ -243,6 +367,9 @@ class _TreeViewState extends State<_TreeView> {
           }
         },
         childrenBuilder: () => _TreeView(
+          checkable: widget.checkable,
+          checkedKeys: widget.checkedKeys,
+          onCheckedChanged: widget.onCheckedChanged,
           nodes: children,
           expandAll: widget.expandAll,
           expandable: widget.expandable,
@@ -254,6 +381,10 @@ class _TreeViewState extends State<_TreeView> {
           lineColor: widget.lineColor,
           selectedColor: widget.selectedColor,
           onSelect: widget.onSelect,
+          onNodeTap: widget.onNodeTap,
+          draggable: widget.draggable,
+          onDrop: widget.onDrop,
+          childrenKey: widget.childrenKey,
           onExpand: widget.onExpand,
           onCollapse: widget.onCollapse,
           context: widget.context,
@@ -267,22 +398,7 @@ class _TreeViewState extends State<_TreeView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: widget.selectable
-                ? () {
-                    setState(() {
-                      _selectedNodeId = id;
-                    });
-                    if (widget.onSelect != null) {
-                      final eventContext = widget.context.createChildContext(
-                        variables: {'event': node},
-                      );
-                      widget.context.actionHandler.execute(
-                        widget.onSelect!,
-                        eventContext,
-                      );
-                    }
-                  }
-                : null,
+            onTap: () => _tapNode(id, node),
             child: Padding(
               padding: EdgeInsets.only(
                 left: widget.indentation * widget.depth + 16,
@@ -316,6 +432,10 @@ class _TreeViewState extends State<_TreeView> {
             lineColor: widget.lineColor,
             selectedColor: widget.selectedColor,
             onSelect: widget.onSelect,
+            onNodeTap: widget.onNodeTap,
+            draggable: widget.draggable,
+            onDrop: widget.onDrop,
+            childrenKey: widget.childrenKey,
             onExpand: widget.onExpand,
             onCollapse: widget.onCollapse,
             context: widget.context,
@@ -328,23 +448,10 @@ class _TreeViewState extends State<_TreeView> {
       // the same depth align regardless of whether a neighbouring node is
       // expandable. The chevron slot is reserved with an empty SizedBox
       // so labels line up exactly under expandable rows.
-      return InkWell(
-        onTap: widget.selectable
-            ? () {
-                setState(() {
-                  _selectedNodeId = id;
-                });
-                if (widget.onSelect != null) {
-                  final eventContext = widget.context.createChildContext(
-                    variables: {'event': node},
-                  );
-                  widget.context.actionHandler.execute(
-                    widget.onSelect!,
-                    eventContext,
-                  );
-                }
-              }
-            : null,
+      return _draggableRow(
+          node,
+          InkWell(
+        onTap: () => _tapNode(id, node),
         child: Container(
           decoration: isSelected
               ? BoxDecoration(
@@ -373,7 +480,7 @@ class _TreeViewState extends State<_TreeView> {
             ],
           ),
         ),
-      );
+      ));
     }
   }
 

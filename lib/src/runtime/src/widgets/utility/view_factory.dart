@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
 import '../../models/ui_definition.dart' show LifecycleDefinition;
+import '../../routing/page_activity_scope.dart';
 import '../../runtime/lifecycle_runner.dart';
 import '../../state/state_manager.dart';
 import '../../utils/mcp_logger.dart';
@@ -65,7 +67,7 @@ class ViewFactory extends WidgetFactory {
       props: _asMap(definition['props']),
       fallback: definition['fallback'],
       loading: definition['loading'],
-      onError: definition['onError'] as Map<String, dynamic>?,
+      onError: actionOf(definition['onError'], context),
       themeMode: definition['theme'] as String? ?? 'inherit',
       context: context,
     );
@@ -367,7 +369,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
     _runner = LifecycleRunner(
       lifecycle: hooks,
       label: 'embedded definition',
-      execute: (action) => scope.actionHandler.execute(action, scope),
+      execute: (action, hook) => scope.actionHandler.execute(action, scope),
     );
 
     // Scheduled as a microtask, not a post-frame callback.
@@ -393,9 +395,31 @@ class _ViewWidgetState extends State<_ViewWidget> {
   }
 
   LifecycleRunner? _runner;
+  ValueListenable<bool>? _pageActive;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // An embedded definition follows the page it is embedded in. Its own
+    // `onPause`/`onResume` mean the same thing they mean for a page (§1.5.1),
+    // and a paused page leaves it mounted — so without this a tile on an
+    // unselected tab keeps its subscriptions running and never hears the
+    // resume its document declares.
+    final active = PageActivityScope.of(context);
+    if (identical(active, _pageActive)) return;
+    _pageActive?.removeListener(_onPageActivityChanged);
+    _pageActive = active?..addListener(_onPageActivityChanged);
+  }
+
+  void _onPageActivityChanged() {
+    final runner = _runner;
+    if (runner == null) return;
+    unawaited((_pageActive?.value ?? true) ? runner.resume() : runner.pause());
+  }
 
   @override
   void dispose() {
+    _pageActive?.removeListener(_onPageActivityChanged);
     // The view had no dispose at all, which is why an embedded definition
     // could start a subscription and never release it: the tile went away and
     // the node kept streaming to a scope nobody was reading.

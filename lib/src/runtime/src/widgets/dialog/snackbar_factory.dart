@@ -15,20 +15,20 @@ class SnackBarWidgetFactory extends WidgetFactory {
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final elevation = parseDimension(properties['elevation']);
-    final margin = parseEdgeInsets(properties['margin']);
-    final padding = parseEdgeInsets(properties['padding']);
+    final margin = edgeInsetsOf(properties['margin'], context);
+    final padding = edgeInsetsOf(properties['padding'], context);
     final width = parseDimension(properties['width']);
     final shape = _parseShapeBorder(properties['shape']);
     final behavior = _parseSnackBarBehavior(properties['behavior']);
     final duration = Duration(milliseconds: properties['duration'] ?? 4000);
-    final showCloseIcon = properties['showCloseIcon'] as bool? ?? false;
+    final showCloseIcon = boolOf(properties['showCloseIcon'], context) ?? false;
     final closeIconColor =
         parseColor(context.resolve(properties['closeIconColor']), context);
     final dismissDirection =
         _parseDismissDirection(properties['dismissDirection']);
 
     // Extract action
-    final actionData = properties['action'] as Map<String, dynamic>?;
+    final actionData = actionOf(properties['action'], context);
     SnackBarAction? action;
     if (actionData != null) {
       action = SnackBarAction(

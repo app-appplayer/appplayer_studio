@@ -11,10 +11,9 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
 
     // Spec §2.8.2 canonical `selectedIndex`; `currentIndex` kept as legacy
     // Flutter-style alias.
-    final currentIndex =
-        context.resolve<int?>(properties['selectedIndex'] ??
-                properties['currentIndex']) ??
-            0;
+    final rawIndex = context.resolve<num?>(
+            properties['selectedIndex'] ?? properties['currentIndex']) ??
+        0;
     final elevation = parseDimension(properties['elevation']);
     final type = _parseBottomNavigationBarType(properties['type']);
     final fixedColor = parseColor(context.resolve(properties['fixedColor']), context);
@@ -36,9 +35,9 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
         _parseTextStyle(properties['selectedLabelStyle'], context);
     final unselectedLabelStyle =
         _parseTextStyle(properties['unselectedLabelStyle'], context);
-    final showSelectedLabels = properties['showSelectedLabels'] as bool?;
-    final showUnselectedLabels = properties['showUnselectedLabels'] as bool?;
-    final enableFeedback = properties['enableFeedback'] as bool?;
+    final showSelectedLabels = boolOf(properties['showSelectedLabels'], context);
+    final showUnselectedLabels = boolOf(properties['showUnselectedLabels'], context);
+    final enableFeedback = boolOf(properties['enableFeedback'], context);
 
     // Extract items
     final itemsData = properties['items'] as List<dynamic>? ?? [];
@@ -62,12 +61,16 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
     }).toList();
 
     // on + PascalCase optimal, legacy short names as fallback
-    final onTap = (properties['onChange'] ?? properties['onTap'] ?? properties['change'] ?? properties['click'])
-        as Map<String, dynamic>?;
+    final onTap = actionOf(properties['onChange'] ?? properties['onTap'] ?? properties['change'] ?? properties['click'], context);
 
     Widget bottomBar = BottomNavigationBar(
       items: items,
-      currentIndex: currentIndex,
+      // Flutter asserts on an out-of-range index. A bound index can exceed
+      // the item count for a frame — clamping degrades that to the nearest
+      // real tab instead of taking the whole page down.
+      currentIndex: items.isEmpty
+          ? 0
+          : rawIndex.toInt().clamp(0, items.length - 1),
       elevation: elevation,
       type: type,
       fixedColor: fixedColor,
@@ -87,7 +90,7 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
       onTap: onTap != null
           ? (index) {
               // Update state if bindTo is specified
-              final path = properties['bindTo'] as String?;
+              final path = stringOf(properties['bindTo'], context);
               if (path != null) {
                 context.setValue(path, index);
               }

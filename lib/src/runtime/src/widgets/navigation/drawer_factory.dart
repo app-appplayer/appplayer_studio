@@ -26,7 +26,7 @@ class DrawerWidgetFactory extends WidgetFactory {
     final items = (properties['items'] as List<dynamic>?) ??
         (definition['items'] as List<dynamic>?);
     final headerDef = properties['header'] as Map<String, dynamic>?;
-    final onSelect = properties['onSelect'] as Map<String, dynamic>?;
+    final onSelect = actionOf(properties['onSelect'], context);
 
     // Build child widget (support both 'child' and 'children' per MCP UI DSL spec)
     final childDef = (properties['child'] ?? definition['child'])

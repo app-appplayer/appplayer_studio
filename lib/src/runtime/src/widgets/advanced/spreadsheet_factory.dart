@@ -31,8 +31,8 @@ class SpreadsheetFactory extends WidgetFactory {
     final frozenRows = context.resolve<num?>(properties['frozenRows'])?.toInt() ?? 0;
     final frozenColumns =
         context.resolve<num?>(properties['frozenColumns'])?.toInt() ?? 0;
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
-    final onCellSelect = properties['onCellSelect'] as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'], context);
+    final onCellSelect = actionOf(properties['onCellSelect'], context);
 
     final grid = [
       for (final r in rows)

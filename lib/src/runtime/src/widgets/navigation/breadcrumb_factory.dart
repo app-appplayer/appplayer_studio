@@ -12,7 +12,7 @@ class BreadcrumbFactory extends WidgetFactory {
     final items = context.resolve<List<dynamic>?>(properties['items']) ?? const [];
     final separator = context.resolve<String?>(properties['separator']) ?? '/';
     final maxItems = context.resolve<num?>(properties['maxItems'])?.toInt();
-    final onClick = properties['onClick'] as Map<String, dynamic>?;
+    final onClick = actionOf(properties['onClick'], context);
 
     final entries = [
       for (final raw in items)

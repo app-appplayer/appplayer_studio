@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for `link` (spec §2.8.13). Alias: `navLink`.
@@ -23,9 +24,11 @@ class LinkFactory extends WidgetFactory {
     final target = rawTarget == 'same' ? 'same' : 'new';
     final underline = context.resolve<String?>(properties['underline']) ?? 'hover';
     final activeWhen = context.resolve<String?>(properties['activeWhen']);
-    final onClick = properties['onClick'] as Map<String, dynamic>?;
+    final onClick = actionOf(properties['onClick'], context);
     final child = properties['child'] as Map<String, dynamic>?;
-    final icon = context.resolve<String?>(properties['icon']);
+    final icon = properties['icon'] == null
+        ? null
+        : resolveIconRef(context.resolve<Object?>(properties['icon']));
 
     // Exactly one destination: a link that could mean either is a link whose
     // destination the author did not decide.
@@ -88,7 +91,7 @@ class _Link extends StatefulWidget {
 
   final String label;
   final Widget? child;
-  final String? icon;
+  final IconData? icon;
   final bool active;
   final bool external;
   final String underline;
@@ -122,7 +125,7 @@ class _LinkState extends State<_Link> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (widget.icon != null) ...[
-                    Icon(Icons.link, size: 16, color: scheme.primary),
+                    Icon(widget.icon, size: 16, color: scheme.primary),
                     const SizedBox(width: 4),
                   ],
                   Text(

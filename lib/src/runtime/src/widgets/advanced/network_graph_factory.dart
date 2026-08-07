@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
@@ -37,8 +39,8 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
             context.themeManager.getColorValue('onSurface') ??
             Colors.black87;
 
-    final onNodeTap = properties['onNodeTap'] as Map<String, dynamic>?;
-    final onEdgeTap = properties['onEdgeTap'] as Map<String, dynamic>?;
+    final onNodeTap = actionOf(properties['onNodeTap'], context);
+    final onEdgeTap = actionOf(properties['onEdgeTap'], context);
 
     final parsedNodes = _parseNodes(nodes);
     final parsedEdges = _parseEdges(edges);
@@ -83,8 +85,12 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
   List<_GraphEdge> _parseEdges(List<dynamic> edges) {
     return edges.whereType<Map>().map((e) {
       return _GraphEdge(
-        source: e['source']?.toString() ?? '',
-        target: e['target']?.toString() ?? '',
+        // Spec §10.13 spells an edge `{from, to}`. This read `source`/`target`
+        // and nothing else, so a graph written the documented way drew its
+        // nodes and not one edge between them — with no error to say so.
+        // The older spelling is still accepted.
+        source: (e['from'] ?? e['source'])?.toString() ?? '',
+        target: (e['to'] ?? e['target'])?.toString() ?? '',
         label: e['label']?.toString(),
         weight: (e['weight'] as num?)?.toDouble() ?? 1.0,
         color: e['color']?.toString(),
@@ -176,17 +182,113 @@ class _NetworkGraphWidgetState extends State<_NetworkGraphWidget> {
     _layoutNodes();
   }
 
+  /// Places the nodes the document did not place itself.
+  ///
+  /// `layout` names four algorithms and this method used to be one circle for
+  /// all of them: a document asking for `grid` or `tree` got the same picture
+  /// as `circular`, and nothing said the word had been ignored.
   void _layoutNodes() {
-    // Simple circular layout for nodes without explicit positions
-    final nodesWithoutPos = _nodes.where((n) => n.x == null || n.y == null).toList();
-    if (nodesWithoutPos.isEmpty) return;
+    final free = _nodes.where((n) => n.x == null || n.y == null).toList();
+    if (free.isEmpty) return;
 
-    final count = nodesWithoutPos.length;
-    for (int i = 0; i < count; i++) {
-      final angle = (2 * 3.14159 * i) / count;
-      const radius = 120.0;
-      nodesWithoutPos[i].x = 200 + radius * (angle).cos() as double?;
-      nodesWithoutPos[i].y = 200 + radius * (angle).sin() as double?;
+    const centreX = 200.0;
+    const centreY = 200.0;
+    const radius = 120.0;
+
+    void circular() {
+      for (var i = 0; i < free.length; i++) {
+        final angle = (2 * math.pi * i) / free.length;
+        free[i].x = centreX + radius * math.cos(angle);
+        free[i].y = centreY + radius * math.sin(angle);
+      }
+    }
+
+    switch (widget.layout) {
+      case 'grid':
+        final columns = math.max(1, math.sqrt(free.length).ceil());
+        const step = 90.0;
+        final rows = (free.length / columns).ceil();
+        for (var i = 0; i < free.length; i++) {
+          final col = i % columns;
+          final row = i ~/ columns;
+          free[i].x = centreX + (col - (columns - 1) / 2) * step;
+          free[i].y = centreY + (row - (rows - 1) / 2) * step;
+        }
+      case 'tree':
+      case 'hierarchical':
+        // Layers by distance from a root — a node nothing points at. With no
+        // such node (a cycle) the first node is the root, which is still a
+        // hierarchy and not a circle.
+        final incoming = <String, int>{for (final n in free) n.id: 0};
+        for (final e in widget.edges) {
+          if (incoming.containsKey(e.target)) {
+            incoming[e.target] = incoming[e.target]! + 1;
+          }
+        }
+        final depth = <String, int>{};
+        final roots = free.where((n) => (incoming[n.id] ?? 0) == 0).toList();
+        final queue = <_GraphNode>[...(roots.isEmpty ? [free.first] : roots)];
+        for (final r in queue) {
+          depth[r.id] = 0;
+        }
+        var head = 0;
+        while (head < queue.length) {
+          final node = queue[head++];
+          for (final e in widget.edges.where((e) => e.source == node.id)) {
+            if (depth.containsKey(e.target)) continue;
+            final child = free.where((n) => n.id == e.target);
+            if (child.isEmpty) continue;
+            depth[e.target] = depth[node.id]! + 1;
+            queue.add(child.first);
+          }
+        }
+        final byDepth = <int, List<_GraphNode>>{};
+        for (final n in free) {
+          byDepth.putIfAbsent(depth[n.id] ?? 0, () => []).add(n);
+        }
+        final levels = byDepth.keys.toList()..sort();
+        for (final level in levels) {
+          final row = byDepth[level]!;
+          for (var i = 0; i < row.length; i++) {
+            row[i].x = centreX + (i - (row.length - 1) / 2) * 100;
+            row[i].y = 80.0 + level * 100;
+          }
+        }
+      case 'force':
+        // Circular start, then a few rounds of spring + repulsion. Connected
+        // nodes end up near each other, which is the whole point of asking
+        // for a force layout instead of a circle.
+        circular();
+        const iterations = 60;
+        for (var step = 0; step < iterations; step++) {
+          for (final a in free) {
+            var dx = 0.0;
+            var dy = 0.0;
+            for (final b in free) {
+              if (identical(a, b)) continue;
+              final vx = a.x! - b.x!;
+              final vy = a.y! - b.y!;
+              final d2 = math.max(400.0, vx * vx + vy * vy);
+              dx += vx / d2 * 4000;
+              dy += vy / d2 * 4000;
+            }
+            for (final e in widget.edges) {
+              String? otherId;
+              if (e.source == a.id) otherId = e.target;
+              if (e.target == a.id) otherId = e.source;
+              if (otherId == null) continue;
+              final others = free.where((n) => n.id == otherId);
+              if (others.isEmpty) continue;
+              final b = others.first;
+              dx += (b.x! - a.x!) * 0.02;
+              dy += (b.y! - a.y!) * 0.02;
+            }
+            a.x = a.x! + dx.clamp(-8.0, 8.0);
+            a.y = a.y! + dy.clamp(-8.0, 8.0);
+          }
+        }
+      default:
+        circular();
     }
   }
 
@@ -262,34 +364,6 @@ class _NetworkGraphWidgetState extends State<_NetworkGraphWidget> {
   }
 }
 
-extension on double {
-  double cos() => _cos(this);
-  double sin() => _sin(this);
-}
-
-double _cos(double x) {
-  // Taylor series approximation
-  x = x % (2 * 3.14159265);
-  double result = 1.0;
-  double term = 1.0;
-  for (int i = 1; i <= 10; i++) {
-    term *= -x * x / ((2 * i - 1) * (2 * i));
-    result += term;
-  }
-  return result;
-}
-
-double _sin(double x) {
-  x = x % (2 * 3.14159265);
-  double result = x;
-  double term = x;
-  for (int i = 1; i <= 10; i++) {
-    term *= -x * x / ((2 * i) * (2 * i + 1));
-    result += term;
-  }
-  return result;
-}
-
 class _NetworkGraphPainter extends CustomPainter {
   final List<_GraphNode> nodes;
   final List<_GraphEdge> edges;
@@ -311,6 +385,43 @@ class _NetworkGraphPainter extends CustomPainter {
     required this.scale,
   });
 
+  /// Scales and centres the node coordinates so the whole graph is inside
+  /// [size], with room for the node circles and their labels.
+  void _applyFit(Canvas canvas, Size size) {
+    final placed = nodes.where((n) => n.x != null && n.y != null).toList();
+    if (placed.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    var minX = double.infinity, maxX = double.negativeInfinity;
+    var minY = double.infinity, maxY = double.negativeInfinity;
+    var margin = 24.0;
+    for (final n in placed) {
+      minX = math.min(minX, n.x!);
+      maxX = math.max(maxX, n.x!);
+      minY = math.min(minY, n.y!);
+      maxY = math.max(maxY, n.y!);
+      margin = math.max(margin, n.size / 2 + 18);
+    }
+
+    final availableW = math.max(1.0, size.width - margin * 2);
+    final availableH = math.max(1.0, size.height - margin * 2);
+    final spanX = maxX - minX;
+    final spanY = maxY - minY;
+    final fit = math.min(
+      spanX > 0 ? availableW / spanX : double.infinity,
+      spanY > 0 ? availableH / spanY : double.infinity,
+    );
+    final factor = fit.isFinite ? math.min(1.0, fit) : 1.0;
+
+    // Centre what is drawn on what we can draw on.
+    final drawnW = spanX * factor;
+    final drawnH = spanY * factor;
+    canvas.translate(
+      (size.width - drawnW) / 2 - minX * factor,
+      (size.height - drawnH) / 2 - minY * factor,
+    );
+    canvas.scale(factor);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
@@ -321,6 +432,12 @@ class _NetworkGraphPainter extends CustomPainter {
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
     canvas.scale(scale);
+    // Fit whatever coordinates the nodes carry into the box we were given.
+    // The placements were written around a fixed centre of (200, 200) with a
+    // radius of 120, so any widget smaller than 400×400 drew part of its graph
+    // outside itself — and a document supplying its own coordinates in any
+    // other range drew nothing at all.
+    _applyFit(canvas, size);
 
     // Build node position map
     final nodeMap = <String, _GraphNode>{};

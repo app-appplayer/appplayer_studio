@@ -1,4 +1,6 @@
 import '../assets/asset_resolver.dart';
+import '../capabilities/media_registry.dart';
+import '../capabilities/runtime_capabilities.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../renderer/render_context.dart';
@@ -189,6 +191,18 @@ class RuntimeEngine with ChangeNotifier {
   /// origin-served assets by supplying readers — and only then may the
   /// runtime declare those forms (§18.2.12).
   AssetResolver assetResolver = AssetResolver.builtin;
+
+  /// Behaviours this runtime can actually perform (spec §6.13): sound, media
+  /// decoding, a web engine, a tile source. Wired by the host exactly as
+  /// [assetResolver] is. The default is [RuntimeCapabilities.none] — a runtime
+  /// that performs none of them and says so, which is conformant; drawing a
+  /// facsimile instead is not.
+  RuntimeCapabilities capabilities = RuntimeCapabilities.none;
+
+  /// Mounted media players, addressed by the `id` their document gave them
+  /// (§4.9b). Lives on the engine because a media action runs from the action
+  /// handler, which has no widget to search from.
+  final MediaRegistry mediaRegistry = MediaRegistry();
 
   /// Optional one-shot `list` callback (spec §4.5). Null when the host did
   /// not register one; callers fall back to `onResourceSubscribe`.
@@ -577,6 +591,8 @@ class RuntimeEngine with ChangeNotifier {
             'Initialized app state in StateManager with ${_applicationDefinition!.initialState!.length} keys');
       }
 
+      _initializeDeclaredStateExtras(_parsedUIDefinition!.state);
+
       // Initialize services from application definition
       if (_applicationDefinition!.servicesDefinition != null) {
         await _initializeServicesV1(
@@ -610,6 +626,8 @@ class RuntimeEngine with ChangeNotifier {
         _stateManager.initialize(pageDefinition.initialState!);
         _logger.debug('Page state initialized from state.initial');
       }
+
+      _initializeDeclaredStateExtras(_parsedUIDefinition!.state);
 
       // Initialize services from page runtime definition if present
       final runtimeServices =
@@ -736,8 +754,8 @@ class RuntimeEngine with ChangeNotifier {
     // Teardown of the outgoing page is NOT done here.
     //
     // The widget that mounted the page owns its unmount: it fires
-    // onPause → onUnmount → onDestroy from `dispose`, which is the moment the
-    // page actually leaves the tree. Running them here as well fired the same
+    // onUnmount → onDestroy from `dispose`, which is the moment the page
+    // actually leaves the tree. Running them here as well fired the same
     // hooks two and three times over — an unsubscribe hook then tried to
     // release a subscription that was already gone. (These used to be the
     // separate `onLeave` hook, which is why the overlap was invisible until
@@ -1242,11 +1260,20 @@ class RuntimeEngine with ChangeNotifier {
   void _initializeComputedProperties(Map<String, dynamic> computed) {
     for (final entry in computed.entries) {
       final key = entry.key;
-      final config = entry.value as Map<String, dynamic>;
+      final raw = entry.value;
 
-      final expression = config['expression'] as String?;
-      final dependencies =
-          (config['dependencies'] as List?)?.cast<String>() ?? [];
+      // §3.8 writes a computed value as the expression itself
+      // (`"total": "{{a + b}}"`); the older services block wrapped it in
+      // `{expression, dependencies}`. Both are read, and dependencies are
+      // detected from the expression when they are not listed — which is what
+      // §3.8 says happens ("Dependencies are detected automatically").
+      final String? expression =
+          raw is String ? raw : (raw is Map ? raw['expression'] as String? : null);
+      final declared = raw is Map ? (raw['dependencies'] as List?) : null;
+      final dependencies = declared?.cast<String>() ??
+          (expression == null
+              ? const <String>[]
+              : bindingEngine.extractDependencies(expression).toList());
 
       if (expression != null) {
         _computedManager.registerComputed(
@@ -1257,6 +1284,27 @@ class RuntimeEngine with ChangeNotifier {
           ),
         );
       }
+    }
+  }
+
+  /// Wire `state.computed` (§3.8) and `state.watchers` (§3.9) from a page or
+  /// application definition.
+  ///
+  /// Both sections were implemented and reachable only from a runtime
+  /// `services.state` block, so a document that declared them the way the spec
+  /// writes them got nothing: a computed value that never appeared and a
+  /// watcher that never fired, with no error either way.
+  void _initializeDeclaredStateExtras(Map<String, dynamic>? stateBlock) {
+    if (stateBlock == null) return;
+
+    final computed = stateBlock['computed'];
+    if (computed is Map<String, dynamic>) {
+      _initializeComputedProperties(computed);
+    }
+
+    final watchers = stateBlock['watchers'];
+    if (watchers is List) {
+      _initializeWatchers(watchers);
     }
   }
 

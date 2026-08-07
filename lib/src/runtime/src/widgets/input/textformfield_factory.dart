@@ -12,8 +12,8 @@ class TextFormFieldWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Check if async validation is enabled
-    final asyncValidation = properties['asyncValidation'] as bool? ?? false;
-    final customValidation = properties['customValidation'] as String?;
+    final asyncValidation = readBool(properties['asyncValidation'], context) ?? false;
+    final customValidation = readString(properties['customValidation'], context);
 
     if (asyncValidation || customValidation != null) {
       return _AsyncValidatedTextField(
@@ -34,14 +34,14 @@ class TextFormFieldWidgetFactory extends WidgetFactory {
     final hint = context.resolve<String?>(properties['hint']) ??
         context.resolve<String?>(properties['placeholder']) ??
         '';
-    final label = properties['label'] as String?;
-    final helperText = properties['helperText'] as String?;
-    final prefixIcon = properties['prefixIcon'] as String?;
-    final obscureText = properties['obscureText'] as bool? ?? false;
-    final enabled = properties['enabled'] as bool? ?? true;
-    final readOnly = properties['readOnly'] as bool? ?? false;
-    final maxLines = properties['maxLines'] as int? ?? 1;
-    final maxLength = properties['maxLength'] as int?;
+    final label = readString(properties['label'], context);
+    final helperText = readString(properties['helperText'], context);
+    final prefixIcon = readString(properties['prefixIcon'], context);
+    final obscureText = readBool(properties['obscureText'], context) ?? false;
+    final enabled = readBool(properties['enabled'], context) ?? true;
+    final readOnly = readBool(properties['readOnly'], context) ?? false;
+    final maxLines = dimensionOf(properties['maxLines'], context)?.toInt() ?? 1;
+    final maxLength = dimensionOf(properties['maxLength'], context)?.toInt();
     // spec v1.0: 'inputType', legacy: 'keyboardType'
     final keyboardType = _parseKeyboardType(
         properties['inputType'] ?? properties['keyboardType']);
@@ -53,10 +53,10 @@ class TextFormFieldWidgetFactory extends WidgetFactory {
     final validationRules = ValidationEngine.parseValidation(validationDef);
 
     // Check for custom validation expression
-    final customValidation = properties['customValidation'] as String?;
+    final customValidation = readString(properties['customValidation'], context);
 
     // Create controller if binding is specified
-    final path = properties['binding'] as String?;
+    final path = readString(properties['binding'], context);
     TextEditingController? controller;
     if (path != null) {
       final initialValue = context.getValue<String?>(path) ??
@@ -225,7 +225,7 @@ class _AsyncValidatedTextFieldState extends State<_AsyncValidatedTextField>
 
     final factory = TextFormFieldWidgetFactory();
     final properties = factory.extractProperties(widget.definition);
-    final path = properties['binding'] as String?;
+    final path = readString(properties['binding'], widget.context);
     final initialValue = path != null
         ? widget.context.getValue<String?>(path) ?? ''
         : widget.context.resolve<String?>(properties['value']) ?? '';
@@ -260,15 +260,15 @@ class _AsyncValidatedTextFieldState extends State<_AsyncValidatedTextField>
 
     // Extract properties
     final hint = widget.context.resolve<String?>(properties['hint']) ?? '';
-    final label = properties['label'] as String?;
-    final helperText = properties['helperText'] as String?;
-    final prefixIcon = properties['prefixIcon'] as String?;
-    final obscureText = properties['obscureText'] as bool? ?? false;
-    final enabled = properties['enabled'] as bool? ?? true;
+    final label = readString(properties['label'], widget.context);
+    final helperText = readString(properties['helperText'], widget.context);
+    final prefixIcon = readString(properties['prefixIcon'], widget.context);
+    final obscureText = readBool(properties['obscureText'], widget.context) ?? false;
+    final enabled = readBool(properties['enabled'], widget.context) ?? true;
 
     // Handle onChange action
     final changeAction = properties['onChange'] ?? properties['change'];
-    final path = properties['binding'] as String?;
+    final path = readString(properties['binding'], widget.context);
 
     return AnimatedBuilder(
       animation: validationState,

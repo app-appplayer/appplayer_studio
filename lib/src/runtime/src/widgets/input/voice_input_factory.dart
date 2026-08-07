@@ -16,7 +16,7 @@ class VoiceInputFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final language = context.resolve<String?>(properties['language']);
     final continuous = context.resolve<bool?>(properties['continuous']) ?? false;
     final interim = context.resolve<bool?>(properties['interimResults']) ?? false;

@@ -375,6 +375,23 @@ class BoxDecorationResolver {
       return Border.fromBorderSide(side);
     }
 
+    // Edge flags with a shared side: `{bottom: true, color: …, width: 1}`
+    // means "draw the bottom edge like this". The per-side branch below reads
+    // `border['bottom']` as a BorderSide map, so a `true` resolved to
+    // `BorderSide.none` and the border the document asked for was simply not
+    // drawn — silently, since nothing rejects a boolean there.
+    const edges = ['top', 'right', 'bottom', 'left'];
+    final flagged = edges.where((e) => border[e] == true).toList();
+    if (isUniform && flagged.isNotEmpty) {
+      final side = _resolveBorderSide(border, context, host);
+      return Border(
+        top: flagged.contains('top') ? side : BorderSide.none,
+        right: flagged.contains('right') ? side : BorderSide.none,
+        bottom: flagged.contains('bottom') ? side : BorderSide.none,
+        left: flagged.contains('left') ? side : BorderSide.none,
+      );
+    }
+
     return Border(
       top: _resolveBorderSide(border['top'], context, host),
       right: _resolveBorderSide(border['right'], context, host),

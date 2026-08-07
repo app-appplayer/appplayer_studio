@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for `accordion` (spec §2.4.22). Alias: `collapsible`.
@@ -21,8 +22,8 @@ class AccordionFactory extends WidgetFactory {
     final allowMultiple =
         context.resolve<bool?>(properties['allowMultiple']) ?? false;
     final bordered = context.resolve<bool?>(properties['bordered']) ?? true;
-    final expandedBinding = properties['expandedIds'] as String?;
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
+    final expandedBinding = stringOf(properties['expandedIds'], context);
+    final onChange = actionOf(properties['onChange'], context);
 
     final expanded = <String>{
       ...?_expandedFrom(expandedBinding, properties, context),
@@ -77,7 +78,9 @@ class AccordionFactory extends WidgetFactory {
       expanded: expanded,
       bordered: bordered,
       onToggle: toggle,
-      icon: context.resolve<String?>(properties['icon']),
+      icon: properties['icon'] == null
+          ? null
+          : resolveIconRef(context.resolve<Object?>(properties['icon'])),
     );
   }
 
@@ -121,7 +124,7 @@ class _Accordion extends StatelessWidget {
   final Set<String> expanded;
   final bool bordered;
   final ValueChanged<String> onToggle;
-  final String? icon;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +154,7 @@ class _Accordion extends StatelessWidget {
                     AnimatedRotation(
                       turns: expanded.contains(panel.id) ? 0.5 : 0,
                       duration: const Duration(milliseconds: 200),
-                      child: const Icon(Icons.expand_more),
+                      child: Icon(icon ?? Icons.expand_more),
                     ),
                   ],
                 ),

@@ -16,8 +16,8 @@ class DashboardWidgetFactory extends WidgetFactory {
 
     // Extract dashboard content
     final contentDef = properties['content'] as Map<String, dynamic>?;
-    final refreshInterval = (properties['refreshInterval'] as num?)?.toInt();
-    final onTapAction = properties['onTap'] as Map<String, dynamic>?;
+    final refreshInterval = (dimensionOf(properties['refreshInterval'], context))?.toInt();
+    final onTapAction = actionOf(properties['onTap'], context);
 
     // Build content widget
     Widget child = contentDef != null

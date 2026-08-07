@@ -21,13 +21,13 @@ class GestureDetectorWidgetFactory extends WidgetFactory {
     }
 
     // Extract action handlers
-    final onTap = (properties['onTap'] ?? properties['click'] ?? properties['onTap']) as Map<String, dynamic>?;
-    final onDoubleTap = (properties['onDoubleTap'] ?? properties['double-click'] ?? properties['onDoubleTap']) as Map<String, dynamic>?;
-    final onLongPress = (properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress']) as Map<String, dynamic>?;
-    final onPanUpdate = properties['onPanUpdate'] as Map<String, dynamic>?;
-    final panStartAction = (properties['panStart'] ?? properties['onPanStart']) as Map<String, dynamic>?;
-    final panEndAction = (properties['panEnd'] ?? properties['onPanEnd']) as Map<String, dynamic>?;
-    final onScaleUpdate = properties['onScaleUpdate'] as Map<String, dynamic>?;
+    final onTap = actionOf(properties['onTap'] ?? properties['click'] ?? properties['onTap'], context);
+    final onDoubleTap = actionOf(properties['onDoubleTap'] ?? properties['double-click'] ?? properties['onDoubleTap'], context);
+    final onLongPress = actionOf(properties['onLongPress'] ?? properties['long-press'] ?? properties['longPress'], context);
+    final onPanUpdate = actionOf(properties['onPanUpdate'], context);
+    final panStartAction = actionOf(properties['panStart'] ?? properties['onPanStart'], context);
+    final panEndAction = actionOf(properties['panEnd'] ?? properties['onPanEnd'], context);
+    final onScaleUpdate = actionOf(properties['onScaleUpdate'], context);
 
     Widget gestureDetector = GestureDetector(
       onTap: onTap != null

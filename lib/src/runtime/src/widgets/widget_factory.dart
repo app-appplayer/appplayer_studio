@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../renderer/render_context.dart';
+import '../utils/color_parser.dart';
 
 /// Base class for widget factories
 abstract class WidgetFactory {
@@ -52,9 +53,12 @@ abstract class WidgetFactory {
     var clickWrapped = false;
     final rawClick = properties['click'];
     if (rawClick != null) {
-      final resolvedClick = context.resolve(rawClick);
-      if (resolvedClick is Map) {
-        final clickAction = Map<String, dynamic>.from(resolvedClick);
+      // The slot takes one action, a list of them, or a binding resolving to
+      // either. Handling only the map form left `click: [a, b]` rendering
+      // without complaint and doing nothing when tapped — the worst of the
+      // three outcomes, because the document looks like it worked.
+      final clickAction = readAction(rawClick, context);
+      if (clickAction != null) {
         widget = GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => context.actionHandler.execute(clickAction, context),
@@ -99,8 +103,8 @@ abstract class WidgetFactory {
 
     // Handle key / testKey — wrap with KeyedSubtree for widget identity
     // testKey takes precedence over key (design doc: testKey is for testing)
-    final testKey = properties['testKey'] as String?;
-    final keyProp = properties['key'] as String?;
+    final testKey = stringOf(properties['testKey'], context);
+    final keyProp = stringOf(properties['key'], context);
     final widgetKey = testKey ?? keyProp;
     if (widgetKey != null) {
       widget = KeyedSubtree(
@@ -171,9 +175,23 @@ abstract class WidgetFactory {
     return widget;
   }
 
+  /// An `EdgeInsets` slot, read the way the registry declares it — a number,
+  /// the `{value, unit}` dimension object, the `{all|horizontal|top|…}` map,
+  /// or a binding resolving to any of them. `parseEdgeInsets` alone takes the
+  /// raw value, so a bound padding produced no inset and no diagnostic.
+  EdgeInsets? edgeInsetsOf(dynamic raw, RenderContext context) =>
+      parseEdgeInsets(context.resolve(raw));
+
   /// Parse EdgeInsets
   EdgeInsets? parseEdgeInsets(dynamic value) {
     if (value == null) return null;
+
+    // A binding resolves to whatever the state holds, which is typically a
+    // `Map<dynamic, dynamic>` — testing for `Map<String, dynamic>` alone
+    // dropped the bound form on the floor while the literal worked.
+    if (value is Map && value is! Map<String, dynamic>) {
+      value = Map<String, dynamic>.from(value);
+    }
 
     if (value is Map<String, dynamic>) {
       if (value.containsKey('all')) {
@@ -219,62 +237,6 @@ abstract class WidgetFactory {
     return parseAlignment(value);
   }
 
-  /// Canonical M3 28-role color slot names resolved by [parseColor] when a
-  /// [RenderContext] is provided. Spec §5.3 — `theme.color.<slot>`.
-  static const Set<String> _themeSlotNames = <String>{
-    // Primary family
-    'primary',
-    'onPrimary',
-    'primaryContainer',
-    'onPrimaryContainer',
-    // Secondary family
-    'secondary',
-    'onSecondary',
-    'secondaryContainer',
-    'onSecondaryContainer',
-    // Tertiary family
-    'tertiary',
-    'onTertiary',
-    'tertiaryContainer',
-    'onTertiaryContainer',
-    // Error family
-    'error',
-    'onError',
-    'errorContainer',
-    'onErrorContainer',
-    // Surface family
-    'surface',
-    'onSurface',
-    'onSurfaceVariant',
-    'surfaceTint',
-    'surfaceBright',
-    'surfaceDim',
-    'surfaceContainerLowest',
-    'surfaceContainerLow',
-    'surfaceContainer',
-    'surfaceContainerHigh',
-    'surfaceContainerHighest',
-    // Outline / inverse / misc
-    'outline',
-    'outlineVariant',
-    'inverseSurface',
-    'onInverseSurface',
-    // §5.3.1 legacy spellings, resolved by `ThemeManager._colorFromScheme`.
-    'inverseOnSurface',
-    'background',
-    'onBackground',
-    'surfaceVariant',
-    'inversePrimary',
-    'scrim',
-    'shadow',
-    // Semantic (additions beyond M3).
-    'success',
-    'onSuccess',
-    'warning',
-    'onWarning',
-    'info',
-    'onInfo',
-  };
 
   /// Parse a DSL color value into a Flutter [Color].
   ///
@@ -291,68 +253,10 @@ abstract class WidgetFactory {
   ///     authors should prefer slots over literal hex for any color that
   ///     needs to track theme.
   Color? parseColor(dynamic value, [RenderContext? context]) {
-    if (value == null) return null;
-
-    if (value is String) {
-      if (value.startsWith('#')) {
-        String hex = value.substring(1);
-
-        try {
-          // 8-digit AARRGGBB format
-          if (hex.length == 8) {
-            return Color(int.parse(hex, radix: 16));
-          }
-          // 6-digit RRGGBB format (add alpha channel FF)
-          else if (hex.length == 6) {
-            return Color(int.parse('FF$hex', radix: 16));
-          }
-          // 3-digit RGB shorthand
-          else if (hex.length == 3) {
-            String expanded = hex.split('').map((c) => '$c$c').join();
-            return Color(int.parse('FF$expanded', radix: 16));
-          }
-        } catch (e) {
-          // Return null if hex contains invalid characters
-          return null;
-        }
-
-        return null;
-      }
-
-      // Named colors
-      switch (value.toLowerCase()) {
-        case 'red':
-          return Colors.red;
-        case 'blue':
-          return Colors.blue;
-        case 'green':
-          return Colors.green;
-        case 'yellow':
-          return Colors.yellow;
-        case 'orange':
-          return Colors.orange;
-        case 'purple':
-          return Colors.purple;
-        case 'black':
-          return Colors.black;
-        case 'white':
-          return Colors.white;
-        case 'grey':
-        case 'gray':
-          return Colors.grey;
-      }
-
-      // Spec §5.3 canonical scheme slot — adapts to the active
-      // light / dark mode of the host theme. Token names are matched
-      // case-sensitively to mirror the binding path `theme.colorScheme.<slot>`.
-      if (context != null && _themeSlotNames.contains(value)) {
-        return context.themeManager.getColorValue(value);
-      }
-
-      return null;
-    }
-
-    return null;
+    return DslColor.parse(
+      value,
+      slotResolver: context?.themeManager.getColorValue,
+    );
   }
 
   /// Parse Alignment
@@ -421,6 +325,44 @@ abstract class WidgetFactory {
     
     return null;
   }
+
+  /// A `Dimension` slot, read the way the registry declares it.
+  ///
+  /// The registry gives every dimension three branches — a number, the v1.0
+  /// `{value, unit}` object, and a binding — so a factory that writes
+  /// `dimensionOf(properties['width'], context)` throws on two of the three forms the same
+  /// document is told it may use. The 0.6.1 cut fixed nine such slots with a
+  /// local lambda per factory; this is that lambda in one place, so the next
+  /// slot inherits it instead of repeating the defect.
+  double? dimensionOf(dynamic raw, RenderContext context) =>
+      readDimension(raw, context);
+
+  /// A boolean / number / integer / string slot, resolved (§3).
+  ///
+  /// Every one of these used to be read with a raw cast, so a setting bound to
+  /// state either reverted to its default or threw. They sit beside
+  /// [dimensionOf] so the next factory inherits the fix instead of repeating
+  /// the defect.
+  bool? boolOf(dynamic raw, RenderContext context) => readBool(raw, context);
+
+  double? numberOf(dynamic raw, RenderContext context) =>
+      readNumber(raw, context);
+
+  int? intOf(dynamic raw, RenderContext context) => readInt(raw, context);
+
+  String? stringOf(dynamic raw, RenderContext context) =>
+      readString(raw, context);
+
+  /// An `Action` slot as the list of actions to run.
+  ///
+  /// The slot accepts one action, a list of them, or a binding resolving to
+  /// either. Casting it to `Map<String, dynamic>?` renders an error for the
+  /// list form — which the registry declares and documents use.
+  List<Map<String, dynamic>> actionsOf(dynamic raw, RenderContext context) =>
+      readActions(raw, context);
+
+  Map<String, dynamic>? actionOf(dynamic raw, RenderContext context) =>
+      readAction(raw, context);
 
   /// Parse BoxConstraints
   BoxConstraints? parseConstraints(dynamic value) {
@@ -520,4 +462,93 @@ abstract class WidgetFactory {
     }
     return null;
   }
+}
+
+/// A `Dimension` slot, read the way the registry declares it — a number, the
+/// v1.0 `{value, unit}` object, or a binding resolving to either. A factory
+/// that writes `numberOf(properties['width'], context)` throws on two of the three forms
+/// the same document is told it may use.
+double? readDimension(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v is num) return v.toDouble();
+  if (v is Map && v['value'] is num) return (v['value'] as num).toDouble();
+  return null;
+}
+
+/// A boolean slot, read the way §3 says every value may be written.
+///
+/// `boolOf(properties['showGrid'], context)` was the common spelling, and it answers
+/// null for `"{{state.showGrid}}"` — the setting silently reverts to its
+/// default the moment it is bound to state, which is the only way a setting is
+/// ever *toggled*. The string forms are accepted for the same reason a
+/// document may carry `"true"` from a form field or a query string.
+bool? readBool(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  if (v is String) {
+    final t = v.trim().toLowerCase();
+    if (t == 'true') return true;
+    if (t == 'false') return false;
+  }
+  return null;
+}
+
+/// A number slot. Same reason as [readBool]; `?.toDouble()` on a binding
+/// string throws rather than reverting, which is worse.
+double? readNumber(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v is num) return v.toDouble();
+  if (v is Map && v['value'] is num) return (v['value'] as num).toDouble();
+  if (v is String) return double.tryParse(v.trim());
+  return null;
+}
+
+/// An integer slot — a count of columns, a page index, a maximum length.
+int? readInt(dynamic raw, RenderContext context) => readNumber(raw, context)?.round();
+
+/// A string slot, resolved. `as String?` answers null for a bound value the
+/// binding engine would have produced from a number.
+String? readString(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v == null) return null;
+  if (v is String) return v;
+  if (v is num || v is bool) return v.toString();
+  return null;
+}
+
+/// An `Action` slot as the list of actions to run. The slot accepts one
+/// action, a list of them, or a binding resolving to either; casting it to
+/// `Map<String, dynamic>?` renders an error for the list form.
+List<Map<String, dynamic>> readActions(dynamic raw, RenderContext context) {
+  final resolved = context.resolve<dynamic>(raw);
+  if (resolved is Map) {
+    return <Map<String, dynamic>>[Map<String, dynamic>.from(resolved)];
+  }
+  if (resolved is List) {
+    return resolved
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+  return const <Map<String, dynamic>>[];
+}
+
+/// The single-action view of an `Action` slot. A list collapses to a
+/// `sequence`, which is what running them in order means (§4.6) — not to its
+/// first entry, which would silently drop the rest.
+Map<String, dynamic>? readAction(dynamic raw, RenderContext context) {
+  final actions = readActions(raw, context);
+  if (actions.isEmpty) return null;
+  if (actions.length == 1) return actions.first;
+  return <String, dynamic>{'type': 'sequence', 'actions': actions};
+}
+
+/// An enum-valued slot: resolve the binding, then take the value only if it
+/// resolved to a string. `context.resolve<String?>` throws when the document
+/// legitimately carries another shape in the same slot (a `button.style`
+/// object, for instance), which turns a widened schema into a render error.
+String? readEnum(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  return v is String ? v : null;
 }

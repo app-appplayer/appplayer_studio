@@ -14,7 +14,7 @@ class DecorationWidgetFactory extends WidgetFactory {
   // `properties['color']`, `properties['gradient']`,
   // `properties['image']`, `properties['border']`,
   // `properties['borderRadius']`, `properties['boxShadow']`,
-  // `properties['shape']`, and `properties['backdropBlur']`).
+  // `readEnum(properties['shape'], context)`, and `properties['backdropBlur']`).
 
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {

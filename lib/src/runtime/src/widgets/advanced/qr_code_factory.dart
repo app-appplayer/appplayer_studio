@@ -83,6 +83,17 @@ class QrCodeFactory extends WidgetFactory {
 
   static QrErrorCorrection _ecFrom(String? value) {
     switch (value) {
+      // Canonical (§17.1.3 lower case).
+      case 'low':
+        return QrErrorCorrection.l;
+      case 'quartile':
+        return QrErrorCorrection.q;
+      case 'high':
+        return QrErrorCorrection.h;
+      case 'medium':
+        return QrErrorCorrection.m;
+      // The QR standard's own single letters — kept as legacy aliases, not
+      // part of the canonical surface (§17.3).
       case 'L':
         return QrErrorCorrection.l;
       case 'Q':

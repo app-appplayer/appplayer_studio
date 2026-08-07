@@ -10,8 +10,8 @@ class CenterWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final widthFactor = properties['widthFactor']?.toDouble();
-    final heightFactor = properties['heightFactor']?.toDouble();
+    final widthFactor = numberOf(properties['widthFactor'], context);
+    final heightFactor = numberOf(properties['heightFactor'], context);
 
     // Center is a single-child widget, so child should be in properties
     Widget? child;

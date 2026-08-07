@@ -11,15 +11,26 @@ class GridViewWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final scrollDirection = _parseAxis(properties['scrollDirection']);
-    final reverse = properties['reverse'] as bool? ?? false;
-    final shrinkWrap = properties['shrinkWrap'] as bool? ?? false;
+    final reverse = boolOf(properties['reverse'], context) ?? false;
+    final shrinkWrap = boolOf(properties['shrinkWrap'], context) ?? false;
     final physics = _parseScrollPhysics(properties['physics']);
-    final padding = parseEdgeInsets(properties['padding']);
+    final padding = edgeInsetsOf(properties['padding'], context);
 
     // Grid specific properties
-    // Support both 'columns' (MCP UI DSL v1.0) and 'crossAxisCount' (Flutter style)
-    final crossAxisCount =
-        (properties['columns'] ?? properties['crossAxisCount']) as int?;
+    // Support both 'columns' (MCP UI DSL v1.0) and 'crossAxisCount' (Flutter
+    // style). `columns` is `number | object`: the object form is a responsive
+    // override keyed by form factor (§14.1.1), which `pickResponsive` picks
+    // from. Reading it as `int?` threw on that form and on a bound value —
+    // both of which the schema allows.
+    final rawColumns = properties['columns'] ?? properties['crossAxisCount'];
+    final resolvedColumns = rawColumns is Map
+        ? context.pickResponsive(rawColumns)
+        : context.resolve<Object?>(rawColumns);
+    final crossAxisCount = resolvedColumns is num
+        ? resolvedColumns.toInt()
+        : (resolvedColumns is String
+            ? int.tryParse(resolvedColumns)
+            : null);
     final maxCrossAxisExtent = parseDimension(properties['maxCrossAxisExtent']);
     // Spec §2.7.2 canonical `rowGap` / `columnGap`; legacy
     // `mainAxisSpacing` / `crossAxisSpacing` (Flutter field names) and

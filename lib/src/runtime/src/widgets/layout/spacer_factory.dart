@@ -10,7 +10,7 @@ class SpacerWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final flex = properties['flex'] as int? ?? 1;
+    final flex = dimensionOf(properties['flex'], context)?.toInt() ?? 1;
 
     Widget spacer = Spacer(flex: flex);
 

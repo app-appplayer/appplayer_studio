@@ -18,8 +18,8 @@ class SignatureWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final width = (properties['width'] as num?)?.toDouble();
-    final height = (properties['height'] as num?)?.toDouble() ?? 200;
+    final width = (dimensionOf(properties['width'], context))?.toDouble();
+    final height = (dimensionOf(properties['height'], context))?.toDouble() ?? 200;
 
     // Style properties — theme-adaptive defaults. Pen defaults to the
     // on-surface text color so a dark-mode signature reads against the
@@ -27,7 +27,7 @@ class SignatureWidgetFactory extends WidgetFactory {
     final penColor = parseColor(properties['penColor'], context) ??
         context.themeManager.getColorValue('onSurface') ??
         Colors.black;
-    final penWidth = (properties['penWidth'] as num?)?.toDouble() ?? 2.0;
+    final penWidth = (dimensionOf(properties['penWidth'], context))?.toDouble() ?? 2.0;
     final backgroundColor =
         parseColor(properties['backgroundColor'], context) ??
             context.themeManager.getColorValue('surface') ??
@@ -35,21 +35,21 @@ class SignatureWidgetFactory extends WidgetFactory {
     final borderColor = parseColor(properties['borderColor'], context) ??
         context.themeManager.getColorValue('outlineVariant') ??
         Colors.grey.shade300;
-    final borderWidth = (properties['borderWidth'] as num?)?.toDouble() ?? 1.0;
+    final borderWidth = (numberOf(properties['borderWidth'], context))?.toDouble() ?? 1.0;
 
     // Options
-    final showClearButton = properties['showClearButton'] as bool? ?? true;
-    final showGuide = properties['showGuide'] as bool? ?? true;
+    final showClearButton = boolOf(properties['showClearButton'], context) ?? true;
+    final showGuide = boolOf(properties['showGuide'], context) ?? true;
 
     // Action handlers
     final onSignatureStart =
-        properties['onSignatureStart'] as Map<String, dynamic>?;
+        actionOf(properties['onSignatureStart'], context);
     final onSignatureEnd =
-        properties['onSignatureEnd'] as Map<String, dynamic>?;
-    final onClear = properties['onClear'] as Map<String, dynamic>?;
+        actionOf(properties['onSignatureEnd'], context);
+    final onClear = actionOf(properties['onClear'], context);
 
     // State binding
-    final stateBinding = properties['binding'] as String?;
+    final stateBinding = stringOf(properties['binding'], context);
 
     Widget signature = _SignaturePad(
       penColor: penColor,

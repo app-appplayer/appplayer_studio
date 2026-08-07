@@ -175,6 +175,15 @@ class MCPUIRuntime {
   /// `entry.*` absent, because §8.9.1 reserves that tree for definitions
   /// reached from outside. A document deciding "was I scanned?" would
   /// otherwise read a navigation as a scan.
+  ///
+  /// [onToolCall] is the same callback [buildUI] takes, registered *before*
+  /// the definition's `onInit` runs. §1.5.3 shows a definition-level
+  /// `onInit` calling a tool, and §1.5.2 puts `onInit` ahead of the first
+  /// render — so a host that only passes the callback to `buildUI` has no
+  /// executor at the moment the hook fires, and an application-level
+  /// `onInit` tool call reaches nothing. Passing it here closes that window.
+  /// Hosts that pass it only to `buildUI` keep working unchanged; their
+  /// application-level `onInit` tool calls are the ones that cannot land.
   Future<void> initialize(
     Map<String, dynamic> definition, {
     Function(String)? pageLoader,
@@ -183,9 +192,15 @@ class MCPUIRuntime {
     EntryContext? entry,
     IdentityContext? identity,
     String? launchRoute,
+    Function(String, Map<String, dynamic>)? onToolCall,
   }) async {
     if (_isInitialized) {
       throw StateError('MCP UI Runtime is already initialized');
+    }
+
+    // Before `_engine.initialize`, which is where `onInit` fires.
+    if (onToolCall != null) {
+      _engine.actionHandler.registerToolExecutor('default', onToolCall);
     }
 
     if (validateSchema) {
@@ -870,9 +885,26 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
               MCPLogger('MCPRuntimeWidget').debug(
                   'Creating MaterialApp with navigatorKey for ApplicationShell: $navKey');
 
+              // The document's routes are registered here too. Without them a
+              // shell had no named route at all: `navigation.push` reached
+              // `Navigator.pushNamed`, found nothing registered, and returned
+              // silently — a declared page was unreachable, and the tab strip
+              // was the only way to move. A tab is one way to click to a page,
+              // not the definition of which pages exist. `home:` supplies the
+              // root, so a `/` entry is dropped rather than colliding with it.
+              final shellRoutes = Map<String, WidgetBuilder>.from(
+                widget.engine.routeManager!.generateRoutes(context),
+              )..remove('/');
+
               return MaterialApp(
                 navigatorKey:
                     navKey, // Essential for dialogs and navigation to work
+                // Feeds `onPause` / `onResume`: a page covered by a pushed
+                // route is not disposed, so this is the only report of it.
+                navigatorObservers: <NavigatorObserver>[
+                  NavigationService.instance.routeObserver,
+                ],
+                routes: shellRoutes,
                 title: appDefinition.title,
                 theme: widget.engine.themeManager.toFlutterTheme(),
                 darkTheme:
@@ -898,6 +930,11 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
               return MaterialApp(
                 navigatorKey:
                     navKey, // Essential for dialogs and navigation to work
+                // Feeds `onPause` / `onResume`: a page covered by a pushed
+                // route is not disposed, so this is the only report of it.
+                navigatorObservers: <NavigatorObserver>[
+                  NavigationService.instance.routeObserver,
+                ],
                 title: appDefinition.title,
                 theme: widget.engine.themeManager.toFlutterTheme(),
                 darkTheme:
@@ -1012,6 +1049,27 @@ class _ApplicationShell extends StatefulWidget {
 
 class _ApplicationShellState extends State<_ApplicationShell> {
   int _currentIndex = 0;
+  TabController? _tabController;
+
+  /// Set when code moved the index (a route, a launch route, a deep link), so
+  /// the controller can be pushed to follow. A user tap moves the controller
+  /// first and the shell follows it — pushing back in that direction fights
+  /// the gesture and snaps the tab bar to where it just left.
+  bool _indexDrivenByCode = false;
+
+  /// User-driven tab moves flow the other way: the controller changed, so the
+  /// shell follows it.
+  void _onTabControllerChanged() {
+    final controller = _tabController;
+    if (controller == null || controller.indexIsChanging) return;
+    if (controller.index == _currentIndex) return;
+    if (!mounted) return;
+    setState(() {
+      _indexDrivenByCode = false;
+      _currentIndex = controller.index;
+    });
+    _updateNavigationState(controller.index);
+  }
   final Map<String, PageDefinition> _pageDefinitionCache = {};
 
   /// Builds the host-inserted close button for the shell AppBar's `actions`
@@ -1033,13 +1091,26 @@ class _ApplicationShellState extends State<_ApplicationShell> {
   void initState() {
     super.initState();
 
-    // Find initial route index based on the application's initial route
-    if (widget.appDefinition.navigationDefinition != null) {
-      final initialRoute = widget.appDefinition.initialRoute;
-      final index = widget.appDefinition.navigationDefinition!.items
-          .indexWhere((item) => item.route == initialRoute);
+    // Where to stand at launch. `RouteManager.initialRoute` is the requested
+    // route when the document declares it and the document's own otherwise —
+    // reading `appDefinition.initialRoute` here meant a shell ignored every
+    // launch route, so three stations opening the same app at `/kiosk`,
+    // `/pos` and `/kds` all drew the first tab.
+    final nav = widget.appDefinition.navigationDefinition;
+    if (nav != null) {
+      final initialRoute = widget.engine.routeManager?.initialRoute ??
+          widget.appDefinition.initialRoute;
+      final index = nav.items.indexWhere((item) => item.route == initialRoute);
       if (index >= 0) {
         _currentIndex = index;
+      } else if (widget.appDefinition.routes.containsKey(initialRoute)) {
+        // Declared, but no tab points at it — which is the usual shape of a
+        // scanned or deep-linked target. Open it over the shell once the
+        // first frame exists, so back returns to the tab the document names.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final navigator = NavigationService.instance.navigatorKey.currentState;
+          navigator?.pushNamed(initialRoute);
+        });
       }
     }
 
@@ -1129,6 +1200,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
         // Route found, update the current index to navigate
         if (mounted) {
           setState(() {
+            _indexDrivenByCode = true;
             _currentIndex = targetIndex;
           });
           // Update navigation state in StateManager
@@ -1152,6 +1224,54 @@ class _ApplicationShellState extends State<_ApplicationShell> {
     super.dispose();
   }
 
+  /// Indices the user has actually opened. A page is built on its first
+  /// visit and kept from then on, so switching back is a resume rather than a
+  /// rebuild — but an app with six tabs does not pay for five of them at
+  /// startup, and their `onInit` does not fire before anyone has looked.
+  final Set<int> _visited = <int>{0};
+
+  /// The shell body: every visited page, kept alive, with one of them shown.
+  ///
+  /// Each branch used to build its own `FutureBuilder` keyed on the current
+  /// route, which destroys and rebuilds the page on every switch — `onInit` →
+  /// `onMount` → `onReady` again, tools called again, images fetched and
+  /// decoded again. That is not what a Flutter app does with a tab bar, and
+  /// it is not what §6.8.3 describes for a navigation that keeps its pages:
+  /// leaving one is `onPause`, coming back is `onResume`, and the instance in
+  /// between is the same one.
+  Widget _shellBody(NavigationDefinition navigation) {
+    _visited.add(_currentIndex);
+    return IndexedStack(
+      index: _currentIndex,
+      sizing: StackFit.expand,
+      children: <Widget>[
+        for (var i = 0; i < navigation.items.length; i++)
+          if (!_visited.contains(i))
+            const SizedBox.shrink()
+          else
+            FutureBuilder<PageDefinition>(
+              key: ValueKey<String>(navigation.items[i].route),
+              future: _loadPageDefinition(navigation.items[i].route),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return AnimatedBuilder(
+                    animation: widget.engine.stateManager,
+                    builder: (context, child) => MCPPageWidget(
+                      pageDefinition: snapshot.data!,
+                      runtimeEngine: widget.engine,
+                      isActive: i == _currentIndex,
+                    ),
+                  );
+                } else if (snapshot.hasError) {
+                  return _buildErrorPage(snapshot.error);
+                }
+                return _buildLoadingPage();
+              },
+            ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final navigation = widget.appDefinition.navigationDefinition;
@@ -1159,7 +1279,8 @@ class _ApplicationShellState extends State<_ApplicationShell> {
     if (navigation == null) {
       // No navigation, just show the initial route
       return FutureBuilder<PageDefinition>(
-        future: _loadPageDefinition(widget.appDefinition.initialRoute),
+        future: _loadPageDefinition(widget.engine.routeManager?.initialRoute ??
+            widget.appDefinition.initialRoute),
         builder: (context, snapshot) {
           if (snapshot.hasData) {
             // Wrap in AnimatedBuilder to listen to StateManager changes
@@ -1181,8 +1302,6 @@ class _ApplicationShellState extends State<_ApplicationShell> {
       );
     }
 
-    // Get current route
-    final currentRoute = navigation.items[_currentIndex].route;
 
     switch (navigation.type) {
       case 'tabs':
@@ -1193,16 +1312,28 @@ class _ApplicationShellState extends State<_ApplicationShell> {
             builder: (context) {
               final TabController tabController =
                   DefaultTabController.of(context);
-              // Listen to tab changes
-              tabController.addListener(() {
-                if (!tabController.indexIsChanging && 
-                    tabController.index != _currentIndex) {
-                  setState(() {
-                    _currentIndex = tabController.index;
-                  });
-                  _updateNavigationState(tabController.index);
-                }
-              });
+              // Attach once. This used to run on every rebuild, stacking a new
+              // listener each time, so one tap eventually ran the same
+              // setState many times over.
+              if (!identical(_tabController, tabController)) {
+                _tabController?.removeListener(_onTabControllerChanged);
+                _tabController = tabController;
+                tabController.addListener(_onTabControllerChanged);
+              }
+
+              // The controller is the one that moves the view; `initialIndex`
+              // only places it at creation. Without this, a route-driven
+              // switch (a button, a scan, `navigation.push`) updated
+              // `_currentIndex` and the navigation state while the screen
+              // stayed on the tab it was already showing.
+              if (_indexDrivenByCode && tabController.index != _currentIndex) {
+                _indexDrivenByCode = false;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && tabController.index != _currentIndex) {
+                    tabController.animateTo(_currentIndex);
+                  }
+                });
+              }
               
               return Scaffold(
                 appBar: AppBar(
@@ -1219,32 +1350,34 @@ class _ApplicationShellState extends State<_ApplicationShell> {
                         .toList(),
                   ),
                 ),
+            // TabBarView rather than the shared IndexedStack body, because
+            // swiping between tabs is the point of this shape. Its children
+            // keep themselves alive (`MCPPageWidget` is an
+            // AutomaticKeepAliveClient), so a swipe away and back is the same
+            // instance here too.
             body: TabBarView(
-              children: navigation.items.map((navItem) {
-                final route = navItem.route;
-                return FutureBuilder<PageDefinition>(
-                  key: ValueKey(route),
-                  future: _loadPageDefinition(route),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      // Wrap in AnimatedBuilder to listen to StateManager changes
-                      return AnimatedBuilder(
-                        animation: widget.engine.stateManager,
-                        builder: (context, child) {
-                          return MCPPageWidget(
+              children: <Widget>[
+                for (var i = 0; i < navigation.items.length; i++)
+                  FutureBuilder<PageDefinition>(
+                    key: ValueKey<String>(navigation.items[i].route),
+                    future: _loadPageDefinition(navigation.items[i].route),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return AnimatedBuilder(
+                          animation: widget.engine.stateManager,
+                          builder: (context, child) => MCPPageWidget(
                             pageDefinition: snapshot.data!,
                             runtimeEngine: widget.engine,
-                          );
-                        },
-                      );
-                    } else if (snapshot.hasError) {
-                      return _buildErrorPage(snapshot.error);
-                    } else {
+                            isActive: i == _currentIndex,
+                          ),
+                        );
+                      } else if (snapshot.hasError) {
+                        return _buildErrorPage(snapshot.error);
+                      }
                       return _buildLoadingPage();
-                    }
-                  },
-                );
-              }).toList(),
+                    },
+                  ),
+              ],
             ),
               );
             },
@@ -1292,24 +1425,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
               ),
               const VerticalDivider(thickness: 1, width: 1),
               Expanded(
-                child: FutureBuilder<PageDefinition>(
-                  key: ValueKey(currentRoute),
-                  future: _loadPageDefinition(currentRoute),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      return AnimatedBuilder(
-                        animation: widget.engine.stateManager,
-                        builder: (context, child) => MCPPageWidget(
-                          pageDefinition: snapshot.data!,
-                          runtimeEngine: widget.engine,
-                        ),
-                      );
-                    } else if (snapshot.hasError) {
-                      return _buildErrorPage(snapshot.error);
-                    }
-                    return _buildLoadingPage();
-                  },
-                ),
+                child: _shellBody(navigation),
               ),
             ],
           ),
@@ -1324,28 +1440,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
             title: Text(widget.appDefinition.title),
             actions: _shellAppBarActions(),
           ),
-          body: FutureBuilder<PageDefinition>(
-            key: ValueKey(currentRoute),
-            future: _loadPageDefinition(currentRoute),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                // Wrap in AnimatedBuilder to listen to StateManager changes
-                return AnimatedBuilder(
-                  animation: widget.engine.stateManager,
-                  builder: (context, child) {
-                    return MCPPageWidget(
-                      pageDefinition: snapshot.data!,
-                      runtimeEngine: widget.engine,
-                    );
-                  },
-                );
-              } else if (snapshot.hasError) {
-                return _buildErrorPage(snapshot.error);
-              } else {
-                return _buildLoadingPage();
-              }
-            },
-          ),
+          body: _shellBody(navigation),
           bottomNavigationBar: BottomNavigationBar(
             type: BottomNavigationBarType.fixed,
             currentIndex: _currentIndex,
@@ -1414,28 +1509,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
               ],
             ),
           ),
-          body: FutureBuilder<PageDefinition>(
-            key: ValueKey(currentRoute),
-            future: _loadPageDefinition(currentRoute),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                // Wrap in AnimatedBuilder to listen to StateManager changes
-                return AnimatedBuilder(
-                  animation: widget.engine.stateManager,
-                  builder: (context, child) {
-                    return MCPPageWidget(
-                      pageDefinition: snapshot.data!,
-                      runtimeEngine: widget.engine,
-                    );
-                  },
-                );
-              } else if (snapshot.hasError) {
-                return _buildErrorPage(snapshot.error);
-              } else {
-                return _buildLoadingPage();
-              }
-            },
-          ),
+          body: _shellBody(navigation),
         );
     }
   }

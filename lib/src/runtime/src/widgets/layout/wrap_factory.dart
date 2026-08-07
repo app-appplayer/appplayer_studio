@@ -12,8 +12,8 @@ class WrapWidgetFactory extends WidgetFactory {
     // Extract properties
     final direction = _parseAxis(properties['direction']);
     final alignment = _parseWrapAlignment(properties['alignment']);
-    final spacing = properties['spacing']?.toDouble() ?? 0.0;
-    final runSpacing = properties['runSpacing']?.toDouble() ?? 0.0;
+    final spacing = numberOf(properties['spacing'], context) ?? 0.0;
+    final runSpacing = numberOf(properties['runSpacing'], context) ?? 0.0;
     final runAlignment = _parseWrapAlignment(properties['runAlignment']);
     final crossAxisAlignment =
         _parseWrapCrossAlignment(properties['crossAxisAlignment']);

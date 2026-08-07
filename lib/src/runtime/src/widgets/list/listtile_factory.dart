@@ -12,13 +12,13 @@ class ListTileWidgetFactory extends WidgetFactory {
     // Extract properties
     final titleProp = properties['title'];
     final subtitleProp = properties['subtitle'];
-    final isThreeLine = properties['isThreeLine'] as bool? ?? false;
-    final dense = properties['dense'] as bool? ?? false;
-    final enabled = properties['enabled'] as bool? ?? true;
-    final selected = properties['selected'] as bool? ?? false;
+    final isThreeLine = boolOf(properties['isThreeLine'], context) ?? false;
+    final dense = boolOf(properties['dense'], context) ?? false;
+    final enabled = boolOf(properties['enabled'], context) ?? true;
+    final selected = boolOf(properties['selected'], context) ?? false;
     final iconColor = parseColor(context.resolve(properties['iconColor']), context);
     final textColor = parseColor(context.resolve(properties['textColor']), context);
-    final contentPadding = parseEdgeInsets(properties['contentPadding']);
+    final contentPadding = edgeInsetsOf(properties['contentPadding'], context);
     final tileColor = parseColor(context.resolve(properties['tileColor']), context);
     final selectedTileColor =
         parseColor(context.resolve(properties['selectedTileColor']), context);
@@ -34,10 +34,13 @@ class ListTileWidgetFactory extends WidgetFactory {
 
     // Extract action handlers
     // on + PascalCase optimal, legacy short names as fallback
-    final onTap = (properties['onTap'] ?? properties['click'] ??
-        properties['onTap']) as Map<String, dynamic>?;
-    final onLongPress = (properties['onLongPress'] ?? properties['long-press'] ??
-        properties['longPress']) as Map<String, dynamic>?;
+    final onTap = actionOf(
+        properties['onTap'] ?? properties['click'], context);
+    final onLongPress = actionOf(
+        properties['onLongPress'] ??
+            properties['long-press'] ??
+            properties['longPress'],
+        context);
 
     // Build title widget
     Widget? titleWidget;
@@ -89,6 +92,21 @@ class ListTileWidgetFactory extends WidgetFactory {
       focusColor: focusColor,
       hoverColor: hoverColor,
     );
+
+    // `ListTile` paints its tile colour and ink splashes into the *nearest*
+    // `Material`, which is usually the app's — below whatever the document
+    // paints in between. A page that gives its container a background (the
+    // ordinary case) therefore covered the colour completely: the property
+    // validated, rendered no error, and did nothing. Giving the tile its own
+    // transparent `Material` moves that ink layer inside the document's own
+    // structure, which is the fix the framework itself names when it asserts
+    // on the alternative.
+    if (tileColor != null ||
+        selectedTileColor != null ||
+        focusColor != null ||
+        hoverColor != null) {
+      listTile = Material(type: MaterialType.transparency, child: listTile);
+    }
 
     return applyCommonWrappers(listTile, properties, context);
   }

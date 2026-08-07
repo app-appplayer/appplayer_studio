@@ -10,7 +10,7 @@ class FittedBoxWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final fit = _parseBoxFit(properties['fit']) ?? BoxFit.contain;
+    final fit = _parseBoxFit(readEnum(properties['fit'], context)) ?? BoxFit.contain;
     final alignment =
         parseAlignment(properties['alignment']) ?? Alignment.center;
     final clipBehavior = _parseClip(properties['clipBehavior']) ?? Clip.none;

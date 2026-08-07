@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' as core;
 
 import '../../renderer/render_context.dart';
+import '../../utils/mcp_logger.dart';
 import '../decoration/box_decoration_resolver.dart';
 import '../widget_factory.dart';
 
@@ -127,11 +128,13 @@ class ContainerWidgetFactory extends WidgetFactory {
         resolved[key] = context.resolve(val);
       });
       if (resolved['token'] is String) {
-        final tokenValue =
-            parseSpacingToken(resolved['token'] as String, context);
+        final token = resolved['token'] as String;
+        final tokenValue = parseSpacingToken(token, context);
         if (tokenValue != null) {
           return EdgeInsets.all(tokenValue);
         }
+        _reportUnresolvedSpacing(token);
+        return null;
       }
       return parseEdgeInsets(resolved);
     }
@@ -145,7 +148,50 @@ class ContainerWidgetFactory extends WidgetFactory {
       if (tokenValue != null) {
         return EdgeInsets.all(tokenValue);
       }
+      // The token shape is valid but the theme does not declare the slot.
+      // `parseEdgeInsets` would return null and the box would render with no
+      // inset at all — the "passes validation, does nothing on screen" shape
+      // this slot's declaration exists to prevent. It cannot be a render
+      // error (a theme may legitimately be swapped at runtime), so it is
+      // said out loud instead of dropped.
+      _reportUnresolvedSpacing(resolved);
+      return null;
     }
     return parseEdgeInsets(resolved);
+  }
+
+  /// Once per distinct token: insets are read on every rebuild, and a
+  /// per-frame log is a log nobody reads. Bounded, because a bound token can
+  /// arrive from state — an unbounded set would grow for the life of the
+  /// process. Mirrors `DslColor`'s reporting for the same reason.
+  static const int _spacingWarnCap = 64;
+  static final Set<String> _warnedSpacing = <String>{};
+  static bool _spacingCapReported = false;
+
+  static void _reportUnresolvedSpacing(String token) {
+    if (_warnedSpacing.length >= _spacingWarnCap) {
+      if (_spacingCapReported) return;
+      _spacingCapReported = true;
+      MCPLogger('BoxSpacing').warning(
+        'stopped reporting unresolved spacing tokens after $_spacingWarnCap '
+        'distinct values — the document is producing them from state, and '
+        'the remaining reports would be noise.',
+      );
+      return;
+    }
+    if (!_warnedSpacing.add(token)) return;
+    MCPLogger('BoxSpacing').warning(
+      'box padding/margin: "$token" is not a slot in `theme.spacing`, so the '
+      'box renders with no inset. Declare the slot in the theme, or use a '
+      'number or edge map.',
+    );
+  }
+
+  /// Test seam: the warn-once set is process-wide, so a suite asserting on a
+  /// warning has to be able to start from nothing.
+  @visibleForTesting
+  static void resetSpacingWarnings() {
+    _warnedSpacing.clear();
+    _spacingCapReported = false;
   }
 }

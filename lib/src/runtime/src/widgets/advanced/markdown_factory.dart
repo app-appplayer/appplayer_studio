@@ -21,9 +21,9 @@ class MarkdownWidgetFactory extends WidgetFactory {
         context.resolve<String?>(properties['text']) ??
             context.resolve<String?>(properties['content']) ??
             '';
-    final selectable = properties['selectable'] as bool? ?? false;
-    final width = (properties['width'] as num?)?.toDouble();
-    final height = (properties['height'] as num?)?.toDouble();
+    final selectable = boolOf(properties['selectable'], context) ?? false;
+    final width = (dimensionOf(properties['width'], context))?.toDouble();
+    final height = (dimensionOf(properties['height'], context))?.toDouble();
 
     // Style properties
     final textColor = parseColor(properties['textColor'], context);
@@ -40,10 +40,10 @@ class MarkdownWidgetFactory extends WidgetFactory {
                 .getColorValue('onSurface')
                 ?.withValues(alpha: 0.08)) ??
             Colors.grey.withValues(alpha: 0.1);
-    final fontSize = (properties['fontSize'] as num?)?.toDouble() ?? 14.0;
+    final fontSize = (dimensionOf(properties['fontSize'], context))?.toDouble() ?? 14.0;
 
     // Action handlers
-    final onLinkTap = properties['onLinkTap'] as Map<String, dynamic>?;
+    final onLinkTap = actionOf(properties['onLinkTap'], context);
 
     Widget markdown = _MarkdownRenderer(
       content: content,

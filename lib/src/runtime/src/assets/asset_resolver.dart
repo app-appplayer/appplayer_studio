@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'asset_ref.dart';
@@ -75,6 +76,67 @@ class AssetResolver {
         if (originReader != null) AssetForm.origin,
       };
 
+  /// Decoded `data:` payloads, keyed by the URI that produced them.
+  ///
+  /// `MemoryImage`'s cache key is the byte list's *identity*, so decoding the
+  /// same URI again yields a provider Flutter's image cache has never seen:
+  /// every rebuild re-runs the base64 decode and the image decode, for a
+  /// picture that has not changed. A menu photo runs to 130 kB of base64, and
+  /// a page with two of them re-does that work on every frame that rebuilds.
+  ///
+  /// Bounded rather than unbounded: a document can name any number of data
+  /// URIs, and holding all of them would trade a stutter for a leak. The bound
+  /// is on entries, not bytes, because the entries are what the cache key
+  /// space grows with, and eviction is oldest-first — a rebuild re-reads the
+  /// same handful of images, so recency is the right thing to keep.
+  /// Static, and deliberately so: the resolver is a `const` value that hosts
+  /// construct freely, and a per-instance cache would miss every time a new
+  /// one is made. The same `data:` URI is the same picture whoever asks.
+  static const _dataImageCacheLimit = 64;
+  static final Map<String, MemoryImage> _dataImages = <String, MemoryImage>{};
+
+  /// Whether [ref] names a vector image.
+  ///
+  /// Vectors do not go through `ImageProvider` — they are drawn by a picture
+  /// widget — so every caller needs the same answer before it picks a path.
+  /// Kept here rather than in the widgets so the two cannot disagree (§6.12:
+  /// one resolution path for every `AssetRef` slot).
+  static bool isVector(AssetRef ref) {
+    final uri = ref.uri;
+    if (uri.startsWith('data:image/svg')) return true;
+    final path = uri.split('?').first.split('#').first.toLowerCase();
+    return path.endsWith('.svg') || path.endsWith('.svgz');
+  }
+
+  /// Whether a `data:` URI carries a vector image.
+  static bool isVectorDataUri(String uri) =>
+      uri.startsWith('data:image/svg');
+
+  static MemoryImage? _dataImage(String uri) {
+    if (isVectorDataUri(uri)) {
+      // A vector is not raster bytes. Callers ask `isVector` first and take
+      // the picture path; reaching here means one did not, and the raster
+      // decoder would fail with nothing an author could act on.
+      return null;
+    }
+    final hit = _dataImages[uri];
+    if (hit != null) {
+      // Move to the end so the eviction below drops what has not been asked
+      // for, rather than what happened to arrive first.
+      _dataImages.remove(uri);
+      _dataImages[uri] = hit;
+      return hit;
+    }
+    final bytes = decodeDataUri(uri);
+    if (bytes == null) return null;
+    final image = MemoryImage(bytes);
+    if (_dataImages.length >= _dataImageCacheLimit) {
+      _dataImages.remove(_dataImages.keys.first);
+    }
+    _dataImages[uri] = image;
+    return image;
+  }
+
   /// Whether [ref] can be resolved at all.
   bool supports(AssetRef ref) => supportedForms.contains(ref.form);
 
@@ -90,14 +152,82 @@ class AssetResolver {
       case AssetForm.flutterAsset:
         return AssetImage(ref.uri);
       case AssetForm.data:
-        final bytes = decodeDataUri(ref.uri);
-        return bytes == null ? null : MemoryImage(bytes);
+        return _dataImage(ref.uri);
       case AssetForm.bundle:
       case AssetForm.client:
       case AssetForm.origin:
         // Asynchronous reads. The wait lives inside the provider so callers
         // stay synchronous (§6.12.5).
         return supports(ref) ? AssetRefImage(ref, this) : null;
+      case AssetForm.unknown:
+        return null;
+    }
+  }
+
+  /// A widget that draws [ref] as a vector, or `null` when this runtime
+  /// cannot reach the bytes.
+  ///
+  /// Vectors take a picture widget rather than an `ImageProvider`, so this is
+  /// the vector half of `imageProviderFor` — same scheme dispatch, same
+  /// `null`-means-fallback contract (§6.12.4). Asynchronous schemes read
+  /// through [bytesFor], and a slot awaiting bytes shows its loading state
+  /// rather than its fallback (§6.12.5).
+  Widget? vectorWidgetFor(
+    AssetRef ref, {
+    double? width,
+    double? height,
+    BoxFit fit = BoxFit.contain,
+    AlignmentGeometry alignment = Alignment.center,
+    Color? color,
+    Widget Function()? loadingBuilder,
+  }) {
+    final colorFilter =
+        color == null ? null : ColorFilter.mode(color, BlendMode.srcIn);
+    switch (ref.form) {
+      case AssetForm.network:
+        return SvgPicture.network(ref.uri,
+            width: width,
+            height: height,
+            fit: fit,
+            alignment: alignment,
+            colorFilter: colorFilter);
+      case AssetForm.flutterAsset:
+        return SvgPicture.asset(ref.uri,
+            width: width,
+            height: height,
+            fit: fit,
+            alignment: alignment,
+            colorFilter: colorFilter);
+      case AssetForm.data:
+        final bytes = decodeDataUri(ref.uri);
+        if (bytes == null) return null;
+        return SvgPicture.memory(bytes,
+            width: width,
+            height: height,
+            fit: fit,
+            alignment: alignment,
+            colorFilter: colorFilter);
+      case AssetForm.bundle:
+      case AssetForm.client:
+      case AssetForm.origin:
+        if (!supports(ref)) return null;
+        return FutureBuilder<Uint8List?>(
+          future: bytesFor(ref),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return loadingBuilder?.call() ??
+                  SizedBox(width: width, height: height);
+            }
+            final bytes = snapshot.data;
+            if (bytes == null) return const SizedBox.shrink();
+            return SvgPicture.memory(bytes,
+                width: width,
+                height: height,
+                fit: fit,
+                alignment: alignment,
+                colorFilter: colorFilter);
+          },
+        );
       case AssetForm.unknown:
         return null;
     }

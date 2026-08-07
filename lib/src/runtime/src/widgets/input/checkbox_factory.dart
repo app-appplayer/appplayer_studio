@@ -10,16 +10,16 @@ class CheckboxWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Spec §2.6.0: binding shorthand — read from state path if set.
-    final binding = (properties['binding'] as String?) ??
-        (properties['bindTo'] as String?);
+    final binding = (stringOf(properties['binding'], context)) ??
+        (stringOf(properties['bindTo'], context));
     final bool value = binding != null
         ? (context.getState(binding) as bool? ?? false)
         : context.resolve<bool>(properties['value'] ?? false);
-    final label = properties['label'] as String?;
-    final enabled = properties['enabled'] as bool? ?? true;
-    final tristate = properties['tristate'] as bool? ?? false;
+    final label = stringOf(properties['label'], context);
+    final enabled = boolOf(properties['enabled'], context) ?? true;
+    final tristate = boolOf(properties['tristate'], context) ?? false;
     final onChange =
-        (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
+        actionOf(properties['onChange'] ?? properties['change'], context);
 
     ValueChanged<bool?>? handler;
     if (enabled && (binding != null || onChange != null)) {

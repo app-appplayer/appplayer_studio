@@ -16,11 +16,11 @@ class FileExplorerWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final items = context.resolve<List<dynamic>?>(properties['items']) ?? [];
-    final showIcons = properties['showIcons'] as bool? ?? true;
-    final showHidden = properties['showHidden'] as bool? ?? false;
-    final expandAll = properties['expandAll'] as bool? ?? false;
-    final width = (properties['width'] as num?)?.toDouble();
-    final height = (properties['height'] as num?)?.toDouble();
+    final showIcons = boolOf(properties['showIcons'], context) ?? true;
+    final showHidden = boolOf(properties['showHidden'], context) ?? false;
+    final expandAll = boolOf(properties['expandAll'], context) ?? false;
+    final width = (dimensionOf(properties['width'], context))?.toDouble();
+    final height = (dimensionOf(properties['height'], context))?.toDouble();
 
     // Theme colors
     final backgroundColor = parseColor(properties['backgroundColor'], context);
@@ -32,8 +32,8 @@ class FileExplorerWidgetFactory extends WidgetFactory {
     final iconColor = parseColor(properties['iconColor'], context);
 
     // Action handlers
-    final onSelect = (properties['onSelect'] ?? properties['select']) as Map<String, dynamic>?;
-    final onOpen = (properties['onOpen'] ?? properties['open']) as Map<String, dynamic>?;
+    final onSelect = actionOf(properties['onSelect'] ?? properties['select'], context);
+    final onOpen = actionOf(properties['onOpen'] ?? properties['open'], context);
 
     Widget explorer = _FileExplorer(
       items: _parseItems(items),

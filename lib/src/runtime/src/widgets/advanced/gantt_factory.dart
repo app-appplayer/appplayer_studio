@@ -26,8 +26,8 @@ class GanttFactory extends WidgetFactory {
         context.resolve<bool?>(properties['showDependencies']) ?? true;
     final todayMarker = context.resolve<bool?>(properties['todayMarker']) ?? true;
     final rowHeight = context.resolve<num?>(properties['rowHeight'])?.toDouble() ?? 32.0;
-    final onTaskChange = properties['onTaskChange'] as Map<String, dynamic>?;
-    final onTaskClick = properties['onTaskClick'] as Map<String, dynamic>?;
+    final onTaskChange = actionOf(properties['onTaskChange'], context);
+    final onTaskClick = actionOf(properties['onTaskClick'], context);
 
     final tasks = <_Task>[];
     for (final raw in rawTasks) {
@@ -41,6 +41,11 @@ class GanttFactory extends WidgetFactory {
         start: start,
         end: end,
         progress: (raw['progress'] as num?)?.toDouble(),
+        // §10 declares `color?` and `group?` on a task. Both were dropped:
+        // every bar came out in the scheme primary, and a chart of two teams
+        // showed one undivided list.
+        color: parseColor(raw['color'], context),
+        group: raw['group']?.toString(),
         dependsOn: [
           for (final d in (raw['dependsOn'] as List? ?? const []))
             d.toString(),
@@ -123,6 +128,8 @@ class _Task {
     required this.end,
     required this.dependsOn,
     this.progress,
+    this.color,
+    this.group,
   });
 
   final String id;
@@ -131,6 +138,24 @@ class _Task {
   final DateTime end;
   final double? progress;
   final List<String> dependsOn;
+
+  /// The bar's own colour, when the task named one.
+  final Color? color;
+
+  /// The band this task belongs to. Tasks are drawn grouped, with the name
+  /// above the first row of each band.
+  final String? group;
+}
+
+/// A row in the chart: either a band header or a task.
+class _Row {
+  const _Row._(this.group, this.task);
+
+  factory _Row.header(String group) => _Row._(group, null);
+  factory _Row.task(_Task task) => _Row._(null, task);
+
+  final String? group;
+  final _Task? task;
 }
 
 /// The single mapping from time to pixels. Header and rows both read it, which
@@ -202,6 +227,15 @@ class _GanttState extends State<_Gantt> {
     final units = (span.inMilliseconds / widget.unit.inMilliseconds).ceil();
     final chartWidth = (units.clamp(1, 2000)) * 40.0;
     final scale = _Scale(widget.from, widget.to, chartWidth);
+    // One row plan for both columns. Labels and bars are drawn by different
+    // widgets, and any difference between their row lists shows up as bars
+    // sliding away from their names.
+    final rows = _rows(widget.tasks);
+    final headerHeight = widget.rowHeight * 0.75;
+    final bodyHeight = rows.fold<double>(
+        widget.rowHeight,
+        (total, row) =>
+            total + (row.task == null ? headerHeight : widget.rowHeight));
 
     // The chart is as tall as it has rows, which is unbounded: a plan with two
     // hundred tasks is a normal plan, and it overflowed by three thousand
@@ -215,7 +249,7 @@ class _GanttState extends State<_Gantt> {
         mainAxisSize: MainAxisSize.min,
         children: [
         SizedBox(
-          height: widget.rowHeight * (widget.tasks.length + 1),
+          height: bodyHeight,
           child: Row(
             children: [
               SizedBox(
@@ -223,14 +257,36 @@ class _GanttState extends State<_Gantt> {
                 child: Column(
                   children: [
                     SizedBox(height: widget.rowHeight),
-                    for (final t in widget.tasks)
-                      SizedBox(
-                        height: widget.rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(t.label, overflow: TextOverflow.ellipsis),
+                    for (final row in rows)
+                      if (row.task == null)
+                        SizedBox(
+                          height: headerHeight,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              row.group!,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.color ??
+                                    Colors.grey,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: widget.rowHeight,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(row.task!.label,
+                                overflow: TextOverflow.ellipsis),
+                          ),
                         ),
-                      ),
                   ],
                 ),
               ),
@@ -258,24 +314,29 @@ class _GanttState extends State<_Gantt> {
                             ),
                           ),
                         ),
-                        for (final task in widget.tasks)
-                          SizedBox(
-                            height: widget.rowHeight,
-                            child: _Bar(
-                              task: task,
-                              scale: scale,
-                              editable: widget.editable,
-                              showProgress: widget.showProgress,
-                              preview: _dragging[task.id],
-                              onTap: () => widget.onClick(task),
-                              onDrag: (start, end) =>
-                                  setState(() => _dragging[task.id] = (start: start, end: end)),
-                              onDragEnd: (start, end) {
-                                setState(() => _dragging.remove(task.id));
-                                widget.onChange(task, start, end);
-                              },
+                        for (final row in rows)
+                          if (row.task == null)
+                            SizedBox(height: headerHeight)
+                          else
+                            SizedBox(
+                              height: widget.rowHeight,
+                              child: _Bar(
+                                task: row.task!,
+                                scale: scale,
+                                editable: widget.editable,
+                                showProgress: widget.showProgress,
+                                preview: _dragging[row.task!.id],
+                                onTap: () => widget.onClick(row.task!),
+                                onDrag: (start, end) => setState(() =>
+                                    _dragging[row.task!.id] =
+                                        (start: start, end: end)),
+                                onDragEnd: (start, end) {
+                                  setState(
+                                      () => _dragging.remove(row.task!.id));
+                                  widget.onChange(row.task!, start, end);
+                                },
+                              ),
                             ),
-                          ),
                       ],
                     ),
                   ),
@@ -287,6 +348,23 @@ class _GanttState extends State<_Gantt> {
         ],
       ),
     );
+  }
+
+  /// The rows to draw: a header for each band that has a name, then its
+  /// tasks. Bands keep the order they first appear in, and tasks keep the
+  /// document's order inside a band; a plan with no groups produces exactly
+  /// the rows it did before.
+  List<_Row> _rows(List<_Task> tasks) {
+    final bands = <String?, List<_Task>>{};
+    for (final task in tasks) {
+      bands.putIfAbsent(task.group, () => <_Task>[]).add(task);
+    }
+    final out = <_Row>[];
+    bands.forEach((group, band) {
+      if (group != null) out.add(_Row.header(group));
+      out.addAll(band.map(_Row.task));
+    });
+    return out;
   }
 }
 
@@ -359,9 +437,17 @@ class _Bar extends StatelessWidget {
     final width = (scale.xOf(end) - left).clamp(2.0, scale.width);
     final scheme = Theme.of(context).colorScheme;
 
+    // The task's own colour when it named one; the scheme otherwise. The
+    // completed portion is the same hue, lightened, so a coloured bar keeps
+    // reading as one bar.
+    final barColor = task.color ?? scheme.primary;
+    final doneColor = task.color == null
+        ? scheme.primaryContainer
+        : Color.lerp(barColor, Colors.white, 0.45) ?? barColor;
+
     Widget bar = Container(
       decoration: BoxDecoration(
-        color: scheme.primary,
+        color: barColor,
         borderRadius: BorderRadius.circular(3),
       ),
       child: showProgress && task.progress != null
@@ -370,7 +456,7 @@ class _Bar extends StatelessWidget {
               widthFactor: task.progress!.clamp(0, 1),
               child: Container(
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
+                  color: doneColor,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),

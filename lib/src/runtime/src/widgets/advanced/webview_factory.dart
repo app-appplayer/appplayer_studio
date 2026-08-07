@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../capability_absent.dart';
 import '../widget_factory.dart';
 
 /// Factory for WebView widgets
@@ -22,25 +23,48 @@ class WebViewWidgetFactory extends WidgetFactory {
     // generics throw when the property is absent (null).
     final url = context.resolve<String?>(properties['url']);
     final html = context.resolve<String?>(properties['html']);
-    final width = (properties['width'] as num?)?.toDouble();
-    final height = (properties['height'] as num?)?.toDouble() ?? 300;
+    final width = (dimensionOf(properties['width'], context))?.toDouble();
+    final height = (dimensionOf(properties['height'], context))?.toDouble() ?? 300;
 
     // Options
-    final enableJavaScript = properties['enableJavaScript'] as bool? ?? true;
-    final enableZoom = properties['enableZoom'] as bool? ?? true;
-    // Spec §10.18: `allowNavigation`.
-    // ignore: unused_local_variable
-    final allowNavigation = properties['allowNavigation'] as bool? ?? true;
+    final enableJavaScript = boolOf(properties['enableJavaScript'], context) ?? true;
+    final enableZoom = boolOf(properties['enableZoom'], context) ?? true;
+    // `allowNavigation` (§10.18) is decided by the engine, so it travels to
+    // the host surface with the rest of `properties` rather than being read
+    // and dropped here.
     final backgroundColor =
         parseColor(properties['backgroundColor'], context) ??
             context.themeManager.getColorValue('surface') ??
             Colors.white;
 
     // Action handlers
-    final onPageStarted = properties['onPageStarted'] as Map<String, dynamic>?;
+    final onPageStarted = actionOf(properties['onPageStarted'], context);
     final onPageFinished =
-        properties['onPageFinished'] as Map<String, dynamic>?;
-    final onError = properties['onError'] as Map<String, dynamic>?;
+        actionOf(properties['onPageFinished'], context);
+    final onError = actionOf(properties['onError'], context);
+
+    // §6.13 — a web view either loads pages or says it cannot. The engine is a
+    // platform power, so the host supplies the surface; the built-in path never
+    // reports a load it did not perform.
+    final builder = context.capabilities.webViewBuilder;
+    if (builder != null) {
+      return applyCommonWrappers(
+        SizedBox(
+          width: width,
+          height: height,
+          // Builder so the host always gets a live BuildContext, whatever the
+          // render context was created with.
+          child: Builder(
+            builder: (ctx) =>
+                builder(ctx, properties, surfaceEventsFor(properties, context),
+                    surfaceAssetsFor(context)) ??
+                const SizedBox.shrink(),
+          ),
+        ),
+        properties,
+        context,
+      );
+    }
 
     Widget webView = _WebViewWidget(
       url: url,
@@ -155,18 +179,15 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
       return;
     }
 
-    // Simulate successful load — use a cancellable timer so teardown
-    // during the 100ms window doesn't leave a pending timer.
-    _loadTimer = Timer(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        _notifyPageFinished();
-      }
+    // No engine was wired, so nothing will load. §6.13.1 — this reports the
+    // absence instead of announcing a page load that never happened. The old
+    // path fired `onPageFinished` after 100ms and drew the URL as text, which
+    // told the document the page was up.
+    apply(() {
+      _isLoading = false;
+      _errorMessage = 'no web view capability';
     });
-    // The timer body always runs after the first frame, so it may use
-    // `setState` directly.
+    afterFrame(() => _notifyError(_errorMessage!));
   }
 
   bool _isPlatformSupported() {
@@ -192,19 +213,6 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
     }
   }
 
-  void _notifyPageFinished() {
-    if (widget.onPageFinished != null) {
-      final eventContext = widget.context.createChildContext(
-        variables: {
-          'event': {
-            'url': widget.url ?? '',
-          }
-        },
-      );
-      widget.context.actionHandler
-          .execute(widget.onPageFinished!, eventContext);
-    }
-  }
 
   void _notifyError(String error) {
     if (widget.onError != null) {
@@ -232,28 +240,10 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
     }
 
     if (_errorMessage != null) {
-      final cs = Theme.of(context).colorScheme;
-      return Container(
-        color: widget.backgroundColor,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                color: cs.error,
-                size: 48,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.error),
-              ),
-            ],
-          ),
-        ),
-      );
+      // §6.13.2 — the failure went to `onError` and the diagnostic channel when
+      // it happened. Drawing it here would put the runtime's limits in the
+      // user's screen, which §6.12.4 already forbids for assets.
+      return const SizedBox.shrink();
     }
 
     // Render HTML content if provided
@@ -267,14 +257,9 @@ class _WebViewWidgetState extends State<_WebViewWidget> {
       );
     }
 
-    // Render URL placeholder (actual WebView requires platform-specific setup)
-    return Container(
-      color: widget.backgroundColor,
-      child: _UrlPreview(
-        url: widget.url!,
-        enableZoom: widget.enableZoom,
-      ),
-    );
+    // No engine: nothing to show. The URL preview that used to live here was a
+    // facsimile of a loaded page (§6.13.1) — it even satisfied "render".
+    return const SizedBox.shrink();
   }
 }
 
@@ -351,89 +336,3 @@ class _HtmlPreview extends StatelessWidget {
   }
 }
 
-/// URL preview placeholder
-class _UrlPreview extends StatelessWidget {
-  final String url;
-  final bool enableZoom;
-
-  const _UrlPreview({
-    required this.url,
-    required this.enableZoom,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Column(
-      children: [
-        // URL bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            border: Border(
-              bottom: BorderSide(color: theme.dividerColor),
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.lock, size: 14, color: Colors.green),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  url,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ),
-              if (enableZoom)
-                IconButton(
-                  icon: const Icon(Icons.zoom_in, size: 18),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-            ],
-          ),
-        ),
-        // Content area
-        Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.language,
-                  size: 64,
-                  color: cs.onSurface.withValues(alpha: 0.4),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'WebView Content',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Add webview_flutter to pubspec.yaml\nfor full web content rendering',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

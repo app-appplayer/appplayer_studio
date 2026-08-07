@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for PermissionPrompt widgets (v1.1)
@@ -17,9 +18,11 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
     final title = context.resolve<String?>(properties['title']);
     final description =
         context.resolve<String?>(properties['description']);
-    final icon = properties['icon'] as String?;
-    final onAllow = properties['onAllow'] as Map<String, dynamic>?;
-    final onDeny = properties['onDeny'] as Map<String, dynamic>?;
+    final icon = properties['icon'] == null
+        ? null
+        : resolveIconRef(context.resolve<Object?>(properties['icon']));
+    final onAllow = actionOf(properties['onAllow'], context);
+    final onDeny = actionOf(properties['onDeny'], context);
     final allowPartial =
         context.resolve<bool>(properties['allowPartial'] ?? false);
 
@@ -50,7 +53,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
     String? title,
     String? description,
     List<dynamic> permissions,
-    String? icon,
+    IconData? icon,
     Map<String, dynamic>? onAllow,
     Map<String, dynamic>? onDeny,
     bool allowPartial,
@@ -65,7 +68,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
             Row(
               children: [
                 Icon(
-                  icon == 'security' ? Icons.security : Icons.lock_outline,
+                  icon ?? Icons.lock_outline,
                   color: renderContext.themeManager.getColorValue('error') ??
                       Colors.orange,
                   size: 24,
@@ -144,14 +147,14 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
     String? title,
     String? description,
     List<dynamic> permissions,
-    String? icon,
+    IconData? icon,
     Map<String, dynamic>? onAllow,
     Map<String, dynamic>? onDeny,
     bool allowPartial,
   ) {
     return MaterialBanner(
       leading: Icon(
-        icon == 'security' ? Icons.security : Icons.lock_outline,
+        icon ?? Icons.lock_outline,
         color: renderContext.themeManager.getColorValue('error') ??
             Colors.orange,
       ),

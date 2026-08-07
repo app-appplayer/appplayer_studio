@@ -27,7 +27,7 @@ class FlexibleWidgetFactory extends WidgetFactory {
     }
 
     // Extract properties
-    final flex = properties['flex'] as int? ?? 1;
+    final flex = dimensionOf(properties['flex'], context)?.toInt() ?? 1;
     final fit = _parseFlexFit(properties['fit']);
 
     if (child == null) {

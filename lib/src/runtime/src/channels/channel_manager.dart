@@ -219,13 +219,24 @@ class ChannelManager {
     await _startChannel(channelId, channel, controller);
   }
 
-  /// Stop a channel
+  /// Stop a channel.
+  ///
+  /// The state has to move with it. Cancelling the subscription stopped the
+  /// data but left `_channelStates` on `connected`, so `getChannelState` — and
+  /// every `{{channel.*.state}}` binding reading it — reported a live channel
+  /// that would never deliver again. `toggleChannel` read the same stale
+  /// picture and refused to turn it back on.
   Future<void> stopChannel(String channelId) async {
     final subscription = _subscriptions.remove(channelId);
     await subscription?.cancel();
 
     final channel = _channels[channelId];
     await channel?.stop();
+
+    if (_channels.containsKey(channelId)) {
+      _channelStates[channelId] = ChannelState.disconnected;
+      onDisconnect?.call(channelId);
+    }
   }
 
   /// Get stream for a channel
@@ -277,6 +288,8 @@ class ChannelManager {
       return;
     }
 
+    final config = _channelConfigs[channelId];
+
     // Wrap in ChannelMessage protocol (spec §2160-2187)
     final seq = _sequenceCounters[channelId] ?? 0;
     _sequenceCounters[channelId] = seq + 1;
@@ -285,7 +298,13 @@ class ChannelManager {
     if (channel is WebSocketChannel) {
       channel.send(message.payload);
     } else {
-      _logger.debug('Channel $channelId does not support sending data');
+      // Reported, not logged-and-forgotten. A document calling `channel.send`
+      // on an inbound-only channel used to get a success it could not tell
+      // apart from a delivered message, so the send simply vanished.
+      throw UnsupportedError(
+        'Channel "$channelId" (${config?.type ?? channel.runtimeType}) does '
+        'not send: it is an inbound stream, so "$data" was not delivered.',
+      );
     }
   }
 

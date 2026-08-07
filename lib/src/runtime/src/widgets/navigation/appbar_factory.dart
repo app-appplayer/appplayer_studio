@@ -19,9 +19,9 @@ class AppBarWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final titleData = properties['title'];
-    final centerTitle = properties['centerTitle'] as bool?;
+    final centerTitle = boolOf(properties['centerTitle'], context);
     final automaticallyImplyLeading =
-        properties['automaticallyImplyLeading'] as bool? ?? true;
+        boolOf(properties['automaticallyImplyLeading'], context) ?? true;
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final foregroundColor =

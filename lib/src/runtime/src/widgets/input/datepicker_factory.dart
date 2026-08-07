@@ -1,3 +1,4 @@
+import '../../utils/icon_resolver.dart';
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
@@ -22,13 +23,18 @@ class DatePickerWidgetFactory extends WidgetFactory {
     final lastDate = properties['lastDate'] != null
         ? DateTime.parse(properties['lastDate'])
         : DateTime(2100);
-    final dateFormat = properties['dateFormat'] as String? ?? 'yyyy-MM-dd';
-    final variant = properties['variant'] as String? ?? 'elevated';
-    final icon = properties['icon'] as String? ?? 'calendar_today';
+    final dateFormat = stringOf(properties['dateFormat'], context) ?? 'yyyy-MM-dd';
+    final variant = readEnum(properties['variant'], context) ?? 'elevated';
+    // §2.5 `IconRef`: a name, a `{codepoint}` object or a `{uri}` object,
+    // accepted anywhere an icon is taken. Reading it as a String threw on the
+    // two object forms the schema plainly allows.
+    final iconData = properties['icon'] == null
+        ? resolveIconData('calendar_today')
+        : resolveIconRef(properties['icon']);
 
     // Spec §2.6.0: canonical `binding`; accept legacy `bindTo` alias.
-    final binding = (properties['binding'] as String?) ??
-        (properties['bindTo'] as String?);
+    final binding = (stringOf(properties['binding'], context)) ??
+        (stringOf(properties['bindTo'], context));
     String? currentValue;
     if (binding != null) {
       currentValue = context.getValue(binding) as String?;
@@ -37,7 +43,7 @@ class DatePickerWidgetFactory extends WidgetFactory {
     }
 
     // Extract action handler
-    final onChange = (properties['onChange'] ?? properties['change']) as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'] ?? properties['change'], context);
 
     Widget datePicker = StatefulBuilder(
       builder: (buildContext, setState) {
@@ -55,7 +61,7 @@ class DatePickerWidgetFactory extends WidgetFactory {
           label: selectedDate != null
               ? _formatDate(selectedDate, dateFormat)
               : label,
-          icon: _parseIcon(icon),
+          icon: iconData,
           onPressed: () async {
             final picked = await showDatePicker(
               context: buildContext,
@@ -134,16 +140,6 @@ class DatePickerWidgetFactory extends WidgetFactory {
         .replaceAll('dd', date.day.toString().padLeft(2, '0'));
   }
 
-  IconData _parseIcon(String? icon) {
-    switch (icon) {
-      case 'calendar_today':
-        return Icons.calendar_today;
-      case 'event':
-        return Icons.event;
-      case 'date_range':
-        return Icons.date_range;
-      default:
-        return Icons.calendar_today;
-    }
-  }
+  // `_parseIcon` moved to `resolveIconRef` in utils/icon_resolver.dart —
+  // one icon vocabulary, all three IconRef forms.
 }

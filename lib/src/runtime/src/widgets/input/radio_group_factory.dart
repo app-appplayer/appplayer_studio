@@ -9,8 +9,8 @@ class RadioGroupFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final label = properties['label'] as String?;
-    final binding = properties['binding'] as String?;
+    final label = stringOf(properties['label'], context);
+    final binding = stringOf(properties['binding'], context);
     final options = properties['options'] as List<dynamic>? ?? [];
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
     // Spec §2.6.9 canonical `orientation`; `direction` kept as legacy alias.

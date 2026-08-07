@@ -22,9 +22,9 @@ class ScrollbarWidgetFactory extends WidgetFactory {
             : null);
 
     return _ScrollbarHost(
-      thumbVisibility: properties['thumbVisibility'] as bool? ?? false,
-      trackVisibility: properties['trackVisibility'] as bool? ?? false,
-      thickness: properties['thickness']?.toDouble(),
+      thumbVisibility: boolOf(properties['thumbVisibility'], context) ?? false,
+      trackVisibility: boolOf(properties['trackVisibility'], context) ?? false,
+      thickness: numberOf(properties['thickness'], context),
       radius: properties['radius'] != null
           ? Radius.circular(properties['radius'].toDouble())
           : null,

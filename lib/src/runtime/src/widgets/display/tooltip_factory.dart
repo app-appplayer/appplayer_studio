@@ -16,11 +16,11 @@ class TooltipWidgetFactory extends WidgetFactory {
         ? _buildInlineSpan(properties['richMessage'], context)
         : null;
     final height = parseDimension(properties['height']);
-    final padding = parseEdgeInsets(properties['padding']);
-    final margin = parseEdgeInsets(properties['margin']);
+    final padding = edgeInsetsOf(properties['padding'], context);
+    final margin = edgeInsetsOf(properties['margin'], context);
     final verticalOffset = parseDimension(properties['verticalOffset']);
-    final preferBelow = properties['preferBelow'] as bool?;
-    final excludeFromSemantics = properties['excludeFromSemantics'] as bool?;
+    final preferBelow = boolOf(properties['preferBelow'], context);
+    final excludeFromSemantics = boolOf(properties['excludeFromSemantics'], context);
     final decoration = _parseDecoration(properties['decoration'], context);
     final textStyle = _parseTextStyle(properties['textStyle'], context);
     final textAlign = _parseTextAlign(properties['textAlign']);
@@ -31,7 +31,7 @@ class TooltipWidgetFactory extends WidgetFactory {
         ? Duration(milliseconds: properties['showDuration'])
         : null;
     final triggerMode = _parseTriggerMode(properties['triggerMode']);
-    final enableFeedback = properties['enableFeedback'] as bool?;
+    final enableFeedback = boolOf(properties['enableFeedback'], context);
 
     // Extract child widget
     Widget? child;

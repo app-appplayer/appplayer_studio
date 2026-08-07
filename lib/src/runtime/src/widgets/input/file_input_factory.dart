@@ -25,7 +25,7 @@ class FileInputFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final binding = properties['binding'] as String?;
+    final binding = stringOf(properties['binding'], context);
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
     final label = context.resolve<String?>(properties['label']);
     final multiple = context.resolve<bool?>(properties['multiple']) ?? false;
@@ -36,8 +36,8 @@ class FileInputFactory extends WidgetFactory {
         (context.resolve<List<dynamic>?>(properties['accept']) ?? const [])
             .map((e) => e.toString())
             .toList();
-    final onChange = properties['onChange'] as Map<String, dynamic>?;
-    final onError = properties['onError'] as Map<String, dynamic>?;
+    final onChange = actionOf(properties['onChange'], context);
+    final onError = actionOf(properties['onError'], context);
 
     final selected =
         binding != null && context.getState(binding) is List

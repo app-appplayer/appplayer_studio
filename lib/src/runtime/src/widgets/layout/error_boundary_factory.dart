@@ -11,7 +11,7 @@ class ErrorBoundaryFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final child = definition['content'] ?? definition['child'];
     final fallback = definition['fallback'];
-    final onError = definition['onError'] as Map<String, dynamic>?;
+    final onError = actionOf(definition['onError'], context);
 
     if (child == null) {
       return const SizedBox.shrink();
