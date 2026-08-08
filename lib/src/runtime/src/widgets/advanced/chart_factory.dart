@@ -458,6 +458,19 @@ class _ChartRevealState extends State<_ChartReveal>
 }
 
 /// Custom painter for rendering charts
+/// How a number is written on a chart.
+///
+/// Values were always rounded to whole numbers, so a scrap rate of 1.5 and one
+/// of 2.4 both printed `2`. On a bar chart of rates, yields or averages the
+/// first decimal IS the reading, and the label is what an author checks the
+/// screen against — a wrong number that looks finished. Integers still print
+/// as integers; a fraction keeps one place. Same rule the heatmap uses, for
+/// the same reason (reported from a factory report where both were on screen).
+String chartLabelFor(num value) =>
+    value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+
 class _ChartPainter extends CustomPainter {
   /// 0 → 1 while the chart is revealing. Values are scaled by it, which is
   /// what "the chart animates in" means for every type here.
@@ -1097,7 +1110,7 @@ class _ChartPainter extends CustomPainter {
       if (showLabels) {
         final textPainter = TextPainter(
           text: TextSpan(
-            text: data[i].value.toStringAsFixed(0),
+            text: chartLabelFor(data[i].value),
             style: TextStyle(
               color: labelColor,
               fontSize: 10,
@@ -1332,7 +1345,7 @@ class _ChartPainter extends CustomPainter {
       for (int i = 0; i <= 5; i++) {
         final value = minY + (yRange * (5 - i) / 5);
         textPainter.text = TextSpan(
-          text: value.toStringAsFixed(0),
+          text: chartLabelFor(value),
           style: TextStyle(color: labelColor.withValues(alpha: 0.6), fontSize: 10),
         );
         textPainter.layout();
@@ -1344,7 +1357,7 @@ class _ChartPainter extends CustomPainter {
       for (int i = 0; i <= 5; i++) {
         final value = minX + (xRange * i / 5);
         textPainter.text = TextSpan(
-          text: value.toStringAsFixed(0),
+          text: chartLabelFor(value),
           style: TextStyle(color: labelColor.withValues(alpha: 0.6), fontSize: 10),
         );
         textPainter.layout();
@@ -1473,7 +1486,7 @@ class _ChartPainter extends CustomPainter {
     for (int i = 0; i <= 5; i++) {
       final value = minValue + (valueRange * (5 - i) / 5);
       textPainter.text = TextSpan(
-        text: value.toStringAsFixed(0),
+        text: chartLabelFor(value),
         style: TextStyle(color: labelColor.withValues(alpha: 0.6), fontSize: 10),
       );
       textPainter.layout();
@@ -1509,7 +1522,7 @@ class _ChartPainter extends CustomPainter {
     for (int i = 0; i <= 5; i++) {
       final value = minValue + (valueRange * (5 - i) / 5);
       textPainter.text = TextSpan(
-        text: value.toStringAsFixed(0),
+        text: chartLabelFor(value),
         style: TextStyle(color: labelColor.withValues(alpha: 0.6), fontSize: 10),
       );
       textPainter.layout();

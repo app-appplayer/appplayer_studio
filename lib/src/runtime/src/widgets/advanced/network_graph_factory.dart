@@ -182,6 +182,38 @@ class _NetworkGraphWidgetState extends State<_NetworkGraphWidget> {
     _layoutNodes();
   }
 
+  @override
+  void didUpdateWidget(_NetworkGraphWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The node list was copied once, in initState, and never again. A bound
+    // `nodes` that arrives after the first frame — which is what a state path
+    // does, and what `heatmap.data` and `dataTable.rows` handle — therefore
+    // never reached the layout: the graph kept the empty list it was born
+    // with and drew an empty panel forever. `edges` looked fine because the
+    // painter reads them on every paint, so the two halves of the same widget
+    // disagreed about whether late data counts.
+    if (!_sameNodes(oldWidget.nodes, widget.nodes)) {
+      _nodes = List.from(widget.nodes);
+      _layoutNodes();
+    }
+  }
+
+  /// Identity by what a document declares, not by object identity: the
+  /// resolver hands back a fresh list on every rebuild, so comparing
+  /// references would relayout on every frame and throw away a pan/drag.
+  static bool _sameNodes(List<_GraphNode> a, List<_GraphNode> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id ||
+          a[i].label != b[i].label ||
+          a[i].x != b[i].x ||
+          a[i].y != b[i].y) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Places the nodes the document did not place itself.
   ///
   /// `layout` names four algorithms and this method used to be one circle for

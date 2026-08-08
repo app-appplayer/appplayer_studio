@@ -23,13 +23,13 @@ class ResizableFactory extends WidgetFactory {
         .map((e) => e.toString())
         .toSet();
     final keepRatio =
-        context.resolve<bool?>(properties['keepAspectRatio']) ?? false;
+        boolOf(properties['keepAspectRatio'], context) ?? false;
     final onResize = actionOf(properties['onResize'], context);
     final onResizeEnd = actionOf(properties['onResizeEnd'], context);
 
     // `resolve` handles both branches — a literal number and a binding
     // expression — so the read needs no special case for the bound form.
-    double? read(dynamic raw) => context.resolve<num?>(raw)?.toDouble();
+    double? read(dynamic raw) => numberOf(raw, context)?.toDouble();
 
     void emit(Map<String, dynamic>? action, double w, double h, String type) {
       if (action == null) return;
@@ -46,10 +46,10 @@ class ResizableFactory extends WidgetFactory {
     return _Resizable(
       width: read(properties['width']),
       height: read(properties['height']),
-      minWidth: context.resolve<num?>(properties['minWidth'])?.toDouble(),
-      maxWidth: context.resolve<num?>(properties['maxWidth'])?.toDouble(),
-      minHeight: context.resolve<num?>(properties['minHeight'])?.toDouble(),
-      maxHeight: context.resolve<num?>(properties['maxHeight'])?.toDouble(),
+      minWidth: numberOf(properties['minWidth'], context)?.toDouble(),
+      maxWidth: numberOf(properties['maxWidth'], context)?.toDouble(),
+      minHeight: numberOf(properties['minHeight'], context)?.toDouble(),
+      maxHeight: numberOf(properties['maxHeight'], context)?.toDouble(),
       handles: handles,
       keepAspectRatio: keepRatio,
       onResize: (w, h) {

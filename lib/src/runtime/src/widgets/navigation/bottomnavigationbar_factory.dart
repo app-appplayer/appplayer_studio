@@ -11,8 +11,12 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
 
     // Spec §2.8.2 canonical `selectedIndex`; `currentIndex` kept as legacy
     // Flutter-style alias.
-    final rawIndex = context.resolve<num?>(
-            properties['selectedIndex'] ?? properties['currentIndex']) ??
+    // Tolerant read: a bound path whose state holds the wrong shape used to
+    // throw a cast error out of `resolve<num?>`, and the renderer painted a red
+    // box over the whole widget. A mistyped binding is an authoring mistake,
+    // not a reason to take the screen down.
+    final rawIndex = numberOf(
+            properties['selectedIndex'] ?? properties['currentIndex'], context) ??
         0;
     final elevation = parseDimension(properties['elevation']);
     final type = _parseBottomNavigationBarType(properties['type']);

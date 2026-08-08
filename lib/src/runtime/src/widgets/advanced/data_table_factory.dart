@@ -17,9 +17,9 @@ class DataTableWidgetFactory extends WidgetFactory {
     // Spec §10.4: `sortColumn` and `sortAscending` are declared `binding`, so
     // the documented form of both is a `{{...}}` string — reading them without
     // resolving threw on every document that used them as written.
-    final sortColumn = context.resolve<String?>(properties['sortColumn']);
+    final sortColumn = stringOf(properties['sortColumn'], context);
     final sortAscending =
-        context.resolve<bool?>(properties['sortAscending']) ?? true;
+        boolOf(properties['sortAscending'], context) ?? true;
     final onSort = actionOf(properties['onSort'], context);
     // §10.4 `editable`: in-place cell editing, reported through `onCellEdit`.
     // Both were declared and neither was read — a table marked editable had
@@ -28,11 +28,11 @@ class DataTableWidgetFactory extends WidgetFactory {
     final editable = boolOf(properties['editable'], context) ?? false;
     final onCellEdit = actionOf(properties['onCellEdit'], context);
     // 1.4 additions that were declared and never wired.
-    final filterable = context.resolve<bool>(properties['filterable'] ?? false);
+    final filterable = boolOf(properties['filterable'], context) ?? false;
     final resizableColumns =
-        context.resolve<bool>(properties['resizableColumns'] ?? false);
+        boolOf(properties['resizableColumns'], context) ?? false;
     final virtualScroll =
-        context.resolve<bool>(properties['virtualScroll'] ?? false);
+        boolOf(properties['virtualScroll'], context) ?? false;
     final rowHeight = dimensionOf(properties['rowHeight'], context);
 
     // Resolve rows from binding or direct data

@@ -14,8 +14,14 @@ class HeatmapWidgetFactory extends WidgetFactory {
     final columns = intOf(properties['columns'], context);
     final cellSize = numberOf(properties['cellSize'], context) ?? 40.0;
     final cellGap = numberOf(properties['cellGap'], context) ?? 2.0;
-    final minValue = numberOf(properties['minValue'], context) ?? 0.0;
-    final maxValue = numberOf(properties['maxValue'], context) ?? 1.0;
+    // §10.10 — both are optional, so a document that omits them is still
+    // entitled to a scale. They defaulted to 0..1 while heat data is whatever
+    // the domain measures (a defect rate of 1.5..6.2, a temperature, a count),
+    // and every value above 1 clamped to the top colour: one flat block that
+    // looks finished and says nothing. Derived from the data below, once it is
+    // parsed; a declared value always wins.
+    final declaredMin = numberOf(properties['minValue'], context);
+    final declaredMax = numberOf(properties['maxValue'], context);
     final showLabels = boolOf(properties['showLabels'], context) ?? false;
     final rowLabels =
         (context.resolve<List<dynamic>?>(properties['rowLabels'])) ?? [];
@@ -61,6 +67,22 @@ class HeatmapWidgetFactory extends WidgetFactory {
     }
 
     final actualColumns = heatmapData.first.length;
+
+    // The derived range: the data's own span. A single repeated value has no
+    // span, so it keeps a 1-wide window rather than dividing by zero.
+    final flat = [for (final row in heatmapData) ...row];
+    final dataMin = flat.reduce((a, b) => a < b ? a : b);
+    final dataMax = flat.reduce((a, b) => a > b ? a : b);
+    final minValue = declaredMin?.toDouble() ?? dataMin;
+    final maxValue = declaredMax?.toDouble() ??
+        (dataMax > minValue ? dataMax : minValue + 1);
+
+    // How many decimals the cells print. The value used to be rounded to a
+    // whole number always, so 1.8 and 2.4 both read `2` — on a heatmap of
+    // rates or averages, where the first decimal IS the signal, that is a
+    // wrong screen that looks right. Integer data still prints as integers.
+    final fractional = flat.any((v) => v != v.roundToDouble());
+    final valueDecimals = fractional ? 1 : 0;
 
     // Build heatmap
     final List<Widget> heatmapRows = [];
@@ -148,7 +170,7 @@ class HeatmapWidgetFactory extends WidgetFactory {
           child: showValues
               ? Center(
                   child: Text(
-                    value.toStringAsFixed(0),
+                    value.toStringAsFixed(valueDecimals),
                     style: TextStyle(
                       color:
                           normalizedValue > 0.5 ? Colors.white : Colors.black,

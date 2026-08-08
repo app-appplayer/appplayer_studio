@@ -153,12 +153,12 @@ class KenBurnsImageWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final src = context.resolve(properties['src']) as String? ?? '';
+    final src = stringOf(properties['src'], context) ?? '';
     final durationMs =
-        (context.resolve(properties['duration']) as num?)?.toInt() ?? 8000;
+        numberOf(properties['duration'], context)?.toInt() ?? 8000;
     final intensity =
-        (context.resolve(properties['intensity']) as num?)?.toDouble() ?? 0.15;
-    final loop = context.resolve(properties['loop']) as bool? ?? true;
+        numberOf(properties['intensity'], context)?.toDouble() ?? 0.15;
+    final loop = boolOf(properties['loop'], context) ?? true;
     // Read but currently treated as advisory — full pan animation
     // ships in a later cycle. Recorded so authors' intent is
     // preserved through the resolver.

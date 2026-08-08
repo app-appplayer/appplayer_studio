@@ -57,7 +57,7 @@ class TabBarWidgetFactory extends WidgetFactory {
     // Flutter-style `onTap` / `click` as aliases.
     final selectedIndex = (properties['selectedIndex'] is int)
         ? properties['selectedIndex'] as int
-        : context.resolve<int>(properties['selectedIndex'] ?? 0);
+        : intOf(properties['selectedIndex'], context) ?? 0;
     final onChange = actionOf(
         properties['onChange'] ??
             properties['onTap'] ??

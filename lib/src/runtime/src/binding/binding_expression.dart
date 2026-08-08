@@ -574,6 +574,18 @@ class BindingExpression {
       }
     }
 
+    // An argument is an Expression (§3.2.1), so it may be an operation — the
+    // spec's own §3.6.1 example is `round(price * quantity, 2)`. This must be
+    // asked BEFORE the unary branch below: `-1.57 + 0.5` starts with a sign,
+    // and reading it as "unary minus applied to the rest" makes the sign
+    // swallow the whole expression — `-(1.57 + 0.5)`, so §10's gauge angle
+    // came back with the wrong sign the moment an author wrapped it in
+    // `round(…)` to fix the decimals. `_parse` splits on the operator first
+    // and treats the leading sign as the sign of its own term.
+    if (_hasTopLevelBinaryOperator(value)) {
+      return _parse(value);
+    }
+
     // Check for unary logical operators
     if (value.startsWith('!')) {
       final operand = value.substring(1).trim();
@@ -660,16 +672,6 @@ class BindingExpression {
     // §3.6.1 shows in its own example (`length(filter(items, 'completed'))`)
     // answered 0 for every input.
     if (RegExp(r'^[\w\.]+\(.*\)$').hasMatch(value)) {
-      return _parse(value);
-    }
-
-    // An argument is an Expression (§3.2.1), so it may be an operation — the
-    // spec's own §3.6.1 example is `round(price * quantity, 2)`. This branch
-    // was missing while its two neighbours (quoted commas, nested calls) were
-    // each added after a document failed in someone's hands; the shape kept
-    // returning null, which renders as an empty string and ships a wrong
-    // screen without a word.
-    if (_hasTopLevelBinaryOperator(value)) {
       return _parse(value);
     }
 

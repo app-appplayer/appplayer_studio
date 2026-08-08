@@ -22,7 +22,9 @@ class VisibilityWidgetFactory extends WidgetFactory {
     }
 
     // Resolve visible through binding expressions
-    final visible = context.resolve<bool>(properties['visible'] ?? true);
+    // Tolerant read: a bound path holding the wrong shape used to throw out of
+    // `resolve<bool>` and the renderer painted a red error box over the page.
+    final visible = boolOf(properties['visible'], context) ?? true;
 
     return Visibility(
       visible: visible,
