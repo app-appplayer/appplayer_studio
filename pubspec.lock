@@ -415,10 +415,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: "94d012657cfbeefabea7e90c7f9ae6142495e889970ce936731208f8592390c3"
+      sha256: "2546f38b49ae273a04ba09e759bf6e5a363ac0dbc3d2a6f88657712f4b2e0261"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.6.2"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
@@ -431,10 +431,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: "7d18440d684aeeabc278103df8ba73d088fcc5cc6553df4de125d7822bd69d5a"
+      sha256: "0d0c14988167e48961d618a01b3d138d5c016c5473a99bcae9739837592ae8af"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.2"
+    version: "0.7.3"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
