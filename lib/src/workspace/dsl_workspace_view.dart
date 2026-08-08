@@ -28,6 +28,8 @@ import 'package:appplayer_studio/src/base/media/studio_media_capabilities.dart'
     show studioRuntimeCapabilities;
 import 'package:appplayer_studio/src/base/media/studio_bundle_assets.dart'
     show studioBundleAssetReader;
+import 'package:appplayer_studio/src/base/main/studio_navigator.dart'
+    show attachStudioNavigatorFloor;
 import 'package:appplayer_studio/base.dart' as base;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:appplayer_studio/ui.dart' as ui;
@@ -664,6 +666,11 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // where the widget they just placed should be. Set before `initialize`
       // so the first build already has them.
       runtime.engine.capabilities = studioRuntimeCapabilities();
+      // A page-typed document builds no `MaterialApp`, so nothing attaches a
+      // Navigator and its `dialog` action had nowhere to go — silently. Offer
+      // the shell's. A document that brings its own attaches during `buildUI`,
+      // which runs after this, so it still wins.
+      attachStudioNavigatorFloor();
       // UI DSL §6.12 — only the host knows where this document's bundle lives,
       // so `bundle://` is unresolvable until a reader is wired. Without it the
       // runtime declares the form absent and every surface that needs BYTES

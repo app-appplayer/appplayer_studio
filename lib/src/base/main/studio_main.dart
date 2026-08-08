@@ -32,6 +32,8 @@ import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/runtime.dart' as studio_rt;
 import 'package:appplayer_studio/src/base/main/runtime_log_bridge.dart'
     show installRuntimeLogBridge;
+import 'package:appplayer_studio/src/base/main/studio_navigator.dart'
+    show studioRootNavigatorKey;
 import 'package:appplayer_studio/ui.dart' as ui;
 
 import '../boot/studio_boot.dart';
@@ -397,6 +399,9 @@ class _StudioFrameState extends State<StudioFrame> {
     return _StudioFrameScope(
       state: this,
       child: MaterialApp(
+        // The shell's Navigator, so a document that brings no app of its own
+        // still has somewhere to put a dialog (see studio_navigator.dart).
+        navigatorKey: studioRootNavigatorKey,
         // No DEBUG ribbon — the studio ships its own chrome; the banner is
         // just noise even in debug builds.
         debugShowCheckedModeBanner: false,
