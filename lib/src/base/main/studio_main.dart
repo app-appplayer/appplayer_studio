@@ -30,6 +30,8 @@ import 'package:args/args.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/runtime.dart' as studio_rt;
+import 'package:appplayer_studio/src/base/main/runtime_log_bridge.dart'
+    show installRuntimeLogBridge;
 import 'package:appplayer_studio/ui.dart' as ui;
 
 import '../boot/studio_boot.dart';
@@ -220,6 +222,12 @@ class StudioMain {
     // tabs (visible regression: returning to an earlier tab lost
     // its text styling).
     studio_rt.ThemeManager.instance.setTheme(ui.VbuTheme.studioRuntimeTheme());
+
+    // The runtime's author-facing diagnostics reach only a host that installs
+    // a sink. Without this the studio — an authoring tool — swallowed exactly
+    // the messages an author needs (a widget placed under a key its type does
+    // not declare is dropped silently). Installed once, process-wide.
+    installRuntimeLogBridge();
 
     runApp(
       StudioFrame(
