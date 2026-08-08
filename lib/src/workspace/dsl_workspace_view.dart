@@ -26,6 +26,8 @@ import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/runtime.dart' as studio;
 import 'package:appplayer_studio/src/base/media/studio_media_capabilities.dart'
     show studioRuntimeCapabilities;
+import 'package:appplayer_studio/src/base/media/studio_bundle_assets.dart'
+    show studioBundleAssetReader;
 import 'package:appplayer_studio/base.dart' as base;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:appplayer_studio/ui.dart' as ui;
@@ -662,6 +664,14 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // where the widget they just placed should be. Set before `initialize`
       // so the first build already has them.
       runtime.engine.capabilities = studioRuntimeCapabilities();
+      // UI DSL §6.12 — only the host knows where this document's bundle lives,
+      // so `bundle://` is unresolvable until a reader is wired. Without it the
+      // runtime declares the form absent and every surface that needs BYTES
+      // (lottieAnimation · pdfViewer · a media waveform) draws an empty box,
+      // while images keep working because they resolve through a provider.
+      runtime.engine.assetResolver = studio.AssetResolver(
+        bundleReader: studioBundleAssetReader(widget.bundlePath),
+      );
       // No host-side theme injection. AppPlayer pattern: only the
       // bundle's own `ui.theme` (if any) reaches the runtime;
       // otherwise mcp_ui's default ThemeData applies. Injecting
