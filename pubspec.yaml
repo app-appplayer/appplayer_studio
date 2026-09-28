@@ -3,7 +3,7 @@ description: >
   AppPlayer Studio — universal desktop host that loads any installed domain
   bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
   DSL UI; the host is a universal launcher.
-version: 0.1.9
+version: 0.1.10
 homepage: https://appplayer.app
 repository: https://github.com/app-appplayer/appplayer_studio
 publish_to: none
@@ -37,8 +37,8 @@ dependencies:
   mcp_server: ^2.2.3
   mcp_client: ^2.2.1
   mcp_llm: ^2.1.1
-  flutter_mcp_ui_runtime: ^0.8.1
-  flutter_mcp_ui_core: ^0.6.6
+  flutter_mcp_ui_runtime: ^0.8.2
+  flutter_mcp_ui_core: ^0.6.7
   json_schema: ^5.1.1
   flutter_js: ^0.8.7
   # LGPL build of FFmpeg — no x264 (GPL), so neither tier's binary is put
@@ -65,7 +65,7 @@ dependencies:
   mcp_analysis: ^0.2.0
   mcp_datastore: ^0.1.0
   mcp_datastore_sqlite: ^0.1.0
-  flutter_mcp_ui_generator: ^0.6.3
+  flutter_mcp_ui_generator: ^0.6.4
   mcp_knowledge: ^0.2.5
   mcp_fact_graph: ^0.2.3
   # Direct dep (was transitive via mcp_knowledge) so the host can wire the

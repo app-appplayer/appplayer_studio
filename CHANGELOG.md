@@ -1,3 +1,15 @@
+## [0.1.10] - 2026-09-29
+
+### Changed
+
+- `lineHeight` is the canonical line-height name in UI DSL 1.4 (`height` is
+  the legacy alias, still read, no longer written). The embedded app / page /
+  theme schemas are regenerated from the updated spec; on the 20 workspace
+  bundles they raise no new finding. Studio now builds on
+  `flutter_mcp_ui_core` ^0.6.7, `flutter_mcp_ui_runtime` ^0.8.2 and
+  `flutter_mcp_ui_generator` ^0.6.4 (vendored runtime copy regenerated);
+  generated apps pin `flutter_mcp_ui_runtime` ^0.8.2.
+
 ## [0.1.9] - 2026-09-28
 
 Most of this release is what a full pass over the four QA matrices turned up,
