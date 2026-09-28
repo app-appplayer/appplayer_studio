@@ -1,4 +1,4 @@
-## [0.1.9] - 2026-09-06
+## [0.1.9] - 2026-09-28
 
 Most of this release is what a full pass over the four QA matrices turned up,
 fixed in place and re-verified on the running debug instance. One change is
