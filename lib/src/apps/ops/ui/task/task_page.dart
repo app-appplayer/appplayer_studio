@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 
 import '../../registries/task_registry.dart';
 import '../../registries/workspace_registry.dart';
@@ -23,8 +24,7 @@ extension _TaskFilterX on TaskFilter {
 
   bool matches(TaskState s) => switch (this) {
     TaskFilter.all => true,
-    TaskFilter.active =>
-      s == TaskState.pending || s == TaskState.inProgress,
+    TaskFilter.active => s == TaskState.pending || s == TaskState.inProgress,
     TaskFilter.blocked => s == TaskState.blocked,
     TaskFilter.done => s == TaskState.completed || s == TaskState.cancelled,
   };
@@ -399,7 +399,8 @@ class _TaskTile extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              _blockedReason() ?? 'Blocked — no reason recorded',
+                              _blockedReason() ??
+                                  'Blocked — no reason recorded',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

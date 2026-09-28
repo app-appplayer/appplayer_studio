@@ -6,7 +6,7 @@ import '../../renderer/render_context.dart';
 /// Factory for the `decoration` widget. Wraps a child in a
 /// `DecoratedBox` whose decoration is built by the shared
 /// [BoxDecorationResolver] — same resolver the `box` widget uses, so
-/// the two stay aligned with the spec § 1.3 `BoxDecoration` primitive.
+/// the two stay aligned with the `BoxDecoration` primitive.
 class DecorationWidgetFactory extends WidgetFactory {
   // Documented property contract (read via [BoxDecorationResolver],
   // recorded here so the spec ↔ runtime drift audit captures the

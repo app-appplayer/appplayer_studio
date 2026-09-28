@@ -76,9 +76,32 @@ Future<List<ChatTurn>> loadStudioChat(String filePath) async {
   }
 }
 
+/// Pending writes per log file. Writes to one file run one at a time: a
+/// user turn and its reply are persisted back to back, and two appends in
+/// flight both write at the old end of the file, so the shorter line
+/// overwrites the start of the longer one.
+final Map<String, Future<void>> _pendingWrites = <String, Future<void>>{};
+
+Future<void> _serialWrite(String filePath, Future<void> Function() write) {
+  final next = (_pendingWrites[filePath] ?? Future<void>.value()).then(
+    (_) => write(),
+  );
+  final settled = next.catchError((_) {});
+  _pendingWrites[filePath] = settled;
+  settled.then((_) {
+    if (identical(_pendingWrites[filePath], settled)) {
+      _pendingWrites.remove(filePath);
+    }
+  });
+  return next;
+}
+
 /// Append a single [turn] to the jsonl log at [filePath]. Creates the
 /// parent directory lazily — best-effort, never throws.
-Future<void> appendStudioChatTurn(String filePath, ChatTurn turn) async {
+Future<void> appendStudioChatTurn(String filePath, ChatTurn turn) =>
+    _serialWrite(filePath, () => _appendStudioChatTurn(filePath, turn));
+
+Future<void> _appendStudioChatTurn(String filePath, ChatTurn turn) async {
   try {
     final f = File(filePath);
     await f.parent.create(recursive: true);
@@ -96,11 +119,12 @@ Future<void> appendStudioChatTurn(String filePath, ChatTurn turn) async {
 
 /// Delete the jsonl log at [filePath]. Used by the chat panel's
 /// "clear history" affordance. Best-effort — missing file is OK.
-Future<void> clearStudioChatLog(String filePath) async {
-  try {
-    final f = File(filePath);
-    if (await f.exists()) await f.delete();
-  } catch (_) {
-    /* best-effort */
-  }
-}
+Future<void> clearStudioChatLog(String filePath) =>
+    _serialWrite(filePath, () async {
+      try {
+        final f = File(filePath);
+        if (await f.exists()) await f.delete();
+      } catch (_) {
+        /* best-effort */
+      }
+    });

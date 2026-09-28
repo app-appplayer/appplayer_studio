@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Resolve the spec § AnimationCurve enum to a Flutter [Curve].
+/// Resolve the `AnimationCurve` enum to a Flutter [Curve].
 Curve _resolveCurve(dynamic value) {
   switch (value) {
     case 'linear':
@@ -140,7 +140,7 @@ class AnimatedDefaultTextStyleWidgetFactory extends WidgetFactory {
       fontWeight: _parseFontWeight(context.resolve(style['fontWeight'])),
       color: parseColor(context.resolve(style['color']), context),
       letterSpacing: parseDimension(context.resolve(style['letterSpacing'])),
-      height: parseDimension(context.resolve(style['height'])),
+      height: readLineHeight(style, context),
     );
   }
 
@@ -199,7 +199,7 @@ class HeroWidgetFactory extends WidgetFactory {
     final child =
         childDef != null ? context.buildWidget(childDef) : const SizedBox();
 
-    // Spec § hero.flightShuttleBuilder — optional intermediate widget
+    // `hero.flightShuttleBuilder` — optional intermediate widget
     // rendered during the morph. Read so the resolver records the
     // author's intent; the actual shuttle wiring routes through
     // Flutter's `flightShuttleBuilder` callback in a later cycle.

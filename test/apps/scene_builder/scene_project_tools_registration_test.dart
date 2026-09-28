@@ -17,6 +17,8 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:appplayer_studio/src/base/capture/scene_project/scene_project_tools.dart';
 import 'package:appplayer_studio/src/base/main/chrome_bridge.dart';
+import 'package:appplayer_studio/src/base/install/builtin_app.dart';
+import 'package:appplayer_studio/src/apps/scene_builder/scene_builder_builtin.dart';
 
 // Builds a minimal ChromeBridge with the mandatory slots set to no-ops.
 ChromeBridge _bridge() {
@@ -33,6 +35,8 @@ Map<String, dynamic> _json(mk.KernelToolResult result) {
   return jsonDecode(text) as Map<String, dynamic>;
 }
 
+const _sceneBundle = '/qa/scene_builder_bundle';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -46,9 +50,19 @@ void main() {
     bridge = _bridge();
     SceneProjectScope.activePath = null;
     registerSceneProjectTools(boot, bridge: bridge, configRoot: tmp.path);
+    // The scene project tools act on the Scene Builder tab — make it the
+    // active built-in, as it is when a user drives them.
+    BuiltInAppRegistry.instance.mount(
+      _sceneBundle,
+      const SceneBuilderBuiltInApp(),
+      BuiltInAppContext(bundlePath: _sceneBundle, chromeBridge: ChromeBridge()),
+    );
+    BuiltInAppRegistry.instance.setActivePath(_sceneBundle);
   });
 
   tearDown(() async {
+    BuiltInAppRegistry.instance.setActivePath(null);
+    BuiltInAppRegistry.instance.unmount(_sceneBundle);
     SceneProjectScope.activePath = null;
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });

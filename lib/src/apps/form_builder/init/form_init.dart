@@ -340,10 +340,7 @@ class FormInit {
   /// is re-keyed — the approval must travel with it or the document
   /// detaches from its approval (live-caught 2026-07-04: an issued
   /// document lost its provenance, and a PENDING line could be bypassed).
-  Future<void> rekeyApproval({
-    required String from,
-    required String to,
-  }) async {
+  Future<void> rekeyApproval({required String from, required String to}) async {
     if (from == to) return;
     final approval = await getApproval(from);
     if (approval == null) return;

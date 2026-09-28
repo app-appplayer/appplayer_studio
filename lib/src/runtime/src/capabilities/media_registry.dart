@@ -1,7 +1,7 @@
 import 'runtime_capabilities.dart';
 
 /// The players currently mounted, addressed by the `id` their document gave
-/// them (spec §4.9b).
+/// them.
 ///
 /// A registry rather than a lookup through the widget tree: `media.play` runs
 /// from an action handler that has no element to search from, and walking the

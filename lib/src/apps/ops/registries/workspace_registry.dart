@@ -253,8 +253,9 @@ List<({Workspace ws, int depth})> orderWorkspacesHierarchical(
     walk(r, 0);
   }
   // Safety net — unreachable units still surface exactly once.
-  final rest = all.map((w) => w.id).where((id) => !seen.contains(id)).toList()
-    ..sort(cmp);
+  final rest =
+      all.map((w) => w.id).where((id) => !seen.contains(id)).toList()
+        ..sort(cmp);
   for (final id in rest) {
     walk(id, 0);
   }

@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:appplayer_studio/base.dart'
     show
         AgentHost,
+        canonicalContentHash,
         promptForNewProject,
         promptForWorkspacePath,
         VibeChatController,
@@ -50,6 +51,7 @@ import '../theme/app_theme.dart';
 import '../core/vibe_project.dart';
 import 'widget_tree.dart';
 import '../core/workspace_canonical.dart';
+import '../infra/macos_deployment_floor.dart';
 import '../infra/project_seed.dart' show applyProjectSeed;
 import '../infra/vibe_project_prefs.dart' show BuildConfig;
 import '../infra/vibe_server_bridge.dart';
@@ -81,6 +83,17 @@ import 'vibe_llm.dart';
 ///   ┌ Titlebar (28) ──────────────────────────────────────┐
 ///   │ Chat (280) │ [Strip + Preview]  │ Properties (320) │
 ///   └ Statusbar (24) ─────────────────────────────────────┘
+/// The blocking count a new health snapshot of [project] is compared with:
+/// the last one, but only when it was taken from the same project. A first
+/// snapshot (null) is quiet, so opening a project with issues is not
+/// announced as a regression of the project that was open before.
+@visibleForTesting
+int? healthBaseline({
+  required String? baselineProject,
+  required int? baseline,
+  required String project,
+}) => baselineProject == project ? baseline : null;
+
 class VibeShell extends StatefulWidget {
   const VibeShell({
     super.key,
@@ -302,6 +315,51 @@ class VibeShellState extends State<VibeShell> {
   };
 
   int _previewEpoch = 0;
+
+  /// Tool runner behind the AppPlayer-app preview, for one bundle and one
+  /// refresh. Opened on the first tool call and reopened when the active
+  /// bundle or the refresh epoch changes, so an edited tool script runs after
+  /// a refresh. The host builds it (`ChromeBridge.openPreviewBundleTools`);
+  /// this shell only holds and releases it.
+  Future<dynamic>? _previewTools;
+  String? _previewToolsKey;
+
+  Future<dynamic> _previewToolCall(
+    String tool,
+    Map<String, dynamic> params,
+  ) async {
+    final bundlePath = _project?.bundlePath;
+    Object? open;
+    try {
+      open = widget.studioChromeBridge?.openPreviewBundleTools;
+    } catch (_) {
+      open = null;
+    }
+    if (bundlePath == null || open == null) {
+      throw StateError(
+        'no tool named "$tool": this preview has no project bundle to run it',
+      );
+    }
+    final key = '$bundlePath#$_previewEpoch';
+    if (_previewToolsKey != key) {
+      final previous = _previewTools;
+      _previewToolsKey = key;
+      _previewTools = (open as dynamic)(bundlePath) as Future<dynamic>;
+      if (previous != null) unawaited(_releasePreviewTools(previous));
+    }
+    final tools = await _previewTools;
+    return tools.call(tool, params);
+  }
+
+  Future<void> _releasePreviewTools(Future<dynamic> handle) async {
+    try {
+      final tools = await handle;
+      await tools.dispose();
+    } catch (_) {
+      /* best-effort — a runner that failed to open has nothing to release */
+    }
+  }
+
   CenterMode _centerMode = CenterMode.ui;
   late LayerProjection _projection;
   // Inspector session lifecycle is owned at the shell level so that
@@ -361,6 +419,11 @@ class VibeShellState extends State<VibeShell> {
   /// chat-side note when the bundle regresses (more issues than last
   /// snapshot) or fully clears. Skips noise from advisory drift.
   int? _prevBlocking;
+
+  /// Project the [_prevBlocking] baseline was taken from. A snapshot of a
+  /// different project starts a new baseline, so opening a project with
+  /// issues is not reported as a regression of the previous one.
+  String? _prevBlockingProject;
 
   /// Bounded ring buffers backing the debug-surface MCP tools.
   /// Append-on-emit, drop-from-front when over [_kRingCap]. Newest
@@ -479,6 +542,18 @@ class VibeShellState extends State<VibeShell> {
   /// like `_studioNewProjectHandler`, so MCP open mirrors the UI Open button.
   Future<Map<String, dynamic>> Function(String path)? _studioOpenProjectHandler;
 
+  /// Active-aware bind target for `studioChromeBridge.closeProjectInActive`
+  /// (behind `studio.project.close`), wired / released with the new and open
+  /// handlers. Runs the same close as `app_builder.project.close`.
+  Map<String, dynamic> _studioCloseProject() {
+    final close = widget.bridge?.onCloseProject;
+    if (_project == null || close == null) {
+      return <String, dynamic>{'ok': true, 'closed': false};
+    }
+    unawaited(close());
+    return <String, dynamic>{'ok': true, 'closed': true};
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -537,6 +612,7 @@ class VibeShellState extends State<VibeShell> {
       // the active tab, so it loads + `_rebindChat`s instead of falling
       // through to the host's path-only `_doOpenProject`. Mine-only release.
       if (openFn != null) bridge.openProjectInActive = openFn;
+      bridge.closeProjectInActive = _studioCloseProject;
       // Project-info slot — `studio.project.info` reports THIS tab's loaded
       // `VibeProject`. App Builder tracks its project in `_project` (not the
       // host's `t.currentProject`), so without this the host's default reader
@@ -550,27 +626,47 @@ class VibeShellState extends State<VibeShell> {
       // handler (UI-context aware) while it is the active tab. Bound
       // alongside the project slot so both clear together when the tab
       // deactivates (mine-only release via the `fn` identity check).
-      bridge.runSlashCommandInActive = _runSlashCommand;
+      bridge.runSlashCommandInActive = _slashSlot;
       // Lint badge — host statusbar's lint badge click opens this tab's
       // lint modal; the counts are pushed via `_pushLintToHostIfActive`.
-      bridge.onTapLintInActive = () => _showLintDialog();
+      bridge.onTapLintInActive = _lintSlot;
       _pushLintToHostIfActive();
-    } else if (identical(bridge.newProjectInActive, fn)) {
-      bridge.newProjectInActive = null;
+    } else {
+      // Each slot is released on its own ownership: the incoming tab's
+      // activation may already have claimed some of them, and gating the
+      // rest on one slot left them pinned to this inactive tab.
+      if (identical(bridge.newProjectInActive, fn)) {
+        bridge.newProjectInActive = null;
+      }
       if (openFn != null && identical(bridge.openProjectInActive, openFn)) {
         bridge.openProjectInActive = null;
       }
+      if (bridge.closeProjectInActive == _studioCloseProject) {
+        bridge.closeProjectInActive = null;
+      }
       try {
-        if (identical(bridge.activeProjectInfo, _reportActiveProjectInfo)) {
+        if (bridge.activeProjectInfo == _reportActiveProjectInfo) {
           bridge.activeProjectInfo = null;
         }
       } catch (_) {
         /* duck-typed bridge — swallow */
       }
-      bridge.runSlashCommandInActive = null;
-      bridge.onTapLintInActive = null;
+      // Mine-only, like the project slots: a shell that is replaced (a
+      // project switch re-keys the mount) releases after its successor has
+      // wired, and clearing unconditionally would strand the live tab —
+      // `/cmd` then went to the LLM and the lint badge went dead.
+      if (identical(bridge.runSlashCommandInActive, _slashSlot)) {
+        bridge.runSlashCommandInActive = null;
+      }
+      if (identical(bridge.onTapLintInActive, _lintSlot)) {
+        bridge.onTapLintInActive = null;
+      }
     }
   }
+
+  // Stable tear-off targets so the mine-only release identity checks hold.
+  late final Future<String?> Function(String) _slashSlot = _runSlashCommand;
+  late final VoidCallback _lintSlot = _showLintDialog;
 
   @override
   void didUpdateWidget(VibeShell oldWidget) {
@@ -687,6 +783,9 @@ class VibeShellState extends State<VibeShell> {
   @override
   void dispose() {
     _unwireBridge();
+    final previewTools = _previewTools;
+    _previewTools = null;
+    if (previewTools != null) unawaited(_releasePreviewTools(previewTools));
     // Liveness pointer teardown lives in the mount's dispose
     // (`VibeServerBridge.clearLiveIfMine`), not here.
     // Release the active-aware chrome slot only when this state's own
@@ -706,8 +805,11 @@ class VibeShellState extends State<VibeShell> {
         identical(bridge.openProjectInActive, openFn)) {
       bridge.openProjectInActive = null;
     }
+    if (bridge != null && bridge.closeProjectInActive == _studioCloseProject) {
+      bridge.closeProjectInActive = null;
+    }
     if (bridge != null &&
-        identical(bridge.activeProjectInfo, _reportActiveProjectInfo)) {
+        bridge.activeProjectInfo == _reportActiveProjectInfo) {
       bridge.activeProjectInfo = null;
     }
     // Release the shared chat override if it's still ours — dispose-while-active
@@ -818,10 +920,13 @@ class VibeShellState extends State<VibeShell> {
         if (mounted) {
           setState(() {
             _project = project;
+            // The unsaved flag and channel scan belong to the project just
+            // replaced; start from the new canonical's own state.
+            _dirty = widget.canonical.isDirty;
+            _channelDirty.clear();
             _selectedPageId = null;
             _selectedComponentId = null;
             _focusedByChannelMode.clear();
-            _channelDirty.clear();
           });
         }
         await previous?.dispose();
@@ -1106,11 +1211,11 @@ class VibeShellState extends State<VibeShell> {
       // Enter. Append the user turn to the feed first so chat_history
       // reads see the request; then run the controller's send and
       // return the resolved assistant turn.
-      widget.chat.appendTurn(ChatTurn(role: 'user', text: text));
+      _appendChatTurn(ChatTurn(role: 'user', text: text));
       final reply = await widget.chat
           .send(text)
           .timeout(const Duration(seconds: 120));
-      widget.chat.appendTurn(reply);
+      _appendChatTurn(reply);
       return <String, dynamic>{
         'role': reply.role,
         'text': reply.text,
@@ -1663,14 +1768,15 @@ class VibeShellState extends State<VibeShell> {
       }
       setState(() {
         _project = project;
+        // The unsaved flag and channel scan belong to the project just
+        // replaced; start from the new canonical's own state.
+        _dirty = widget.canonical.isDirty;
+        _channelDirty.clear();
         _focusedByChannelMode = _cloneFocusMap(
           project.prefs.focusedByChannelMode,
         );
         _selectedPageId = project.prefs.selectedPageId;
         _selectedComponentId = project.prefs.selectedComponentId;
-        // Drop the previous project's per-channel cache before the
-        // disk scan repopulates it for the new project.
-        _channelDirty.clear();
       });
       await previous?.dispose();
       await _recordRecent(project.projectPath);
@@ -1860,6 +1966,17 @@ class VibeShellState extends State<VibeShell> {
         originator: const UserOriginator(note: 'properties'),
       ),
     );
+    if (result is PatchRejected) {
+      // A rejected write must not look like a no-op: the editor field
+      // already shows the new value, so without this the user sees an
+      // edit that never lands and nothing saying why.
+      final first = result.report.errors.firstOrNull;
+      _toast(
+        first == null
+            ? 'Edit rejected by validation'
+            : 'Edit rejected: ${first.message} (${first.pointer})',
+      );
+    }
     return result is PatchApplied;
   }
 
@@ -2177,6 +2294,10 @@ class VibeShellState extends State<VibeShell> {
       if (!mounted) return;
       setState(() {
         _project = project;
+        // The unsaved flag and channel scan belong to the project just
+        // replaced; start from the new canonical's own state.
+        _dirty = widget.canonical.isDirty;
+        _channelDirty.clear();
         _selectedPageId = null;
         _selectedComponentId = null;
         _focusedByChannelMode.clear();
@@ -2221,6 +2342,10 @@ class VibeShellState extends State<VibeShell> {
       if (!mounted) return;
       setState(() {
         _project = project;
+        // The unsaved flag and channel scan belong to the project just
+        // replaced; start from the new canonical's own state.
+        _dirty = widget.canonical.isDirty;
+        _channelDirty.clear();
         _projection = LayerProjection.fromJson(widget.canonical.currentJson);
         // Defer to prefs for the focused layer + selections; fall back
         // to first-run defaults if prefs.json is missing.
@@ -2235,7 +2360,7 @@ class VibeShellState extends State<VibeShell> {
       await _recordRecent(project.projectPath);
     } catch (e, st) {
       _toast('Open project failed: $e');
-      widget.chat.appendTurn(
+      _appendChatTurn(
         ChatTurn(
           role: 'error',
           text: 'Open project failed at $picked\n$e\n$st',
@@ -3410,7 +3535,7 @@ class VibeShellState extends State<VibeShell> {
       );
     } catch (e) {
       _toast('Build failed: $e');
-      widget.chat.appendTurn(ChatTurn(role: 'error', text: 'build failed: $e'));
+      _appendChatTurn(ChatTurn(role: 'error', text: 'build failed: $e'));
     }
   }
 
@@ -3465,7 +3590,7 @@ class VibeShellState extends State<VibeShell> {
       final outFile = File(p.join(outDirAbs, fileName));
       await outFile.writeAsBytes(bytes, flush: true);
       // Broadcast for chat history parity with the GUI path.
-      widget.chat.appendTurn(
+      _appendChatTurn(
         ChatTurn(
           role: 'system',
           text:
@@ -3497,7 +3622,7 @@ class VibeShellState extends State<VibeShell> {
         totalBytes += await File(f).length();
       }
     }
-    widget.chat.appendTurn(
+    _appendChatTurn(
       ChatTurn(
         role: 'system',
         text:
@@ -3668,10 +3793,13 @@ class VibeShellState extends State<VibeShell> {
       ])
         if (Directory(p.join(outDir, dir)).existsSync()) p.join(outDir, dir),
     ];
+    // The scaffold targets macOS 10.15, below what the current Xcode builds.
+    final floored = await applyMacosDeploymentFloor(outDir);
     return _FlutterCreateOutcome(
       message:
           'flutter create added '
-          '${scaffolded.length} platform folder(s).',
+          '${scaffolded.length} platform folder(s)'
+          '${floored.isEmpty ? '' : ' · macOS target set to $kMacosDeploymentFloor'}.',
       scaffoldedDirs: scaffolded,
     );
   }
@@ -3803,7 +3931,7 @@ class VibeShellState extends State<VibeShell> {
         'build · $target · ${artifacts.length} artifact'
         '${artifacts.length == 1 ? '' : 's'} · $size'
         '${artifacts.isEmpty ? '' : '\n${artifacts.join('\n')}'}';
-    widget.chat.appendTurn(ChatTurn(role: 'system', text: note));
+    _appendChatTurn(ChatTurn(role: 'system', text: note));
     await showDialog<void>(
       context: ctx,
       builder:
@@ -4092,11 +4220,23 @@ class VibeShellState extends State<VibeShell> {
       if (!entry.value.enabled) continue;
       final bundlePath = proj.bundlePathFor(entry.key);
       if (bundlePath == null) continue;
-      final dir = Directory(bundlePath);
-      if (!await dir.exists()) continue;
+      if (!await Directory(bundlePath).exists()) continue;
+      // Watch the folder that holds the bundle, not the bundle itself: a
+      // save writes a fresh copy and renames it into place, so a watch on
+      // the bundle folder follows the replaced copy and goes silent after
+      // the first save.
+      final parent = Directory(p.dirname(bundlePath));
       try {
-        final sub = dir
+        // The watcher reports resolved paths; the project may be opened
+        // through a link.
+        final real = await Directory(bundlePath).resolveSymbolicLinks();
+        bool inBundle(String path) => <String>{
+          bundlePath,
+          real,
+        }.any((root) => path == root || p.isWithin(root, path));
+        final sub = parent
             .watch(recursive: true)
+            .where((e) => inBundle(e.path))
             .listen(
               (_) => _scheduleWatcherRefresh(),
               onError: (_) {
@@ -4169,20 +4309,18 @@ class VibeShellState extends State<VibeShell> {
     await _refreshChannelDirtyFromDisk();
   }
 
-  /// Hash the on-disk bundle using the SAME formula
-  /// `WorkspaceCanonicalImpl._hashOfJson` uses for `committedHash` —
-  /// read the bundle through `FileWorkspaceFsPort.readJson` (which
-  /// re-merges `manifest.json` + `ui/app.json` + every page back into
-  /// the canonical merged map), then `jsonEncode` + sha256. Without
-  /// this round-trip the two hashes can't be compared.
+  /// Hash the on-disk bundle with the formula `committedHash` uses
+  /// (`canonicalContentHash`) — read the bundle through
+  /// `FileWorkspaceFsPort.readJson` (which re-merges `manifest.json` +
+  /// `ui/app.json` + every page back into the canonical merged map). The
+  /// hash ignores key order, since the re-merged map orders keys
+  /// differently from the in-memory one.
   Future<String?> _hashOfBundleOnDisk(String bundlePath) async {
     try {
       final fsPort = FileWorkspaceFsPort();
       final merged = await fsPort.readJson(bundlePath);
       if (merged == null) return null;
-      final encoded = jsonEncode(merged);
-      final digest = sha256.convert(utf8.encode(encoded));
-      return 'sha256:$digest';
+      return canonicalContentHash(merged);
     } catch (_) {
       return null;
     }
@@ -4666,6 +4804,10 @@ class VibeShellState extends State<VibeShell> {
       if (!mounted) return;
       setState(() {
         _project = project;
+        // The unsaved flag and channel scan belong to the project just
+        // replaced; start from the new canonical's own state.
+        _dirty = widget.canonical.isDirty;
+        _channelDirty.clear();
         _focusedByChannelMode = _cloneFocusMap(
           project.prefs.focusedByChannelMode,
         );
@@ -4712,6 +4854,8 @@ class VibeShellState extends State<VibeShell> {
       if (proj == null) {
         if (!mounted) return;
         setState(() => _health = null);
+        _prevBlocking = null;
+        _prevBlockingProject = null;
         return;
       }
       final tools = BuildToolsDispatcher(
@@ -4719,6 +4863,9 @@ class VibeShellState extends State<VibeShell> {
         canonical: widget.canonical,
         pipeline: widget.pipeline,
         validator: _validator,
+        // Same host tool list as the `/health` command and the MCP tool, so
+        // the Inspector's Health section reports what they report.
+        onHostToolNames: _hostToolNames,
       );
       try {
         final result = await tools.dispatch('health_check', const {});
@@ -4729,7 +4876,7 @@ class VibeShellState extends State<VibeShell> {
         if (j is! Map) return;
         final next = Map<String, dynamic>.from(j);
         setState(() => _health = next);
-        _maybeEmitHealthTransitionNote(next);
+        _maybeEmitHealthTransitionNote(next, proj.projectPath);
       } catch (_) {
         // Silent — chat-side health bar renders a neutral pill on
         // missing data so the failure doesn't surface as an error.
@@ -4760,10 +4907,33 @@ class VibeShellState extends State<VibeShell> {
   ///   `/recipe <name>`     → apply_recipe on focused widget /
   ///                          page
   ///   `/critique [focus]`  → vibe_design_critique
+  /// Append a note into the chat the user is looking at. The host keys
+  /// its chat controllers per `<tab>::<project>` and re-keys on project
+  /// open, while [widget.chat] is the tab-level controller resolved at
+  /// mount — a direct `widget.chat.appendTurn` after a project is open
+  /// lands in a thread that is no longer displayed (slash results, error
+  /// notes and dispatch summaries all vanished that way). While this tab
+  /// is active the host's active-chat slot is the displayed thread.
+  void _appendChatTurn(ChatTurn turn) {
+    final bridge = widget.studioChromeBridge;
+    final active = mounted && WorkspaceTabActiveScope.isActiveOf(context);
+    void Function(ChatTurn)? append;
+    try {
+      append = bridge?.appendChatTurn;
+    } catch (_) {
+      // Duck-typed bridge without the slot.
+    }
+    if (active && append != null) {
+      append(turn);
+    } else {
+      widget.chat.appendTurn(turn);
+    }
+  }
+
   Future<String?> _runSlashCommand(String input) async {
     final proj = _project;
     if (proj == null) {
-      widget.chat.appendTurn(
+      _appendChatTurn(
         ChatTurn(role: 'error', text: 'Slash commands need an open project.'),
       );
       return null;
@@ -4812,7 +4982,7 @@ class VibeShellState extends State<VibeShell> {
         break;
       case 'find':
         if (tail.isEmpty) {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text:
@@ -4836,7 +5006,7 @@ class VibeShellState extends State<VibeShell> {
         break;
       case 'desc':
         if (tail.isEmpty) {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text: 'Usage: /desc <jsonPointer> — e.g. /desc /ui/pages/home.',
@@ -4855,7 +5025,7 @@ class VibeShellState extends State<VibeShell> {
         break;
       case 'extract':
         if (tail.length < 2) {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text:
@@ -4880,7 +5050,7 @@ class VibeShellState extends State<VibeShell> {
               '${_widgetPathSuffix(_selectedWidgetPath!)}';
           newId = tail.first;
         } else {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text:
@@ -4904,7 +5074,7 @@ class VibeShellState extends State<VibeShell> {
         break;
       case 'preset':
         if (tail.isEmpty || _selectedPageId == null) {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text:
@@ -4920,7 +5090,7 @@ class VibeShellState extends State<VibeShell> {
         break;
       case 'recipe':
         if (tail.isEmpty) {
-          widget.chat.appendTurn(
+          _appendChatTurn(
             ChatTurn(
               role: 'error',
               text:
@@ -4957,7 +5127,7 @@ class VibeShellState extends State<VibeShell> {
         toolName = 'design_critique';
         // Note — design_critique is a top-level vibe tool, not a
         // build tool. Punt to dedicated path.
-        widget.chat.appendTurn(
+        _appendChatTurn(
           ChatTurn(
             role: 'system',
             text:
@@ -4969,7 +5139,7 @@ class VibeShellState extends State<VibeShell> {
         return null;
       case 'help':
       case '?':
-        widget.chat.appendTurn(
+        _appendChatTurn(
           ChatTurn(
             role: 'system',
             text:
@@ -4994,7 +5164,7 @@ class VibeShellState extends State<VibeShell> {
         );
         return null;
       default:
-        widget.chat.appendTurn(
+        _appendChatTurn(
           ChatTurn(
             role: 'error',
             text: 'Unknown slash command: /$cmd. Try /help.',
@@ -5005,19 +5175,15 @@ class VibeShellState extends State<VibeShell> {
     try {
       final result = await tools.dispatch(toolName, args);
       if (result == null) return null;
-      widget.chat.appendTurn(
+      _appendChatTurn(
         ChatTurn(
           role: result.success ? 'system' : 'error',
-          text:
-              '${result.success ? '✓' : '✗'} $toolName · '
-              '${result.message}',
+          text: '${slashResultMark(result)} $toolName · ${result.message}',
         ),
       );
       return toolName;
     } catch (e) {
-      widget.chat.appendTurn(
-        ChatTurn(role: 'error', text: '$toolName exception: $e'),
-      );
+      _appendChatTurn(ChatTurn(role: 'error', text: '$toolName exception: $e'));
       return null;
     }
   }
@@ -5043,7 +5209,10 @@ class VibeShellState extends State<VibeShell> {
   /// previous snapshot) or full clear (was non-zero, now zero). All
   /// other drift (advisory wobble, same count) stays silent so the
   /// chat doesn't fill with noise on every keystroke.
-  void _maybeEmitHealthTransitionNote(Map<String, dynamic> snapshot) {
+  void _maybeEmitHealthTransitionNote(
+    Map<String, dynamic> snapshot,
+    String projectPath,
+  ) {
     final summary = snapshot['summary'];
     if (summary is! Map) return;
     final blocking =
@@ -5052,9 +5221,14 @@ class VibeShellState extends State<VibeShell> {
         ((summary['a11yFails'] ?? 0) as int) +
         ((summary['invalidAssets'] ?? 0) as int) +
         ((summary['undefinedState'] ?? 0) as int);
-    final prev = _prevBlocking;
+    final prev = healthBaseline(
+      baselineProject: _prevBlockingProject,
+      baseline: _prevBlocking,
+      project: projectPath,
+    );
     _prevBlocking = blocking;
-    if (prev == null) return; // First snapshot — quiet.
+    _prevBlockingProject = projectPath;
+    if (prev == null) return; // First snapshot of this project — quiet.
     if (blocking == prev) return;
     final chat = widget.chat;
     if (blocking == 0 && prev > 0) {
@@ -5457,6 +5631,7 @@ class VibeShellState extends State<VibeShell> {
                               onCopyChannel: _onCopyChannel,
                               onSwapChannels: _onSwapChannels,
                               externalRefreshEpoch: _previewEpoch,
+                              previewToolCall: _previewToolCall,
                               previewCaptureKey: _previewCaptureKey,
                               centerMode: _centerMode,
                               onCenterModeChanged: (m) {
@@ -5655,7 +5830,13 @@ class _CenterColumn extends StatelessWidget {
     required this.projectKind,
     required this.bundlePath,
     this.hostTabKey,
+    this.previewToolCall,
   });
+
+  /// Runs the preview document's `tool` actions against the project bundle
+  /// (see `VibeShellState._previewToolCall`).
+  final Future<dynamic> Function(String tool, Map<String, dynamic> params)?
+  previewToolCall;
 
   /// Chrome tab path of the shell hosting this column — forwarded to
   /// [PreviewPanel.hostTabKey] so the embedded [DslWorkspaceView]
@@ -5867,6 +6048,7 @@ class _CenterColumn extends StatelessWidget {
       inspectRoot: _inspectRoot(),
       externalRefreshEpoch: externalRefreshEpoch,
       captureKey: previewCaptureKey,
+      onToolCall: previewToolCall,
       // App Builder's only preview policy: a Studio package mounts the
       // workspace runtime (declared as a host PreviewVariant); everything
       // else uses the platform's default PreviewMcpUi body. The host panel
@@ -5965,35 +6147,37 @@ class _CenterColumn extends StatelessWidget {
                 // 2026-07-13 by pointer probes + this unmount flipping the
                 // button back on). Round-trip debug→ui verified safe (the
                 // preview remounts cleanly from canonical). Root fix =
-                // runtime singleton removal (cherry
-                // runtime-singleton-removal-plan Phase 1); drop this
+                // runtime singleton removal (phase 1 of
+                // the runtime singleton-removal plan); drop this
                 // exception when that lands.
-                child: centerMode == CenterMode.debug
-                    ? const SizedBox.shrink()
-                    : TickerMode(
-                  enabled: centerMode == CenterMode.ui,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      OverviewStrip(
-                        projection: projection,
-                        focused: focused,
-                        onFocus: onFocus,
-                        layers: CenterMode.layersFor(CenterMode.ui),
-                      ),
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            if (_showsInstanceStrip())
-                              _instanceStripFor(focused),
-                            Expanded(child: _workspaceBody()),
-                          ],
+                child:
+                    centerMode == CenterMode.debug
+                        ? const SizedBox.shrink()
+                        : TickerMode(
+                          enabled: centerMode == CenterMode.ui,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              OverviewStrip(
+                                projection: projection,
+                                focused: focused,
+                                onFocus: onFocus,
+                                layers: CenterMode.layersFor(CenterMode.ui),
+                              ),
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: <Widget>[
+                                    if (_showsInstanceStrip())
+                                      _instanceStripFor(focused),
+                                    Expanded(child: _workspaceBody()),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
               Offstage(
                 offstage: centerMode != CenterMode.bundle,

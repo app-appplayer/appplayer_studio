@@ -85,15 +85,21 @@ class VibeProject {
 
   ProjectMeta _meta;
 
+  /// Undo-sidecar writes in order; [dispose] waits for the last one.
+  Future<void> _undoWrites = Future<void>.value();
+
   void _persistUndo(UndoState _) {
     // Best-effort — write fresh stack snapshots after every transition.
     final undo = canonical.undoStackJson;
     final redo = canonical.redoStackJson;
-    if (undo.isEmpty && redo.isEmpty) {
-      undoSidecar.clear();
-    } else {
-      undoSidecar.write(UndoSnapshot(undo: undo, redo: redo));
-    }
+    _undoWrites = _undoWrites
+        .then(
+          (_) =>
+              undo.isEmpty && redo.isEmpty
+                  ? undoSidecar.clear()
+                  : undoSidecar.write(UndoSnapshot(undo: undo, redo: redo)),
+        )
+        .catchError((_) {});
   }
 
   /// Filename for the project metadata JSON, sitting at the root of the
@@ -585,11 +591,15 @@ class VibeProject {
   /// Release the canonical-changes subscription. Call before discarding
   /// the project (e.g. when the shell swaps to a freshly-opened one) so
   /// the old project does not keep appending to its own history file.
+  /// Stop following the canonical and wait for the sidecar writes already
+  /// under way, so nothing lands in the project folder after close.
   Future<void> dispose() async {
     await _historySub?.cancel();
     await _undoSub?.cancel();
     _historySub = null;
     _undoSub = null;
+    await _undoWrites;
+    await historyLog.flush();
   }
 
   /// Persist the in-memory [prefs] to `<projectPath>/prefs.json`.

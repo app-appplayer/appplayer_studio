@@ -73,8 +73,7 @@ class StudioBleStack {
   /// disturbing the others.
   Stream<BleBoardCandidate> boardScan({
     Duration timeout = const Duration(seconds: 15),
-  }) =>
-      _boardScanVia(hub, timeout);
+  }) => _boardScanVia(hub, timeout);
 }
 
 /// Process-shared stack — created on first use.
@@ -94,15 +93,15 @@ set studioBleStack(StudioBleStack stack) => _stack = stack;
 /// device inside the budget is not an error here — the connect that follows
 /// reports the miss in its own terms.
 BleLocate _locateVia(BleScanHub hub) => (deviceId, timeout) async {
-      final sub = hub.subscribe(BleScanFilter(deviceIds: <String>[deviceId]));
-      try {
-        await sub.events.first.timeout(timeout);
-      } on Object catch (_) {
-        // Same outcome the private scan gave when its timer fired first.
-      } finally {
-        await sub.cancel();
-      }
-    };
+  final sub = hub.subscribe(BleScanFilter(deviceIds: <String>[deviceId]));
+  try {
+    await sub.events.first.timeout(timeout);
+  } on Object catch (_) {
+    // Same outcome the private scan gave when its timer fired first.
+  } finally {
+    await sub.cancel();
+  }
+};
 
 /// A device is provisionable when it advertises the provisioning service UUID
 /// **or** its advertised name marks it as one.
@@ -116,7 +115,10 @@ bool isProvisioningAdvertisement(BleAdvertisement ad) =>
     ad.serviceUuids.contains(ProvisioningUuids.serviceUuid.toLowerCase()) ||
     ad.name.toLowerCase().startsWith(ProvisioningUuids.advertisedName);
 
-Stream<BleBoardCandidate> _boardScanVia(BleScanHub hub, Duration window) async* {
+Stream<BleBoardCandidate> _boardScanVia(
+  BleScanHub hub,
+  Duration window,
+) async* {
   // Declared per subscription, not on the shared scan: another subscriber
   // (provisioning, a bundle) is watching the same radio for something else.
   final sub = hub.subscribe(
@@ -134,11 +136,13 @@ Stream<BleBoardCandidate> _boardScanVia(BleScanHub hub, Duration window) async* 
     // A board re-advertises continuously; the window reports it once.
     if (!seen.add(ad.deviceId)) return;
     if (!queue.isClosed) {
-      queue.add(BleBoardCandidate(
-        deviceId: ad.deviceId,
-        localName: ad.name,
-        rssi: ad.rssi,
-      ));
+      queue.add(
+        BleBoardCandidate(
+          deviceId: ad.deviceId,
+          localName: ad.name,
+          rssi: ad.rssi,
+        ),
+      );
     }
   });
   try {
@@ -163,18 +167,17 @@ Stream<ProvisioningCandidate> _provisioningCandidatesVia(BleScanHub hub) {
       // subscriber, so this costs a predicate, not a scan.
       final sub = hub.subscribe(const BleScanFilter());
       release = sub.cancel;
-      ads = sub.events.where(isProvisioningAdvertisement).listen(
-        (ad) {
-          if (!ctrl.isClosed) {
-            ctrl.add(ProvisioningCandidate(
+      ads = sub.events.where(isProvisioningAdvertisement).listen((ad) {
+        if (!ctrl.isClosed) {
+          ctrl.add(
+            ProvisioningCandidate(
               deviceId: ad.deviceId,
               name: ad.name.isEmpty ? ad.deviceId : ad.name,
               rssi: ad.rssi,
-            ));
-          }
-        },
-        onError: ctrl.addError,
-      );
+            ),
+          );
+        }
+      }, onError: ctrl.addError);
     },
     onCancel: () async {
       await ads?.cancel();

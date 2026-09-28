@@ -85,10 +85,11 @@ Future<ConnectServerRequest?> showConnectServerDialog(
 }) {
   return showDialog<ConnectServerRequest>(
     context: context,
-    builder: (_) => _ConnectServerDialog(
-      scan: scan,
-      connectDiscovered: connectDiscovered,
-    ),
+    builder:
+        (_) => _ConnectServerDialog(
+          scan: scan,
+          connectDiscovered: connectDiscovered,
+        ),
   );
 }
 
@@ -119,10 +120,10 @@ String _transportLabel(KernelTransportKind t) {
 TextStyle _fieldStyle() => GoogleFonts.inter(fontSize: 13);
 
 InputDecoration _dec(String label, {String? hint}) => InputDecoration(
-      labelText: label,
-      hintText: hint,
-      labelStyle: _fieldStyle(),
-    );
+  labelText: label,
+  hintText: hint,
+  labelStyle: _fieldStyle(),
+);
 
 class _ConnectServerDialog extends StatelessWidget {
   const _ConnectServerDialog({this.scan, this.connectDiscovered});
@@ -233,11 +234,12 @@ class _ManualConnectFormState extends State<_ManualConnectForm> {
         setState(() => _error = 'Choose the server executable.');
         return;
       }
-      final args = _args.text
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((a) => a.isNotEmpty)
-          .toList();
+      final args =
+          _args.text
+              .trim()
+              .split(RegExp(r'\s+'))
+              .where((a) => a.isNotEmpty)
+              .toList();
       Navigator.of(context).pop(
         ConnectServerRequest(
           transport: KernelTransportKind.stdio,
@@ -518,7 +520,7 @@ class _DiscoverTabState extends State<_DiscoverTab> {
               }
               return ListView.separated(
                 itemCount: servers.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final s = servers[i];
                   return ListTile(

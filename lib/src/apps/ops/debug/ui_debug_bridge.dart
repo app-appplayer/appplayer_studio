@@ -18,6 +18,7 @@ import 'package:appplayer_studio/builtin_api.dart' show AgentAxis;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 
 import '../init/knowledge_init.dart';
 import '../registries/member_registry.dart' show AgentMember;

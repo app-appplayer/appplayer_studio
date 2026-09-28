@@ -17,6 +17,8 @@ import 'package:brain_kernel/brain_kernel.dart'
         PatchOp,
         PatchOriginator,
         UserOriginator,
+        ValidationIssue,
+        ValidationLayer,
         ValidationSeverity;
 
 import '../infra/workspace_fs_port.dart';
@@ -364,7 +366,11 @@ class WorkspaceCanonicalImpl implements WorkspaceCanonical {
     if (kernel == null) {
       throw StateError('open() must be called before applyAtomic()');
     }
-    final issues = _validator.dryRun(_bundleFromJson(kernel.bundleJson), patch);
+    final issues = issuesIntroducedByPatch(
+      validator: _validator,
+      beforeJson: kernel.bundleJson,
+      patch: patch,
+    );
     final blocked =
         issues.where((i) => i.severity == ValidationSeverity.error).toList();
     if (blocked.isNotEmpty) {
@@ -903,10 +909,8 @@ class WorkspaceCanonicalImpl implements WorkspaceCanonical {
     },
   };
 
-  static String _hashOfJson(Map<String, dynamic> json) {
-    final encoded = jsonEncode(json);
-    return 'sha256:${sha256.convert(utf8.encode(encoded))}';
-  }
+  static String _hashOfJson(Map<String, dynamic> json) =>
+      canonicalContentHash(json);
 
   static Map<String, dynamic> _deepCopyMap(Map<String, dynamic> source) {
     final result = <String, dynamic>{};
@@ -1065,4 +1069,79 @@ class _Probe {
   const _Probe.absent() : value = null, present = false;
   final bool present;
   final dynamic value;
+}
+
+/// Issues a patch would *introduce*: what the validator reports on the
+/// patched result minus the errors the bundle already carried. Only the
+/// result is judged, so a patch that leaves an existing error in place is
+/// not held back by it; the same edit that adds an error is refused. The
+/// bundle therefore never gets worse through the pipeline while an already
+/// broken one stays editable — a bundle that could only be repaired outside
+/// the editor is a bundle nobody repairs.
+///
+/// A result that no longer parses as a bundle is itself an error, even
+/// when the input did not parse either.
+List<ValidationIssue> issuesIntroducedByPatch({
+  required SpecValidator validator,
+  required Map<String, dynamic> beforeJson,
+  required CanonicalPatch patch,
+}) {
+  String key(ValidationIssue i) =>
+      '${i.code}\u0000${i.pointer}\u0000${i.message}';
+  var beforeErrors = const <String>{};
+  try {
+    beforeErrors =
+        validator
+            .validateFull(WorkspaceCanonicalImpl._bundleFromJson(beforeJson))
+            .where((i) => i.severity == ValidationSeverity.error)
+            .map(key)
+            .toSet();
+  } catch (_) {
+    // No baseline: everything the result reports counts as introduced.
+  }
+  final afterJson = WorkspaceCanonicalImpl._deepCopyMap(beforeJson);
+  for (final op in patch.ops) {
+    WorkspaceCanonicalImpl._applyOp(afterJson, op);
+  }
+  final McpBundle after;
+  try {
+    after = WorkspaceCanonicalImpl._bundleFromJson(afterJson);
+  } catch (e) {
+    return <ValidationIssue>[
+      ValidationIssue(
+        severity: ValidationSeverity.error,
+        code: 'bundle.unparseable',
+        pointer: patch.ops.isEmpty ? '/' : patch.ops.first.path,
+        message: 'Patched bundle does not parse: $e',
+        layer: ValidationLayer.schema,
+      ),
+    ];
+  }
+  return validator
+      .dryRun(after, patch)
+      .where(
+        (i) =>
+            i.severity != ValidationSeverity.error ||
+            !beforeErrors.contains(key(i)),
+      )
+      .toList(growable: false);
+}
+
+/// Content hash of a bundle map: sha256 over JSON with every map's keys in
+/// sorted order. The same bundle is held in different key orders — the
+/// in-memory map after a save lists `ui` before `requires`/`extensions`, the
+/// map re-read from disk lists it last — and both must hash alike, or
+/// comparing them reports a change that never happened.
+String canonicalContentHash(Map<String, dynamic> json) {
+  final encoded = jsonEncode(_sortedKeys(json));
+  return 'sha256:${sha256.convert(utf8.encode(encoded))}';
+}
+
+Object? _sortedKeys(Object? v) {
+  if (v is Map) {
+    final keys = v.keys.map((k) => k.toString()).toList()..sort();
+    return <String, Object?>{for (final k in keys) k: _sortedKeys(v[k])};
+  }
+  if (v is List) return v.map(_sortedKeys).toList();
+  return v;
 }

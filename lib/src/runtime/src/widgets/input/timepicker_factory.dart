@@ -19,13 +19,13 @@ class TimePickerWidgetFactory extends WidgetFactory {
         : TimeOfDay.now();
     final timeFormat = stringOf(properties['timeFormat'], context) ?? 'HH:mm';
     final variant = readEnum(properties['variant'], context) ?? 'elevated';
-    // §2.5 `IconRef` — all three forms.
+    // `IconRef` — all three forms.
     final iconData = properties['icon'] == null
         ? resolveIconData('access_time')
         : resolveIconRef(properties['icon']);
     final use24HourFormat = boolOf(properties['use24HourFormat'], context) ?? true;
 
-    // Spec §2.6.0: canonical `binding`; accept legacy `bindTo` alias.
+    // Canonical `binding`; accept legacy `bindTo` alias.
     final binding = (stringOf(properties['binding'], context)) ??
         (stringOf(properties['bindTo'], context));
     String? currentValue;
@@ -54,7 +54,10 @@ class TimePickerWidgetFactory extends WidgetFactory {
           onPressed: () async {
             final picked = await showTimePicker(
               context: buildContext,
-              initialTime: initialTime,
+              // The value already chosen is where the picker opens — the
+              // `datePicker` does the same. Opening at the wall clock makes
+              // every correction start from scratch.
+              initialTime: selectedTime ?? initialTime,
               builder: (dialogContext, child) {
                 if (!use24HourFormat) {
                   return child!;

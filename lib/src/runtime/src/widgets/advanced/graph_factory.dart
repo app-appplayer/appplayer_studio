@@ -11,9 +11,9 @@ class GraphWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final data =
-        context.resolve<List<dynamic>?>(properties['data']) ??
+        listOf(properties['data'], context) ??
             [];
-    // Spec §10.12 canonical `chartType`; `type` kept as legacy alias but
+    // Canonical `chartType`; `type` kept as legacy alias but
     // collides with the widget-type discriminator, so `chartType` is the
     // preferred form.
     final type =
@@ -23,22 +23,20 @@ class GraphWidgetFactory extends WidgetFactory {
     final showGrid = boolOf(properties['showGrid'], context) ?? true;
     final showLabels = boolOf(properties['showLabels'], context) ?? true;
     final themePrimary =
-        context.themeManager.getColorValue('primary') ?? Colors.blue;
+        context.themeManager.colorOr('primary', Colors.blue);
     final lineColor =
         parseColor(context.resolve(properties['lineColor']), context) ??
             themePrimary;
     final fillColor = parseColor(context.resolve(properties['fillColor']), context) ??
         themePrimary.withValues(alpha: 0.3);
     final gridColor = parseColor(context.resolve(properties['gridColor']), context) ??
-        context.themeManager.getColorValue('outlineVariant') ??
-        Colors.grey[300]!;
+        context.themeManager.colorOr('outlineVariant', Colors.grey[300]!);
     // Axis label colour — onSurface at reduced alpha so numbers remain
     // legible on both light and dark chart backgrounds without drowning
     // out the series itself.
     final labelColor = parseColor(
             context.resolve(properties['labelColor']), context) ??
-        context.themeManager.getColorValue('onSurface') ??
-        Colors.grey[600]!;
+        context.themeManager.colorOr('onSurface', Colors.grey[600]!);
     final strokeWidth = numberOf(properties['strokeWidth'], context) ?? 2.0;
 
     // Parse data points
@@ -50,7 +48,7 @@ class GraphWidgetFactory extends WidgetFactory {
         values.add(item.toDouble());
         labels.add('');
       } else if (item is Map) {
-        // `{x, y}` is the first form §10.12 names and this read only
+        // `{x, y}` is the first documented form and this read only
         // `{label, value}`, so a graph written the documented way plotted a
         // flat line of zeros. Both forms are read now.
         final value = item['value'] ?? item['y'];

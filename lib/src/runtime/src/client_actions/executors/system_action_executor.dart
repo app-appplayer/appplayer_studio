@@ -3,12 +3,12 @@
 /// Handles system info, clipboard, and notification operations.
 library system_action_executor;
 
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
 import '../../actions/action_result.dart';
+import '../../platform/host_platform.dart';
 import '../../renderer/render_context.dart';
 
 /// Executes system-related client actions
@@ -26,10 +26,10 @@ class SystemActionExecutor {
 
       // Basic platform info
       info['platform'] = _getPlatformName();
-      info['isWeb'] = kIsWeb;
+      info['isWeb'] = HostPlatform.isWeb;
 
       // Get detailed device info
-      if (!kIsWeb) {
+      if (!HostPlatform.isWeb) {
         await _addDeviceInfo(info);
       }
 
@@ -79,7 +79,7 @@ class SystemActionExecutor {
 
         case 'image':
           // Image clipboard requires platform-specific implementation
-          // §6.13.1 — reporting success for something not performed is the
+          // Reporting success for something not performed is the
           // failure this rule exists to stop. `hasContent: false` reads as "the
           // clipboard is empty", which is a different fact from "this runtime
           // cannot look".
@@ -171,7 +171,7 @@ class SystemActionExecutor {
       final severity = action['severity'] as String?;
 
       // No OS notification is posted here, and saying `shown: true` claimed
-      // one had been. §8.2.5 defines `UNSUPPORTED` for exactly this: a
+      // one had been. `UNSUPPORTED` exists for exactly this: a
       // document that asks for a system notification and gets a success it
       // can read as "the user saw it" will not fall back to its in-app
       // `notification` widget, so the message reaches no one.
@@ -193,50 +193,42 @@ class SystemActionExecutor {
   }
 
   /// Get platform name
-  String _getPlatformName() {
-    if (kIsWeb) return 'web';
-
-    if (Platform.isAndroid) return 'android';
-    if (Platform.isIOS) return 'ios';
-    if (Platform.isMacOS) return 'macos';
-    if (Platform.isWindows) return 'windows';
-    if (Platform.isLinux) return 'linux';
-    if (Platform.isFuchsia) return 'fuchsia';
-
-    return 'unknown';
-  }
+  String _getPlatformName() => HostPlatform.name;
 
   /// Add device-specific information
   Future<void> _addDeviceInfo(Map<String, dynamic> info) async {
     try {
-      if (Platform.isAndroid) {
-        final android = await _deviceInfo.androidInfo;
-        info['device'] = android.device;
-        info['model'] = android.model;
-        info['manufacturer'] = android.manufacturer;
-        info['osVersion'] = 'Android ${android.version.release}';
-        info['sdkInt'] = android.version.sdkInt;
-      } else if (Platform.isIOS) {
-        final ios = await _deviceInfo.iosInfo;
-        info['device'] = ios.name;
-        info['model'] = ios.model;
-        info['osVersion'] = 'iOS ${ios.systemVersion}';
-        info['isPhysicalDevice'] = ios.isPhysicalDevice;
-      } else if (Platform.isMacOS) {
-        final macos = await _deviceInfo.macOsInfo;
-        info['device'] = macos.computerName;
-        info['model'] = macos.model;
-        info['osVersion'] = 'macOS ${macos.osRelease}';
-        info['arch'] = macos.arch;
-      } else if (Platform.isWindows) {
-        final windows = await _deviceInfo.windowsInfo;
-        info['device'] = windows.computerName;
-        info['osVersion'] =
-            'Windows ${windows.majorVersion}.${windows.minorVersion}';
-      } else if (Platform.isLinux) {
-        final linux = await _deviceInfo.linuxInfo;
-        info['device'] = linux.name;
-        info['osVersion'] = linux.prettyName;
+      // Switched on the one platform answer rather than re-reading the host:
+      // two readings of the same fact can disagree.
+      switch (_getPlatformName()) {
+        case 'android':
+          final android = await _deviceInfo.androidInfo;
+          info['device'] = android.device;
+          info['model'] = android.model;
+          info['manufacturer'] = android.manufacturer;
+          info['osVersion'] = 'Android ${android.version.release}';
+          info['sdkInt'] = android.version.sdkInt;
+        case 'ios':
+          final ios = await _deviceInfo.iosInfo;
+          info['device'] = ios.name;
+          info['model'] = ios.model;
+          info['osVersion'] = 'iOS ${ios.systemVersion}';
+          info['isPhysicalDevice'] = ios.isPhysicalDevice;
+        case 'macos':
+          final macos = await _deviceInfo.macOsInfo;
+          info['device'] = macos.computerName;
+          info['model'] = macos.model;
+          info['osVersion'] = 'macOS ${macos.osRelease}';
+          info['arch'] = macos.arch;
+        case 'windows':
+          final windows = await _deviceInfo.windowsInfo;
+          info['device'] = windows.computerName;
+          info['osVersion'] =
+              'Windows ${windows.majorVersion}.${windows.minorVersion}';
+        case 'linux':
+          final linux = await _deviceInfo.linuxInfo;
+          info['device'] = linux.name;
+          info['osVersion'] = linux.prettyName;
       }
     } catch (_) {
       // Device info not available

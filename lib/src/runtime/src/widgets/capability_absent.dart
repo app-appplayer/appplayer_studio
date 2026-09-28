@@ -1,10 +1,11 @@
 import 'package:flutter/widgets.dart';
 
+import '../actions/dispatch_origin.dart';
 import '../capabilities/runtime_capabilities.dart';
 import '../renderer/render_context.dart';
 
 /// Draws nothing, and reports once that the behaviour this widget declares is
-/// not available here (spec §6.13.2).
+/// not available here.
 ///
 /// A widget, not a bare `SizedBox`, because the report has to happen **after**
 /// the frame: firing the document's action during build throws, and catching
@@ -54,7 +55,8 @@ class _CapabilityAbsentState extends State<CapabilityAbsent> {
           },
         },
       );
-      widget.renderContext.actionHandler.execute(onError, child);
+      DispatchOrigin.run(DispatchOrigin.runtime,
+          () => widget.renderContext.actionHandler.execute(onError, child));
     });
   }
 

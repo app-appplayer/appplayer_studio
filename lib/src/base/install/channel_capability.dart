@@ -454,37 +454,40 @@ List<String> registerChannelCapability({
     platform: ChannelPlatform.desktop,
   );
   for (final entry in driverTools.entries) {
-    final rawName = entry.key.startsWith('channel.')
-        ? entry.key.substring('channel.'.length)
-        : entry.key;
+    final rawName =
+        entry.key.startsWith('channel.')
+            ? entry.key.substring('channel.'.length)
+            : entry.key;
     final handler = entry.value;
     exposed.add(
       registry.registerExposed(
         bundleId: channelCapabilityId,
         rawName: rawName,
-        description: rawName == 'connect'
-            ? 'Provision + connect an external channel connector '
-                '(`platform` + `id` + `params`, e.g. slack / telegram / email / '
-                'kakao). Adds it to the live connectors map so `channel.send` / '
-                '`channel.receive` reach it. §6 destructive (external I/O).'
-            : 'Stop + deregister a connected external channel connector (`id`).',
-        inputSchema: rawName == 'connect'
-            ? const <String, dynamic>{
-                'type': 'object',
-                'properties': <String, dynamic>{
-                  'platform': <String, dynamic>{'type': 'string'},
-                  'id': <String, dynamic>{'type': 'string'},
-                  'params': <String, dynamic>{'type': 'object'},
+        description:
+            rawName == 'connect'
+                ? 'Provision + connect an external channel connector '
+                    '(`platform` + `id` + `params`, e.g. slack / telegram / email / '
+                    'kakao). Adds it to the live connectors map so `channel.send` / '
+                    '`channel.receive` reach it. §6 destructive (external I/O).'
+                : 'Stop + deregister a connected external channel connector (`id`).',
+        inputSchema:
+            rawName == 'connect'
+                ? const <String, dynamic>{
+                  'type': 'object',
+                  'properties': <String, dynamic>{
+                    'platform': <String, dynamic>{'type': 'string'},
+                    'id': <String, dynamic>{'type': 'string'},
+                    'params': <String, dynamic>{'type': 'object'},
+                  },
+                  'required': <String>['platform', 'id'],
+                }
+                : const <String, dynamic>{
+                  'type': 'object',
+                  'properties': <String, dynamic>{
+                    'id': <String, dynamic>{'type': 'string'},
+                  },
+                  'required': <String>['id'],
                 },
-                'required': <String>['platform', 'id'],
-              }
-            : const <String, dynamic>{
-                'type': 'object',
-                'properties': <String, dynamic>{
-                  'id': <String, dynamic>{'type': 'string'},
-                },
-                'required': <String>['id'],
-              },
         handler: (args) async {
           var callArgs = args;
           // On connect, when no inline params are given, resolve this
@@ -581,8 +584,10 @@ List<String> registerChannelCapability({
         final conv = (args['conversationId'] as String?)?.trim() ?? '';
         final removed = bindings.remove(conv) != null;
         if (removed) await persistBindings();
-        return _result(<String, dynamic>{'ok': true, 'removed': removed},
-            isError: false);
+        return _result(<String, dynamic>{
+          'ok': true,
+          'removed': removed,
+        }, isError: false);
       },
     ),
   );
@@ -593,13 +598,14 @@ List<String> registerChannelCapability({
       rawName: 'bindings',
       description: 'List inbound routing bindings (conversationId → agentId).',
       inputSchema: const <String, dynamic>{'type': 'object'},
-      handler: (args) async => _result(<String, dynamic>{
-        'ok': true,
-        'bindings': <Map<String, dynamic>>[
-          for (final e in bindings.entries)
-            <String, dynamic>{'conversationId': e.key, 'agentId': e.value},
-        ],
-      }, isError: false),
+      handler:
+          (args) async => _result(<String, dynamic>{
+            'ok': true,
+            'bindings': <Map<String, dynamic>>[
+              for (final e in bindings.entries)
+                <String, dynamic>{'conversationId': e.key, 'agentId': e.value},
+            ],
+          }, isError: false),
     ),
   );
 
@@ -675,9 +681,11 @@ List<String> registerChannelCapability({
             'List connector ids that have stored credentials (ids only — never '
             'the secret values).',
         inputSchema: const <String, dynamic>{'type': 'object'},
-        handler: (args) async =>
-            _result(<String, dynamic>{'ok': true, 'ids': await readIds()},
-                isError: false),
+        handler:
+            (args) async => _result(<String, dynamic>{
+              'ok': true,
+              'ids': await readIds(),
+            }, isError: false),
       ),
     );
 
@@ -696,15 +704,20 @@ List<String> registerChannelCapability({
         handler: (args) async {
           final id = (args['id'] as String?)?.trim() ?? '';
           if (id.isEmpty) {
-            return _result(<String, dynamic>{'ok': false, 'error': 'id required'},
-                isError: true);
+            return _result(<String, dynamic>{
+              'ok': false,
+              'error': 'id required',
+            }, isError: true);
           }
           await store.delete('channel.cred/$id');
-          final ids = await readIds()
-            ..remove(id);
+          final ids =
+              await readIds()
+                ..remove(id);
           await store.write(idsKey, jsonEncode(ids));
-          return _result(<String, dynamic>{'ok': true, 'id': id},
-              isError: false);
+          return _result(<String, dynamic>{
+            'ok': true,
+            'id': id,
+          }, isError: false);
         },
       ),
     );

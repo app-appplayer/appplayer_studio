@@ -121,8 +121,8 @@ class TemplateParamDefinition {
     // Skip declared-type checks for binding expressions — the literal
     // String `"{{...}}"` is a placeholder for the runtime-resolved
     // value, which is what the declared type describes. Same rationale
-    // as `TemplateDefinition.validate` in flutter_mcp_ui_core; spec
-    // §9.3.1 does not require strict type rejection, and expressions
+    // as `TemplateDefinition.validate` in flutter_mcp_ui_core; the DSL
+    // does not require strict type rejection, and expressions
     // must be exempt regardless.
     final isExpr = _isBindingExpression(value);
 
@@ -235,7 +235,7 @@ class ExtendedTemplateDefinition {
   /// Whether styles in this template are scoped (CSS-modules style isolation)
   final bool scopedStyles;
 
-  /// Named style bundles per spec § 9.5. Keys are bundle names; values
+  /// Named style bundles. Keys are bundle names; values
   /// are style maps consumed by template-internal references such as
   /// `{{styles.<name>}}`. When [scopedStyles] is true the bundle map
   /// is isolated to this template's expansion frame.
@@ -809,7 +809,7 @@ class TemplateEngine {
   /// Prevents infinite recursion from circular template references.
   final int maxNestingDepth;
 
-  /// Resolve a single `use` widget definition via the registry (per 10-templates.md §6).
+  /// Resolve a single `use` widget definition via the registry.
   ///
   /// Extracts the template name and overrides from the use-definition map
   /// and delegates to [resolveByName].
@@ -849,7 +849,7 @@ class TemplateEngine {
   }
 
   /// Check whether a value is a template reference (canonical `type: "use"`
-  /// per spec §9.6).
+  /// form).
   bool isTemplateReference(Map<String, dynamic> definition) {
     return definition['type'] == 'use' && definition['template'] != null;
   }

@@ -96,7 +96,7 @@ List<Member> membersInListingOrder(List<Member> members) {
 @visibleForTesting
 Map<String, dynamic> buildGlobalMemberList(
   List<({String wsId, String? parentId, int depth, List<Member> members})>
-      perWorkspace, {
+  perWorkspace, {
   String? kindFilter,
   String? query,
 }) {
@@ -231,16 +231,11 @@ class SystemTools {
     if (bus == null) return;
     final one = body.replaceAll('\n', ' ').trim();
     final clipped = one.length > 120 ? '${one.substring(0, 117)}…' : one;
-    bus.info(
-      actor,
-      '$prefix$clipped',
-      kind: kind,
-      workspaceId: workspaceId,
-    );
+    bus.info(actor, '$prefix$clipped', kind: kind, workspaceId: workspaceId);
   }
 
   /// Schema fragment for the optional, uniform `workspaceId` parameter added
-  /// to workspace-scoped tools (konpi "active workspace" inquiry). Omitting it
+  /// to workspace-scoped tools. Omitting it
   /// resolves through [_wsId]; supplying it targets a specific department per
   /// call (cross-department staff).
   static const Map<String, dynamic> _workspaceIdParam = <String, dynamic>{
@@ -253,8 +248,7 @@ class SystemTools {
 
   /// Register all system tools on the host endpoint via the
   /// [BuiltinToolRegistry] facade (cleanup: builtins do not see the
-  /// raw `KernelServerHost` / `mcp.Server` — see
-  /// `diora/design/builtin-os-cleanup-plan-2026-05-28.md`).
+  /// raw `KernelServerHost` / `mcp.Server`).
   void registerOn(BuiltinToolRegistry server) {
     _register(
       server,
@@ -583,8 +577,7 @@ class SystemTools {
           var purged = 0;
           if (init.system.isAgentSubsystemActivated) {
             try {
-              final members =
-                  await init.registries.member.listForWorkspace(id);
+              final members = await init.registries.member.listForWorkspace(id);
               for (final m in members) {
                 if (m is AgentMember && m.agentId.isNotEmpty) {
                   try {
@@ -677,6 +670,21 @@ class SystemTools {
       },
       (args) async {
         final id = args['id'] as String;
+        // Only an existing, live workspace can become active — an unknown id
+        // was accepted and every later member / task / process write landed
+        // in a workspace that does not exist.
+        final target = await init.registries.workspace.get(id);
+        if (target == null) {
+          throw StateError(
+            'workspace not found: $id — create it (workspace_create) or '
+            'pick one from workspace_list',
+          );
+        }
+        if (target.archived) {
+          throw StateError(
+            'workspace $id is archived — restore it first (workspace_restore)',
+          );
+        }
         // switchWorkspace persists the per-project active pointer
         // (`<projectRoot>/.makemind-ops-active`, the boot-restore source read by
         // `_withProjectRoot`) — a switch here NEVER clobbers another project/host
@@ -1029,7 +1037,8 @@ class SystemTools {
                 if (m is AgentMember) 'profileRef': m.profileRef,
                 if (m is AgentMember) 'skillIds': m.skillIds,
                 if (m is AgentMember) 'philosophyRef': m.philosophyRef,
-                if (m is AgentMember && m.model != null) 'model': m.model!.toJson(),
+                if (m is AgentMember && m.model != null)
+                  'model': m.model!.toJson(),
                 if (m is PersonMember) 'email': m.email,
                 if (m is PersonMember) 'roleLabels': m.roleLabels,
                 'tags': m.tags,
@@ -1153,9 +1162,10 @@ class SystemTools {
         // Orchestration role: explicit arg > the assigned profile's
         // `defaultRole` (profile = the persona/role, so the role travels with
         // it) > worker.
-        final roleStr = (args['role'] as String?)?.trim().isNotEmpty == true
-            ? (args['role'] as String).trim()
-            : await _profileDefaultRole(init, wsId, profileRef);
+        final roleStr =
+            (args['role'] as String?)?.trim().isNotEmpty == true
+                ? (args['role'] as String).trim()
+                : await _profileDefaultRole(init, wsId, profileRef);
         final agent = await init.registries.member.createAgent(
           id: args['id'] as String,
           // Project + workspace scoped kernel id (member.id stays bare for
@@ -1277,9 +1287,10 @@ class SystemTools {
         final explicitWs = (args['workspaceId'] as String?)?.trim();
         final hasExplicitWs = explicitWs != null && explicitWs.isNotEmpty;
         final agentIdArg = args['agentId'] as String;
-        final derivedWs = (!hasExplicitWs && agentIdArg.contains('.'))
-            ? await _workspaceOfAgentId(init, agentIdArg)
-            : null;
+        final derivedWs =
+            (!hasExplicitWs && agentIdArg.contains('.'))
+                ? await _workspaceOfAgentId(init, agentIdArg)
+                : null;
         // A qualified agentId (`<ns>.<wsEncoded>.<member>`) that matches NO
         // member's `.agentId` in any workspace is a typo'd / unknown id. With
         // `workspaceId` omitted it would otherwise trailing-dot fall back to a
@@ -1321,11 +1332,10 @@ class SystemTools {
           // (explicit error) instead of creating a doomed task that dies
           // invisibly. The bare id keeps the completion event's sourceAgentId
           // consistent with the once-sub filter below.
-          final delegate =
-              await init.registries.member.resolve(
-                args['agentId'] as String,
-                wsId: wsId,
-              );
+          final delegate = await init.registries.member.resolve(
+            args['agentId'] as String,
+            wsId: wsId,
+          );
           if (delegate is! AgentMember) {
             return {
               'error':
@@ -1340,9 +1350,10 @@ class SystemTools {
               id: taskId,
               workspaceId: wsId,
               kind: TaskKind.oneOff,
-              title: message.length > 60
-                  ? '${message.substring(0, 60)}…'
-                  : message,
+              title:
+                  message.length > 60
+                      ? '${message.substring(0, 60)}…'
+                      : message,
               description: message,
               assigneeIds: [assigneeId],
               skillIds: const [],
@@ -1384,18 +1395,20 @@ class SystemTools {
             'background': true,
             'taskId': taskId,
             'reportBackTo': reportBack ? coordinator : null,
-            'note': reportBack
-                ? 'Delegated as async task; on completion the active chat '
-                    'coordinator is woken to report back.'
-                : 'Delegated as async task; completion notifies via the '
-                    'trigger bus.',
+            'note':
+                reportBack
+                    ? 'Delegated as async task; on completion the active chat '
+                        'coordinator is woken to report back.'
+                    : 'Delegated as async task; completion notifies via the '
+                        'trigger bus.',
           };
         }
         // Resolve the feed actor to a displayName — never the raw qualified
         // agentId (audit P1.3; the Activity feed renders `event.actor` as-is).
-        final askMembers = (wsId == null || wsId.isEmpty)
-            ? const <Member>[]
-            : await init.registries.member.listForWorkspace(wsId);
+        final askMembers =
+            (wsId == null || wsId.isEmpty)
+                ? const <Member>[]
+                : await init.registries.member.listForWorkspace(wsId);
         // Live Activity feed: the incoming user turn (agentAsk). Paired with
         // the agentReply below so the feed shows both sides of the exchange.
         _emitAgentTurn(
@@ -1429,7 +1442,8 @@ class SystemTools {
           source: reply.agentId,
           workspaceId: wsId ?? '',
           kind: WorkKind.ask,
-          refId: 'ask:${reply.agentId}:${DateTime.now().microsecondsSinceEpoch}',
+          refId:
+              'ask:${reply.agentId}:${DateTime.now().microsecondsSinceEpoch}',
           summary: reply.content,
         );
         return {
@@ -1511,24 +1525,25 @@ class SystemTools {
         final routedWs = init.registries.knowledge.kv.workspaceId;
         if (routedWs != null && target.isNotEmpty) {
           final now = DateTime.now();
-          await init.registries.knowledge.knowledgeSystem.facts
-              .writeFacts(<bundle.FactRecord>[
-            bundle.FactRecord(
-              id: 'agent.routed/${now.microsecondsSinceEpoch}',
-              workspaceId: routedWs,
-              type: 'agent.routed',
-              entityId: scopedToBare[target] ?? target,
-              content: <String, dynamic>{
-                'fromAgentId': args['managerId'],
-                'targetAgentId': scopedToBare[target] ?? target,
-                'workspaceId': routedWs,
-                'confidence': decision.confidence,
-                if (decision.reason != null) 'reason': decision.reason,
-              },
-              confidence: 1.0,
-              createdAt: now,
-            ),
-          ]);
+          await init.registries.knowledge.knowledgeSystem.facts.writeFacts(
+            <bundle.FactRecord>[
+              bundle.FactRecord(
+                id: 'agent.routed/${now.microsecondsSinceEpoch}',
+                workspaceId: routedWs,
+                type: 'agent.routed',
+                entityId: scopedToBare[target] ?? target,
+                content: <String, dynamic>{
+                  'fromAgentId': args['managerId'],
+                  'targetAgentId': scopedToBare[target] ?? target,
+                  'workspaceId': routedWs,
+                  'confidence': decision.confidence,
+                  if (decision.reason != null) 'reason': decision.reason,
+                },
+                confidence: 1.0,
+                createdAt: now,
+              ),
+            ],
+          );
         }
         // Assign + collect: actually run the routed member so the lead gets a
         // real deliverable back (member history records the turn — no
@@ -1545,9 +1560,10 @@ class SystemTools {
           }
           // Live Activity feed: the routed member's deliverable (agentReply) —
           // actor resolved to displayName, never the raw agentId (audit P1.3).
-          final routeMembers = (routedWs == null || routedWs.isEmpty)
-              ? const <Member>[]
-              : await init.registries.member.listForWorkspace(routedWs);
+          final routeMembers =
+              (routedWs == null || routedWs.isEmpty)
+                  ? const <Member>[]
+                  : await init.registries.member.listForWorkspace(routedWs);
           _emitAgentTurn(
             memberDisplayNameFor(
               routeMembers,
@@ -1778,8 +1794,8 @@ class SystemTools {
     );
 
     // --- Org charter (per-project active anchor ethos) ---
-    // The workspace charter IS the per-project active ethos (cherry-confirmed
-    // per-project routing). `workspace_set_charter` writes + activates it;
+    // The workspace charter IS the per-project active ethos (per-project
+    // routing). `workspace_set_charter` writes + activates it;
     // `philosophy_check` is the per-project gate path (replaces the global
     // `bk.philosophy.check`); `workspace_get_charter` reads it for display.
     _register(
@@ -1882,7 +1898,8 @@ class SystemTools {
             prohibitions.add((
               statement: stmt,
               patterns:
-                  (raw['patterns'] as List?)?.cast<String>() ?? const <String>[],
+                  (raw['patterns'] as List?)?.cast<String>() ??
+                  const <String>[],
             ));
           }
         }
@@ -1924,7 +1941,7 @@ class SystemTools {
         // A charter is an anchor (a principle), so it activates immediately;
         // member overrides are `derived` (serves: this charter) via their own
         // fork. (Charter writes the per-project store directly, not the global
-        // `bk.philosophy.put` — cherry's per-project routing decision.)
+        // `bk.philosophy.put` — governance routes per project.)
         await store.putEthos(
           bundle.EthosRecord(
             id: ethosId,
@@ -2149,7 +2166,8 @@ class SystemTools {
           'role': {
             'type': 'string',
             'enum': ['worker', 'manager', 'reviewer'],
-            'description': 'Orchestration role — changed in place '
+            'description':
+                'Orchestration role — changed in place '
                 '(individuality preserved).',
           },
           'profileRef': {'type': 'string'},
@@ -2334,7 +2352,9 @@ class SystemTools {
           await init.registries.workspace.list(),
         );
         final perWorkspace =
-            <({String wsId, String? parentId, int depth, List<Member> members})>[];
+            <
+              ({String wsId, String? parentId, int depth, List<Member> members})
+            >[];
         for (final e in ordered) {
           perWorkspace.add((
             wsId: e.ws.id,
@@ -2613,37 +2633,42 @@ class SystemTools {
 
     // --- Processes ---
 
-    _register(server, 'process_list', 'List processes (defaults to the '
-        'caller/active workspace).', {
-      'type': 'object',
-      'properties': {'workspaceId': _workspaceIdParam},
-    }, (args) async {
-      final wsId = _wsId(args);
-      if (wsId == null) return {'error': 'no active workspace'};
-      final list = await init.registries.process.list(wsId: wsId);
-      final processes = <Map<String, dynamic>>[];
-      for (final p in list) {
-        // Runs live in the `process_runs` checkpoint partition (read via
-        // listRuns), NOT the in-memory `Process.runs` field — that field is
-        // never populated on a YAML-loaded process, so `p.runs.length` was
-        // always 0 and disagreed with the Board's live count (konpi live
-        // re-verify). Count the real checkpoints.
-        final runs = await init.registries.process.listRuns(
-          p.id,
-          workspaceId: wsId,
-        );
-        processes.add({
-          'id': p.id,
-          'title': p.title,
-          'steps': p.steps.length,
-          'trigger': p.trigger.name,
-          'gates': p.gates.length,
-          'runs': runs.length,
-          if (runs.isNotEmpty) 'lastRunState': runs.last.state.name,
-        });
-      }
-      return {'processes': processes};
-    });
+    _register(
+      server,
+      'process_list',
+      'List processes (defaults to the '
+          'caller/active workspace).',
+      {
+        'type': 'object',
+        'properties': {'workspaceId': _workspaceIdParam},
+      },
+      (args) async {
+        final wsId = _wsId(args);
+        if (wsId == null) return {'error': 'no active workspace'};
+        final list = await init.registries.process.list(wsId: wsId);
+        final processes = <Map<String, dynamic>>[];
+        for (final p in list) {
+          // Runs live in the `process_runs` checkpoint partition (read via
+          // listRuns), NOT the in-memory `Process.runs` field — that field is
+          // never populated on a YAML-loaded process, so `p.runs.length` was
+          // always 0 and disagreed with the Board's live count. Count the real checkpoints.
+          final runs = await init.registries.process.listRuns(
+            p.id,
+            workspaceId: wsId,
+          );
+          processes.add({
+            'id': p.id,
+            'title': p.title,
+            'steps': p.steps.length,
+            'trigger': p.trigger.name,
+            'gates': p.gates.length,
+            'runs': runs.length,
+            if (runs.isNotEmpty) 'lastRunState': runs.last.state.name,
+          });
+        }
+        return {'processes': processes};
+      },
+    );
 
     _register(
       server,
@@ -2738,6 +2763,7 @@ class SystemTools {
                         r.pendingApproval!.requestedAt.toIso8601String(),
                   },
                 if (r.outcomes.isNotEmpty) 'outcomes': r.outcomes,
+                if (r.error != null) 'error': r.error,
               },
           ],
         };
@@ -3301,7 +3327,8 @@ class SystemTools {
           'onState': {
             'type': 'string',
             'enum': ['completed', 'blocked', 'any'],
-            'description': 'React to this completion state (default: completed).',
+            'description':
+                'React to this completion state (default: completed).',
           },
           'requestTemplate': {
             'type': 'string',
@@ -3321,12 +3348,13 @@ class SystemTools {
           workspaceId: wsId,
           targetAgentId: args['targetAgentId'] as String,
           sourceAgentId: args['sourceAgentId'] as String?,
-          kind: kindName == null
-              ? null
-              : WorkKind.values.firstWhere(
-                  (k) => k.name == kindName,
-                  orElse: () => WorkKind.task,
-                ),
+          kind:
+              kindName == null
+                  ? null
+                  : WorkKind.values.firstWhere(
+                    (k) => k.name == kindName,
+                    orElse: () => WorkKind.task,
+                  ),
           onState: (args['onState'] as String?) ?? 'completed',
           requestTemplate: args['requestTemplate'] as String?,
         );
@@ -3346,9 +3374,10 @@ class SystemTools {
         final wsId = _wsId(args);
         final subs = await init.triggers.list(wsId: wsId);
         return {
-          'triggers': subs
-              .map((s) => {'workspaceId': s.workspaceId, ...s.toJson()})
-              .toList(),
+          'triggers':
+              subs
+                  .map((s) => {'workspaceId': s.workspaceId, ...s.toJson()})
+                  .toList(),
         };
       },
     );
@@ -3508,9 +3537,6 @@ class SystemTools {
           actorId: actorId,
           skillId: def.id,
         );
-        if (scope == 'workspace') {
-          init.skills.register(def, workspaceId: wsId);
-        }
         // P2 (additive) — mirror the workspace skill into the project-level
         // pool via the universal `studio.builder.addSkill` host tool
         // (sanctioned builtin→host chain). The Agent Subsystem skill pool
@@ -3586,6 +3612,12 @@ class SystemTools {
             }
           }
         }
+        // Registered last: the registry's change event re-lists every view,
+        // including the integrated pool, which reads the runtime pool the
+        // block above fills. Announcing earlier re-listed "0 pool".
+        if (scope == 'workspace') {
+          init.skills.register(def, workspaceId: wsId);
+        }
         return {'saved': true, 'id': def.id, 'scope': scope, 'path': path};
       },
     );
@@ -3639,6 +3671,8 @@ class SystemTools {
           skillId: skillId,
         );
         if (scope == 'workspace') {
+          await _dropSkillFromSharedPool(server, init, skillId);
+          // Announced last, after the pool no longer lists it (see save).
           init.skills.remove(skillId);
         }
         return {'deleted': true, 'id': skillId, 'scope': scope, 'path': path};
@@ -3772,7 +3806,10 @@ class SystemTools {
         final facts = await init.registries.knowledge.listKvFacts();
         final hit = facts.where((f) => f.category == 'asset' && f.key == id);
         if (hit.isEmpty) {
-          return <String, dynamic>{'ok': false, 'error': 'asset not found: $id'};
+          return <String, dynamic>{
+            'ok': false,
+            'error': 'asset not found: $id',
+          };
         }
         final m = hit.first.metadata;
         final capability = (m['capability'] ?? '').toString();
@@ -3794,10 +3831,11 @@ class SystemTools {
           Map<String, dynamic> a,
         ) async {
           final r = await server.callTool(tool, a);
-          final t = r.content
-              .whereType<KernelTextContent>()
-              .map((c) => c.text)
-              .join();
+          final t =
+              r.content
+                  .whereType<KernelTextContent>()
+                  .map((c) => c.text)
+                  .join();
           try {
             final d = jsonDecode(t);
             return d is Map
@@ -4243,8 +4281,7 @@ class SystemTools {
         for (var i = 0; i < chain.length; i++) {
           final owner = chain[i];
           final root = _wsRoot(init, owner);
-          final base =
-              '$root/knowledge${subPath.isEmpty ? "" : "/$subPath"}';
+          final base = '$root/knowledge${subPath.isEmpty ? "" : "/$subPath"}';
           final dir = Directory(base);
           if (!await dir.exists()) continue;
           await for (final e in dir.list(recursive: true)) {
@@ -4304,7 +4341,9 @@ class SystemTools {
             };
           }
         }
-        return {'error': 'file not found on workspace or its ancestor chain: $rel'};
+        return {
+          'error': 'file not found on workspace or its ancestor chain: $rel',
+        };
       },
     );
 
@@ -4482,12 +4521,13 @@ class SystemTools {
         // Count the skills actually visible in this workspace (disk + shared
         // + agent overlay), matching `skill_list`. `init.skills` is only the
         // static boot app-skill list, so it under-reported (e.g. 2 vs 12).
-        final skillIds = wsId == null
-            ? const <String>[]
-            : await init.skillResolver.visibleIds(
-                workspaceId: wsId,
-                actorId: null,
-              );
+        final skillIds =
+            wsId == null
+                ? const <String>[]
+                : await init.skillResolver.visibleIds(
+                  workspaceId: wsId,
+                  actorId: null,
+                );
         return {
           'activeWorkspace': wsId,
           'workspaceCount': wsList.length,
@@ -4513,7 +4553,8 @@ class SystemTools {
           // Any LLM path reachable at all — internal provider OR MCP sampling
           // OR the keyless agent kernel. Union so a configured-provider-only
           // check can't report `false` while agents run fine on the fallback.
-          'anyLlm': init.skillExecutor.hasAnyLlm ||
+          'anyLlm':
+              init.skillExecutor.hasAnyLlm ||
               init.system.isAgentSubsystemActivated,
         };
       },
@@ -4722,7 +4763,10 @@ class SystemTools {
 
     // Restore sealed credentials into the keychain when the pack carries them
     // and a passphrase is supplied. Never echoes plaintext.
-    final result = <String, Object?>{'workspaceId': id, 'conflictPolicy': policy};
+    final result = <String, Object?>{
+      'workspaceId': id,
+      'conflictPolicy': policy,
+    };
     final packBytes = await packFile.readAsBytes();
 
     // Rehydrate the project FactGraph snapshot, if the pack carries one, into
@@ -4747,7 +4791,8 @@ class SystemTools {
           final restored = await _restoreSealedCredentials(sealed, passphrase);
           result['credentialsRestored'] = restored;
         } catch (_) {
-          result['credentials'] = 'restore failed (wrong passphrase or corrupt)';
+          result['credentials'] =
+              'restore failed (wrong passphrase or corrupt)';
         }
       }
     }
@@ -4775,15 +4820,13 @@ class SystemTools {
   Future<({String? blob, int count})> _sealActiveCredentials(
     KnowledgeInit init,
     String passphrase,
-  ) async =>
-      _migrator().seal(await _assetCredentialRefs(init), passphrase);
+  ) async => _migrator().seal(await _assetCredentialRefs(init), passphrase);
 
   /// Unseal [sealed] and write each credential back into the OS keychain.
   Future<List<String>> _restoreSealedCredentials(
     String sealed,
     String passphrase,
-  ) =>
-      _migrator().restore(sealed, passphrase);
+  ) => _migrator().restore(sealed, passphrase);
 
   Future<Map<String, Object?>> _exportDiagnostic(
     KnowledgeInit init,
@@ -4837,34 +4880,13 @@ class SystemTools {
     Map<String, dynamic> inputSchema,
     Future<dynamic> Function(Map<String, dynamic>) handler,
   ) {
-    final required =
-        (inputSchema['required'] as List?)?.cast<String>() ?? const <String>[];
+    // Arguments are checked against [inputSchema] by the registry before
+    // this handler runs (tool_call_guard.dart).
     server.addTool(
       name: name,
       description: description,
       inputSchema: inputSchema.isEmpty ? const {'type': 'object'} : inputSchema,
       handler: (args) async {
-        // Friendly required-arg validation — surfaces a clear error instead
-        // of the raw `'Null' is not a subtype of 'String'` cast that would
-        // otherwise come from `args[k] as String`.
-        final missing = <String>[
-          for (final k in required)
-            if (args[k] == null) k,
-        ];
-        if (missing.isNotEmpty) {
-          return KernelToolResult(
-            content: [
-              KernelTextContent(
-                text: jsonEncode({
-                  'error': 'missing required argument(s)',
-                  'missing': missing,
-                  'tool': name,
-                }),
-              ),
-            ],
-            isError: true,
-          );
-        }
         final sw = Stopwatch()..start();
         try {
           final result = await handler(Map<String, dynamic>.from(args));
@@ -5202,6 +5224,67 @@ class SystemTools {
     return <String, dynamic>{'id': p.id, 'name': p.title, 'steps': steps};
   }
 
+  /// Takes a deleted workspace skill out of the shared pool `skill_save`
+  /// put it in — the `project.mbd` skills section (next boot's pool seed)
+  /// and the live `SkillRuntime` (forks and the Integrated view). The pool
+  /// is shared across workspaces by id, so an id another workspace still
+  /// authors stays. Best-effort, like the save-side mirror.
+  Future<void> _dropSkillFromSharedPool(
+    BuiltinToolRegistry server,
+    KnowledgeInit init,
+    String skillId,
+  ) async {
+    final projRoot = init.projectRoot;
+    if (projRoot.isEmpty) return;
+    for (final ws in await init.registries.workspace.list()) {
+      if (await File('${_wsRoot(init, ws.id)}/skills/$skillId.yaml').exists()) {
+        return;
+      }
+    }
+    final mbdPath = '$projRoot/project.mbd';
+    try {
+      final read = await server.callTool('studio.builder.readManifest', {
+        'mbdPath': mbdPath,
+      });
+      final body = jsonDecode(
+        read.content.whereType<KernelTextContent>().map((c) => c.text).join(),
+      );
+      final manifest = body is Map ? body['manifest'] : null;
+      final skills = manifest is Map ? manifest['skills'] : null;
+      final modules = skills is Map ? skills['modules'] : null;
+      if (modules is List) {
+        final i = modules.indexWhere((m) => m is Map && m['id'] == skillId);
+        if (i >= 0) {
+          await server.callTool('studio.builder.patchManifest', {
+            'mbdPath': mbdPath,
+            'op': 'rfc6902',
+            'ops': [
+              {'op': 'remove', 'path': '/skills/modules/$i'},
+            ],
+          });
+        }
+      }
+    } catch (_) {
+      // Best-effort — the loose yaml is already gone.
+    }
+    // Both ids the pool knows the skill by: the bundle-qualified one
+    // (`skill_save`, project.mbd activation) and the bare one the workspace
+    // loader registers at boot for yaml-declared member assignments.
+    final poolBundle = init.sharedPoolBundleId;
+    final runtime = init.system.skillRuntime;
+    if (runtime == null) return;
+    for (final id in <String>[
+      if (poolBundle != null) '$poolBundle.$skillId',
+      skillId,
+    ]) {
+      try {
+        await runtime.registry.unregisterSkill(id);
+      } catch (_) {
+        // Best-effort — next boot seeds the pool without it.
+      }
+    }
+  }
+
   String _wsRoot(KnowledgeInit init, String wsId) {
     // Use the live project-bound root — the same source member_* handlers
     // and the behavior mirror use. A config.yaml re-read was empty for a
@@ -5235,31 +5318,41 @@ class SystemTools {
   /// Returns the collected prohibitions (with source level), the nearest
   /// descriptive fields, and the source levels that contributed.
   Future<
-      ({
-        List<
-                ({
-                  String id,
-                  String source,
-                  String statement,
-                  List<String> patterns,
-                  bool hard
-                })>
-            prohibitions,
-        Map<String, dynamic> descriptive,
-        List<String> sources,
-      })> _charterChain(KnowledgeInit init, String wsId) async {
+    ({
+      List<
+        ({
+          String id,
+          String source,
+          String statement,
+          List<String> patterns,
+          bool hard,
+        })
+      >
+      prohibitions,
+      Map<String, dynamic> descriptive,
+      List<String> sources,
+    })
+  >
+  _charterChain(KnowledgeInit init, String wsId) async {
     final phil = init.system.philosophy;
-    final prohibitions = <({
-      String id,
-      String source,
-      String statement,
-      List<String> patterns,
-      bool hard
-    })>[];
+    final prohibitions =
+        <
+          ({
+            String id,
+            String source,
+            String statement,
+            List<String> patterns,
+            bool hard,
+          })
+        >[];
     final descriptive = <String, dynamic>{};
     final sources = <String>[];
     if (!phil.isAvailable) {
-      return (prohibitions: prohibitions, descriptive: descriptive, sources: sources);
+      return (
+        prohibitions: prohibitions,
+        descriptive: descriptive,
+        sources: sources,
+      );
     }
     // Self first, then the parentId chain (nearest ancestor → root). Same line
     // only — ancestors() excludes siblings / other branches by construction.
@@ -5288,7 +5381,12 @@ class SystemTools {
         if (c != null && c.isNotEmpty) {
           try {
             final ctx = jsonDecode(c) as Map<String, dynamic>;
-            for (final k in const ['mission', 'northStar', 'doctrineRef', 'values']) {
+            for (final k in const [
+              'mission',
+              'northStar',
+              'doctrineRef',
+              'values',
+            ]) {
               if (descriptive[k] == null && ctx[k] != null) {
                 descriptive[k] = ctx[k];
               }
@@ -5299,7 +5397,11 @@ class SystemTools {
         // No charter at this level — skip; a higher ancestor may still have one.
       }
     }
-    return (prohibitions: prohibitions, descriptive: descriptive, sources: sources);
+    return (
+      prohibitions: prohibitions,
+      descriptive: descriptive,
+      sources: sources,
+    );
   }
 
   /// Map a role string to [AgentRole]; unknown / null → worker.
@@ -5326,7 +5428,9 @@ class SystemTools {
     if (profileRef.isEmpty || init.projectRoot.isEmpty) return null;
     final id = profileRef.replaceFirst(RegExp(r'^profiles/'), '');
     try {
-      final f = File('${wsContentRoot(init.projectRoot, wsId)}/profiles/$id.yaml');
+      final f = File(
+        '${wsContentRoot(init.projectRoot, wsId)}/profiles/$id.yaml',
+      );
       if (!await f.exists()) return null;
       final y = loadYaml(await f.readAsString());
       if (y is Map && y['defaultRole'] is String) {
@@ -5375,7 +5479,9 @@ class SystemTools {
       if (await f.exists()) return 'workspace';
       // Inherited from an org ancestor — still a workspace skill, just owned
       // higher up the chain.
-      for (final ancestor in await init.registries.workspace.ancestorIds(wsId)) {
+      for (final ancestor in await init.registries.workspace.ancestorIds(
+        wsId,
+      )) {
         final af = File('${_wsRoot(init, ancestor)}/skills/$skillId.yaml');
         if (await af.exists()) return 'workspace';
       }

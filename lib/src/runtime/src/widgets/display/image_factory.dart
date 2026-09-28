@@ -11,13 +11,13 @@ class ImageWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Canonical `src`; §17.3.2 legacy aliases `source`, `backgroundImage`.
+    // Canonical `src`; legacy aliases `source`, `backgroundImage`.
     final src = context.resolve<String>(properties['src'] ??
         properties['source'] ??
         properties['backgroundImage'] ??
         '');
-    final width = parseDimension(properties['width']);
-    final height = parseDimension(properties['height']);
+    final width = dimensionOf(properties['width'], context);
+    final height = dimensionOf(properties['height'], context);
     final fit = _parseBoxFit(readEnum(properties['fit'], context));
     final alignment = _parseAlignment(properties['alignment']);
     final placeholder = stringOf(properties['placeholder'], context);
@@ -60,7 +60,7 @@ class ImageWidgetFactory extends WidgetFactory {
       return _buildErrorWidget(errorWidget, w, h);
     }
 
-    // §6.12: every AssetRef slot resolves through one path. The per-factory
+    // Every AssetRef slot resolves through one path. The per-factory
     // scheme chain that used to live here supported only the forms a
     // synchronous loader can build, so `data:` rendered a placeholder naming
     // the runtime's limitation and `bundle://` / `client://` fell through to
@@ -88,7 +88,7 @@ class ImageWidgetFactory extends WidgetFactory {
 
     if (provider == null) {
       // Unsupported scheme, malformed reference, or no source: take the
-      // declared fallback (§6.12.4) rather than rendering an implementation
+      // declared fallback rather than rendering an implementation
       // detail where the author asked for a picture.
       image = buildFallbackWidget(width, height);
     } else {
@@ -99,7 +99,7 @@ class ImageWidgetFactory extends WidgetFactory {
         fit: fit,
         alignment: alignment,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          // A pending read is not a failure (§6.12.5) — show the loading
+          // A pending read is not a failure — show the loading
           // state, not the fallback.
           if (wasSynchronouslyLoaded || frame != null) return child;
           return buildLoadingWidget(width, height);

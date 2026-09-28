@@ -1,8 +1,9 @@
-/// MCP UI DSL 1.3 spec catalog and validator surface.
+/// MCP UI DSL spec catalog and validator surface (series = [specVersion]).
 ///
 /// vibe ships embedded copies of the hand-written app / page / theme
-/// schemas (`embedded_schemas.g.dart` — regenerate via
-/// `dart run tool/embed_schemas.dart`) so it can validate from any
+/// schemas (`embedded_schemas.g.dart` — regenerate in the monorepo with
+/// `tools/appplayer_vibe_studio/debug/tool/embed_spec_schemas.py` after
+/// bumping [specVersion]) so it can validate from any
 /// working directory. The widget schema is already embedded by
 /// `flutter_mcp_ui_core`. When vibe is launched from inside the
 /// makemind workspace it prefers the on-disk schema files so a spec
@@ -26,7 +27,7 @@ import 'widget_schema_catalog.dart';
 /// every comment that names a version reads from here. Bump in lock
 /// step with `specs/mcp_ui_dsl/spec/CHANGELOG.md` when the spec
 /// publishes a new revision.
-const String specVersion = '1.3.4';
+const String specVersion = '1.4.3';
 
 /// Schema series — `major.minor` of [specVersion]. Used wherever the
 /// 2-part form is required (schema directory, `$id` URL prefix,
@@ -135,6 +136,9 @@ class SpecCatalog {
   Future<String> readSchemaText(SchemaKind kind, {String? anchor}) async {
     final cached = _rawCache[kind];
     if (cached != null) return cached;
+    if (kind == SchemaKind.widget) {
+      return _rawCache[kind] = WidgetSchemaCatalog.instance.rawSchemaJson;
+    }
     final dir = await schemaDir(anchor);
     if (dir != null) {
       final file = File(p.join(dir, kind.fileName));

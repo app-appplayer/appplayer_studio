@@ -7,7 +7,12 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
+
+import 'llm_key_store.dart';
+
+final Logger _log = Logger('VibeSettings');
 
 class VibeSettings {
   VibeSettings({
@@ -291,7 +296,8 @@ class VibeSettings {
     if (discoveryDirectory) 'discoveryDirectory': true,
     if (discoveryAutoConnect) 'discoveryAutoConnect': true,
     if (discoveryEnforceSignature) 'discoveryEnforceSignature': true,
-    if (discoveryDirectoryConfig != null && discoveryDirectoryConfig!.isNotEmpty)
+    if (discoveryDirectoryConfig != null &&
+        discoveryDirectoryConfig!.isNotEmpty)
       'discoveryDirectoryConfig': discoveryDirectoryConfig,
   };
 
@@ -355,10 +361,9 @@ class VibeSettings {
     discoveryDirectory: json['discoveryDirectory'] == true,
     discoveryAutoConnect: json['discoveryAutoConnect'] == true,
     discoveryEnforceSignature: json['discoveryEnforceSignature'] == true,
-    discoveryDirectoryConfig:
-        (json['discoveryDirectoryConfig'] as Map?)?.map(
-          (k, v) => MapEntry('$k', v),
-        ),
+    discoveryDirectoryConfig: (json['discoveryDirectoryConfig'] as Map?)?.map(
+      (k, v) => MapEntry('$k', v),
+    ),
   );
 
   /// Accepts `'system'` / `'light'` / `'dark'`; any other value (including
@@ -384,27 +389,99 @@ class VibeSettings {
     return p.join(home, '.config', toolId, 'settings.json');
   }
 
+  /// The keychain scope of the settings file at [path] — its config
+  /// directory name, so each host instance keeps its own keys.
+  static String keyScope(String path) => p.basename(p.dirname(path));
+
   /// Load from disk; returns a default-valued instance when the file
-  /// is missing or unreadable.
+  /// is missing or unreadable. LLM keys come from the keychain
+  /// ([LlmKeyStore]); keys still sitting in an older plaintext file are
+  /// moved into the keychain and removed from the file.
   static Future<VibeSettings> load(String path) async {
     final file = File(path);
-    if (!await file.exists()) return VibeSettings();
-    try {
-      final raw = jsonDecode(await file.readAsString());
-      if (raw is Map<String, dynamic>) return fromJson(raw);
-      return VibeSettings();
-    } catch (_) {
-      return VibeSettings();
+    var settings = VibeSettings();
+    Map<String, dynamic>? raw;
+    if (await file.exists()) {
+      try {
+        final decoded = jsonDecode(await file.readAsString());
+        if (decoded is Map<String, dynamic>) {
+          raw = decoded;
+          settings = fromJson(decoded);
+        }
+      } on FormatException {
+        // Unreadable file — defaults, and the keychain still applies.
+      } on TypeError {
+        // Malformed field types — same as unreadable.
+      }
     }
+    final scope = keyScope(path);
+    final LlmKeys stored;
+    try {
+      stored = await LlmKeyStore.read(scope);
+    } catch (e) {
+      // Keychain unavailable (locked, denied): boot without stored keys and
+      // leave any plaintext file untouched so nothing is lost.
+      _log.warning('LLM keys unavailable from the keychain ($scope): $e');
+      return settings;
+    }
+    final hasPlaintext =
+        raw != null &&
+        (raw.containsKey('llmApiKey') || raw.containsKey('llmProviders'));
+    if (hasPlaintext) {
+      // Keychain wins where it already holds a key; the file fills gaps.
+      final merged = LlmKeys(
+        legacy:
+            (stored.legacy?.isNotEmpty ?? false)
+                ? stored.legacy
+                : settings.llmApiKey,
+        providers: <String, String>{
+          ...settings.llmProviders,
+          ...stored.providers,
+        },
+      );
+      settings._applyKeys(merged);
+      await settings.save(path);
+    } else {
+      settings._applyKeys(stored);
+    }
+    return settings;
   }
 
+  void _applyKeys(LlmKeys keys) {
+    llmApiKey = keys.legacy;
+    llmProviders
+      ..clear()
+      ..addAll(keys.providers);
+  }
+
+  /// File form: everything except LLM keys, which never touch disk.
+  Map<String, dynamic> _toFileJson() =>
+      toJson()
+        ..remove('llmApiKey')
+        ..remove('llmProviders');
+
   /// Persist atomically (write to a temp file, rename in place).
+  static int _saveSeq = 0;
+
   Future<void> save(String path) async {
+    await LlmKeyStore.write(
+      keyScope(path),
+      LlmKeys(
+        legacy: llmApiKey,
+        providers: Map<String, String>.of(llmProviders),
+      ),
+    );
     final target = File(path);
     await target.parent.create(recursive: true);
-    final tmp = File('${target.path}.tmp');
+    // One temp file per write: two built-ins saving the shared settings in
+    // the same tick (a restore in one tab, an open in another) both wrote
+    // `<path>.tmp`, and the second rename found it already moved.
+    final tmp = File(
+      '${target.path}.${pid}.${DateTime.now().microsecondsSinceEpoch}.'
+      '${_saveSeq++}.tmp',
+    );
     await tmp.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(toJson()),
+      const JsonEncoder.withIndent('  ').convert(_toFileJson()),
     );
     await tmp.rename(target.path);
   }
@@ -419,9 +496,27 @@ class VibeSettings {
     required String path,
   }) async {
     if (path.isEmpty) return;
-    final p = defaultPath(toolId);
-    final s = await load(p);
-    s.bumpRecent(path);
-    await s.save(p);
+    await mutate(defaultPath(toolId), (s) => s.bumpRecent(path));
+  }
+
+  static final Map<String, Future<void>> _mutations = <String, Future<void>>{};
+
+  /// Serialized read-modify-write of the settings file at [path]. Several
+  /// built-ins update the same host file (each tab's last project, the
+  /// recents) from their own async paths; two overlapping load → edit → save
+  /// sequences made the second save overwrite the first tab's key with a
+  /// stale copy. Chaining per path keeps every edit.
+  static Future<void> mutate(
+    String path,
+    void Function(VibeSettings settings) edit,
+  ) {
+    final previous = _mutations[path] ?? Future<void>.value();
+    final next = previous.catchError((_) {}).then((_) async {
+      final s = await load(path);
+      edit(s);
+      await s.save(path);
+    });
+    _mutations[path] = next;
+    return next;
   }
 }

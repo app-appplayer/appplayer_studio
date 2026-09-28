@@ -1,6 +1,6 @@
 /// Normalisation of a `RouteValue` into page JSON.
 ///
-/// Spec v1.4 §1.2.1 widens a route value to any `DefinitionSource` (§1.9.1):
+/// A route value may be any `DefinitionSource`:
 ///
 ///   * `"ui://pages/main"`              — resource on the current origin (v1.0)
 ///   * `{ "type": "page", … }`          — inline PageDefinition (v1.0)
@@ -12,7 +12,7 @@
 /// That is deliberate: `view` already owns resolution, origin scoping, state
 /// isolation, `fallback`, and cycle detection, so a route-level source and a
 /// widget-level source cannot drift apart. The spec calls them two surfaces of
-/// one concept (§1.9.4); here they are literally the same code path.
+/// one concept; here they are literally the same code path.
 library;
 
 /// True when [value] can be turned into page JSON without asking the host's
@@ -42,7 +42,7 @@ Map<String, dynamic>? _normalise(dynamic value) {
     // Qualified reference to another origin (v1.4) — hand to `view`.
     if (map.containsKey(r'$ref')) return _viewPage(map);
 
-    // Inline PageDefinition (v1.0). `screen` is the legacy alias (§17.3.5).
+    // Inline PageDefinition (v1.0). `screen` is the legacy alias.
     final type = map['type'];
     if (type == 'page' || type == 'screen') return map;
 

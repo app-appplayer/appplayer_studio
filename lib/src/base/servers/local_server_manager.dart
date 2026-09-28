@@ -33,11 +33,11 @@ class LocalServerManager {
     required LocalServerCredentialVault vault,
     required OpenServerTab openTab,
     ValueNotifier<int>? themeReinjectTick,
-  })  : _clientHost = clientHost,
-        _store = store,
-        _vault = vault,
-        _openTab = openTab,
-        _themeReinjectTick = themeReinjectTick;
+  }) : _clientHost = clientHost,
+       _store = store,
+       _vault = vault,
+       _openTab = openTab,
+       _themeReinjectTick = themeReinjectTick;
 
   final mk.KernelClientHost _clientHost;
   final LocalServerStore _store;
@@ -61,8 +61,7 @@ class LocalServerManager {
   /// pretend otherwise (a watched-but-undialable id would keep a radio on for a
   /// recovery that cannot happen).
   bool _canDial(String id) =>
-      _adhocDial.containsKey(id) ||
-      _store.list().any((e) => e.id == id);
+      _adhocDial.containsKey(id) || _store.list().any((e) => e.id == id);
 
   Future<void> _dial(String id) async {
     if (_isLive(id)) return;
@@ -115,9 +114,10 @@ class LocalServerManager {
   /// token in the keychain, and record it. Throws on connect failure so the
   /// caller can surface it.
   Future<void> connect(ConnectServerRequest req) async {
-    final id = req.transport == mk.KernelTransportKind.stdio
-        ? req.command!
-        : req.endpoint!;
+    final id =
+        req.transport == mk.KernelTransportKind.stdio
+            ? req.command!
+            : req.endpoint!;
     await _connectRaw(
       id: id,
       transport: req.transport,
@@ -177,12 +177,13 @@ class LocalServerManager {
     _openTab(
       key: 'local-server:$id',
       label: title ?? id,
-      builder: (_) => ServedServiceBody(
-        clientHost: _clientHost,
-        connectionId: id,
-        themeReinjectTick: _themeReinjectTick,
-        reconnect: reconnect,
-      ),
+      builder:
+          (_) => ServedServiceBody(
+            clientHost: _clientHost,
+            connectionId: id,
+            themeReinjectTick: _themeReinjectTick,
+            reconnect: reconnect,
+          ),
     );
   }
 
@@ -213,12 +214,13 @@ class LocalServerManager {
     _openTab(
       key: 'local-server:${r.id}',
       label: r.name,
-      builder: (_) => ServedServiceBody(
-        clientHost: _clientHost,
-        connectionId: r.id,
-        themeReinjectTick: _themeReinjectTick,
-        reconnect: reconnect,
-      ),
+      builder:
+          (_) => ServedServiceBody(
+            clientHost: _clientHost,
+            connectionId: r.id,
+            themeReinjectTick: _themeReinjectTick,
+            reconnect: reconnect,
+          ),
     );
   }
 

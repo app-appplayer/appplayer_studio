@@ -1,3 +1,5 @@
+import 'mcp_logger.dart';
+
 /// Represents a segment in a path (e.g., "items" or "[0]")
 class PathSegment {
   final String key;
@@ -9,11 +11,14 @@ class PathSegment {
 
 /// Utility for accessing nested data using path notation
 class JsonPath {
+  static final MCPLogger _logger = MCPLogger('JsonPath');
+
   /// Get a value from a nested map using a path (e.g., "user.profile.name" or "items[0].title")
   static dynamic get(Map<String, dynamic> data, String path) {
     if (path.isEmpty) return data;
 
     final parts = _parsePath(path);
+    if (parts.isEmpty) return null; // unresolvable (see _parsePath)
     dynamic current = data;
 
     for (final part in parts) {
@@ -30,26 +35,55 @@ class JsonPath {
           } else {
             return null;
           }
-        } else if (current is List && part.index != null) {
-          if (part.index! >= 0 && part.index! < current.length) {
-            current = current[part.index!];
-          } else {
-            return null;
-          }
         } else {
+          // A list in hand at an array-access segment would mean two brackets
+          // in a row (`matrix[0][1]`), and `_parsePath` refuses that form by
+          // name — every bracket must follow a property. So there is nothing
+          // else this can be.
           return null;
         }
       } else {
         // Handle regular property access
-        if (current is Map<String, dynamic>) {
-          current = current[part.key];
-        } else if (current is Map) {
-          // Handle Map that's not Map<String, dynamic>
-          current = current[part.key];
+        if (current is Map) {
+          // A real key always wins; the collection properties answer only for
+          // a key the object does not have.
+          //
+          // `length` / `isEmpty` / `isNotEmpty` were written for Map further
+          // down this chain, but this branch matched first and answered null
+          // for all three — so `{{rows.isEmpty}}` read false-ish on a list and
+          // NOTHING on an object, and a section hidden on "no data" stayed
+          // visible with nothing said. Same defect as the List properties
+          // above, one type over.
+          if (current.containsKey(part.key)) {
+            current = current[part.key];
+          } else if (part.key == 'length') {
+            current = current.length;
+          } else if (part.key == 'isEmpty') {
+            current = current.isEmpty;
+          } else if (part.key == 'isNotEmpty') {
+            current = current.isNotEmpty;
+          } else {
+            current = null;
+          }
         } else if (current is List) {
-          // Handle special properties for List
+          // Handle special properties for List.
+          //
+          // `length` answered here from the start; `isEmpty` / `first` / `last`
+          // did not, so `rows.length` read a number while `rows.isEmpty` read
+          // null — the same list, the same spelling, two answers. An author
+          // hides an empty section with `{{rows.isEmpty}}` and the section
+          // never hides, with nothing said. (The method spellings with
+          // parentheses always worked, which is what made it look supported.)
           if (part.key == 'length') {
             current = current.length;
+          } else if (part.key == 'isEmpty') {
+            current = current.isEmpty;
+          } else if (part.key == 'isNotEmpty') {
+            current = current.isNotEmpty;
+          } else if (part.key == 'first') {
+            current = current.isEmpty ? null : current.first;
+          } else if (part.key == 'last') {
+            current = current.isEmpty ? null : current.last;
           } else {
             final index = int.tryParse(part.key);
             if (index != null && index >= 0 && index < current.length) {
@@ -61,6 +95,12 @@ class JsonPath {
         } else if (current is String && part.key == 'length') {
           // Handle string length
           current = current.length;
+        } else if (current is String && part.key == 'isEmpty') {
+          current = current.isEmpty;
+        } else if (current is String && part.key == 'isNotEmpty') {
+          current = current.isNotEmpty;
+        // Map keys are resolved by the branch above; a `current is Map` case
+        // added here would sit behind it and never run.
         } else {
           return null;
         }
@@ -75,6 +115,7 @@ class JsonPath {
     if (path.isEmpty) return;
 
     final parts = _parsePath(path);
+    if (parts.isEmpty) return; // unresolvable (see _parsePath)
     dynamic current = data;
 
     // Debug logging
@@ -160,13 +201,9 @@ class JsonPath {
           }
           list[lastPart.index!] = value;
         }
-      } else if (current is List && lastPart.index != null) {
-        // Ensure list is large enough
-        while (current.length <= lastPart.index!) {
-          current.add(null);
-        }
-        current[lastPart.index!] = value;
       }
+      // No list branch here for the same reason as `get`: reaching this with a
+      // list in hand needs two brackets in a row, which `_parsePath` refuses.
     } else {
       if (current is Map<String, dynamic>) {
         current[lastPart.key] = value;
@@ -182,6 +219,19 @@ class JsonPath {
           }
           current[index] = value;
         }
+      } else {
+        // The parent segment holds a scalar, so there is nowhere to put this.
+        // The write used to be dropped in silence, and the caller had no way to
+        // find out: `loading: {binding: busy, text: …}` sets `busy = true` and
+        // then writes `busy.text`, whose parent is now a bool — the text went
+        // nowhere and a document rendering `{{busy.text}}` showed a blank
+        // forever. Losing a write is allowed to be a mistake; losing it
+        // quietly is not.
+        _logger.warning(
+          'state write dropped: `$path` — `${lastPart.key}`\'s parent holds a '
+          '${current.runtimeType}, not a map, so there is nowhere to put the '
+          'value. Nothing reads this path.',
+        );
       }
     }
   }
@@ -191,6 +241,7 @@ class JsonPath {
     if (path.isEmpty) return;
 
     final parts = _parsePath(path);
+    if (parts.isEmpty) return; // unresolvable (see _parsePath)
     dynamic current = data;
     final List<dynamic> parents = [data];
 
@@ -349,7 +400,15 @@ class JsonPath {
           final index = int.tryParse(indexStr);
 
           if (index == null) {
-            throw FormatException('Invalid array index: $indexStr');
+            // `rows[index]` where `index` is a scope variable rather than a
+            // number. The list-scope reader resolves that form itself and only
+            // falls through to here when it could NOT — a stale index after a
+            // row was removed, say. Throwing then took the page down over a
+            // value that is simply not there any more, so this reads as a miss:
+            // the segment cannot resolve, and `get` answers null.
+            _logger.debug('path segment `$key[$indexStr]` is not a numeric '
+                'index; treating it as unresolved');
+            return const <PathSegment>[];
           }
 
           segments

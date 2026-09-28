@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-
 import 'package:path/path.dart' as p;
 
 import '../../../base/boot/claude_cli_resolver.dart';
@@ -17,6 +16,29 @@ import '../core/workspace_canonical.dart';
 import '../infra/vibe_history_log.dart';
 import '../infra/workspace_fs_port.dart';
 import 'widget_schema_catalog.dart';
+
+/// The mark a chat line puts before a build tool's result: ✗ when the tool
+/// failed to run, ⚠ when it ran and its verdict is a failure (health `fail`,
+/// release `blocked`, an `incomplete` check, `ready: false`), ✓ otherwise.
+/// A ✓ in front of "health · fail" read as a pass.
+String slashResultMark(BuildToolResult result) {
+  if (!result.success) return '✗';
+  final raw = result.payload;
+  if (raw == null || raw.isEmpty) return '✓';
+  try {
+    final body = jsonDecode(raw);
+    if (body is Map) {
+      final status = '${body['status'] ?? ''}';
+      if (const <String>{'fail', 'blocked', 'incomplete'}.contains(status) ||
+          body['ready'] == false) {
+        return '⚠';
+      }
+    }
+  } on FormatException {
+    // Not JSON — nothing to judge beyond the tool running.
+  }
+  return '✓';
+}
 
 /// Outcome of a build-tool call. Mirrors `FileToolResult`'s shape so the
 /// LLM tool dispatch can encode results uniformly.
@@ -103,18 +125,43 @@ final RegExp _bareBindingRe = RegExp(r'[{@]\{\s*([A-Za-z_][\w.]*)');
 
 /// Answered anywhere: device / theme / platform facts.
 const Set<String> kGlobalBindingRoots = <String>{
-  'workingDirectory', 'userName', 'platform', 'locale', 'theme',
-  'orientation', 'network', 'file', 'system', 'env',
-  'isWeb', 'isDebug', 'isRelease', 'isProfile',
+  'workingDirectory',
+  'userName',
+  'platform',
+  'locale',
+  'theme',
+  'orientation',
+  'network',
+  'file',
+  'system',
+  'env',
+  'isWeb',
+  'isDebug',
+  'isRelease',
+  'isProfile',
 };
 
 /// Action node `type` values. An action body is where the runtime hands over
 /// `event` / `value` / `error`, so those roots are in scope there and nowhere
 /// else. Derived from the executors `ActionHandler` registers.
 const Set<String> kActionTypes = <String>{
-  'tool', 'state', 'navigation', 'resource', 'dialog', 'batch', 'conditional',
-  'notification', 'event', 'channel', 'animation', 'permission', 'sequence',
-  'parallel', 'identity', 'increment', 'cancel',
+  'tool',
+  'state',
+  'navigation',
+  'resource',
+  'dialog',
+  'batch',
+  'conditional',
+  'notification',
+  'event',
+  'channel',
+  'animation',
+  'permission',
+  'sequence',
+  'parallel',
+  'identity',
+  'increment',
+  'cancel',
 };
 
 /// Properties that HOLD an action. Position is the more reliable signal than
@@ -123,42 +170,124 @@ const Set<String> kActionTypes = <String>{
 /// Derived from the widget schema — every property whose declared type
 /// mentions `Action`.
 const Set<String> kActionCarryingProps = <String>{
-  'actions', 'blur', 'change', 'click', 'submit',
-  'onAllow', 'onBlur', 'onCellTap', 'onChange', 'onChanged', 'onClear',
-  'onClose', 'onCollapse', 'onCommand', 'onDelete', 'onDeny', 'onDoubleTap',
-  'onDragEnter', 'onDragLeave', 'onDrop', 'onEnd', 'onEnded', 'onError',
-  'onExpand', 'onFocus', 'onIndexChanged', 'onLinkTap', 'onLongPress',
-  'onMapTap', 'onMarkerTap', 'onNodeTap', 'onOpen', 'onPageChanged',
-  'onPageFinished', 'onPageStarted', 'onPanEnd', 'onPanStart', 'onPanUpdate',
-  'onPause', 'onPlay', 'onRetry', 'onRowTap', 'onSelect', 'onSignatureEnd',
-  'onSort', 'onStepCancel', 'onStepContinue', 'onStepTapped', 'onSubmit',
-  'onTap', 'onTimeUpdate',
+  'actions',
+  'blur',
+  'change',
+  'click',
+  'submit',
+  'onAllow',
+  'onBlur',
+  'onCellTap',
+  'onChange',
+  'onChanged',
+  'onClear',
+  'onClose',
+  'onCollapse',
+  'onCommand',
+  'onDelete',
+  'onDeny',
+  'onDoubleTap',
+  'onDragEnter',
+  'onDragLeave',
+  'onDrop',
+  'onEnd',
+  'onEnded',
+  'onError',
+  'onExpand',
+  'onFocus',
+  'onIndexChanged',
+  'onLinkTap',
+  'onLongPress',
+  'onMapTap',
+  'onMarkerTap',
+  'onNodeTap',
+  'onOpen',
+  'onPageChanged',
+  'onPageFinished',
+  'onPageStarted',
+  'onPanEnd',
+  'onPanStart',
+  'onPanUpdate',
+  'onPause',
+  'onPlay',
+  'onRetry',
+  'onRowTap',
+  'onSelect',
+  'onSignatureEnd',
+  'onSort',
+  'onStepCancel',
+  'onStepContinue',
+  'onStepTapped',
+  'onSubmit',
+  'onTap',
+  'onTimeUpdate',
 };
 
 /// Answered only INSIDE an action body — the event that fired it, the value
 /// it carries, the error it failed with.
 const Set<String> kActionBindingRoots = <String>{
-  'event', 'value', 'type', 'error', 'code', 'message', 'details', 'stack',
-  'binding', 'uri', 'data', 'oldValue', 'channelId', 'result',
+  'event',
+  'value',
+  'type',
+  'error',
+  'code',
+  'message',
+  'details',
+  'stack',
+  'binding',
+  'uri',
+  'data',
+  'oldValue',
+  'channelId',
+  'result',
 };
 
 /// Answered only inside a given widget's SUBTREE: the row a list is
 /// rendering, the coordinates a map hands its marker builder.
-const Map<String, Set<String>> kWidgetScopedBindingRoots = <String, Set<String>>{
+const Map<String, Set<String>>
+kWidgetScopedBindingRoots = <String, Set<String>>{
   'calendar': <String>{'date', 'day', 'event', 'month', 'year'},
   'carousel': <String>{'event', 'index', 'item', 'page'},
   'checkbox': <String>{'event', 'type', 'value'},
   'checkboxGroup': <String>{'event', 'type', 'value'},
   'codeEditor': <String>{'event', 'lineCount', 'value'},
   'dateRangePicker': <String>{'end', 'event', 'start', 'value'},
-  'dragTarget': <String>{'candidateData', 'data', 'dragData', 'dx', 'dy', 'event', 'hasCandidates', 'offset', 'rejectedData'},
+  'dragTarget': <String>{
+    'candidateData',
+    'data',
+    'dragData',
+    'dx',
+    'dy',
+    'event',
+    'hasCandidates',
+    'offset',
+    'rejectedData',
+  },
   'drawer': <String>{'event', 'label', 'route', 'type', 'value'},
   'dropdown': <String>{'event', 'index', 'type', 'value'},
   'errorBoundary': <String>{'error', 'event', 'stack'},
   'errorRecovery': <String>{'error', 'event', 'stack'},
   'fileExplorer': <String>{'event', 'name', 'path', 'type'},
-  'grid': <String>{'col', 'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item', 'row'},
-  'gridview': <String>{'col', 'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item', 'row'},
+  'grid': <String>{
+    'col',
+    'index',
+    'isEven',
+    'isFirst',
+    'isLast',
+    'isOdd',
+    'item',
+    'row',
+  },
+  'gridview': <String>{
+    'col',
+    'index',
+    'isEven',
+    'isFirst',
+    'isLast',
+    'isOdd',
+    'item',
+    'row',
+  },
   'imageFilter': <String>{'event', 'index', 'item', 'page'},
   'kenBurnsImage': <String>{'event', 'index', 'item', 'page'},
   'lightbox': <String>{'event', 'index', 'item', 'page'},
@@ -167,7 +296,14 @@ const Map<String, Set<String>> kWidgetScopedBindingRoots = <String, Set<String>>
   'listview': <String>{'index', 'isEven', 'isFirst', 'isLast', 'isOdd', 'item'},
   'map': <String>{'event', 'latitude', 'longitude', 'title'},
   'markdown': <String>{'event', 'url'},
-  'mediaPlayer': <String>{'duration', 'event', 'isMuted', 'isPlaying', 'position', 'volume'},
+  'mediaPlayer': <String>{
+    'duration',
+    'event',
+    'isMuted',
+    'isPlaying',
+    'position',
+    'volume',
+  },
   'networkGraph': <String>{'event', 'label', 'nodeId'},
   'numberStepper': <String>{'event', 'value'},
   'pageView': <String>{'event', 'index', 'page', 'type'},
@@ -1245,22 +1381,21 @@ class BuildToolsDispatcher {
             // tagged — `{"action":"state", …}` with no `type` still runs
             // there, and its bindings still see the event.
             if (kActionCarryingProps.contains(e.key)) {
-              scan(
-                e.value,
-                <String>{...scope, ...kActionBindingRoots},
-                'action prop ${e.key}',
-              );
+              scan(e.value, <String>{
+                ...scope,
+                ...kActionBindingRoots,
+              }, 'action prop ${e.key}');
             } else {
               scan(e.value, scope, here);
             }
           }
         }
 
-        scan(
-          page,
-          <String>{...declared, ...appStateKeys, ...kGlobalBindingRoots},
-          'the page',
-        );
+        scan(page, <String>{
+          ...declared,
+          ...appStateKeys,
+          ...kGlobalBindingRoots,
+        }, 'the page');
         for (final e in seen.entries) {
           issues.add(<String, dynamic>{
             'kind': 'undefined_binding_root',
@@ -1290,7 +1425,8 @@ class BuildToolsDispatcher {
         _walkAll(page, '/ui/pages/$pageId', (n, _) {
           if (n is Map && n['type'] == 'tool') {
             final t = n['tool'];
-            if (t is String && t.isNotEmpty) toolRefs.putIfAbsent(t, () => pageId);
+            if (t is String && t.isNotEmpty)
+              toolRefs.putIfAbsent(t, () => pageId);
           }
         });
       }
@@ -1730,7 +1866,7 @@ class BuildToolsDispatcher {
   ///   - `form`     title + 2 textfields + submit; state seeded with
   ///                `fields` and `errors`
   ///   - `settings` list of switch / value rows
-  /// All output is mcp_ui DSL 1.3 spec-compliant — `linear` /
+  /// All output is mcp_ui DSL 1.4 spec-compliant — `linear` /
   /// `text` / `textfield` / `button` / `card`. After applying,
   /// further customise via set_property.
   Future<BuildToolResult> applyLayoutPreset({
@@ -1947,7 +2083,7 @@ class BuildToolsDispatcher {
                   'style': <String, dynamic>{
                     'fontSize': 32,
                     'fontWeight': '700',
-                    'height': 1.2,
+                    'lineHeight': 1.2,
                   },
                 },
                 <String, dynamic>{
@@ -1963,7 +2099,7 @@ class BuildToolsDispatcher {
                   'content':
                       'Body text starts here with a drop cap. Replace this paragraph with the article body.',
                   'dropCap': <String, dynamic>{'lines': 3},
-                  'style': <String, dynamic>{'fontSize': 16, 'height': 1.5},
+                  'style': <String, dynamic>{'fontSize': 16, 'lineHeight': 1.5},
                 },
               ],
             },
@@ -5065,6 +5201,13 @@ class BuildToolsDispatcher {
     }
     final hp = jsonDecode(h.payload!) as Map<String, dynamic>;
     final summary = (hp['summary'] as Map?) ?? const <String, dynamic>{};
+    final unchecked = (hp['unchecked'] as List?) ?? const <dynamic>[];
+    if (unchecked.isNotEmpty) {
+      return BuildToolResult.failure(
+        'grade · incomplete — ${unchecked.length} health check(s) did not '
+        'run: ${unchecked.map((u) => (u as Map)['check']).join(', ')}',
+      );
+    }
     final pages = (c.currentJson['ui'] as Map?)?['pages'];
     final pageCount = pages is Map ? pages.length : 0;
     if (pageCount == 0) {
@@ -5236,13 +5379,19 @@ class BuildToolsDispatcher {
         ((summary['a11yWarns'] ?? 0) as int) +
         ((summary['unusedState'] ?? 0) as int) +
         ((summary['deadTokens'] ?? 0) as int);
-    final ready = blocking == 0;
+    final unchecked = (after['unchecked'] as List?) ?? const <dynamic>[];
+    final measured = after['summary'] is Map;
+    final ready = measured && unchecked.isEmpty && blocking == 0;
     final headline =
         dryRun
             ? 'release · dryRun · ${steps.length} stage'
                 '${steps.length == 1 ? '' : 's'} planned'
             : ready
             ? 'release · ✓ ready · $advisory advisory'
+            : !measured
+            ? 'release · ✗ not measured — health check did not run'
+            : unchecked.isNotEmpty
+            ? 'release · ✗ incomplete · ${unchecked.length} unchecked'
             : 'release · ✗ blocked · $blocking blocking · '
                 '$advisory advisory';
     return BuildToolResult.success(
@@ -5255,6 +5404,7 @@ class BuildToolsDispatcher {
         'remaining': <String, dynamic>{
           'blocking': blocking,
           'advisory': advisory,
+          'unchecked': unchecked,
         },
         'steps': steps,
       }),
@@ -5387,46 +5537,56 @@ class BuildToolsDispatcher {
       'unusedState': 0,
       'deadTokens': 0,
     };
+    // A check that did not run is not a check that found nothing: every
+    // one that fails or returns an unreadable payload is listed here, and
+    // any entry keeps the verdict off `pass`.
+    final unchecked = <Map<String, dynamic>>[];
+    Map<String, dynamic>? readCheck(String check, BuildToolResult r) {
+      if (!r.success) {
+        unchecked.add(<String, dynamic>{'check': check, 'reason': r.message});
+        return null;
+      }
+      final p = r.payload;
+      if (p == null) {
+        unchecked.add(<String, dynamic>{
+          'check': check,
+          'reason': 'no payload',
+        });
+        return null;
+      }
+      try {
+        return jsonDecode(p) as Map<String, dynamic>;
+      } catch (e) {
+        unchecked.add(<String, dynamic>{
+          'check': check,
+          'reason': 'unreadable payload: $e',
+        });
+        return null;
+      }
+    }
 
     // 1. Spec + wiring validation.
-    final validation = await validateBundle();
-    if (validation.success) {
-      final p = validation.payload;
-      if (p != null) {
-        try {
-          final j = jsonDecode(p) as Map<String, dynamic>;
-          summary['specIssues'] = (j['specIssues'] as List?)?.length ?? 0;
-          summary['wiringIssues'] = (j['wiringIssues'] as List?)?.length ?? 0;
-          results['validation'] = j;
-        } catch (_) {}
-      }
+    final validation = readCheck('validation', await validateBundle());
+    if (validation != null) {
+      summary['specIssues'] = (validation['specIssues'] as List?)?.length ?? 0;
+      summary['wiringIssues'] =
+          (validation['wiringIssues'] as List?)?.length ?? 0;
+      results['validation'] = validation;
     }
 
     // 2. Accessibility audit (app scope).
-    final a11y = await a11yAudit();
-    if (a11y.success) {
-      final p = a11y.payload;
-      if (p != null) {
-        try {
-          final j = jsonDecode(p) as Map<String, dynamic>;
-          summary['a11yFails'] = (j['fails'] as int?) ?? 0;
-          summary['a11yWarns'] = (j['warns'] as int?) ?? 0;
-          results['a11y'] = j;
-        } catch (_) {}
-      }
+    final a11y = readCheck('a11y', await a11yAudit());
+    if (a11y != null) {
+      summary['a11yFails'] = (a11y['fails'] as int?) ?? 0;
+      summary['a11yWarns'] = (a11y['warns'] as int?) ?? 0;
+      results['a11y'] = a11y;
     }
 
     // 3. Asset registry audit (dry-run).
-    final assets = await assetAudit();
-    if (assets.success) {
-      final p = assets.payload;
-      if (p != null) {
-        try {
-          final j = jsonDecode(p) as Map<String, dynamic>;
-          summary['invalidAssets'] = (j['invalid'] as List?)?.length ?? 0;
-          results['assets'] = j;
-        } catch (_) {}
-      }
+    final assets = readCheck('assets', await assetAudit());
+    if (assets != null) {
+      summary['invalidAssets'] = (assets['invalid'] as List?)?.length ?? 0;
+      results['assets'] = assets;
     }
 
     // 4. Per-page state usage roll-up.
@@ -5437,23 +5597,18 @@ class BuildToolsDispatcher {
     if (pages is Map) {
       for (final entry in pages.entries) {
         final id = '${entry.key}';
-        final r = await stateUsage(pageId: id);
-        if (!r.success) continue;
-        final p = r.payload;
-        if (p == null) continue;
-        try {
-          final j = jsonDecode(p) as Map<String, dynamic>;
-          final undefined = (j['undefined'] as List?)?.length ?? 0;
-          final unused = (j['unused'] as List?)?.length ?? 0;
-          totalUndefined += undefined;
-          totalUnused += unused;
-          if (undefined > 0 || unused > 0) {
-            stateRollup[id] = <String, dynamic>{
-              'undefined': undefined,
-              'unused': unused,
-            };
-          }
-        } catch (_) {}
+        final j = readCheck('state:$id', await stateUsage(pageId: id));
+        if (j == null) continue;
+        final undefined = (j['undefined'] as List?)?.length ?? 0;
+        final unused = (j['unused'] as List?)?.length ?? 0;
+        totalUndefined += undefined;
+        totalUnused += unused;
+        if (undefined > 0 || unused > 0) {
+          stateRollup[id] = <String, dynamic>{
+            'undefined': undefined,
+            'unused': unused,
+          };
+        }
       }
     }
     summary['undefinedState'] = totalUndefined;
@@ -5504,15 +5659,23 @@ class BuildToolsDispatcher {
         (summary['a11yWarns'] ?? 0) +
         (summary['unusedState'] ?? 0) +
         (summary['deadTokens'] ?? 0);
-    final status = blocking > 0 ? 'fail' : (advisory > 0 ? 'warn' : 'pass');
+    final status =
+        blocking > 0
+            ? 'fail'
+            : unchecked.isNotEmpty
+            ? 'incomplete'
+            : (advisory > 0 ? 'warn' : 'pass');
     return BuildToolResult.success(
       message:
-          'health · $status · '
-          '${blocking > 0 ? '$blocking blocking · ' : ''}'
-          '${advisory > 0 ? '$advisory advisory' : 'all green'}',
+          'health · $status'
+          '${blocking > 0 ? ' · $blocking blocking' : ''}'
+          '${advisory > 0 ? ' · $advisory advisory' : ''}'
+          '${unchecked.isNotEmpty ? ' · ${unchecked.length} unchecked' : ''}'
+          '${status == 'pass' ? ' · all green' : ''}',
       payload: jsonEncode(<String, dynamic>{
         'status': status,
         'summary': summary,
+        'unchecked': unchecked,
         'details': results,
       }),
     );
@@ -8168,7 +8331,7 @@ Kinds set duration + curve on every animatedOpacity / animatedAlign
       'name': 'apply_layout_preset',
       'description':
           'Replace a page\'s `content` (and seed `state` when '
-          'relevant) with a verified mcp_ui DSL 1.3 layout '
+          'relevant) with a verified mcp_ui DSL 1.4 layout '
           'skeleton. Utility kinds: `hero` (display + subtitle '
           '+ CTA), `cardList` (3 placeholder cards), `form` '
           '(titled + 2 textfields + submit, state seeded), '

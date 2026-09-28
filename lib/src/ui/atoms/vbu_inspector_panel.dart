@@ -164,7 +164,7 @@ class _VariantStrip extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: variants.length,
-        separatorBuilder: (_, __) => const SizedBox(width: VbuTokens.space3),
+        separatorBuilder: (_, _) => const SizedBox(width: VbuTokens.space3),
         itemBuilder: (context, i) {
           final v = variants[i];
           final selected = v.id == activeId;

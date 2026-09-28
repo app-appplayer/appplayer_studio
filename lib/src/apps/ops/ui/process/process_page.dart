@@ -270,16 +270,35 @@ class _ProcessTile extends ConsumerWidget {
                   icon: const Icon(Icons.play_arrow, size: 16),
                   tooltip: 'Run',
                   onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    // Acknowledge the click at once; the run itself is started
+                    // in the background (`async: true`) because each agent
+                    // step is an LLM turn — a synchronous start held this
+                    // callback for minutes with nothing on screen. The board
+                    // picks the running card up on its next poll.
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Starting ${process.title}…'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
                     try {
-                      await opsCallTool(ref, 'process_start', <String, dynamic>{
-                        'id': process.id,
-                      });
+                      final r = await opsCallTool(
+                        ref,
+                        'process_start',
+                        <String, dynamic>{'id': process.id, 'async': true},
+                      );
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Run started · ${r['runId']} · ${r['state']}',
+                          ),
+                        ),
+                      );
                     } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Start failed: $e')),
-                        );
-                      }
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Start failed: $e')),
+                      );
                     }
                   },
                 ),

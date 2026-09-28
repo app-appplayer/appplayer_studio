@@ -4,9 +4,9 @@
 library file_action_executor;
 
 import 'dart:convert';
+import '../../platform/host_platform.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../actions/action_result.dart';
 import '../../renderer/render_context.dart';
@@ -88,7 +88,7 @@ class FileActionExecutor {
     RenderContext context,
   ) async {
     // Web platform doesn't support direct file reading
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       return ActionResult.error('File reading not supported on web platform');
     }
 
@@ -145,7 +145,7 @@ class FileActionExecutor {
     RenderContext context,
   ) async {
     // Web platform doesn't support direct file writing
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       return ActionResult.error('File writing not supported on web platform');
     }
 
@@ -248,7 +248,7 @@ class FileActionExecutor {
         return ActionResult.success(data: null);
       }
 
-      if (!kIsWeb) {
+      if (!HostPlatform.isWeb) {
         final file = File(result);
         final parent = file.parent;
         if (!await parent.exists()) {
@@ -286,7 +286,7 @@ class FileActionExecutor {
     Map<String, dynamic> action,
     RenderContext context,
   ) async {
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       return ActionResult.error('File listing not supported on web platform');
     }
 

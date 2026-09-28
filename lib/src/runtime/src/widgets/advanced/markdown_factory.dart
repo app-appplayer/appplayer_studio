@@ -14,9 +14,9 @@ class MarkdownWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Canonical key is `text` per spec §10.17 (matching text widget per
-    // 17_Naming §17.3.2); `content` is a legacy alias from v1.0 and is
-    // accepted per §18.2.10 (runtimes MUST accept registered aliases).
+    // Canonical key is `text` (matching the text widget);
+    // `content` is a legacy alias from v1.0 and is
+    // accepted (runtimes MUST accept registered aliases).
     final content =
         context.resolve<String?>(properties['text']) ??
             context.resolve<String?>(properties['content']) ??
@@ -32,8 +32,7 @@ class MarkdownWidgetFactory extends WidgetFactory {
     // primary slot; inline/code block background uses a soft onSurface
     // tint so it reads as a recess in both light and dark themes.
     final linkColor = parseColor(properties['linkColor'], context) ??
-        context.themeManager.getColorValue('primary') ??
-        Colors.blue;
+        context.themeManager.colorOr('primary', Colors.blue);
     final codeBackgroundColor =
         parseColor(properties['codeBackgroundColor'], context) ??
             (context.themeManager
@@ -228,13 +227,16 @@ class _MarkdownRenderer extends StatelessWidget {
   }
 
   Widget _buildHeader(String line, BuildContext buildContext) {
-    int level = 0;
-    while (level < line.length && line[level] == '#') {
-      level++;
+    int markers = 0;
+    while (markers < line.length && line[markers] == '#') {
+      markers++;
     }
-    level = level.clamp(1, 6);
+    final level = markers.clamp(1, 6);
 
-    final text = line.substring(level).trim();
+    // Strip every marker, not `level` of them: clamping the count and then
+    // slicing by it left the surplus hashes in the heading's own text, so
+    // `####### deep` rendered as "# deep".
+    final text = line.substring(markers).trim();
     final fontSizes = [24.0, 22.0, 20.0, 18.0, 16.0, 14.0];
     final headerFontSize = fontSizes[level - 1];
 

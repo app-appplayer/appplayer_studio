@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `combobox` (spec §2.6.26).
+/// Factory for `combobox`.
 ///
 /// The defining property is that a value outside `options` is legal — that is
 /// what separates it from `select`, where the option list is the domain.
@@ -17,7 +17,7 @@ class ComboboxFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final binding = stringOf(properties['binding'], context);
-    final options = context.resolve<List<dynamic>?>(properties['options']) ?? const [];
+    final options = listOf(properties['options'], context) ?? const [];
     final allowCustom = context.resolve<bool?>(properties['allowCustom']) ?? true;
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
     final label = context.resolve<String?>(properties['label']);
@@ -164,7 +164,13 @@ class _ComboboxFieldState extends State<_ComboboxField> {
         if (matches.isEmpty) return KeyEventResult.ignored;
         setState(() {
           _open = true;
-          _highlight = (_highlight - 1 + matches.length) % matches.length;
+          // From "nothing highlighted" (-1) the wrap has to land on the LAST
+          // match. The modular arithmetic alone lands on the second-to-last,
+          // which is the classic off-by-one of this control: pressing up on a
+          // fresh field skips an option nobody can see was skipped.
+          _highlight = _highlight <= 0
+              ? matches.length - 1
+              : _highlight - 1;
         });
         return KeyEventResult.handled;
       case 'Enter':

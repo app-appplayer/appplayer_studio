@@ -1,6 +1,6 @@
 import '../utils/mcp_logger.dart';
 
-/// Validation result per MCP UI DSL v1.1 spec (feat-runtime/17-validation.md §3.3)
+/// Validation result per MCP UI DSL v1.1 spec
 class ValidationResult {
   final bool isValid;
   final String? message;
@@ -51,7 +51,7 @@ enum ValidationRuleType {
   match,
   custom,
   async,
-  // Published by `07_Security.md` §7.2.1 and absent here until 1.4.1, so a
+  // Published rules, absent here until 1.4.1, so a
   // document declaring them parsed to nothing and the field validated
   // against an empty rule set.
   phone,
@@ -83,11 +83,11 @@ class ValidationEngine {
 
     final rules = <ValidationRule>[];
 
-    // Handle array format — §7.2.1 Shape B.
+    // Handle array format (shape B).
     if (validation is List) {
       for (final rule in validation) {
         if (rule is Map<String, dynamic>) {
-          // §7.2.1 names the key `rule`. This engine only ever read `type`,
+          // The key is named `rule`. This engine only ever read `type`,
           // so every array written to the published spec parsed to nothing —
           // silently, because the switch has no default and an empty rule
           // set validates everything. `type` stays accepted: it is what
@@ -210,15 +210,14 @@ class ValidationEngine {
               // being applied. Saying so is the difference between a typo
               // and a field that quietly accepts anything.
               _logger.warning(
-                  'validation: unknown rule "$type" — no constraint applied. '
-                  'See 07_Security.md §7.2.1 for the published set.');
+                  'validation: unknown rule "$type" — no constraint applied.');
           }
         }
       }
       return rules;
     }
 
-    // §7.2.1 Shape A — the constraint object. The section says runtimes MUST
+    // Shape A — the constraint object. Runtimes MUST
     // support both shapes; this branch used to log "legacy format" and return
     // nothing, so a sanitization-oriented block validated against no rules at
     // all. Each declared constraint becomes one rule, in the order the
@@ -259,8 +258,7 @@ class ValidationEngine {
         break;
       default:
         _logger.warning(
-            'validation: unknown kind "$kind" — no constraint applied. '
-            'See 07_Security.md §7.2.1 for the published set.');
+            'validation: unknown kind "$kind" — no constraint applied.');
     }
     final maxLength = validation['maxLength'];
     if (maxLength is num) {

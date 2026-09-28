@@ -12,6 +12,9 @@
 ///   p4 — changedPointers match the op paths from the patch.
 ///   p5 — multiple ops → all paths appear in changedPointers.
 ///   p6 — hash before/after populated from canonical.hash().
+///   p7 — an error the bundle already carried does not block an unrelated
+///        patch (only introduced errors reject).
+///   p8 — a patched result that no longer parses as a bundle is rejected.
 library;
 
 import 'dart:async';
@@ -51,7 +54,14 @@ class _StubCanonical implements WorkspaceCanonical {
   );
 
   @override
-  Map<String, dynamic> get currentJson => <String, dynamic>{};
+  Map<String, dynamic> get currentJson => <String, dynamic>{
+    'schemaVersion': '1.0.0',
+    'manifest': <String, dynamic>{
+      'id': 'test',
+      'name': 'Test Bundle',
+      'version': '0.1.0',
+    },
+  };
 
   @override
   Future<String> hash() async => _hash;
@@ -128,13 +138,21 @@ class _StubCanonical implements WorkspaceCanonical {
 }
 
 // ── stub SpecValidator ─────────────────────────────────────────────────
+// `issues` = what the validator sees on the patched result; `existing` =
+// what the bundle already carried before the patch (the pipeline subtracts
+// the second from the first — only introduced errors reject).
 class _StubValidator implements SpecValidator {
-  _StubValidator({List<ValidationIssue> issues = const []}) : _issues = issues;
+  _StubValidator({
+    List<ValidationIssue> issues = const [],
+    List<ValidationIssue> existing = const [],
+  }) : _issues = issues,
+       _existing = existing;
 
   final List<ValidationIssue> _issues;
+  final List<ValidationIssue> _existing;
 
   @override
-  List<ValidationIssue> validateFull(McpBundle bundle) => _issues;
+  List<ValidationIssue> validateFull(McpBundle bundle) => _existing;
 
   @override
   List<ValidationIssue> dryRun(McpBundle bundle, CanonicalPatch patch) =>
@@ -353,5 +371,66 @@ void main() {
         expect(result.afterHash, isNot(result.beforeHash));
       },
     );
+  });
+
+  group('p7 — pre-existing error does not block an unrelated patch', () {
+    test('same error before and after → PatchApplied', () async {
+      final canonical = _StubCanonical();
+      final pipe = PatchPipelineImpl(
+        canonical: canonical,
+        validator: _StubValidator(
+          issues: <ValidationIssue>[_error('E001')],
+          existing: <ValidationIssue>[_error('E001')],
+        ),
+      );
+      final result = await pipe.apply(_patch(<PatchOp>[_op('/ui/title')]));
+      expect(result, isA<PatchApplied>());
+      expect(canonical.applyCount, 1);
+    });
+
+    test('a second, new error still rejects', () async {
+      final pipe = PatchPipelineImpl(
+        canonical: _StubCanonical(),
+        validator: _StubValidator(
+          issues: <ValidationIssue>[_error('E001'), _error('E002')],
+          existing: <ValidationIssue>[_error('E001')],
+        ),
+      );
+      final result =
+          await pipe.apply(_patch(<PatchOp>[_op('/ui/title')]))
+              as PatchRejected;
+      expect(result.report.errors.map((e) => e.code), ['E002']);
+    });
+
+    test('warnings pass through untouched', () async {
+      final pipe = PatchPipelineImpl(
+        canonical: _StubCanonical(),
+        validator: _StubValidator(
+          issues: <ValidationIssue>[_warning('W1')],
+          existing: <ValidationIssue>[_warning('W1')],
+        ),
+      );
+      final result = await pipe.apply(_patch(<PatchOp>[_op('/ui/title')]));
+      expect(result, isA<PatchApplied>());
+    });
+  });
+
+  group('p8 — unparseable result is rejected', () {
+    test('replacing manifest with a scalar → bundle.unparseable', () async {
+      final canonical = _StubCanonical();
+      final pipe = PatchPipelineImpl(
+        canonical: canonical,
+        validator: _StubValidator(),
+      );
+      final result =
+          await pipe.apply(
+                _patch(<PatchOp>[
+                  PatchOp(op: 'replace', path: '/manifest', value: 'oops'),
+                ]),
+              )
+              as PatchRejected;
+      expect(result.report.errors.single.code, 'bundle.unparseable');
+      expect(canonical.applyCount, 0);
+    });
   });
 }

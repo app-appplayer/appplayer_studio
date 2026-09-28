@@ -112,25 +112,26 @@ class _PluginsBodyState extends State<_PluginsBody> {
     final c = VibeTokens.colorOf(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: c.surface2,
-        title: Text('Unregister · $id', style: _title(c)),
-        content: Text(
-          'Tear this plugin’s `$id.*` catalog entries down, close its '
-          'connection, and remove it from disk.',
-          style: _body(c),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: _body(c)),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: c.surface2,
+            title: Text('Unregister · $id', style: _title(c)),
+            content: Text(
+              'Tear this plugin’s `$id.*` catalog entries down, close its '
+              'connection, and remove it from disk.',
+              style: _body(c),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('Cancel', style: _body(c)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Unregister'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Unregister'),
-          ),
-        ],
-      ),
     );
     if (ok != true) return;
     await _call('plugin.unregister', <String, dynamic>{'id': id});
@@ -163,7 +164,10 @@ class _PluginsBodyState extends State<_PluginsBody> {
                 SizedBox(
                   width: 12,
                   height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: c.mint),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: c.mint,
+                  ),
                 ),
               const Spacer(),
               _ViewToggle(
@@ -230,21 +234,21 @@ class _PluginsBodyState extends State<_PluginsBody> {
     }
     return _view == _PluginView.list
         ? ListView.separated(
-            itemCount: list.length,
-            separatorBuilder: (_, __) =>
-                const SizedBox(height: VibeTokens.space2),
-            itemBuilder: (_, i) => _row(c, list[i]),
-          )
+          itemCount: list.length,
+          separatorBuilder:
+              (_, _) => const SizedBox(height: VibeTokens.space2),
+          itemBuilder: (_, i) => _row(c, list[i]),
+        )
         : GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 220,
-              mainAxisExtent: 132,
-              crossAxisSpacing: VibeTokens.space3,
-              mainAxisSpacing: VibeTokens.space3,
-            ),
-            itemCount: list.length,
-            itemBuilder: (_, i) => _tile(c, list[i]),
-          );
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 220,
+            mainAxisExtent: 132,
+            crossAxisSpacing: VibeTokens.space3,
+            mainAxisSpacing: VibeTokens.space3,
+          ),
+          itemCount: list.length,
+          itemBuilder: (_, i) => _tile(c, list[i]),
+        );
   }
 
   Widget _row(dynamic c, Map<String, dynamic> p) {
@@ -321,7 +325,12 @@ class _PluginsBodyState extends State<_PluginsBody> {
             ],
           ),
           const Spacer(),
-          Text(id, maxLines: 1, overflow: TextOverflow.ellipsis, style: _label(c)),
+          Text(
+            id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _label(c),
+          ),
           const SizedBox(height: 4),
           Row(
             children: <Widget>[
@@ -336,21 +345,21 @@ class _PluginsBodyState extends State<_PluginsBody> {
   }
 
   Widget _chip(dynamic c, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: c.bg,
-          borderRadius: BorderRadius.circular(VibeTokens.radiusSm),
-          border: Border.all(color: c.borderSubtle),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: VibeTokens.fontMono,
-            fontSize: 10,
-            color: c.textSecondary,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: c.bg,
+      borderRadius: BorderRadius.circular(VibeTokens.radiusSm),
+      border: Border.all(color: c.borderSubtle),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontFamily: VibeTokens.fontMono,
+        fontSize: 10,
+        color: c.textSecondary,
+      ),
+    ),
+  );
 
   static IconData _iconFor(String kind) {
     switch (kind) {
@@ -366,24 +375,24 @@ class _PluginsBodyState extends State<_PluginsBody> {
   }
 
   TextStyle _title(dynamic c) => TextStyle(
-        fontFamily: VibeTokens.fontMono,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-      );
+    fontFamily: VibeTokens.fontMono,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: c.textPrimary,
+  );
 
   TextStyle _label(dynamic c) => TextStyle(
-        fontFamily: VibeTokens.fontMono,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-      );
+    fontFamily: VibeTokens.fontMono,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: c.textPrimary,
+  );
 
   TextStyle _body(dynamic c) => TextStyle(
-        fontFamily: VibeTokens.fontMono,
-        fontSize: 11,
-        color: c.textSecondary,
-      );
+    fontFamily: VibeTokens.fontMono,
+    fontSize: 11,
+    color: c.textSecondary,
+  );
 }
 
 class _ViewToggle extends StatelessWidget {
@@ -437,7 +446,8 @@ class _RegisterDialog extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(
     String tool,
     Map<String, dynamic> params,
-  ) call;
+  )
+  call;
 
   @override
   State<_RegisterDialog> createState() => _RegisterDialogState();
@@ -468,9 +478,13 @@ class _RegisterDialogState extends State<_RegisterDialog> {
       return;
     }
     if (_endpoint.text.isEmpty) {
-      setState(() => _status = _isBundle
-          ? 'A bundle path (.mbd) is required.'
-          : 'An endpoint (URL / command) is required.');
+      setState(
+        () =>
+            _status =
+                _isBundle
+                    ? 'A bundle path (.mbd) is required.'
+                    : 'An endpoint (URL / command) is required.',
+      );
       return;
     }
     setState(() {
@@ -501,11 +515,11 @@ class _RegisterDialogState extends State<_RegisterDialog> {
   Widget build(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     InputDecoration dec(String label) => InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: c.textSecondary, fontSize: 12),
-          border: const OutlineInputBorder(),
-          isDense: true,
-        );
+      labelText: label,
+      labelStyle: TextStyle(color: c.textSecondary, fontSize: 12),
+      border: const OutlineInputBorder(),
+      isDense: true,
+    );
     return AlertDialog(
       backgroundColor: c.surface2,
       title: Text(
@@ -527,14 +541,26 @@ class _RegisterDialogState extends State<_RegisterDialog> {
               initialValue: _kind,
               decoration: dec('Kind'),
               items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem(value: 'server', child: Text('server — MCP server')),
-                DropdownMenuItem(value: 'hub', child: Text('hub — remote relay')),
-                DropdownMenuItem(value: 'bundle', child: Text('bundle — local .mbd')),
+                DropdownMenuItem(
+                  value: 'server',
+                  child: Text('server — MCP server'),
+                ),
+                DropdownMenuItem(
+                  value: 'hub',
+                  child: Text('hub — remote relay'),
+                ),
+                DropdownMenuItem(
+                  value: 'bundle',
+                  child: Text('bundle — local .mbd'),
+                ),
               ],
               onChanged: (v) => setState(() => _kind = v ?? 'server'),
             ),
             const SizedBox(height: VibeTokens.space3),
-            TextField(controller: _id, decoration: dec('Id (namespace — `<id>.<tool>`)')),
+            TextField(
+              controller: _id,
+              decoration: dec('Id (namespace — `<id>.<tool>`)'),
+            ),
             const SizedBox(height: VibeTokens.space3),
             TextField(controller: _name, decoration: dec('Name (optional)')),
             const SizedBox(height: VibeTokens.space3),
@@ -550,8 +576,8 @@ class _RegisterDialogState extends State<_RegisterDialog> {
                   DropdownMenuItem(value: 'sse', child: Text('sse')),
                   DropdownMenuItem(value: 'stdio', child: Text('stdio')),
                 ],
-                onChanged: (v) =>
-                    setState(() => _transport = v ?? 'streamableHttp'),
+                onChanged:
+                    (v) => setState(() => _transport = v ?? 'streamableHttp'),
               ),
               const SizedBox(height: VibeTokens.space3),
             ],
@@ -582,13 +608,14 @@ class _RegisterDialogState extends State<_RegisterDialog> {
         ),
         FilledButton(
           onPressed: _busy ? null : _submit,
-          child: _busy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Register'),
+          child:
+              _busy
+                  ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                  : const Text('Register'),
         ),
       ],
     );

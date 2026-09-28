@@ -288,21 +288,24 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       'required': <String>['app'],
     },
     handler: (args) async {
-      Map<String, dynamic> fail(String step, String error) =>
-          <String, dynamic>{'ok': false, 'step': step, 'error': error};
-      mk.KernelToolResult reply(Map<String, dynamic> body,
-              {bool isError = false}) =>
-          mk.KernelToolResult(
-            content: <mk.KernelContent>[
-              mk.KernelTextContent(text: jsonEncode(body)),
-            ],
-            isError: isError,
-          );
+      Map<String, dynamic> fail(String step, String error) => <String, dynamic>{
+        'ok': false,
+        'step': step,
+        'error': error,
+      };
+      mk.KernelToolResult reply(
+        Map<String, dynamic> body, {
+        bool isError = false,
+      }) => mk.KernelToolResult(
+        content: <mk.KernelContent>[
+          mk.KernelTextContent(text: jsonEncode(body)),
+        ],
+        isError: isError,
+      );
 
       final app = (args['app'] as String?) ?? '';
       if (app.isEmpty) {
-        return reply(fail('open', 'app (built-in id) required'),
-            isError: true);
+        return reply(fail('open', 'app (built-in id) required'), isError: true);
       }
       final open = bridge.openSeed;
       if (open == null) {
@@ -311,13 +314,16 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       if (!await open(app)) {
         return reply(fail('open', 'app "$app" not declared'), isError: true);
       }
+      // The registry flips to the new tab at once, but the tabs hand the
+      // project slot over on the next frame build — bind after that.
+      await bridge.settleTabSwitch?.call();
       final out = <String, dynamic>{'ok': true, 'opened': app};
 
       // The tab mounts / claims its slots on a frame build — wait for the
       // app's context (and its navigate hook) to come up instead of
       // racing it.
       Future<Future<bool> Function(String, {String? entityId})?>
-          awaitNavigate() async {
+      awaitNavigate() async {
         for (var i = 0; i < 40; i++) {
           final ctx = BuiltInAppRegistry.instance.activeContext;
           if (ctx != null &&
@@ -334,22 +340,32 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       if (project != null && project.isNotEmpty) {
         // The active built-in claims openProjectInActive; give it frames
         // to claim, then bind through its own validated handler.
-        var bound = false;
-        for (var i = 0; i < 40 && !bound; i++) {
+        Map<String, dynamic>? bindResult;
+        for (var i = 0; i < 40 && bindResult == null; i++) {
           final bind = bridge.openProjectInActive;
           if (bind != null &&
               BuiltInAppRegistry.instance.activeApp?.id == app) {
-            await bind(project);
-            bound = true;
+            bindResult = await bind(project);
           } else {
             await Future<void>.delayed(const Duration(milliseconds: 50));
           }
         }
-        if (!bound) {
-          return reply(
-            {...out, ...fail('project', 'project slot never came up')},
-            isError: true,
-          );
+        if (bindResult == null) {
+          return reply({
+            ...out,
+            ...fail('project', 'project slot never came up'),
+          }, isError: true);
+        }
+        // The built-in's own validation (marker check, …) decides — a
+        // refused bind is reported as the failed step, not as bound.
+        if (bindResult['ok'] != true) {
+          return reply({
+            ...out,
+            ...fail(
+              'project',
+              '${bindResult['error'] ?? bindResult['reason'] ?? 'project was not bound'}',
+            ),
+          }, isError: true);
         }
         out['projectBound'] = project;
       }
@@ -358,26 +374,27 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
       if (route != null && route.isNotEmpty) {
         final navigate = await awaitNavigate();
         if (navigate == null) {
-          return reply(
-            {
-              ...out,
-              ...fail('route',
-                  'app "$app" exposes no navigateProvider (not navigable)'),
-            },
-            isError: true,
-          );
+          return reply({
+            ...out,
+            ...fail(
+              'route',
+              'app "$app" exposes no navigateProvider (not navigable)',
+            ),
+          }, isError: true);
         }
-        final landed =
-            await navigate(route, entityId: args['entity'] as String?);
+        final landed = await navigate(
+          route,
+          entityId: args['entity'] as String?,
+        );
         if (!landed) {
-          return reply(
-            {
-              ...out,
-              ...fail('route', 'unknown route/entity: $route/'
-                  '${args['entity'] ?? ''}'),
-            },
-            isError: true,
-          );
+          return reply({
+            ...out,
+            ...fail(
+              'route',
+              'unknown route/entity: $route/'
+                  '${args['entity'] ?? ''}',
+            ),
+          }, isError: true);
         }
         out['landed'] = route;
         if (args['entity'] != null) out['entity'] = args['entity'];
@@ -579,6 +596,9 @@ void registerChromeTools(mk.KernelServerHost boot, ChromeBridge bridge) {
         );
       }
       final active = fn(idx);
+      // Answer after the tabs have handed their slots over, so a call that
+      // follows acts on the tab just selected.
+      if (active >= 0) await bridge.settleTabSwitch?.call();
       if (active < 0) {
         return mk.KernelToolResult(
           content: <mk.KernelContent>[

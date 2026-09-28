@@ -12,9 +12,7 @@ import 'package:mcp_bundle/mcp_bundle.dart';
 ///
 /// This helper performs NO shape translation on page content — the
 /// bundle is expected to store exactly what the runtime consumes.
-class BundlePageAdapter {
-  BundlePageAdapter._();
-
+abstract final class BundlePageAdapter {
   /// Convert UiSection pages to a routes map.
   ///
   /// Returns a `Map<String, String>` mapping route paths to resource

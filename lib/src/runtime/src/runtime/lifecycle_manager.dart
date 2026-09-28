@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../actions/dispatch_origin.dart';
 import '../utils/mcp_logger.dart';
 
 /// Enumeration of lifecycle events supported by the runtime
@@ -197,7 +198,8 @@ class LifecycleManager {
       return;
     }
     try {
-      await _actionHandler.execute(hook, _renderContext);
+      await DispatchOrigin.run(DispatchOrigin.lifecycle,
+          () => _actionHandler.execute(hook, _renderContext));
     } catch (e, stack) {
       _logger.error('Error executing lifecycle hook "$label"', e, stack);
     }

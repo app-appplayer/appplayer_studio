@@ -219,7 +219,10 @@ class OpsBuiltInApp extends BuiltInApp {
   /// project's entries before the next bind rebinds them.
   static void resetBootCache() {
     final prev = _bootFuture;
-    OpsLog.info('lifecycle', 'resetBootCache: disposing bound init (prev=${prev != null})');
+    OpsLog.info(
+      'lifecycle',
+      'resetBootCache: disposing bound init (prev=${prev != null})',
+    );
     _bootFuture = null;
     _bootedProject = null;
     // Explicit close → drop the published bound init so the next boot (and
@@ -276,9 +279,10 @@ class OpsBuiltInApp extends BuiltInApp {
       // agent subsystem can resolve a worker's model. Without it,
       // per-project `agent_ask` returns empty content on a keyless setup
       // (the project key pool has no `claude` provider).
-      sharedLlmProviders: backbone?.isFlowBrainBooted == true
-          ? backbone!.app.agentLlmSessions.providers
-          : null,
+      sharedLlmProviders:
+          backbone?.isFlowBrainBooted == true
+              ? backbone!.app.agentLlmSessions.providers
+              : null,
     );
     // Phase A.3 — merge Ops's LlmPort provider pool (multi-provider
     // mcp_llm — Anthropic / OpenAI / Gemini) into the KernelApp's
@@ -421,7 +425,7 @@ class OpsBuiltInApp extends BuiltInApp {
       // Run failures must NOT be swallowed into null. A null here is read as
       // "assignee is not a runnable agent", so a timeout / tool error / LLM
       // failure used to be reported as an assignee-resolution problem and sent
-      // operators chasing the id form (konpi 2026-07-21, 2026-07-28). Let the
+      // operators chasing the id form. Let the
       // real error propagate — `TaskRegistry.run` catches it and records the
       // actual cause in the run's `errorCode`.
       final reply = await init.system.agents.ask(m.agentId, request);
@@ -448,7 +452,7 @@ class OpsBuiltInApp extends BuiltInApp {
       // Resolve the target WITHIN the completion's workspace — a bare
       // `member.get` only scans already-loaded workspaces, so the target
       // silently misses when its department was never opened in this session
-      // (the live-integration gap konpi caught: subscription persisted +
+      // (a live-integration gap: subscription persisted +
       // event emitted, but wake no-op'd because `lead` sat in an unloaded
       // workspace). The event carries the workspace; hand it through.
       final ws = cause.workspaceId.isEmpty ? null : cause.workspaceId;
@@ -466,7 +470,7 @@ class OpsBuiltInApp extends BuiltInApp {
       //      coordinator is NOT in `init.system` at all, so it must be resolved
       //      and run through `AgentHost.shared.askAgent` — the same path the
       //      chat panel uses — so its report lands in the conversation the user
-      //      is watching. (The live gap konpi caught: a subscription targeting
+      //      is watching. (A live gap: a subscription targeting
       //      the coordinator matched, but wake no-op'd because `member.get`
       //      AND `init.system` both miss the host-owned coordinator.)
       if (m is AgentMember) {
@@ -478,19 +482,22 @@ class OpsBuiltInApp extends BuiltInApp {
         );
         await serializePerAgent(
           m.agentId,
-          () => ws == null
-              ? init.system.agents.ask(m.agentId, request)
-              : WorkspaceExecutionContext.run(
-                  ws,
-                  () => init.system.agents.ask(m.agentId, request),
-                ),
+          () =>
+              ws == null
+                  ? init.system.agents.ask(m.agentId, request)
+                  : WorkspaceExecutionContext.run(
+                    ws,
+                    () => init.system.agents.ask(m.agentId, request),
+                  ),
         );
         return;
       }
       if (m == null) {
         final host = AgentHost.shared;
         final coordinator =
-            host == null ? null : await host.flowbrain.system.agents.getAgent(targetAgentId);
+            host == null
+                ? null
+                : await host.flowbrain.system.agents.getAgent(targetAgentId);
         if (host != null && coordinator != null) {
           OpsLog.info(
             'trigger',
@@ -506,7 +513,7 @@ class OpsBuiltInApp extends BuiltInApp {
             // `askAgent` updated the coordinator's KERNEL conversation (its
             // working memory) but NOT the studio chat transcript the user's
             // panel renders — so the report was durable yet invisible in the
-            // open window (konpi's render-surface P0). Push the assistant
+            // open window. Push the assistant
             // report into the coordinator's studio chat so it renders live
             // AND persists for rehydrate.
             final text = reply.content.trim();
@@ -521,7 +528,7 @@ class OpsBuiltInApp extends BuiltInApp {
                 'trigger',
                 'coordinator $targetAgentId report ${delivered ? 'rendered + '
                         'persisted in its live chat panel' : 'kernel-only — no '
-                    'studio chat bound (headless / MCP-only)'}',
+                        'studio chat bound (headless / MCP-only)'}',
               );
             }
           });
@@ -531,17 +538,16 @@ class OpsBuiltInApp extends BuiltInApp {
       // Neither a runnable member nor a known coordinator → clean no-op.
       OpsLog.info(
         'trigger',
-        'wake $targetAgentId no-op — ${m == null ? 'no member or coordinator'
-            : 'not an agent (${m.kind.name})'} in ws=${ws ?? '(none)'}',
+        'wake $targetAgentId no-op — ${m == null ? 'no member or coordinator' : 'not an agent (${m.kind.name})'} in ws=${ws ?? '(none)'}',
       );
     };
     // R3 — surface a completion in the user's LIVE CHAT so a background result
     // shows up without polling. The chat panel is a HOST surface, NOT the ops
     // channel feed — pushing via `channel.send` (as this first did) only lands
-    // in the feed and never reaches the chat tab (the live-integration miss
-    // konpi caught). `chromeBridge.appendChatTurn` is the right hook (the same
-    // one `studio.agent.dispatch` uses to show its specialist chain inline): it
-    // appends a turn to whatever chat the user is on. Only OUT-OF-BAND kinds
+    // in the feed and never reaches the chat tab.
+    // `chromeBridge.appendChatTurn` is the right hook (the host's active-chat
+    // turn injection): it appends a turn to whatever chat the user is on.
+    // Only OUT-OF-BAND kinds
     // (task / step) are surfaced — a synchronous ask / route already returned
     // to its caller. Skip the echo only when we KNOW the completer is the
     // active agent (don't hard-skip on an empty activeChatAgentId — that is
@@ -569,7 +575,9 @@ class OpsBuiltInApp extends BuiltInApp {
       );
       if (active.isNotEmpty && active == event.sourceAgentId) return;
       final who =
-          event.sourceAgentId.isEmpty ? 'A background task' : event.sourceAgentId;
+          event.sourceAgentId.isEmpty
+              ? 'A background task'
+              : event.sourceAgentId;
       final verb = event.isBlocked ? 'was blocked on' : 'completed';
       final digest = (event.summary ?? '').trim();
       final tail = digest.isEmpty ? '' : ': $digest';

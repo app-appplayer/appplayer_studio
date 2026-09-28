@@ -69,6 +69,21 @@ class SceneProjectScope {
   }
 }
 
+/// Bring the Scene Builder tab to the front before a scene project is
+/// adopted. The adopt writes the ACTIVE tab's `currentProject` and calls its
+/// project slot — run from another tab, it stamped the scene folder onto
+/// that tab (App Builder / Form / Ops) instead. The tabs hand the slot over
+/// on the frame after the switch, so wait for it ([ChromeBridge.
+/// settleTabSwitch]). Returns false when the tab cannot be focused.
+Future<bool> _focusSceneTab(ChromeBridge bridge) async {
+  const sceneApp = 'scene_builder';
+  if (BuiltInAppRegistry.instance.activeApp?.id == sceneApp) return true;
+  final open = bridge.openSeed;
+  if (open == null || !await open(sceneApp)) return false;
+  await bridge.settleTabSwitch?.call();
+  return BuiltInAppRegistry.instance.activeApp?.id == sceneApp;
+}
+
 /// Scaffold + adopt a new scene project at `<parent>/<slug(name)>` — the
 /// scene-shaped layout (`scene.json` + scenarios/recordings/branding/assets),
 /// then set it active (process-global scope + host chat re-key + scoped
@@ -97,6 +112,12 @@ Future<Map<String, dynamic>> createSceneProjectAt({
     return <String, dynamic>{
       'ok': false,
       'error': 'project already exists at $root',
+    };
+  }
+  if (!await _focusSceneTab(bridge)) {
+    return <String, dynamic>{
+      'ok': false,
+      'error': 'the Scene Builder tab could not be opened',
     };
   }
   try {
@@ -244,6 +265,9 @@ void registerSceneProjectTools(
       final meta = File(p.join(path, 'scene.json'));
       if (!await meta.exists()) {
         return _err('not a scene project (missing scene.json): $path');
+      }
+      if (!await _focusSceneTab(bridge)) {
+        return _err('the Scene Builder tab could not be opened');
       }
       // Source of truth = the process-global scope; bridge adopt is best-effort.
       SceneProjectScope.activePath = path;

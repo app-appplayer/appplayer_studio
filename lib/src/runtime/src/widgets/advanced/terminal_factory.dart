@@ -3,6 +3,7 @@
 /// Provides a terminal-like display with command history.
 library terminal_factory;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
@@ -16,7 +17,7 @@ class TerminalWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final lines =
-        context.resolve<List<dynamic>?>(properties['lines']) ?? [];
+        listOf(properties['lines'], context) ?? [];
     final prompt = stringOf(properties['prompt'], context) ?? '\$ ';
     final showInput = boolOf(properties['showInput'], context) ?? true;
     final width = (dimensionOf(properties['width'], context))?.toDouble();
@@ -109,9 +110,43 @@ class _TerminalState extends State<_Terminal> {
   @override
   void initState() {
     super.initState();
-    _lines = List.from(widget.lines);
+    // Trimmed here too, not only on update: `maxLines` is a cap on what the
+    // widget holds, and a terminal handed a long history at mount used to
+    // show all of it and only start obeying the cap once a line arrived.
+    _lines = List<String>.from(widget.lines);
+    if (_lines.length > widget.maxLines) {
+      _lines.removeRange(0, _lines.length - widget.maxLines);
+    }
     _inputController = TextEditingController();
     _scrollController = ScrollController();
+  }
+
+  /// Output that arrives after the first frame is still shown.
+  ///
+  /// `lines` is bound to state in every document that streams output — a build
+  /// log, a device console, a shell session — and the state is filled by a
+  /// tool response or a channel, which is to say AFTER the terminal is on
+  /// screen. The list was copied once in `initState` and never read again, so
+  /// the widget showed whatever happened to be there at mount and nothing
+  /// after it: a console that goes quiet the moment it matters, with nothing
+  /// said. (`addLine` beside it was the imperative half of this, and nothing
+  /// could reach it — a private state on a private widget with no key handed
+  /// out.)
+  ///
+  /// A rebuild carrying the SAME lines leaves the view alone, so a command the
+  /// user typed keeps its local echo until the document's own state catches
+  /// up.
+  @override
+  void didUpdateWidget(covariant _Terminal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.lines, widget.lines)) {
+      setState(() {
+        _lines = List<String>.from(widget.lines);
+        if (_lines.length > widget.maxLines) {
+          _lines.removeRange(0, _lines.length - widget.maxLines);
+        }
+      });
+    }
   }
 
   @override
@@ -157,16 +192,6 @@ class _TerminalState extends State<_Terminal> {
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
         );
-      }
-    });
-  }
-
-  /// Add output line to terminal
-  void addLine(String line) {
-    setState(() {
-      _lines.add(line);
-      if (_lines.length > widget.maxLines) {
-        _lines.removeRange(0, _lines.length - widget.maxLines);
       }
     });
   }

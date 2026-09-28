@@ -6,6 +6,7 @@ import '../capabilities/media_registry.dart';
 import '../capabilities/runtime_capabilities.dart';
 import '../binding/binding_engine.dart';
 import '../actions/action_handler.dart';
+import '../form_factor/form_factor.dart';
 import '../state/state_manager.dart';
 import '../theme/theme_manager.dart';
 import '../i18n/i18n_manager.dart';
@@ -89,11 +90,11 @@ class RenderContext {
   }
 
   /// Resolves a qualified `DefinitionSource` for the `view` widget
-  /// (spec §1.9, §6.11, Composition Profile). Registered by the host via
+  /// (Composition Profile). Registered by the host via
   /// `MCPUIRuntime.registerDefinitionResolver`; `null` until a host wires one,
   /// which is how a runtime declares it does NOT implement the Composition
   /// Profile — `view` then fails closed instead of resolving a foreign `$ref`
-  /// against this runtime's own origin (§18.7.3).
+  /// against this runtime's own origin.
   ///
   /// Falls back to the [renderer]'s resolver when this context was built
   /// without one.
@@ -118,7 +119,7 @@ class RenderContext {
   Future<Map<String, dynamic>> Function(String ref, Map<String, dynamic> origin)?
       _definitionResolver;
 
-  /// The MCP origin this subtree runs against (spec §1.9.5, §2.13.1, §7.10).
+  /// The MCP origin this subtree runs against.
   ///
   /// Set when a `view` resolves a source that names an origin, and inherited by
   /// every descendant context. Null means the app's own origin.
@@ -153,7 +154,7 @@ class RenderContext {
       get originResourceReader => renderer.originResourceReader;
 
   /// Create the isolated scope an embedded definition renders in
-  /// (spec §6.11.3, §7.10.1).
+  /// (own state and storage; never more permissions than its embedder).
   ///
   /// The embedded definition gets its own state tree — it never reads or writes
   /// the embedder's application-, page-, or widget-scope state. [props] is the
@@ -206,7 +207,7 @@ class RenderContext {
     // factories that accept a per-form-factor override map call it
     // explicitly. Auto-detection here is unsafe because configuration
     // maps that happen to be keyed by FormFactor labels (notably
-    // `theme.breakpoints: {compact: 0, medium: 600, …}` per § 14.1.2)
+    // `theme.breakpoints: {compact: 0, medium: 600, …}`)
     // would otherwise be hijacked and collapsed to a single value.
 
     // Handle different value types
@@ -278,9 +279,9 @@ class RenderContext {
       _logger.debug('getState app.$globalPath: $result');
       return result;
     } else if (path.startsWith('page.') || path.startsWith('state.')) {
-      // §3.5 / §17.2.5 — `page.` is the EXPLICIT ALIAS of the bare resolution
+      // `page.` is the EXPLICIT ALIAS of the bare resolution
       // target (v1.0), and `state.` is its synonym in the prefix catalogue;
-      // §16.1.1 writes `{{state.isActive ? 1.0 : 0.3}}` as its own example.
+      // `{{state.isActive ? 1.0 : 0.3}}` is a documented example of it.
       // Neither branch existed, so the store was asked for a key literally
       // called `page.count`, and every document written in the explicit form
       // read null — the widget then drew its default and said nothing.
@@ -298,7 +299,7 @@ class RenderContext {
 
   /// Set a value in state (handles local.* and app.* prefixes per v1.0 spec).
   ///
-  /// [source] tags the resulting [StateChangeEvent] per spec §3.11.
+  /// [source] tags the resulting [StateChangeEvent].
   /// Callers that originate from a `state` action should pass `'action'`;
   /// the default `null` causes the underlying [StateManager.set] to leave
   /// the source unset (treated as `system` downstream).
@@ -315,7 +316,7 @@ class RenderContext {
       stateManager.set(globalPath, value, source: source);
       _logger.debug('setState app.$globalPath: $value');
     } else if (path.startsWith('page.') || path.startsWith('state.')) {
-      // §3.5 / §17.2.5 — read-write, and the same target as the bare form.
+      // Read-write, and the same target as the bare form.
       final scopedPath = path.substring(path.indexOf('.') + 1);
       stateManager.set(scopedPath, value, source: source);
       _logger.debug('setState $path: $value');
@@ -397,7 +398,7 @@ class RenderContext {
 
   /// Set a value in state (alias for setState).
   ///
-  /// [source] forwards to [setState] for spec §3.11 source tagging.
+  /// [source] forwards to [setState] for source tagging.
   void setValue(String path, dynamic value, {String? source}) {
     setState(path, value, source: source);
   }
@@ -541,7 +542,7 @@ class RenderContext {
     return null;
   }
 
-  /// Asset resolution for every slot typed `AssetRef` (spec §6.12).
+  /// Asset resolution for every slot typed `AssetRef`.
   ///
   /// Read from the engine so a host wires it once. Falls back to
   /// [AssetResolver.builtin], which resolves the forms needing no injected
@@ -561,7 +562,7 @@ class RenderContext {
     return AssetResolver.builtin;
   }
 
-  /// Behaviours the host wired (spec §6.13). Same shape as [assetResolver]:
+  /// Behaviours the host wired. Same shape as [assetResolver]:
   /// read from the engine, and a host that wired nothing gets
   /// [RuntimeCapabilities.none] — every affected widget then reports the
   /// capability absent instead of drawing something that looks like it works.
@@ -575,7 +576,7 @@ class RenderContext {
     return RuntimeCapabilities.none;
   }
 
-  /// Mounted media players (§4.9b). Same read path as [capabilities].
+  /// Mounted media players. Same read path as [capabilities].
   MediaRegistry? get mediaRegistry {
     try {
       final fromEngine = engine?.mediaRegistry;
@@ -589,7 +590,7 @@ class RenderContext {
   /// Resolves a raw DSL value to an [ImageProvider], or `null` when the value
   /// is absent, malformed, or names a form this runtime does not support.
   ///
-  /// Bindings resolve **before** scheme dispatch (§6.12.2): a slot that
+  /// Bindings resolve **before** scheme dispatch: a slot that
   /// dispatches on the literal `"{{item.picture}}"` finds no scheme and fails
   /// on a document that is correct.
   ImageProvider? resolveAssetImage(dynamic raw) {
@@ -607,7 +608,7 @@ class RenderContext {
   Function(String)? get onResourceUnsubscribe =>
       engine?.onResourceUnsubscribe as Function(String)?;
 
-  /// Optional host-supplied callback for the spec §4.5 `read` sub-action.
+  /// Optional host-supplied callback for the resource `read` sub-action.
   /// Hosts that want `read` to behave as a true one-shot fetch — rather
   /// than re-using `subscribe` semantics — register this callback. It
   /// returns the resource payload directly; the runtime stores it at the
@@ -615,7 +616,7 @@ class RenderContext {
   Function(String uri, String binding)? get onResourceRead =>
       engine?.onResourceRead as Function(String, String)?;
 
-  /// Optional host-supplied callback for the spec §4.5 `list` sub-action.
+  /// Optional host-supplied callback for the resource `list` sub-action.
   /// Hosts that want `list` to behave as a true directory query — rather
   /// than re-using `subscribe` semantics — register this callback. It
   /// returns a list of resource descriptors; the runtime stores the list
@@ -724,12 +725,15 @@ class RenderContext {
     return null;
   }
 
-  String _formFactorKey(BuildContext context) {
-    final width = MediaQuery.maybeSizeOf(context)?.width ?? 0;
-    if (width < 600) return 'compact';
-    if (width < 840) return 'medium';
-    if (width < 1200) return 'expanded';
-    if (width < 1600) return 'large';
-    return 'extraLarge';
-  }
+  /// The form-factor label a responsive map is picked by.
+  ///
+  /// Through [FormFactor.of], which is the same answer the widgets use — so a
+  /// `FormFactorScope` counts here too. Reading `MediaQuery` directly (what
+  /// this used to do) meant the two disagreed: a host that pinned a view mode,
+  /// or a player that flags `embedded`, changed how the widgets laid out while
+  /// every `{compact: …, expanded: …}` value in the document went on being
+  /// picked by the physical window width. `embedded` in particular could never
+  /// be picked at all, because width alone never says it.
+  String _formFactorKey(BuildContext context) =>
+      FormFactor.of(context).name;
 }

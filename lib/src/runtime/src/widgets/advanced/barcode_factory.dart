@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 import 'barcode_encoder.dart';
 
-/// Factory for `barcode` (spec §10.24).
+/// Factory for `barcode`.
 class BarcodeFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {

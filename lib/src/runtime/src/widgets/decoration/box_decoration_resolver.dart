@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Shared resolver for the spec § 1.3 `BoxDecoration` primitive
+/// Shared resolver for the `BoxDecoration` primitive
 /// declared in `configs/widget/BoxDecoration.yaml`. Both the `box`
 /// widget (`container_factory.dart`) and the `decoration` widget
 /// (`decoration_factory.dart`) build their `BoxDecoration` through
@@ -26,7 +26,7 @@ class BoxDecorationResolver {
   ///    `borderRadius`, `boxShadow`, `shape`).
   ///
   /// Flat keys override matching `decoration.<field>` entries when
-  /// both forms are present (spec § decoration widget docs).
+  /// both forms are present.
   static BoxDecoration? resolve(
     Map<String, dynamic> properties,
     RenderContext context, {
@@ -257,7 +257,7 @@ class BoxDecorationResolver {
   ) {
     if (value is! Map) return null;
     final src = value['image'] ?? value['src'];
-    // §6.12.2 — resolve the binding before dispatching on scheme. This
+    // Resolve the binding before dispatching on scheme. This
     // function took `context` and used it for every field except this one, so
     // `{{item.picture}}` reached the loader as a literal and no scheme
     // matched: the box rendered with its color and without its image, on a

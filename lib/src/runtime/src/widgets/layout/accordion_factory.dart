@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
-/// Factory for `accordion` (spec §2.4.22). Alias: `collapsible`.
+/// Factory for `accordion`. Alias: `collapsible`.
 ///
 /// Composing this from `conditional` + `inkWell` renders correctly and loses
 /// two things the author cannot add back: the expand/collapse transition, and
@@ -18,7 +18,7 @@ class AccordionFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final panels =
-        context.resolve<List<dynamic>?>(properties['panels']) ?? const [];
+        listOf(properties['panels'], context) ?? const [];
     final allowMultiple =
         context.resolve<bool?>(properties['allowMultiple']) ?? false;
     final bordered = context.resolve<bool?>(properties['bordered']) ?? true;

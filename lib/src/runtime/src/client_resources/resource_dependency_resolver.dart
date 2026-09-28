@@ -3,7 +3,7 @@
 /// Resolves resource load order based on `dependsOn` declarations,
 /// detects circular dependencies at parse time, and ensures dependent
 /// resources receive resolved data from their dependencies before loading.
-/// (spec §Resource Dependencies)
+///
 library resource_dependency_resolver;
 
 import 'client_resource_resolver.dart';
@@ -96,7 +96,7 @@ class ResourceDependencyResolver {
   ///
   /// Resources with no dependencies load in parallel first. Dependent
   /// resources wait for all their dependencies to reach ready state before
-  /// loading (spec §Resource Dependencies rule 2).
+  /// loading.
   Future<DependencyResolveResult> resolve(
     List<ResourceDeclaration> declarations,
   ) async {

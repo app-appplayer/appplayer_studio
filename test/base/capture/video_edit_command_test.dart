@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:appplayer_studio/src/base/capture/recorder/h264_encoder.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/video_edit_service.dart';
 
 void main() {
@@ -17,7 +18,7 @@ void main() {
       expect(cmd, contains('-i "/v/in.mp4"'));
       expect(cmd, contains('-ss 1.500'));
       expect(cmd, contains('-to 4.250'));
-      expect(cmd, contains('-c:v libx264'));
+      expect(cmd, contains('-c:v ${h264EncoderFor()}'));
       expect(cmd, contains('-pix_fmt yuv420p'));
       expect(cmd, contains('-c:a aac'));
       expect(cmd, contains('"/v/out.mp4"'));
@@ -40,7 +41,7 @@ void main() {
         output: '/v/out.mp4',
         crf: 20,
       );
-      expect(cmd, contains('-crf 20'));
+      expect(cmd, contains(h264VideoArgs(crf: 20)));
     });
   });
 
@@ -80,6 +81,7 @@ void main() {
       );
       expect(cmd, contains('-c:v libvpx-vp9'));
       expect(cmd, contains('-crf 32 -b:v 0'));
+      expect(cmd, contains('-c:v libvpx-vp9 -pix_fmt yuv420p'));
       expect(cmd, contains('-c:a libopus'));
       expect(cmd, contains('"/v/o.webm"'));
     });
@@ -108,13 +110,13 @@ void main() {
       expect(cmd, contains('scale=480:-1'));
     });
 
-    test('mp4 (default) → libx264 + aac', () {
+    test('mp4 (default) → platform H.264 + aac', () {
       final cmd = buildConvertCommand(
         input: '/v/in.webm',
         output: '/v/o.mp4',
         format: 'mp4',
       );
-      expect(cmd, contains('-c:v libx264'));
+      expect(cmd, contains('-c:v ${h264EncoderFor()}'));
       expect(cmd, contains('-c:a aac'));
     });
   });

@@ -1,10 +1,11 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:appplayer_core/appplayer_core.dart' show OpenSourceLicenses;
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/ui.dart';
 
 import '../chat/model_option.dart';
 import '../shell/app_theme.dart';
-import '../shell/inspect_tag.dart';
+import '../../ui/inspect_tag.dart';
 import '../shell/tokens.dart';
 import 'vibe_settings.dart';
 
@@ -72,6 +73,8 @@ Future<VibeSettings?> showVibeSettingsDialog(
   uninstallKnowledgeBundle,
   List<SettingsSection> extraSections = const <SettingsSection>[],
   DomainSettingsPanel? domain,
+  String appName = 'AppPlayer Studio',
+  int mcpPort = 7830,
 }) {
   return showDialog<VibeSettings?>(
     context: context,
@@ -85,6 +88,8 @@ Future<VibeSettings?> showVibeSettingsDialog(
           uninstallKnowledgeBundle: uninstallKnowledgeBundle,
           extraSections: extraSections,
           domain: domain,
+          appName: appName,
+          mcpPort: mcpPort,
         ),
   );
 }
@@ -101,6 +106,8 @@ class _SettingsDialog extends StatefulWidget {
     this.uninstallKnowledgeBundle,
     this.extraSections = const <SettingsSection>[],
     this.domain,
+    this.appName = 'AppPlayer Studio',
+    this.mcpPort = 7830,
   });
   final VibeSettings initial;
   final List<VibeModelOption> modelOptions;
@@ -112,6 +119,13 @@ class _SettingsDialog extends StatefulWidget {
   uninstallKnowledgeBundle;
   final List<SettingsSection> extraSections;
   final DomainSettingsPanel? domain;
+
+  /// Shown on the license page (Settings → About).
+  final String appName;
+
+  /// The port this instance's MCP server listens on — the URL field's hint
+  /// shows it (a debug instance does not listen on the release port).
+  final int mcpPort;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -255,27 +269,29 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     // silently wipe every non-dialog key on Save (recents, last project,
     // chromiumPath/serverShellPath, browser*, discovery config, ...) —
     // settings.json is one file, so the result must round-trip the rest.
-    final updated = VibeSettings.fromJson(widget.initial.toJson())
-      ..workspaceDir =
-          (_workspaceDir == null || _workspaceDir!.isEmpty)
-              ? null
-              : _workspaceDir
-      ..mcpServerUrl = _mcpUrl.text.trim().isEmpty ? null : _mcpUrl.text.trim()
-      ..mcpTransport = _mcpTransport
-      ..llmApiKey = legacyKey
-      ..llmModel = _llmModel
-      ..llmEndpoint =
-          _llmEndpoint.text.trim().isEmpty ? null : _llmEndpoint.text.trim()
-      ..autosaveDelaySec = _autosaveDelaySec
-      ..themeMode = _themeMode
-      ..debugMode = _debugMode
-      ..discoveryUsb = _discoveryUsb
-      ..discoveryMdns = _discoveryMdns
-      ..discoveryBle = _discoveryBle
-      ..discoveryDirectory = _discoveryDirectory
-      ..discoveryAutoConnect = _discoveryAutoConnect
-      ..discoveryEnforceSignature = _discoveryEnforceSignature
-      ..discoveryDirectoryConfig = _directoryConfigJson();
+    final updated =
+        VibeSettings.fromJson(widget.initial.toJson())
+          ..workspaceDir =
+              (_workspaceDir == null || _workspaceDir!.isEmpty)
+                  ? null
+                  : _workspaceDir
+          ..mcpServerUrl =
+              _mcpUrl.text.trim().isEmpty ? null : _mcpUrl.text.trim()
+          ..mcpTransport = _mcpTransport
+          ..llmApiKey = legacyKey
+          ..llmModel = _llmModel
+          ..llmEndpoint =
+              _llmEndpoint.text.trim().isEmpty ? null : _llmEndpoint.text.trim()
+          ..autosaveDelaySec = _autosaveDelaySec
+          ..themeMode = _themeMode
+          ..debugMode = _debugMode
+          ..discoveryUsb = _discoveryUsb
+          ..discoveryMdns = _discoveryMdns
+          ..discoveryBle = _discoveryBle
+          ..discoveryDirectory = _discoveryDirectory
+          ..discoveryAutoConnect = _discoveryAutoConnect
+          ..discoveryEnforceSignature = _discoveryEnforceSignature
+          ..discoveryDirectoryConfig = _directoryConfigJson();
     updated.llmProviders
       ..clear()
       ..addAll(providersMap);
@@ -499,7 +515,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             VbuLabelledField(
               label: 'URL',
               controller: _mcpUrl,
-              hint: 'http://localhost:7830 — restart required',
+              hint: 'http://localhost:${widget.mcpPort} — restart required',
             ),
             VbuLabelledMenu<String>(
               label: 'Transport',
@@ -649,6 +665,28 @@ class _SettingsDialogState extends State<_SettingsDialog> {
           const SizedBox(height: VibeTokens.space3),
           VbuFormSection(label: s.label, children: <Widget>[s.body]),
         ],
+        // Always last, in every tier: the one place the app lists the
+        // licenses of everything it ships (Dart packages, native libraries,
+        // bundled fonts — see third_party_licenses.dart).
+        const SizedBox(height: VibeTokens.space3),
+        VbuFormSection(
+          label: 'About',
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('settings.openSourceLicenses'),
+                icon: const Icon(Icons.description_outlined, size: 16),
+                label: const Text('Open-source licenses'),
+                onPressed:
+                    () => OpenSourceLicenses.open(
+                      context,
+                      appName: widget.appName,
+                    ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

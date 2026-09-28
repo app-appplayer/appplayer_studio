@@ -433,7 +433,7 @@ class _RecordingsViewState extends State<RecordingsView> {
         vertical: VbuTokens.space2,
       ),
       itemCount: _entries.length,
-      separatorBuilder: (_, __) => const SizedBox(height: VbuTokens.space2),
+      separatorBuilder: (_, _) => const SizedBox(height: VbuTokens.space2),
       itemBuilder: (_, i) => _row(_entries[i]),
     );
   }

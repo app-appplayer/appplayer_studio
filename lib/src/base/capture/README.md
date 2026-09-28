@@ -87,13 +87,13 @@ video files — distinct from `EncoderService` (PNG seq → mp4). Surfaced as
 - **probe** — `FFprobeKit` duration (seconds) — sizes the editor's trim
   handles.
 - **trim** — `[startSec, endSec]`, frame-accurate (output-side `-ss`/`-to`,
-  re-encode to libx264/yuv420p). `endSec` omitted = clip end.
+  re-encode to H.264/yuv420p). `endSec` omitted = clip end.
 - **concat** — joins clips in order via the concat demuxer,
   stream-copy. Clips must share codec/resolution/fps (studio recordings +
   clips trimmed here do).
 - **convert** — web-friendly export for homepage demos: `webm`(VP9+Opus,
   autoplay-loop), animated `webp`(libwebp, looped), `gif`(palettegen/
-  paletteuse for clean colors), or `mp4`(libx264). `fps`/`width` trim
+  paletteuse for clean colors), or `mp4`(H.264). `fps`/`width` trim
   weight; gif/webp drop audio. Homepage demos prefer these over raw mp4.
 
 Pure command builders (`buildTrimCommand` / `buildConcatCommand` /

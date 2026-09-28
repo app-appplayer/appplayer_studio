@@ -39,6 +39,17 @@ class _ConfigurableFlowDelegate extends FlowDelegate {
     required this.alignment,
   });
 
+  /// Children size themselves; the flow only places them.
+  ///
+  /// Without this they inherit the Flow's own constraints — TIGHT whenever
+  /// the flow sits in a sized box, which is the ordinary case. Every child
+  /// was then forced to the full size of the flow, so the first one filled it
+  /// and every other one was placed off the bottom edge: a tag list that
+  /// showed one enormous tag and nothing else, with no error to say why.
+  @override
+  BoxConstraints getConstraintsForChild(int i, BoxConstraints constraints) =>
+      constraints.loosen();
+
   @override
   void paintChildren(FlowPaintingContext context) {
     double x = 0;

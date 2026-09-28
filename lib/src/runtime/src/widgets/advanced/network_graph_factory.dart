@@ -11,9 +11,9 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final nodes = context.resolve<List<dynamic>?>(properties['nodes'] ?? []) ??
+    final nodes = listOf(properties['nodes'] ?? [], context) ??
         [];
-    final edges = context.resolve<List<dynamic>?>(properties['edges'] ?? []) ??
+    final edges = listOf(properties['edges'] ?? [], context) ??
         [];
     final width = parseDimension(context.resolve((properties['width'])));
     final height = parseDimension(context.resolve((properties['height']))) ?? 400.0;
@@ -24,26 +24,30 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
     // still get a graph that's readable in dark mode.
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context) ??
-            context.themeManager.getColorValue('surface') ??
-            Colors.white;
+            context.themeManager.colorOr('surface', Colors.white);
     final nodeColor =
         parseColor(context.resolve(properties['nodeColor']), context) ??
-            context.themeManager.getColorValue('primary') ??
-            Colors.blue;
+            context.themeManager.colorOr('primary', Colors.blue);
     final edgeColor =
         parseColor(context.resolve(properties['edgeColor']), context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey.shade400;
+            context.themeManager.colorOr('outlineVariant', Colors.grey.shade400);
     final labelColor =
         parseColor(context.resolve(properties['labelColor']), context) ??
-            context.themeManager.getColorValue('onSurface') ??
-            Colors.black87;
+            context.themeManager.colorOr('onSurface', Colors.black87);
 
     final onNodeTap = actionOf(properties['onNodeTap'], context);
     final onEdgeTap = actionOf(properties['onEdgeTap'], context);
 
+    // The documented example declares `directed` on the GRAPH, not on each
+    // edge — "topology-oriented defaults (hierarchical layout, directed
+    // edges)". Only the per-edge spelling was read, so the documented form
+    // drew every edge as a plain line: a dependency graph that shows what is
+    // connected but not which way anything points, with nothing said.
+    final directedByDefault =
+        context.resolve<bool>(properties['directed'] ?? false);
+
     final parsedNodes = _parseNodes(nodes);
-    final parsedEdges = _parseEdges(edges);
+    final parsedEdges = _parseEdges(edges, directedByDefault);
 
     Widget graph = _NetworkGraphWidget(
       nodes: parsedNodes,
@@ -82,10 +86,10 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
     }).toList();
   }
 
-  List<_GraphEdge> _parseEdges(List<dynamic> edges) {
+  List<_GraphEdge> _parseEdges(List<dynamic> edges, bool directedByDefault) {
     return edges.whereType<Map>().map((e) {
       return _GraphEdge(
-        // Spec §10.13 spells an edge `{from, to}`. This read `source`/`target`
+        // An edge is spelled `{from, to}`. This read `source`/`target`
         // and nothing else, so a graph written the documented way drew its
         // nodes and not one edge between them — with no error to say so.
         // The older spelling is still accepted.
@@ -94,7 +98,7 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
         label: e['label']?.toString(),
         weight: (e['weight'] as num?)?.toDouble() ?? 1.0,
         color: e['color']?.toString(),
-        directed: e['directed'] as bool? ?? false,
+        directed: e['directed'] as bool? ?? directedByDefault,
       );
     }).toList();
   }
@@ -498,17 +502,28 @@ class _NetworkGraphPainter extends CustomPainter {
           // Draw arrowhead
           final dx = target.x! - source.x!;
           final dy = target.y! - source.y!;
-          final len = (dx * dx + dy * dy);
+          // The SQUARE of the length, used below as if it were the length:
+          // `dx / len * 10` then has magnitude 10/|d| rather than 10, so the
+          // arrowhead shrank as the edge grew — sub-pixel for any edge longer
+          // than ten logical pixels, which is every real edge. The direction
+          // was computed, painted, and invisible.
+          final len = math.sqrt(dx * dx + dy * dy);
           if (len > 0) {
             final ndx = dx / len * 10;
             final ndy = dy / len * 10;
+            // The tip sits on the target node's RIM, not at its centre. Nodes
+            // are painted after the edges, so an arrowhead at the centre was
+            // drawn and then covered by the very node it points at — every
+            // directed graph rendered as an undirected one.
+            final tipX = target.x! - dx / len * (target.size / 2);
+            final tipY = target.y! - dy / len * (target.size / 2);
             final arrowPaint = Paint()
               ..color = edgeColor
               ..style = PaintingStyle.fill;
             final path = Path()
-              ..moveTo(target.x!, target.y!)
-              ..lineTo(target.x! - ndx - ndy * 0.5, target.y! - ndy + ndx * 0.5)
-              ..lineTo(target.x! - ndx + ndy * 0.5, target.y! - ndy - ndx * 0.5)
+              ..moveTo(tipX, tipY)
+              ..lineTo(tipX - ndx - ndy * 0.5, tipY - ndy + ndx * 0.5)
+              ..lineTo(tipX - ndx + ndy * 0.5, tipY - ndy - ndx * 0.5)
               ..close();
             canvas.drawPath(path, arrowPaint);
           }

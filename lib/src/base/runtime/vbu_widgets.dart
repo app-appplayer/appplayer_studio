@@ -1634,7 +1634,6 @@ class _VbuVideoPlayerFactory extends WidgetFactory {
 // as titleLarge / bodyMedium to the vbu mono / sans tone.
 // ---------------------------------------------------------------------------
 
-
 /// Studio look for the spec `button`, contributed as STYLE ONLY.
 ///
 /// Delegates the whole build to the stock factory and wraps it in a [Theme]
@@ -1649,64 +1648,68 @@ class _StudioStyledButton extends WidgetFactory {
 
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
-    final c = context.themeManager.effectiveMode == 'dark'
-        ? VbuTokens.color
-        : VbuTokens.lightColor;
+    final c =
+        context.themeManager.effectiveMode == 'dark'
+            ? VbuTokens.color
+            : VbuTokens.lightColor;
     final label = vbuMono(size: 11, weight: FontWeight.w600);
     const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 8);
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(4));
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(4),
+    );
     const minSize = Size(0, 28);
     const density = VisualDensity.compact;
 
     return Builder(
-      builder: (ctx) => Theme(
-        data: Theme.of(ctx).copyWith(
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: c.textSecondary,
-              padding: padding,
-              shape: shape,
-              textStyle: label,
-              minimumSize: minSize,
-              visualDensity: density,
+      builder:
+          (ctx) => Theme(
+            data: Theme.of(ctx).copyWith(
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  foregroundColor: c.textSecondary,
+                  padding: padding,
+                  shape: shape,
+                  textStyle: label,
+                  minimumSize: minSize,
+                  visualDensity: density,
+                ),
+              ),
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.textPrimary,
+                  side: BorderSide(color: c.borderDefault),
+                  padding: padding,
+                  shape: shape,
+                  textStyle: label,
+                  minimumSize: minSize,
+                  visualDensity: density,
+                ),
+              ),
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: c.mint,
+                  foregroundColor: c.bg,
+                  padding: padding,
+                  shape: shape,
+                  textStyle: label,
+                  minimumSize: minSize,
+                  visualDensity: density,
+                ),
+              ),
+              filledButtonTheme: FilledButtonThemeData(
+                style: FilledButton.styleFrom(
+                  backgroundColor: c.mint,
+                  foregroundColor: c.bg,
+                  padding: padding,
+                  shape: shape,
+                  textStyle: label,
+                  minimumSize: minSize,
+                  visualDensity: density,
+                ),
+              ),
             ),
+            child: stock.build(definition, context),
           ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: c.textPrimary,
-              side: BorderSide(color: c.borderDefault),
-              padding: padding,
-              shape: shape,
-              textStyle: label,
-              minimumSize: minSize,
-              visualDensity: density,
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: c.mint,
-              foregroundColor: c.bg,
-              padding: padding,
-              shape: shape,
-              textStyle: label,
-              minimumSize: minSize,
-              visualDensity: density,
-            ),
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              backgroundColor: c.mint,
-              foregroundColor: c.bg,
-              padding: padding,
-              shape: shape,
-              textStyle: label,
-              minimumSize: minSize,
-              visualDensity: density,
-            ),
-          ),
-        ),
-        child: stock.build(definition, context),
-      ),
     );
   }
 }
@@ -1728,9 +1731,10 @@ class _StudioStyledText extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final props = extractProperties(definition);
     final variant = context.resolve<String?>(props['variant']) ?? 'bodySmall';
-    final c = context.themeManager.effectiveMode == 'dark'
-        ? VbuTokens.color
-        : VbuTokens.lightColor;
+    final c =
+        context.themeManager.effectiveMode == 'dark'
+            ? VbuTokens.color
+            : VbuTokens.lightColor;
     final base = _studioTextStyleMap(variant, c);
     final authored = props['style'];
     final merged = <String, Object?>{
@@ -1741,9 +1745,10 @@ class _StudioStyledText extends WidgetFactory {
     // leaving it in would have the stock factory resolve the M3 scale and merge
     // our compact mono on top of a 57pt line box.
     final patched = Map<String, dynamic>.from(definition)..remove('variant');
-    final patchedProps = Map<String, dynamic>.from(props)
-      ..remove('variant')
-      ..['style'] = merged;
+    final patchedProps =
+        Map<String, dynamic>.from(props)
+          ..remove('variant')
+          ..['style'] = merged;
     if (patched.containsKey('properties')) {
       patched['properties'] = patchedProps;
     } else {

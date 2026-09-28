@@ -1,6 +1,8 @@
 /// Models for the recorder service.
 library;
 
+import 'h264_encoder.dart';
+
 /// Active or completed recording session.
 class Recording {
   Recording({
@@ -35,15 +37,14 @@ class Recording {
 
   Duration get duration => (stoppedAt ?? DateTime.now()).difference(startedAt);
 
-  /// Suggested ffmpeg command authors run post-hoc to encode the PNG
-  /// sequence into an mp4. Phase 2 will replace this with an in-app
-  /// encoder; Phase 1 ships a copy-pastable hint so the user isn't
-  /// stuck if ffmpeg is on their PATH.
+  /// Copy-pastable ffmpeg command that encodes the frame sequence into an
+  /// mp4 outside the app, with the same H.264 encoder and quality the
+  /// in-app encoder uses on this machine.
   String ffmpegHint() {
     final ext = format == 'jpg' ? 'jpg' : 'png';
     return 'ffmpeg -framerate $fps -i frame_%06d.$ext '
-        '-c:v libx264 -pix_fmt yuv420p '
-        '-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" out.mp4';
+        '${h264VideoArgs()} $kBt709Tags '
+        '-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,$kRgbToBt709Filter" out.mp4';
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{

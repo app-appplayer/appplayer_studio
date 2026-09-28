@@ -7,9 +7,7 @@ library client_action_types;
 import '../../utils/path_validator.dart';
 
 /// Client action type constants
-class ClientActionTypes {
-  ClientActionTypes._();
-
+abstract final class ClientActionTypes {
   /// File selection dialog
   /// Opens a file picker to select one or more files
   static const String selectFile = 'client.selectFile';
@@ -85,9 +83,7 @@ class ClientActionTypes {
 
 /// Permission types for client actions
 /// Uses dot-namespaced format per spec standard
-class ClientPermissions {
-  ClientPermissions._();
-
+abstract final class ClientPermissions {
   /// Permission to read files
   static const String fileRead = 'file.read';
 
@@ -140,9 +136,7 @@ class ClientPermissions {
 }
 
 /// Client resource URI schemes
-class ClientResourceSchemes {
-  ClientResourceSchemes._();
-
+abstract final class ClientResourceSchemes {
   /// Protocol access: client://protocol/...
   static const String protocol = 'client://protocol';
 
@@ -181,7 +175,7 @@ class ClientResourceSchemes {
     final scheme = withoutScheme.substring(0, slashIndex);
     final rawPath = withoutScheme.substring(slashIndex + 1);
 
-    // Reject paths with traversal attempts (§Path Resolution Rules)
+    // Reject paths with traversal attempts
     if (PathValidator.hasTraversalAttempt(rawPath)) {
       return null;
     }
@@ -211,9 +205,7 @@ class ClientResourceUri {
 }
 
 /// Channel types for bidirectional communication
-class ChannelTypes {
-  ChannelTypes._();
-
+abstract final class ChannelTypes {
   /// Watch a single file for changes
   static const String fileWatch = 'client.watchFile';
 

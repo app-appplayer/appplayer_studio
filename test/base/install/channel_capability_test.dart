@@ -39,7 +39,7 @@ mk.HostToolRegistry _registry(
   mk.ConfirmDestructive? confirmDestructive,
 }) => mk.HostToolRegistry(
   endpoint: boot,
-  attachToDispatcher: (_, __) {},
+  attachToDispatcher: (_, _) {},
   detachFromDispatcher: (_) {},
   confirmDestructive: confirmDestructive,
 );
@@ -60,42 +60,39 @@ void main() {
   });
 
   group('surface — no secure, no askAgent', () {
-    test(
-      'exposes list/status/send/session.history/receive/bind/unbind/'
-      'bindings/connect/disconnect, no credential_* verbs',
-      () {
-        final boot = mk.InProcessKernelServerHost();
-        final exposed = registerChannelCapability(
-          registry: _registry(boot),
-          kv: () => kv,
-          facts: () => null,
-        );
-        expect(
-          exposed.toSet(),
-          containsAll(<String>[
-            'channel.list',
-            'channel.status',
-            'channel.send',
-            'channel.session.history',
-            'channel.receive',
-            'channel.bind',
-            'channel.unbind',
-            'channel.bindings',
-            'channel.connect',
-            'channel.disconnect',
-          ]),
-        );
-        expect(
-          exposed.where((n) => n.startsWith('channel.credential_')),
-          isEmpty,
-          reason: 'no SecureStorage wired → no credential vault surface',
-        );
-        final landed = boot.toolDefinitions.map((t) => t.name).toSet();
-        for (final n in exposed) {
-          expect(landed, contains(n), reason: '$n reported but not registered');
-        }
-      },
-    );
+    test('exposes list/status/send/session.history/receive/bind/unbind/'
+        'bindings/connect/disconnect, no credential_* verbs', () {
+      final boot = mk.InProcessKernelServerHost();
+      final exposed = registerChannelCapability(
+        registry: _registry(boot),
+        kv: () => kv,
+        facts: () => null,
+      );
+      expect(
+        exposed.toSet(),
+        containsAll(<String>[
+          'channel.list',
+          'channel.status',
+          'channel.send',
+          'channel.session.history',
+          'channel.receive',
+          'channel.bind',
+          'channel.unbind',
+          'channel.bindings',
+          'channel.connect',
+          'channel.disconnect',
+        ]),
+      );
+      expect(
+        exposed.where((n) => n.startsWith('channel.credential_')),
+        isEmpty,
+        reason: 'no SecureStorage wired → no credential vault surface',
+      );
+      final landed = boot.toolDefinitions.map((t) => t.name).toSet();
+      for (final n in exposed) {
+        expect(landed, contains(n), reason: '$n reported but not registered');
+      }
+    });
   });
 
   group('surface — secure wired', () {
@@ -190,10 +187,7 @@ void main() {
     test('approved: no active project → channel.no_project', () async {
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
-        registry: _registry(
-          boot,
-          confirmDestructive: (_, __) async => true,
-        ),
+        registry: _registry(boot, confirmDestructive: (_, _) async => true),
         kv: () => null, // no active project
         facts: () => null,
       );
@@ -214,10 +208,7 @@ void main() {
       () async {
         final boot = mk.InProcessKernelServerHost();
         registerChannelCapability(
-          registry: _registry(
-            boot,
-            confirmDestructive: (_, __) async => true,
-          ),
+          registry: _registry(boot, confirmDestructive: (_, _) async => true),
           kv: () => kv,
           facts: () => null,
         );
@@ -241,10 +232,7 @@ void main() {
     test('unknown channelId → channel.not_found', () async {
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
-        registry: _registry(
-          boot,
-          confirmDestructive: (_, __) async => true,
-        ),
+        registry: _registry(boot, confirmDestructive: (_, _) async => true),
         kv: () => kv,
         facts: () => null,
       );
@@ -264,7 +252,7 @@ void main() {
     test('no active project → channel.no_project', () async {
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
-        registry: _registry(boot, confirmDestructive: (_, __) async => true),
+        registry: _registry(boot, confirmDestructive: (_, _) async => true),
         kv: () => null,
         facts: () => null,
       );
@@ -276,7 +264,7 @@ void main() {
     test('filters by conversationId and respects limit', () async {
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
-        registry: _registry(boot, confirmDestructive: (_, __) async => true),
+        registry: _registry(boot, confirmDestructive: (_, _) async => true),
         kv: () => kv,
         facts: () => null,
       );
@@ -337,10 +325,7 @@ void main() {
       () async {
         final boot = mk.InProcessKernelServerHost();
         registerChannelCapability(
-          registry: _registry(
-            boot,
-            confirmDestructive: (_, __) async => true,
-          ),
+          registry: _registry(boot, confirmDestructive: (_, _) async => true),
           kv: () => kv,
           facts: () => null,
         );
@@ -366,118 +351,135 @@ void main() {
   });
 
   group('receive — agentic (askAgent wired, P2)', () {
-    test(
-      'inbound routes to the agent named by conversationId (unbound '
-      'fallback) and the reply is posted back to the feed',
-      () async {
-        final calls = <List<String>>[];
-        final boot = mk.InProcessKernelServerHost();
-        registerChannelCapability(
-          registry: _registry(
-            boot,
-            confirmDestructive: (_, __) async => true,
-          ),
-          kv: () => kv,
-          facts: () => null,
-          askAgent: (agentId, message) async {
-            calls.add([agentId, message]);
-            return 'reply from $agentId';
-          },
-        );
-        // Let the unawaited ChannelHandler.start() subscription land.
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-
-        final out = _json(
-          await boot.callTool('channel.receive', const {
-            'conversationId': 'agent-x',
-            'text': 'ping',
-          }),
-        );
-        expect(out['ok'], isTrue);
-        expect(out['agentic'], isTrue);
-
-        // Give the async ChannelHandler pipeline a beat to process +
-        // send the reply back through the in-app connector.
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        expect(calls, hasLength(1));
-        expect(calls.single, ['agent-x', 'ping']);
-
+    // The ChannelHandler pipeline answers asynchronously. Wait until the
+    // reply is on record — its write has then finished, so neither the
+    // assertions nor tearDown's delete race the pending persist (a fixed
+    // 50 ms was not enough under full-suite load).
+    Future<void> untilReplied(
+      mk.InProcessKernelServerHost boot,
+      String conversationId,
+    ) async {
+      for (var i = 0; i < 200; i++) {
         final history = _json(
-          await boot.callTool('channel.session.history', const {
-            'conversationId': 'agent-x',
+          await boot.callTool('channel.session.history', {
+            'conversationId': conversationId,
           }),
         );
         final msgs = (history['messages'] as List).cast<Map>();
-        expect(msgs.length, 2);
-        expect(msgs.any((m) => m['role'] == 'user' && m['text'] == 'ping'),
-            isTrue);
-        expect(
-          msgs.any(
-            (m) =>
-                m['role'] == 'assistant' && m['text'] == 'reply from agent-x',
-          ),
-          isTrue,
-        );
-      },
-    );
+        if (msgs.any((m) => m['role'] == 'assistant')) return;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+    }
 
-    test('bound conversation routes to the bound agentId, not itself',
-        () async {
-      final calls = <String>[];
+    test('inbound routes to the agent named by conversationId (unbound '
+        'fallback) and the reply is posted back to the feed', () async {
+      final calls = <List<String>>[];
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
-        registry: _registry(boot, confirmDestructive: (_, __) async => true),
+        registry: _registry(boot, confirmDestructive: (_, _) async => true),
         kv: () => kv,
         facts: () => null,
         askAgent: (agentId, message) async {
-          calls.add(agentId);
-          return 'ack';
+          calls.add([agentId, message]);
+          return 'reply from $agentId';
         },
       );
+      // Let the unawaited ChannelHandler.start() subscription land.
       await Future<void>.delayed(const Duration(milliseconds: 5));
 
-      await boot.callTool('channel.bind', const {
-        'conversationId': 'room-42',
-        'agentId': 'ops-manager',
-      });
-      await boot.callTool('channel.receive', const {
-        'conversationId': 'room-42',
-        'text': 'hi',
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
-      expect(calls, ['ops-manager']);
-    });
-
-    test('a failed askAgent still completes the loop with an error reply',
-        () async {
-      final boot = mk.InProcessKernelServerHost();
-      registerChannelCapability(
-        registry: _registry(boot, confirmDestructive: (_, __) async => true),
-        kv: () => kv,
-        facts: () => null,
-        askAgent: (agentId, message) async =>
-            throw StateError('agent unreachable'),
+      final out = _json(
+        await boot.callTool('channel.receive', const {
+          'conversationId': 'agent-x',
+          'text': 'ping',
+        }),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(out['ok'], isTrue);
+      expect(out['agentic'], isTrue);
 
-      await boot.callTool('channel.receive', const {
-        'conversationId': 'agent-y',
-        'text': 'ping',
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await untilReplied(boot, 'agent-x');
+
+      expect(calls, hasLength(1));
+      expect(calls.single, ['agent-x', 'ping']);
 
       final history = _json(
         await boot.callTool('channel.session.history', const {
-          'conversationId': 'agent-y',
+          'conversationId': 'agent-x',
         }),
       );
       final msgs = (history['messages'] as List).cast<Map>();
-      final reply = msgs.singleWhere((m) => m['role'] == 'assistant');
-      expect(reply['text'], contains('agent error'));
-      expect(reply['text'], contains('agent unreachable'));
+      expect(msgs.length, 2);
+      expect(
+        msgs.any((m) => m['role'] == 'user' && m['text'] == 'ping'),
+        isTrue,
+      );
+      expect(
+        msgs.any(
+          (m) => m['role'] == 'assistant' && m['text'] == 'reply from agent-x',
+        ),
+        isTrue,
+      );
     });
+
+    test(
+      'bound conversation routes to the bound agentId, not itself',
+      () async {
+        final calls = <String>[];
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot, confirmDestructive: (_, _) async => true),
+          kv: () => kv,
+          facts: () => null,
+          askAgent: (agentId, message) async {
+            calls.add(agentId);
+            return 'ack';
+          },
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+
+        await boot.callTool('channel.bind', const {
+          'conversationId': 'room-42',
+          'agentId': 'ops-manager',
+        });
+        await boot.callTool('channel.receive', const {
+          'conversationId': 'room-42',
+          'text': 'hi',
+        });
+        await untilReplied(boot, 'room-42');
+
+        expect(calls, ['ops-manager']);
+      },
+    );
+
+    test(
+      'a failed askAgent still completes the loop with an error reply',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot, confirmDestructive: (_, _) async => true),
+          kv: () => kv,
+          facts: () => null,
+          askAgent:
+              (agentId, message) async => throw StateError('agent unreachable'),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+
+        await boot.callTool('channel.receive', const {
+          'conversationId': 'agent-y',
+          'text': 'ping',
+        });
+        await untilReplied(boot, 'agent-y');
+
+        final history = _json(
+          await boot.callTool('channel.session.history', const {
+            'conversationId': 'agent-y',
+          }),
+        );
+        final msgs = (history['messages'] as List).cast<Map>();
+        final reply = msgs.singleWhere((m) => m['role'] == 'assistant');
+        expect(reply['text'], contains('agent error'));
+        expect(reply['text'], contains('agent unreachable'));
+      },
+    );
   });
 
   group('bind / unbind / bindings', () {
@@ -495,51 +497,51 @@ void main() {
       expect(_json(r)['ok'], isFalse);
     });
 
-    test('bind → bindings lists it → unbind removes it, persisted to KV',
-        () async {
-      final boot = mk.InProcessKernelServerHost();
-      registerChannelCapability(
-        registry: _registry(boot),
-        kv: () => kv,
-        facts: () => null,
-      );
-      final bindOut = _json(
-        await boot.callTool('channel.bind', const {
-          'conversationId': 'c1',
-          'agentId': 'a1',
-        }),
-      );
-      expect(bindOut['ok'], isTrue);
+    test(
+      'bind → bindings lists it → unbind removes it, persisted to KV',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot),
+          kv: () => kv,
+          facts: () => null,
+        );
+        final bindOut = _json(
+          await boot.callTool('channel.bind', const {
+            'conversationId': 'c1',
+            'agentId': 'a1',
+          }),
+        );
+        expect(bindOut['ok'], isTrue);
 
-      final listed = _json(
-        await boot.callTool('channel.bindings', const {}),
-      );
-      final entries = (listed['bindings'] as List).cast<Map>();
-      // Map `==` is identity, not deep — assert on the fields directly.
-      expect(
-        entries.any(
-          (e) => e['conversationId'] == 'c1' && e['agentId'] == 'a1',
-        ),
-        isTrue,
-      );
+        final listed = _json(await boot.callTool('channel.bindings', const {}));
+        final entries = (listed['bindings'] as List).cast<Map>();
+        // Map `==` is identity, not deep — assert on the fields directly.
+        expect(
+          entries.any(
+            (e) => e['conversationId'] == 'c1' && e['agentId'] == 'a1',
+          ),
+          isTrue,
+        );
 
-      // Persisted to project KV.
-      final persisted = await kv.get('channel/inbound_bindings');
-      expect((persisted as Map)['c1'], 'a1');
+        // Persisted to project KV.
+        final persisted = await kv.get('channel/inbound_bindings');
+        expect((persisted as Map)['c1'], 'a1');
 
-      final unbindOut = _json(
-        await boot.callTool('channel.unbind', const {'conversationId': 'c1'}),
-      );
-      expect(unbindOut['removed'], isTrue);
+        final unbindOut = _json(
+          await boot.callTool('channel.unbind', const {'conversationId': 'c1'}),
+        );
+        expect(unbindOut['removed'], isTrue);
 
-      final listedAfter = _json(
-        await boot.callTool('channel.bindings', const {}),
-      );
-      expect((listedAfter['bindings'] as List), isEmpty);
+        final listedAfter = _json(
+          await boot.callTool('channel.bindings', const {}),
+        );
+        expect((listedAfter['bindings'] as List), isEmpty);
 
-      final persistedAfter = await kv.get('channel/inbound_bindings');
-      expect((persistedAfter as Map).containsKey('c1'), isFalse);
-    });
+        final persistedAfter = await kv.get('channel/inbound_bindings');
+        expect((persistedAfter as Map).containsKey('c1'), isFalse);
+      },
+    );
 
     test('unbind of a never-bound conversationId → removed:false', () async {
       final boot = mk.InProcessKernelServerHost();
@@ -557,8 +559,7 @@ void main() {
       expect(out['removed'], isFalse);
     });
 
-    test('bindings hydrate from KV on a fresh registration (reboot)',
-        () async {
+    test('bindings hydrate from KV on a fresh registration (reboot)', () async {
       final bootA = mk.InProcessKernelServerHost();
       registerChannelCapability(
         registry: _registry(bootA),
@@ -580,14 +581,10 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      final listed = _json(
-        await bootB.callTool('channel.bindings', const {}),
-      );
+      final listed = _json(await bootB.callTool('channel.bindings', const {}));
       final entries = (listed['bindings'] as List).cast<Map>();
       expect(
-        entries.any(
-          (e) => e['conversationId'] == 'c9' && e['agentId'] == 'a9',
-        ),
+        entries.any((e) => e['conversationId'] == 'c9' && e['agentId'] == 'a9'),
         isTrue,
       );
     });
@@ -608,8 +605,7 @@ void main() {
       expect(out['code'], 'channel.bad_args');
     });
 
-    test('unknown platform → unknown_platform (no builder invoked)',
-        () async {
+    test('unknown platform → unknown_platform (no builder invoked)', () async {
       final boot = mk.InProcessKernelServerHost();
       registerChannelCapability(
         registry: _registry(boot),
@@ -626,41 +622,45 @@ void main() {
       expect(out['code'], 'unknown_platform');
     });
 
-    test('missing required param (slack w/o botToken) → missing_param',
-        () async {
-      final boot = mk.InProcessKernelServerHost();
-      registerChannelCapability(
-        registry: _registry(boot),
-        kv: () => kv,
-        facts: () => null,
-      );
-      final out = _json(
-        await boot.callTool('channel.connect', const {
-          'platform': 'slack',
-          'id': 'sl1',
-        }),
-      );
-      expect(out['ok'], isFalse);
-      expect(out['code'], 'missing_param');
-    });
+    test(
+      'missing required param (slack w/o botToken) → missing_param',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot),
+          kv: () => kv,
+          facts: () => null,
+        );
+        final out = _json(
+          await boot.callTool('channel.connect', const {
+            'platform': 'slack',
+            'id': 'sl1',
+          }),
+        );
+        expect(out['ok'], isFalse);
+        expect(out['code'], 'missing_param');
+      },
+    );
 
-    test('connect id already in the live connectors map → channel.exists',
-        () async {
-      final boot = mk.InProcessKernelServerHost();
-      registerChannelCapability(
-        registry: _registry(boot),
-        kv: () => kv,
-        facts: () => null,
-      );
-      final out = _json(
-        await boot.callTool('channel.connect', const {
-          'platform': 'slack',
-          'id': 'in_app', // the built-in connector already occupies this id
-        }),
-      );
-      expect(out['ok'], isFalse);
-      expect(out['code'], 'channel.exists');
-    });
+    test(
+      'connect id already in the live connectors map → channel.exists',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot),
+          kv: () => kv,
+          facts: () => null,
+        );
+        final out = _json(
+          await boot.callTool('channel.connect', const {
+            'platform': 'slack',
+            'id': 'in_app', // the built-in connector already occupies this id
+          }),
+        );
+        expect(out['ok'], isFalse);
+        expect(out['code'], 'channel.exists');
+      },
+    );
 
     test('disconnect: missing id → channel.bad_args; unknown id → '
         'channel.not_found', () async {
@@ -700,10 +700,7 @@ void main() {
       );
       expect(setOut['ok'], isTrue);
       expect(setOut['id'], 'sl1');
-      expect(
-        (setOut['fields'] as List).toSet(),
-        {'botToken', 'signingSecret'},
-      );
+      expect((setOut['fields'] as List).toSet(), {'botToken', 'signingSecret'});
       // The secret VALUES never appear anywhere in the envelope.
       expect(jsonEncode(setOut), isNot(contains('xoxb-secret')));
       expect(jsonEncode(setOut), isNot(contains('shh')));
@@ -731,32 +728,34 @@ void main() {
       expect(out['ok'], isFalse);
     });
 
-    test('remove: missing id → error; existing id removed from ids list',
-        () async {
-      final boot = mk.InProcessKernelServerHost();
-      registerChannelCapability(
-        registry: _registry(boot),
-        kv: () => kv,
-        facts: () => null,
-        secure: InMemorySecureStorage(),
-      );
-      final missing = _json(
-        await boot.callTool('channel.credential_remove', const {}),
-      );
-      expect(missing['ok'], isFalse);
+    test(
+      'remove: missing id → error; existing id removed from ids list',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        registerChannelCapability(
+          registry: _registry(boot),
+          kv: () => kv,
+          facts: () => null,
+          secure: InMemorySecureStorage(),
+        );
+        final missing = _json(
+          await boot.callTool('channel.credential_remove', const {}),
+        );
+        expect(missing['ok'], isFalse);
 
-      await boot.callTool('channel.credential_set', const {
-        'id': 'sl2',
-        'params': {'botToken': 't'},
-      });
-      final removeOut = _json(
-        await boot.callTool('channel.credential_remove', const {'id': 'sl2'}),
-      );
-      expect(removeOut['ok'], isTrue);
-      final idsAfter = _json(
-        await boot.callTool('channel.credential_ids', const {}),
-      );
-      expect(idsAfter['ids'], isNot(contains('sl2')));
-    });
+        await boot.callTool('channel.credential_set', const {
+          'id': 'sl2',
+          'params': {'botToken': 't'},
+        });
+        final removeOut = _json(
+          await boot.callTool('channel.credential_remove', const {'id': 'sl2'}),
+        );
+        expect(removeOut['ok'], isTrue);
+        final idsAfter = _json(
+          await boot.callTool('channel.credential_ids', const {}),
+        );
+        expect(idsAfter['ids'], isNot(contains('sl2')));
+      },
+    );
   });
 }

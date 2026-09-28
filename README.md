@@ -98,3 +98,14 @@ DSL renderer), `mcp_client` / `mcp_server` (MCP transports), `appplayer_ui_view`
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Third-party components keep their own licenses. The app lists all of them in
+one place: **Settings → Studio → About → Open-source licenses** — the Dart
+packages (bundled by Flutter) and the native libraries and fonts it ships
+(`assets/licenses/apple.json` on macOS, `assets/licenses/desktop.json`):
+FFmpeg and its component libraries, PDFium and its component libraries,
+libserialport (LGPL-3.0), QuickJS and the JetBrains Mono font (OFL-1.1).
+
+The screen-recording feature links the LGPL build of FFmpeg
+(`ffmpeg_kit_flutter_new_full`) — no GPL codecs. H.264 is encoded with
+VideoToolbox on Apple Silicon Macs and openh264 elsewhere.

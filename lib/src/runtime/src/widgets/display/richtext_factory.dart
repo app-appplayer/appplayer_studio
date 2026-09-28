@@ -95,7 +95,7 @@ class RichTextWidgetFactory extends WidgetFactory {
         fontStyle: style['italic'] == true ? FontStyle.italic : null,
         letterSpacing: style['letterSpacing']?.toDouble(),
         wordSpacing: style['wordSpacing']?.toDouble(),
-        height: style['height']?.toDouble(),
+        height: readLineHeight(style, context),
         decoration: _parseTextDecoration(style['decoration']),
         decorationColor: parseColor(context.resolve(style['decorationColor']), context),
         decorationStyle: _parseTextDecorationStyle(style['decorationStyle']),

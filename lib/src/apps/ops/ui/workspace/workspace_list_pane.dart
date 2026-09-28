@@ -109,10 +109,7 @@ class WorkspaceListPane extends ConsumerWidget {
                             PopupMenuItem(
                               height: 32,
                               value: 'delete',
-                              child: Text(
-                                'Delete',
-                                style: TextStyle(color: Colors.red),
-                              ),
+                              child: Text('Archive'),
                             ),
                           ],
                     ),
@@ -315,10 +312,13 @@ class WorkspaceListPane extends ConsumerWidget {
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Delete workspace'),
+            title: const Text('Archive workspace'),
+            // `workspace_delete` archives by default: the workspace leaves
+            // the lists but every trace stays on disk and is restorable.
             content: Text(
-              'Delete ${ws.id}.\n'
-              'Both the directory and the KV partition are removed. This cannot be undone.',
+              'Archive ${ws.id}.\n'
+              'It disappears from the lists. Its members, knowledge, skills '
+              'and settings stay on disk and can be restored.',
             ),
             actions: [
               TextButton(
@@ -326,15 +326,17 @@ class WorkspaceListPane extends ConsumerWidget {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete'),
+                child: const Text('Archive'),
               ),
             ],
           ),
     );
     if (confirmed != true) return;
-    await opsCallTool(ref, 'workspace_delete', <String, dynamic>{'id': ws.id});
+    await opsCallTool(ref, 'workspace_delete', <String, dynamic>{
+      'id': ws.id,
+      'mode': 'archive',
+    });
   }
 
   Future<void> _showCreationDialog(BuildContext context, WidgetRef ref) async {

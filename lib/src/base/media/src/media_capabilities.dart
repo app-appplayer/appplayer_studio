@@ -46,22 +46,6 @@ Future<String> playableUri(AssetRef ref, AssetBytesReader readBytes) async {
     case AssetForm.data:
     case AssetForm.flutterAsset:
       return ref.uri;
-    case AssetForm.unknown:
-      // `file:` lands here: the runtime's form set has no entry for it, and a
-      // host that installs bundles on disk hands exactly that — AppPlayer
-      // rewrites `bundle://` to a file path before the runtime sees it, so a
-      // bundled sound arrives as `file:///…`. Refusing it would mean a bundled
-      // image draws (Flutter's image path takes files) while the sound beside
-      // it does not, which is the difference this whole change exists to end.
-      if (ref.uri.startsWith('file:')) return ref.uri;
-      final unknownBytes = await readBytes();
-      if (unknownBytes == null || unknownBytes.isEmpty) {
-        throw StateError('cannot play ${ref.uri}: unsupported reference');
-      }
-      if (unknownBytes.lengthInBytes > _maxInlineBytes) {
-        throw StateError('${ref.uri} is too large to inline');
-      }
-      return _dataUri(unknownBytes, ref.uri);
     case AssetForm.bundle:
     case AssetForm.client:
     case AssetForm.origin:
@@ -79,6 +63,21 @@ Future<String> playableUri(AssetRef ref, AssetBytesReader readBytes) async {
             'large to inline; serve it over a URL the player can stream');
       }
       return _dataUri(bytes, ref.uri);
+    default:
+      // `file:` — what a host that installs bundles on disk hands over after
+      // rewriting `bundle://` (§6.12.7 placement 1) — plays from its path.
+      // Runtimes from 0.7.12 name it `AssetForm.file`; older ones file it
+      // under `unknown`. A wildcard rather than named cases, so this adapter
+      // compiles against both and a form added later is not a build break.
+      if (ref.uri.startsWith('file:')) return ref.uri;
+      final unknownBytes = await readBytes();
+      if (unknownBytes == null || unknownBytes.isEmpty) {
+        throw StateError('cannot play ${ref.uri}: unsupported reference');
+      }
+      if (unknownBytes.lengthInBytes > _maxInlineBytes) {
+        throw StateError('${ref.uri} is too large to inline');
+      }
+      return _dataUri(unknownBytes, ref.uri);
   }
 }
 

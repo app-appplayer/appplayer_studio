@@ -2539,7 +2539,23 @@ class _AssetsBodyState extends State<_AssetsBody> {
   String? _expandedId;
 
   @override
+  void initState() {
+    super.initState();
+    // The add button is enabled from the two fields' text at build time;
+    // the fields themselves have no onChanged, so without these listeners
+    // nothing rebuilds after typing and the button stays disabled.
+    _newId.addListener(_onDraftChanged);
+    _newRef.addListener(_onDraftChanged);
+  }
+
+  void _onDraftChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _newId.removeListener(_onDraftChanged);
+    _newRef.removeListener(_onDraftChanged);
     _newId.dispose();
     _newRef.dispose();
     super.dispose();
@@ -2559,7 +2575,9 @@ class _AssetsBodyState extends State<_AssetsBody> {
     await _writeAll(next);
   }
 
-  Future<void> _writeAll(List<Map<String, dynamic>> next) async {
+  /// Returns whether the write landed. A rejected patch leaves the
+  /// registry as it was; callers keep their draft so nothing typed is lost.
+  Future<bool> _writeAll(List<Map<String, dynamic>> next) async {
     // mcp_bundle stores `assets` as a section: { schemaVersion,
     // assets:[...], directories:[...], bundles:[...] }. We only
     // touch the `assets` array; the other fields stay as the user
@@ -2567,7 +2585,7 @@ class _AssetsBodyState extends State<_AssetsBody> {
     final base = Map<String, dynamic>.from(widget.assets.raw);
     base['assets'] = next;
     if (!base.containsKey('schemaVersion')) base['schemaVersion'] = '1.0.0';
-    await widget.dispatch(
+    return widget.dispatch(
       layer: LayerId.assets,
       path: '/manifest/assets',
       value: base,
@@ -2585,8 +2603,8 @@ class _AssetsBodyState extends State<_AssetsBody> {
       'contentRef': ref,
     };
     final next = <Map<String, dynamic>>[...widget.assets.entries, entry];
-    await _writeAll(next);
-    if (mounted) {
+    final ok = await _writeAll(next);
+    if (ok && mounted) {
       setState(() {
         _newId.clear();
         _newRef.clear();
@@ -3212,7 +3230,7 @@ class _AssetThumbnail extends StatelessWidget {
             return Image.memory(
               bytes,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _typeIcon(c, type),
+              errorBuilder: (_, _, _) => _typeIcon(c, type),
             );
           }
         }
@@ -3226,7 +3244,7 @@ class _AssetThumbnail extends StatelessWidget {
       return Image.network(
         ref,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _typeIcon(c, type),
+        errorBuilder: (_, _, _) => _typeIcon(c, type),
       );
     }
     // File-backed asset (image/icon raster) — load `<bundle>/<path>`.
@@ -3240,7 +3258,7 @@ class _AssetThumbnail extends StatelessWidget {
       return Image.file(
         file,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _typeIcon(c, type),
+        errorBuilder: (_, _, _) => _typeIcon(c, type),
       );
     }
     return _typeIcon(c, type);
@@ -4772,6 +4790,68 @@ class _FontRowState extends State<_FontRow> {
   }
 }
 
+/// Every finding a health snapshot's `details` carries, in one row shape
+/// (`severity`, `rule`, `message`, `path`): spec and wiring issues from
+/// validation as well as a11y. Listing a11y alone let the Health section
+/// read "all clear" over a failing health check.
+List<Map<String, dynamic>> _allHealthFindings(Map details) {
+  final all = <Map<String, dynamic>>[];
+  final validation = details['validation'];
+  if (validation is Map) {
+    for (final i in validation['specIssues'] as List? ?? const []) {
+      if (i is! Map) continue;
+      final level = '${i['level'] ?? ''}';
+      all.add(<String, dynamic>{
+        'severity':
+            level == 'error' ? 'fail' : (level == 'warning' ? 'warn' : 'info'),
+        'rule': '${i['code'] ?? 'spec'}',
+        'message': '${i['message'] ?? ''}',
+        'path': '${i['path'] ?? ''}',
+      });
+    }
+    for (final i in validation['wiringIssues'] as List? ?? const []) {
+      if (i is! Map) continue;
+      final page = i['page'];
+      all.add(<String, dynamic>{
+        'severity': 'fail',
+        'rule': '${i['kind'] ?? 'wiring'}',
+        'message': '${i['message'] ?? ''}',
+        // A wiring issue belongs to the page that makes the call; one
+        // without a page concerns the whole project.
+        'path': page is String && page.isNotEmpty ? '/ui/pages/$page' : '',
+      });
+    }
+  }
+  final a11y = details['a11y'];
+  if (a11y is Map && a11y['findings'] is List) {
+    for (final f in a11y['findings'] as List) {
+      if (f is Map) all.add(Map<String, dynamic>.from(f));
+    }
+  }
+  return all;
+}
+
+/// The findings of [health] under [pathPrefix] (all of them when null).
+@visibleForTesting
+List<Map<String, dynamic>> healthFindingsFor(
+  Map<String, dynamic>? health,
+  String? pathPrefix,
+) {
+  final h = health;
+  if (h == null) return <Map<String, dynamic>>[];
+  final details = h['details'];
+  if (details is! Map) return <Map<String, dynamic>>[];
+  final out = <Map<String, dynamic>>[];
+  for (final f in _allHealthFindings(details)) {
+    final p = f['path'];
+    if (pathPrefix != null) {
+      if (p is! String || !p.startsWith(pathPrefix)) continue;
+    }
+    out.add(f);
+  }
+  return out;
+}
+
 /// Reusable Health section for any Inspector body. Filters the
 /// global health snapshot by [pathPrefix] to show only findings
 /// relevant to the focused layer (e.g. `/ui/theme` for the Theme
@@ -4795,23 +4875,7 @@ class _InspectorHealthSection extends StatelessWidget {
   final String? scopeLabel;
 
   List<Map<String, dynamic>> _filtered() {
-    final h = health;
-    if (h == null) return const <Map<String, dynamic>>[];
-    final details = h['details'];
-    if (details is! Map) return const <Map<String, dynamic>>[];
-    final a11y = details['a11y'];
-    if (a11y is! Map) return const <Map<String, dynamic>>[];
-    final findings = a11y['findings'];
-    if (findings is! List) return const <Map<String, dynamic>>[];
-    final out = <Map<String, dynamic>>[];
-    for (final f in findings) {
-      if (f is! Map) continue;
-      final p = f['path'];
-      if (pathPrefix != null) {
-        if (p is! String || !p.startsWith(pathPrefix!)) continue;
-      }
-      out.add(Map<String, dynamic>.from(f));
-    }
+    final out = healthFindingsFor(health, pathPrefix);
     int sevRank(String? s) => s == 'fail' ? 0 : (s == 'warn' ? 1 : 2);
     out.sort((a, b) {
       final r = sevRank(

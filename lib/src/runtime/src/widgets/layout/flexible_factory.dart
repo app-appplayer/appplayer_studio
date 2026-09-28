@@ -34,14 +34,19 @@ class FlexibleWidgetFactory extends WidgetFactory {
       return Container(); // Return empty container if no child
     }
 
-    // Build flexible
-    Widget flexible = Flexible(
+    // The wrappers go INSIDE, not around.
+    //
+    // `Flexible` is a ParentDataWidget: its parent `Row`/`Column` reads it by
+    // looking at its own direct child. Wrapping it — which is what a document
+    // declaring `visible`, `tooltip` or `click` alongside `flex` produced —
+    // hid it from the row, and Flutter asserted on the parent data instead of
+    // laying anything out. A red screen for a property combination the spec
+    // allows.
+    return Flexible(
       flex: flex,
       fit: fit,
-      child: child,
+      child: applyCommonWrappers(child, properties, context),
     );
-
-    return applyCommonWrappers(flexible, properties, context);
   }
 
   FlexFit _parseFlexFit(String? value) {

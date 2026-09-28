@@ -69,10 +69,15 @@ class VbuAtomSpecLoader {
   /// packaged — the failure mode that made every `Vbu*` type unknown.
   Future<List<String>> resolvedAssetKeys() => _atomKeys();
 
+  /// Mirror of [DslSpecLoader.get] — canonical names first, then the
+  /// spellings a spec declares for itself.
   Future<WidgetSpec?> get(String type) async {
     final all = await load();
     for (final s in all) {
       if (s.type == type) return s;
+    }
+    for (final s in all) {
+      if (s.aliases.contains(type)) return s;
     }
     return null;
   }
@@ -85,6 +90,7 @@ class VbuAtomSpecLoader {
     final description = (yaml['description'] as String?) ?? '';
     final profile = yaml['profile'] as String?;
     final since = yaml['since'] as String?;
+    final rawWidgetAliases = yaml['aliases'];
 
     final props = <WidgetPropSpec>[];
     final rawProps = yaml['properties'];
@@ -136,6 +142,10 @@ class VbuAtomSpecLoader {
       description: description,
       profile: profile,
       since: since,
+      aliases:
+          rawWidgetAliases is List
+              ? List<String>.unmodifiable(rawWidgetAliases.whereType<String>())
+              : const <String>[],
       properties: props,
       examples: examples,
     );

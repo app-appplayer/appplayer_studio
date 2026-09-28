@@ -32,7 +32,10 @@ import '../install/composition_host/composition_host.dart';
 
 /// A host tool dispatcher — `BuiltinToolRegistry.callTool` in the live host.
 typedef HostToolCall =
-    Future<mk.KernelToolResult> Function(String tool, Map<String, dynamic> args);
+    Future<mk.KernelToolResult> Function(
+      String tool,
+      Map<String, dynamic> args,
+    );
 
 /// Adapts a host tool dispatcher to the recipe's [KernelToolCall].
 ///
@@ -44,10 +47,11 @@ typedef HostToolCall =
 KernelToolCall kernelToolCallFrom(HostToolCall callTool) {
   return (tool, args) async {
     final result = await callTool(tool, args);
-    final text = result.content
-        .whereType<mk.KernelTextContent>()
-        .map((c) => c.text)
-        .join();
+    final text =
+        result.content
+            .whereType<mk.KernelTextContent>()
+            .map((c) => c.text)
+            .join();
     if (text.isEmpty) return null;
     try {
       return jsonDecode(text);
@@ -94,7 +98,6 @@ class StudioCompositionSeam {
   /// True once [register] has run — composition is claimable.
   static bool get isWired => _call != null;
 
-
   /// Build the four hooks for a surface, or null when the seam is unwired
   /// (headless mounts, tests). A null result must leave the runtime WITHOUT a
   /// resolver so `view` fails closed to its fallback, rather than resolving a
@@ -134,18 +137,27 @@ class StudioCompositionSeam {
 void _applyAll(
   CompositionHooks? hooks, {
   required void Function(
-          Future<Map<String, dynamic>> Function(String, Map<String, dynamic>))
-      resolver,
+    Future<Map<String, dynamic>> Function(String, Map<String, dynamic>),
+  )
+  resolver,
   required void Function(
-          Future<dynamic> Function(Map<String, dynamic>, String, Map<String, dynamic>))
-      toolCaller,
+    Future<dynamic> Function(
+      Map<String, dynamic>,
+      String,
+      Map<String, dynamic>,
+    ),
+  )
+  toolCaller,
   required void Function(
-          Future<void Function()> Function(Map<String, dynamic>, String,
-              void Function(dynamic)))
-      watcher,
-  required void Function(
-          Future<Object?> Function(Map<String, dynamic>, String))
-      reader,
+    Future<void Function()> Function(
+      Map<String, dynamic>,
+      String,
+      void Function(dynamic),
+    ),
+  )
+  watcher,
+  required void Function(Future<Object?> Function(Map<String, dynamic>, String))
+  reader,
 }) {
   if (hooks == null) return;
   resolver(hooks.resolveDefinition);
@@ -173,11 +185,10 @@ void applyCompositionHooks(MCPUIRuntime runtime, CompositionHooks? hooks) =>
 void applyCompositionHooksToStudioRuntime(
   studio.MCPUIRuntime runtime,
   CompositionHooks? hooks,
-) =>
-    _applyAll(
-      hooks,
-      resolver: runtime.registerDefinitionResolver,
-      toolCaller: runtime.registerOriginToolCaller,
-      watcher: runtime.registerOriginResourceWatcher,
-      reader: runtime.registerOriginResourceReader,
-    );
+) => _applyAll(
+  hooks,
+  resolver: runtime.registerDefinitionResolver,
+  toolCaller: runtime.registerOriginToolCaller,
+  watcher: runtime.registerOriginResourceWatcher,
+  reader: runtime.registerOriginResourceReader,
+);

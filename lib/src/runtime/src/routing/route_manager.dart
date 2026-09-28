@@ -22,7 +22,7 @@ class RouteManager {
   });
 
   /// Route requested by whatever opened this runtime — a scan entry, a deep
-  /// link, an app-to-app open (MCP UI DSL 8.9, platform spec 19 4.3).
+  /// link, an app-to-app open.
   ///
   /// It overrides the document's own `initialRoute`, and only when the
   /// document actually declares it: an entry that names a route the app no
@@ -36,24 +36,55 @@ class RouteManager {
     final routes = <String, WidgetBuilder>{};
 
     for (final entry in appDefinition.routes.entries) {
-      final routePath = entry.key;
-      final pageUri = entry.value;
-
-      routes[routePath] = (context) => FutureBuilder<PageDefinition>(
-            future: _loadPage(pageUri, routePath: routePath),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                return _buildPageWidget(snapshot.data!, routePath);
-              } else if (snapshot.hasError) {
-                return _buildErrorPage(snapshot.error);
-              } else {
-                return _buildLoadingPage();
-              }
-            },
-          );
+      routes[entry.key] = _pageBuilder(entry.value, entry.key);
     }
 
     return routes;
+  }
+
+  /// Resolves a route name that no entry in [generateRoutes] matches literally.
+  ///
+  /// A parameterised route is declared as a pattern (`/users/:id`) and pushed
+  /// with the parameter filled in (`/users/42`). Flutter's `routes:` table is
+  /// keyed by exact string, so the pushed name matched nothing and the page was
+  /// unreachable — the substitution in [_buildRouteWithParams] and the
+  /// extraction in [parseRoute] both existed with no path between them. This is
+  /// that path: wire it as `onGenerateRoute` alongside `routes`.
+  ///
+  /// Returns null for a name that matches no declared pattern, which leaves
+  /// Flutter's own unknown-route handling in charge rather than inventing a
+  /// destination.
+  Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+    final name = settings.name;
+    if (name == null) return null;
+    if (appDefinition.routes.containsKey(name)) return null;
+
+    final RouteInfo info;
+    try {
+      info = parseRoute(name);
+    } on ArgumentError {
+      return null;
+    }
+
+    return MaterialPageRoute<dynamic>(
+      settings: settings,
+      builder: _pageBuilder(info.pageUri, info.route),
+    );
+  }
+
+  WidgetBuilder _pageBuilder(dynamic pageUri, String routePath) {
+    return (context) => FutureBuilder<PageDefinition>(
+          future: _loadPage(pageUri, routePath: routePath),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return _buildPageWidget(snapshot.data!, routePath);
+            } else if (snapshot.hasError) {
+              return _buildErrorPage(snapshot.error);
+            } else {
+              return _buildLoadingPage();
+            }
+          },
+        );
   }
 
   /// Get initial route — the launch route when one was requested and the
@@ -75,8 +106,17 @@ class RouteManager {
 
   /// Navigate to a route with parameters
   ///
-  /// Push navigation: old page receives pagePause, new page receives enter.
-  /// Replace navigation: old page receives leave, new page receives enter.
+  /// The covered page's `onPause` and the outgoing page's teardown both belong
+  /// to the page widget: it subscribes to the navigator through `RouteAware`
+  /// (`MCPPageWidget.didPushNext` / `didPopNext`) and tears down in `dispose`.
+  /// This method only moves the Navigator and keeps the stack it needs for
+  /// [popToRoot].
+  ///
+  /// It used to fire `onPause` here as well. That fired the hook twice for
+  /// every page after the first — the same double-fire already recorded for
+  /// the replace branch — and never at all for the first, because the launch
+  /// route is not pushed and so was never on this stack. One owner, and it is
+  /// the widget that can see the route change.
   Future<T?> navigateTo<T>(
     BuildContext context,
     String route, {
@@ -84,26 +124,6 @@ class RouteManager {
     bool replace = false,
   }) async {
     final routeWithParams = _buildRouteWithParams(route, params);
-
-    // Execute pagePause on the current page (push) or leave (replace)
-    if (_pageStack.isNotEmpty) {
-      final currentRoute = _pageStack.last;
-      final currentKey = routeValueCacheKey(
-          currentRoute, appDefinition.routes[currentRoute]);
-      if (_loadedPages.containsKey(currentKey)) {
-        final currentPage = _loadedPages[currentKey]!;
-        final lifecycle = currentPage.lifecycleDefinition;
-        if (replace) {
-          // Unmount teardown belongs to the page widget's dispose — see
-          // RuntimeEngine.navigateToRoute. Running it here too fired the hook
-          // twice.
-        } else {
-          if (lifecycle?.onPause != null) {
-            runtimeEngine.lifecycle.executeOnPagePause(lifecycle!.onPause!);
-          }
-        }
-      }
-    }
 
     if (replace) {
       if (_pageStack.isNotEmpty) _pageStack.removeLast();
@@ -125,26 +145,12 @@ class RouteManager {
 
   /// Navigate back
   ///
-  /// Pop navigation: current page receives leave, previous page receives pageResume.
+  /// The outgoing page tears itself down from its widget's `dispose`, and the
+  /// page underneath resumes through `MCPPageWidget.didPopNext` — the same
+  /// single owner as the pause on the way in. This only pops.
   void navigateBack<T>(BuildContext context, [T? result]) {
-    // The outgoing page tears itself down from its widget's dispose; this only
-    // pops the stack.
     if (_pageStack.isNotEmpty) {
       _pageStack.removeLast();
-    }
-
-    // Execute pageResume on the previous (now visible) page
-    if (_pageStack.isNotEmpty) {
-      final previousRoute = _pageStack.last;
-      final previousKey = routeValueCacheKey(
-          previousRoute, appDefinition.routes[previousRoute]);
-      if (_loadedPages.containsKey(previousKey)) {
-        final previousPage = _loadedPages[previousKey]!;
-        final lifecycle = previousPage.lifecycleDefinition;
-        if (lifecycle?.onResume != null) {
-          runtimeEngine.lifecycle.executeOnPageResume(lifecycle!.onResume!);
-        }
-      }
     }
 
     Navigator.pop(context, result);
@@ -159,7 +165,7 @@ class RouteManager {
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
-  /// Load a page definition for any `RouteValue` (spec v1.4 §1.2.1).
+  /// Load a page definition for any `RouteValue`.
   ///
   /// A plain resource URI goes through the host's [pageLoader] as before.
   /// Every other form — inline page, transition wrapper, qualified `$ref` to
@@ -315,7 +321,7 @@ class RouteInfo {
   final Map<String, String> pathParams;
   final Map<String, String> queryParams;
 
-  /// The route's raw `RouteValue` (spec v1.4 §1.2.1). Typed `dynamic` because a
+  /// The route's raw `RouteValue`. Typed `dynamic` because a
   /// route may be a resource URI string, an inline page, a transition wrapper,
   /// a qualified `{ $ref, from }` reference to another origin, or a binding.
   /// Casting this to `String` would throw on every composed route.

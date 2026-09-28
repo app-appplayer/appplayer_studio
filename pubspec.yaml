@@ -3,7 +3,7 @@ description: >
   AppPlayer Studio — universal desktop host that loads any installed domain
   bundle (.mcpb) into a workspace. Bundles ship their own MCP endpoints and
   DSL UI; the host is a universal launcher.
-version: 0.1.8
+version: 0.1.9
 homepage: https://appplayer.app
 repository: https://github.com/app-appplayer/appplayer_studio
 publish_to: none
@@ -22,32 +22,35 @@ dependencies:
   file_picker: ^8.0.0
   flutter_markdown: ^0.7.0
   path: ^1.9.0
-  mcp_bundle: ^0.4.8
+  mcp_bundle: ^0.4.10
   # Direct dep to pin the EthosStoreDelete-capable adapter (KvEthosStoreAdapter,
   # re-exported via mcp_knowledge) — transitive resolution can pick an older
   # 0.1.2 that lacks it. Used by ops workspace purge (charter ethos cleanup).
   mcp_philosophy: ^0.1.3
-  google_fonts: ^6.2.1
+  google_fonts: ^8.2.1
   video_player: ^2.9.1
   meta: ^1.15.0
   logging: ^1.2.0
   archive: ^3.6.1
   crypto: ^3.0.3
   shelf: ^1.4.0
-  mcp_server: ^2.1.2
-  mcp_client: ^2.1.1
+  mcp_server: ^2.2.3
+  mcp_client: ^2.2.1
   mcp_llm: ^2.1.1
-  flutter_mcp_ui_runtime: ^0.7.0
-  flutter_mcp_ui_core: ^0.6.0
+  flutter_mcp_ui_runtime: ^0.8.1
+  flutter_mcp_ui_core: ^0.6.6
   json_schema: ^5.1.1
   flutter_js: ^0.8.7
-  ffmpeg_kit_flutter_new: ^3.0.0
+  # LGPL build of FFmpeg — no x264 (GPL), so neither tier's binary is put
+  # under the GPL. H.264 comes from VideoToolbox / openh264 (h264_encoder.dart);
+  # VP9 · Opus · WebP for web exports are in this build.
+  ffmpeg_kit_flutter_new_full: ^2.5.2
   file_selector: ^1.0.3
   flowbrain_core: ^0.1.8
-  flutter_riverpod: ^2.5.1
+  flutter_riverpod: ^3.4.3
   mcp_browser: ^0.1.3
   mcp_channel: ^0.2.1
-  mcp_form: ^0.2.0
+  mcp_form: ^0.2.2
   mcp_ingest: ^0.1.1
   mcp_io: ^0.2.2
   mcp_io_process: ^0.1.1
@@ -59,10 +62,10 @@ dependencies:
   # (canvas / analysis / datastore fs+db). All published (datastore contract
   # lives in mcp_bundle ^0.4.5); resolves hosted-clean, no override.
   mcp_canvas: ^0.1.0
-  mcp_analysis: ^0.1.4
+  mcp_analysis: ^0.2.0
   mcp_datastore: ^0.1.0
   mcp_datastore_sqlite: ^0.1.0
-  flutter_mcp_ui_generator: ^0.6.0
+  flutter_mcp_ui_generator: ^0.6.3
   mcp_knowledge: ^0.2.5
   mcp_fact_graph: ^0.2.3
   # Direct dep (was transitive via mcp_knowledge) so the host can wire the
@@ -83,7 +86,10 @@ dependencies:
   appplayer_ui_view: ^0.1.0
   appplayer_claude_code_provider: ^0.1.1
   appplayer_secure: ^0.1.3
-  brain_kernel: ^0.2.0
+  # OpenSourceLicenses — the platform's registration + license page; its
+  # tool/licenses generators build the Apple notice lists.
+  appplayer_core: ^0.2.1
+  brain_kernel: ^0.2.2
   # Extension-transport FFI home (serial / usb / ble / tcp / ws). Desktop
   # opt-in — the kernel / mcp_client / mcp_server cores stay FFI-free; the
   # `mcp.connect_extension` tool (vendored extension_transport recipe) builds
@@ -117,7 +123,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  # integration_test/ runs the video commands against the linked FFmpeg.
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
   async: ^2.13.1
   # Reconnect-watch tests assert on intervals measured in minutes (spec 17
   # §7.6d has no attempt cap, so "keeps dialling" is a claim about elapsed
@@ -134,6 +143,7 @@ flutter:
     # Board-discovery trust anchors (spec 17 §6) — dev partner / marketplace
     # root CAs the signature evaluator validates against.
     - assets/root_cas/
+    - assets/licenses/
     # Vbu atom self-descriptions — one yaml beside each atom's dart body.
     # `VbuAtomSpecLoader` reads these so the builder catalogue (and the LLM
     # authoring surface behind it) can see the studio's own widgets. They

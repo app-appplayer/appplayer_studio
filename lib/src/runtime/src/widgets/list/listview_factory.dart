@@ -25,7 +25,7 @@ class ListViewWidgetFactory extends WidgetFactory {
     final virtual = boolOf(properties['virtual'], context) ?? false;
     // `cacheExtent` was deprecated in favour of the typed `ScrollCacheExtent`;
     // the DSL still expresses it as a plain pixel number.
-    final itemExtent = parseDimension(properties['itemExtent']);
+    final itemExtent = dimensionOf(properties['itemExtent'], context);
     // `overscan` (1.4) counts *items* kept beyond the viewport on each side.
     // Flutter caches by pixels, so it converts through the item extent when
     // the document gives one — and is ignored when it cannot, rather than
@@ -34,7 +34,7 @@ class ListViewWidgetFactory extends WidgetFactory {
     final overscanPx =
         (overscan != null && itemExtent != null) ? overscan * itemExtent : null;
     final cacheExtentPx =
-        parseDimension(properties['scrollCacheExtent']) ?? overscanPx?.toDouble();
+        dimensionOf(properties['scrollCacheExtent'], context) ?? overscanPx?.toDouble();
     final scrollCacheExtent = cacheExtentPx == null
         ? null
         : ScrollCacheExtent.pixels(cacheExtentPx);
@@ -94,20 +94,15 @@ class ListViewWidgetFactory extends WidgetFactory {
       );
     } else if ((itemsPath != null || resolvedItems != null) &&
         itemTemplate != null) {
-      // Dynamic list with data binding
-      final items = resolvedItems as List<dynamic>? ?? [];
+      // Dynamic list with data binding. A binding that has not resolved to a
+      // list yet — still loading, or an object where the document expected a
+      // collection — is an empty list, not a cast error: the screen shows the
+      // empty message rather than an error card.
+      final items = resolvedItems is List ? resolvedItems : const <dynamic>[];
 
       // Show emptyMessage when items list is empty
       if (items.isEmpty && emptyMessage != null && emptyMessage.isNotEmpty) {
-        listView = Center(
-          child: Padding(
-            padding: padding ?? EdgeInsets.zero,
-            child: Text(
-              emptyMessage,
-              style: TextStyle(color: Theme.of(context.buildContext!).colorScheme.onSurface.withValues(alpha: 0.6)),
-            ),
-          ),
-        );
+        listView = _emptyMessageView(emptyMessage, padding);
       } else if (virtual && itemExtent != null) {
         // Virtualized rendering with fixed item extent
         listView = ListView.builder(
@@ -224,15 +219,7 @@ class ListViewWidgetFactory extends WidgetFactory {
     } else {
       // Empty list - show emptyMessage if provided
       if (emptyMessage != null && emptyMessage.isNotEmpty) {
-        listView = Center(
-          child: Padding(
-            padding: padding ?? EdgeInsets.zero,
-            child: Text(
-              emptyMessage,
-              style: TextStyle(color: Theme.of(context.buildContext!).colorScheme.onSurface.withValues(alpha: 0.6)),
-            ),
-          ),
-        );
+        listView = _emptyMessageView(emptyMessage, padding);
       } else {
         listView = ListView(
           shrinkWrap: shrinkWrap,
@@ -247,6 +234,32 @@ class ListViewWidgetFactory extends WidgetFactory {
         _ensureStableConstraints(listView, shrinkWrap, scrollDirection);
 
     return applyCommonWrappers(wrappedListView, properties, context);
+  }
+
+  /// The "nothing to show" surface.
+  ///
+  /// The theme is read through a [Builder] at the list's own position in the
+  /// tree rather than through the render context's stored build context: that
+  /// context is nullable, and asserting it here made an empty list — the one
+  /// case this branch exists for — throw and render an error card instead of
+  /// the message.
+  Widget _emptyMessageView(String message, EdgeInsets? padding) {
+    return Center(
+      child: Padding(
+        padding: padding ?? EdgeInsets.zero,
+        child: Builder(
+          builder: (buildContext) => Text(
+            message,
+            style: TextStyle(
+              color: Theme.of(buildContext)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _ensureStableConstraints(

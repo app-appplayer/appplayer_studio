@@ -61,20 +61,25 @@ class FormBuilderBuiltInApp extends BuiltInApp {
     final previous = _liveInit;
     _liveInit = null;
     _bootedProject = projectRoot;
+    // One future covers boot AND the `form.*` rebind, so every caller of the
+    // same root (a second `ensureBoot`, the open/new slots) completes only
+    // once templates persist to the project — a `form.save_template` issued
+    // right after an open otherwise landed in the unbound in-memory port and
+    // was lost.
     final future = () async {
       if (previous != null) await previous.dispose();
-      return FormInit.boot(projectRoot, p.basename(projectRoot));
+      final init = await FormInit.boot(projectRoot, p.basename(projectRoot));
+      if (_bootedProject == projectRoot) {
+        _liveInit = init;
+        await FormCapabilityBinding.bindProject(
+          facts: init.system.facts,
+          workspaceId: init.projectId,
+        );
+      }
+      return init;
     }();
     _bootFuture = future;
-    final init = await future;
-    if (_bootedProject == projectRoot) {
-      _liveInit = init;
-      await FormCapabilityBinding.bindProject(
-        facts: init.system.facts,
-        workspaceId: init.projectId,
-      );
-    }
-    return init;
+    return future;
   }
 
   /// Unbind the current project (tab close / project close): the host
@@ -161,8 +166,10 @@ class FormBuilderBuiltInApp extends BuiltInApp {
     ChromeBridge chromeBridge, {
     StudioBackbone? backbone,
   }) async {
-    FormBuilderTools(liveInit: () => _liveInit, server: server)
-        .registerOn(server);
+    FormBuilderTools(
+      liveInit: () => _liveInit,
+      server: server,
+    ).registerOn(server);
   }
 
   @override

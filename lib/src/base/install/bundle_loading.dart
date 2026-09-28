@@ -1,7 +1,7 @@
 /// Host-side loader + accessor extension for activation-time bundle
 /// reads. Replaces the former `bundle_manifest.dart` fork — the
 /// canonical bundle types now live in `package:mcp_bundle`
-/// (memory `feedback_bundle_no_fork_extend`). This file is the thin
+/// (never forked here). This file is the thin
 /// host-shaped entry point: read the on-disk `.mbd/`, and surface the
 /// few activation-time helpers the rest of the host depends on.
 library;

@@ -28,7 +28,7 @@ class IconButtonWidgetFactory extends WidgetFactory {
         ? () => context.handleAction(clickAction)
         : null;
 
-    // Spec §2.6.2: `size` (canonical) and `enabled`. `iconSize` kept as legacy.
+    // `size` (canonical) and `enabled`. `iconSize` kept as legacy.
     final size = numberOf(properties['size'], context) ??
         numberOf(properties['iconSize'], context) ??
         24.0;

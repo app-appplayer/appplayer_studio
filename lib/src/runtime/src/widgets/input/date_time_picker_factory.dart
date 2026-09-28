@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `dateTimePicker` (spec §2.6.28).
+/// Factory for `dateTimePicker`.
 ///
 /// One instant, one binding. Not `datePicker` + `timePicker` side by side:
 /// those bind two values the author must recombine, and the recombination is

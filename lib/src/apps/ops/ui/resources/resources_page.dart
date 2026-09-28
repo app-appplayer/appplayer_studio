@@ -38,10 +38,11 @@ class ResourcesPage extends ConsumerWidget {
                 // with "Bad state: No ProviderScope found". Hand it the ref
                 // we already hold, the way the sibling dialogs in this file
                 // do, so the dialog needs no scope of its own.
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _MigrateDialog(ref: ref),
-                ),
+                onPressed:
+                    () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _MigrateDialog(ref: ref),
+                    ),
               ),
               IconButton(
                 tooltip: 'Refresh',
@@ -61,22 +62,23 @@ class ResourcesPage extends ConsumerWidget {
           const SizedBox(height: 12),
           Expanded(
             child: assets.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) =>
-                  Center(child: Text('Failed to load assets: $e')),
-              data: (list) => list.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No assets yet.',
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: list.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) => _AssetCard(list[i]),
-                    ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Failed to load assets: $e')),
+              data:
+                  (list) =>
+                      list.isEmpty
+                          ? Center(
+                            child: Text(
+                              'No assets yet.',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          )
+                          : ListView.separated(
+                            itemCount: list.length,
+                            separatorBuilder:
+                                (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (_, i) => _AssetCard(list[i]),
+                          ),
             ),
           ),
         ],
@@ -121,7 +123,10 @@ class _AssetCard extends StatelessWidget {
                   if (locator.isNotEmpty)
                     Text(
                       locator,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -129,7 +134,10 @@ class _AssetCard extends StatelessWidget {
               ),
             ),
             _Chip(kind),
-            if (location.isNotEmpty) ...[const SizedBox(width: 6), _Chip(location)],
+            if (location.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              _Chip(location),
+            ],
             if (capability.isNotEmpty) ...[
               const SizedBox(width: 6),
               _Chip(capability),
@@ -191,21 +199,22 @@ class _OpenButton extends ConsumerWidget {
     if (!context.mounted) return;
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Open · $assetId'),
-        content: SingleChildScrollView(
-          child: SelectableText(
-            const JsonEncoder.withIndent('  ').convert(r),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+      builder:
+          (ctx) => AlertDialog(
+            title: Text('Open · $assetId'),
+            content: SingleChildScrollView(
+              child: SelectableText(
+                const JsonEncoder.withIndent('  ').convert(r),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -222,7 +231,7 @@ class _CredentialButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final exists =
-        ref.watch(credentialExistsProvider(credentialRef)).valueOrNull ?? false;
+        ref.watch(credentialExistsProvider(credentialRef)).value ?? false;
     return IconButton(
       visualDensity: VisualDensity.compact,
       tooltip: exists ? 'Credential set — edit' : 'Set credential',
@@ -239,49 +248,50 @@ class _CredentialButton extends ConsumerWidget {
     final controller = TextEditingController();
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Credential · $credentialRef'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              exists
-                  ? 'A secret is stored. Enter a new value to replace it.'
-                  : 'Enter the secret value (stored in the OS keychain).',
-              style: Theme.of(ctx).textTheme.bodySmall,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text('Credential · $credentialRef'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  exists
+                      ? 'A secret is stored. Enter a new value to replace it.'
+                      : 'Enter the secret value (stored in the OS keychain).',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Secret',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Secret',
-                border: OutlineInputBorder(),
+            actions: [
+              if (exists)
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'clear'),
+                  child: const Text(
+                    'Clear',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancel'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          if (exists)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'clear'),
-              child: const Text(
-                'Clear',
-                style: TextStyle(color: Colors.redAccent),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'save'),
+                child: const Text('Save'),
               ),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Cancel'),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'save'),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
     );
     try {
       if (action == 'save') {
@@ -344,7 +354,8 @@ class _MigrateDialogState extends State<_MigrateDialog> {
       });
       if (r['ok'] == true) {
         _blob.text = (r['sealed'] ?? '').toString();
-        _status = 'Sealed ${r['count']} credential(s): '
+        _status =
+            'Sealed ${r['count']} credential(s): '
             '${(r['refsDeclared'] as List?)?.join(', ') ?? ''}. '
             'Copy the blob below to the target machine.';
       } else {
@@ -367,7 +378,8 @@ class _MigrateDialogState extends State<_MigrateDialog> {
       });
       if (r['ok'] == true) {
         final restored = (r['restored'] as List?) ?? const [];
-        _status = 'Restored ${restored.length} credential(s) into the keychain: '
+        _status =
+            'Restored ${restored.length} credential(s) into the keychain: '
             '${restored.join(', ')}.';
         ref.invalidate(assetsProvider);
       } else {

@@ -86,30 +86,31 @@ class FormBuilderTools {
         },
         'required': <String>['documentId', 'templateId', 'data'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        await init.saveDraft(
-          documentId: a['documentId'] as String,
-          document: <String, dynamic>{
-            'templateId': a['templateId'],
-            if (a['templateVersion'] != null)
-              'templateVersion': a['templateVersion'],
-            'data': (a['data'] as Map).cast<String, dynamic>(),
-            if (a['tables'] is Map)
-              'tables': (a['tables'] as Map).cast<String, dynamic>(),
-          },
-          status: (a['status'] as String?) ?? 'draft',
-          savedBy: a['savedBy'] as String?,
-        );
-        final previous = a['previousDocumentId'] as String?;
-        if (previous != null && previous != a['documentId']) {
-          await init.rekeyApproval(
-            from: previous,
-            to: a['documentId'] as String,
-          );
-          await init.deleteDraft(previous);
-        }
-        return <String, dynamic>{'ok': true, 'documentId': a['documentId']};
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            await init.saveDraft(
+              documentId: a['documentId'] as String,
+              document: <String, dynamic>{
+                'templateId': a['templateId'],
+                if (a['templateVersion'] != null)
+                  'templateVersion': a['templateVersion'],
+                'data': (a['data'] as Map).cast<String, dynamic>(),
+                if (a['tables'] is Map)
+                  'tables': (a['tables'] as Map).cast<String, dynamic>(),
+              },
+              status: (a['status'] as String?) ?? 'draft',
+              savedBy: a['savedBy'] as String?,
+            );
+            final previous = a['previousDocumentId'] as String?;
+            if (previous != null && previous != a['documentId']) {
+              await init.rekeyApproval(
+                from: previous,
+                to: a['documentId'] as String,
+              );
+              await init.deleteDraft(previous);
+            }
+            return <String, dynamic>{'ok': true, 'documentId': a['documentId']};
+          }),
     );
 
     server.addTool(
@@ -122,14 +123,17 @@ class FormBuilderTools {
         },
         'required': <String>['documentId'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final draft = await init.getDraft(a['documentId'] as String);
-        if (draft == null) {
-          throw _ToolError('form_builder.draft_not_found',
-              'No draft for documentId "${a['documentId']}"');
-        }
-        return draft;
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final draft = await init.getDraft(a['documentId'] as String);
+            if (draft == null) {
+              throw _ToolError(
+                'form_builder.draft_not_found',
+                'No draft for documentId "${a['documentId']}"',
+              );
+            }
+            return draft;
+          }),
     );
 
     server.addTool(
@@ -139,9 +143,10 @@ class FormBuilderTools {
         'type': 'object',
         'properties': <String, dynamic>{},
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        return <String, dynamic>{'drafts': await init.listDrafts()};
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            return <String, dynamic>{'drafts': await init.listDrafts()};
+          }),
     );
 
     server.addTool(
@@ -156,10 +161,11 @@ class FormBuilderTools {
         },
         'required': <String>['documentId'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        await init.deleteDraft(a['documentId'] as String);
-        return <String, dynamic>{'ok': true, 'deleted': a['documentId']};
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            await init.deleteDraft(a['documentId'] as String);
+            return <String, dynamic>{'ok': true, 'deleted': a['documentId']};
+          }),
     );
 
     server.addTool(
@@ -198,272 +204,278 @@ class FormBuilderTools {
         },
         'required': <String>['documentId'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final documentId = a['documentId'] as String;
-        // ISSUED ARTIFACTS are the user's chosen output media (default:
-        // pdf — the print canonical). The in-app as-issued RECORD (typed
-        // formdoc snapshot, below) is not a medium and is always frozen.
-        // uiDsl renders internally for the snapshot's table rows even
-        // when not selected as an artifact.
-        final formats =
-            ((a['formats'] as List?) ?? const ['pdf']).cast<String>();
-        final draft = await init.getDraft(documentId);
-        if (draft == null) {
-          throw _ToolError(
-            'form_builder.draft_not_found',
-            'Save the draft first (form_builder.draft_save) — the issue '
-                'freezes the saved content.',
-          );
-        }
-        // Approval gate — OPT-IN: a document that never opened an approval
-        // issues exactly as before; one that did must complete its line.
-        final approval = await init.getApproval(documentId);
-        if (approval != null && approval['state'] != 'approved') {
-          throw _ToolError(
-            'form_builder.approval_required',
-            'This document has an approval in state '
-                '"${approval['state']}" — it must complete '
-                '(form_builder.approve) before issuing.',
-          );
-        }
-
-        // Template version for provenance. The draft should carry it
-        // (callers pass `form.create_document`'s `templateVersion` into
-        // draft_save); fall back to the template's CURRENT version — exact
-        // unless the template was re-versioned mid-session, and better
-        // provenance than null.
-        var templateVersion = draft['document']?['templateVersion'];
-        final draftTemplateId = draft['document']?['templateId'];
-        if (templateVersion == null && draftTemplateId is String) {
-          try {
-            final tpl = await _callFormTool('form.get_template', {
-              'templateId': draftTemplateId,
-            });
-            templateVersion = (tpl['template'] as Map?)?['version'];
-          } catch (_) {
-            /* provenance stays null — not worth failing the issue */
-          }
-        }
-
-        // The document's REPRESENTATIVE value for the registry ledger
-        // (the RECIPIENT column/facet). Convention: the template's FIRST
-        // schema field is the key field — the engine's typed schema
-        // carries no keyField declaration (fields/rules/strict only), so
-        // the ledger key is frozen here at issue time instead, stable
-        // against template evolution.
-        String? keyField;
-        String? keyValue;
-        try {
-          if (draftTemplateId is String) {
-            final tpl = await _callFormTool('form.get_template', {
-              'templateId': draftTemplateId,
-              if (templateVersion != null) 'version': templateVersion,
-            });
-            final fields = (((tpl['template'] as Map?)?['schema']
-                    as Map?)?['fields'] as List?) ??
-                const [];
-            if (fields.isNotEmpty) {
-              keyField = '${(fields.first as Map)['name']}';
-              final v = (draft['document']?['data'] as Map?)?[keyField];
-              if (v != null) keyValue = '$v';
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final documentId = a['documentId'] as String;
+            // ISSUED ARTIFACTS are the user's chosen output media (default:
+            // pdf — the print canonical). The in-app as-issued RECORD (typed
+            // formdoc snapshot, below) is not a medium and is always frozen.
+            // uiDsl renders internally for the snapshot's table rows even
+            // when not selected as an artifact.
+            final formats =
+                ((a['formats'] as List?) ?? const ['pdf']).cast<String>();
+            final draft = await init.getDraft(documentId);
+            if (draft == null) {
+              throw _ToolError(
+                'form_builder.draft_not_found',
+                'Save the draft first (form_builder.draft_save) — the issue '
+                    'freezes the saved content.',
+              );
             }
-          }
-        } catch (_) {
-          // Ledger key is decoration on the record — never fails the issue.
-        }
-
-        final issueNumber = await init.nextIssueNumber();
-        final issueDir = p.join(init.projectRoot, 'forms', issueNumber);
-        await Directory(issueDir).create(recursive: true);
-
-        // Embed local image files INTO the document before rendering: the
-        // engine renders data-URI images fully (PDF XObject, HTML inline)
-        // but never touches the filesystem, so a project-relative
-        // `stamp.png` would degrade to an alt-text placeholder. Patch the
-        // LIVE document only — the template keeps the file path.
-        try {
-          final tplForImages = await _callFormTool('form.get_template', {
-            'templateId': draft['document']?['templateId'],
-            if (templateVersion != null) 'version': templateVersion,
-          });
-          final imgSections =
-              ((tplForImages['template'] as Map?)?['defaultSections']
-                      as List?) ??
-                  const [];
-          final imagePatches = <Map<String, dynamic>>[];
-          for (var si = 0; si < imgSections.length; si++) {
-            final blocks =
-                ((imgSections[si] as Map)['blocks'] as List?) ?? const [];
-            for (var bi = 0; bi < blocks.length; bi++) {
-              final b = (blocks[bi] as Map).cast<String, dynamic>();
-              final src = b['src'];
-              if (b['type'] != 'image' ||
-                  src is! String ||
-                  src.isEmpty ||
-                  src.startsWith('data:') ||
-                  src.contains('://') ||
-                  p.isAbsolute(src)) {
-                continue;
-              }
-              final file = File(p.join(init.projectRoot, src));
-              if (!await file.exists()) continue;
-              final ext = p.extension(src).replaceFirst('.', '');
-              final mime = switch (ext.toLowerCase()) {
-                'jpg' || 'jpeg' => 'image/jpeg',
-                'gif' => 'image/gif',
-                'webp' => 'image/webp',
-                _ => 'image/png',
-              };
-              imagePatches.add({
-                'op': 'replace',
-                'path': '/sections/$si/blocks/$bi/src',
-                'value':
-                    'data:$mime;base64,'
-                    '${base64Encode(await file.readAsBytes())}',
-              });
+            // Approval gate — OPT-IN: a document that never opened an approval
+            // issues exactly as before; one that did must complete its line.
+            final approval = await init.getApproval(documentId);
+            if (approval != null && approval['state'] != 'approved') {
+              throw _ToolError(
+                'form_builder.approval_required',
+                'This document has an approval in state '
+                    '"${approval['state']}" — it must complete '
+                    '(form_builder.approve) before issuing.',
+              );
             }
-          }
-          if (imagePatches.isNotEmpty) {
-            await _callFormTool('form.patch', {
-              'documentId': documentId,
-              'patches': imagePatches,
-            });
-          }
-        } catch (e) {
-          // Renderers fall back to alt-text placeholders.
-          stderr.writeln('form_builder.issue: image embed skipped — $e');
-        }
 
-        final artifacts = <Map<String, dynamic>>[];
-        for (final format in formats) {
-          final rendered = await _callFormTool('form.render', {
-            'documentId': documentId,
-            'format': format,
-          });
-          final bytes = base64Decode(rendered['data'] as String);
-          final ext = _artifactExt[format] ?? format;
-          final file = File(p.join(issueDir, 'document.$ext'));
-          await file.writeAsBytes(bytes);
-          artifacts.add(<String, dynamic>{
-            'format': format,
-            // Project-root-relative — survives folder rename/copy/move
-            // (same anchor convention as asset locators).
-            'locator': p.join('forms', issueNumber, 'document.$ext'),
-            if (rendered['pageCount'] != null)
-              'pageCount': rendered['pageCount'],
-          });
-        }
-
-        // TYPED document snapshot ("formdoc"): `form.get_document` returns
-        // the live document with patches applied — sections carry the exact
-        // styles (image maxWidth/placement) AND the patched table rows in
-        // one typed serialisation, so no template/uiDsl merge is needed.
-        // The in-app as-issued view renders THIS. Image srcs are restored
-        // to the template's relative paths (the data-URI embed above is for
-        // the frozen pdf/html only; FormView resolves file paths, not data
-        // URIs) and the referenced local images are copied next to the
-        // artifacts so the frozen HTML's relative <img src> resolves too.
-        try {
-          final docOut = await _callFormTool('form.get_document', {
-            'documentId': documentId,
-          });
-          final doc = (docOut['document'] as Map).cast<String, dynamic>();
-          final sections = (doc['sections'] as List?) ?? const [];
-          // blockId → template src (the pre-embed relative path).
-          final tplOut = await _callFormTool('form.get_template', {
-            'templateId': draft['document']?['templateId'],
-            if (templateVersion != null) 'version': templateVersion,
-          });
-          final tplSrcs = <String, String>{
-            for (final sec
-                in (((tplOut['template'] as Map?)?['defaultSections']
-                            as List?) ??
-                        const [])
-                    .cast<Map>())
-              for (final b in ((sec['blocks'] as List?) ?? const [])
-                  .cast<Map>())
-                if (b['type'] == 'image' && b['src'] is String)
-                  '${b['blockId']}': b['src'] as String,
-          };
-          for (final sec in sections.cast<Map>()) {
-            for (final b in ((sec['blocks'] as List?) ?? const [])
-                .cast<Map>()) {
-              if (b['type'] != 'image') continue;
-              final src = b['src'];
-              if (src is String && src.startsWith('data:')) {
-                final orig = tplSrcs['${b['blockId']}'];
-                if (orig != null) b['src'] = orig;
+            // Template version for provenance. The draft should carry it
+            // (callers pass `form.create_document`'s `templateVersion` into
+            // draft_save); fall back to the template's CURRENT version — exact
+            // unless the template was re-versioned mid-session, and better
+            // provenance than null.
+            var templateVersion = draft['document']?['templateVersion'];
+            final draftTemplateId = draft['document']?['templateId'];
+            if (templateVersion == null && draftTemplateId is String) {
+              try {
+                final tpl = await _callFormTool('form.get_template', {
+                  'templateId': draftTemplateId,
+                });
+                templateVersion = (tpl['template'] as Map?)?['version'];
+              } catch (_) {
+                /* provenance stays null — not worth failing the issue */
               }
-              // Copy local image assets next to the artifacts.
-              final restored = b['src'];
-              if (restored is String &&
-                  restored.isNotEmpty &&
-                  !restored.startsWith('data:') &&
-                  !restored.contains('://') &&
-                  !p.isAbsolute(restored)) {
-                final from = File(p.join(init.projectRoot, restored));
-                if (await from.exists()) {
-                  final to = File(p.join(issueDir, p.basename(restored)));
-                  await to.parent.create(recursive: true);
-                  await from.copy(to.path);
+            }
+
+            // The document's REPRESENTATIVE value for the registry ledger
+            // (the RECIPIENT column/facet). Convention: the template's FIRST
+            // schema field is the key field — the engine's typed schema
+            // carries no keyField declaration (fields/rules/strict only), so
+            // the ledger key is frozen here at issue time instead, stable
+            // against template evolution.
+            String? keyField;
+            String? keyValue;
+            try {
+              if (draftTemplateId is String) {
+                final tpl = await _callFormTool('form.get_template', {
+                  'templateId': draftTemplateId,
+                  if (templateVersion != null) 'version': templateVersion,
+                });
+                final fields =
+                    (((tpl['template'] as Map?)?['schema'] as Map?)?['fields']
+                        as List?) ??
+                    const [];
+                if (fields.isNotEmpty) {
+                  keyField = '${(fields.first as Map)['name']}';
+                  final v = (draft['document']?['data'] as Map?)?[keyField];
+                  if (v != null) keyValue = '$v';
                 }
               }
+            } catch (_) {
+              // Ledger key is decoration on the record — never fails the issue.
             }
-          }
-          final snapshot = <String, dynamic>{
-            'templateId': draft['document']?['templateId'],
-            'templateVersion': templateVersion,
-            'sections': sections,
-            'data':
-                doc['data'] ??
-                draft['document']?['data'] ??
-                const <String, dynamic>{},
-          };
-          await File(
-            p.join(issueDir, 'document.formdoc.json'),
-          ).writeAsString(jsonEncode(snapshot));
-          artifacts.add(<String, dynamic>{
-            'format': 'formdoc',
-            'locator': p.join('forms', issueNumber, 'document.formdoc.json'),
-          });
-        } catch (_) {
-          // Best-effort: the frozen pdf/html/uiDsl remain the record.
-        }
 
-        final issueId = 'issue-$issueNumber';
-        final issue = <String, dynamic>{
-          'issueId': issueId,
-          'issueNumber': issueNumber,
-          'documentId': documentId,
-          'templateId': draft['document']?['templateId'],
-          'templateVersion': templateVersion,
-          'content': draft['document'],
-          'artifacts': artifacts,
-          if (a['issuedBy'] != null) 'issuedBy': a['issuedBy'],
-          if (keyField != null) 'keyField': keyField,
-          if (keyValue != null) 'keyValue': keyValue,
-          'issuedAt': DateTime.now().toUtc().toIso8601String(),
-          if (a['supersedes'] != null) 'supersedes': a['supersedes'],
-          // Approval provenance frozen as-completed (who signed each gate).
-          if (approval != null)
-            'approval': <String, dynamic>{
-              'requestedBy': approval['requestedBy'],
-              'requestedAt': approval['requestedAt'],
-              'approvedAt': approval['approvedAt'],
-              'line': approval['line'],
-            },
-        };
-        await init.recordIssue(issue);
-        // The draft's lifecycle reflects the publish (the issue fact stays
-        // the immutable record either way).
-        await init.saveDraft(
-          documentId: documentId,
-          document: (draft['document'] as Map).cast<String, dynamic>(),
-          status: 'published',
-          savedBy: a['issuedBy'] as String?,
-        );
-        return issue;
-      }),
+            final issueNumber = await init.nextIssueNumber();
+            final issueDir = p.join(init.projectRoot, 'forms', issueNumber);
+            await Directory(issueDir).create(recursive: true);
+
+            // Embed local image files INTO the document before rendering: the
+            // engine renders data-URI images fully (PDF XObject, HTML inline)
+            // but never touches the filesystem, so a project-relative
+            // `stamp.png` would degrade to an alt-text placeholder. Patch the
+            // LIVE document only — the template keeps the file path.
+            try {
+              final tplForImages = await _callFormTool('form.get_template', {
+                'templateId': draft['document']?['templateId'],
+                if (templateVersion != null) 'version': templateVersion,
+              });
+              final imgSections =
+                  ((tplForImages['template'] as Map?)?['defaultSections']
+                      as List?) ??
+                  const [];
+              final imagePatches = <Map<String, dynamic>>[];
+              for (var si = 0; si < imgSections.length; si++) {
+                final blocks =
+                    ((imgSections[si] as Map)['blocks'] as List?) ?? const [];
+                for (var bi = 0; bi < blocks.length; bi++) {
+                  final b = (blocks[bi] as Map).cast<String, dynamic>();
+                  final src = b['src'];
+                  if (b['type'] != 'image' ||
+                      src is! String ||
+                      src.isEmpty ||
+                      src.startsWith('data:') ||
+                      src.contains('://') ||
+                      p.isAbsolute(src)) {
+                    continue;
+                  }
+                  final file = File(p.join(init.projectRoot, src));
+                  if (!await file.exists()) continue;
+                  final ext = p.extension(src).replaceFirst('.', '');
+                  final mime = switch (ext.toLowerCase()) {
+                    'jpg' || 'jpeg' => 'image/jpeg',
+                    'gif' => 'image/gif',
+                    'webp' => 'image/webp',
+                    _ => 'image/png',
+                  };
+                  imagePatches.add({
+                    'op': 'replace',
+                    'path': '/sections/$si/blocks/$bi/src',
+                    'value':
+                        'data:$mime;base64,'
+                        '${base64Encode(await file.readAsBytes())}',
+                  });
+                }
+              }
+              if (imagePatches.isNotEmpty) {
+                await _callFormTool('form.patch', {
+                  'documentId': documentId,
+                  'patches': imagePatches,
+                });
+              }
+            } catch (e) {
+              // Renderers fall back to alt-text placeholders.
+              stderr.writeln('form_builder.issue: image embed skipped — $e');
+            }
+
+            final artifacts = <Map<String, dynamic>>[];
+            for (final format in formats) {
+              final rendered = await _callFormTool('form.render', {
+                'documentId': documentId,
+                'format': format,
+              });
+              final bytes = base64Decode(rendered['data'] as String);
+              final ext = _artifactExt[format] ?? format;
+              final file = File(p.join(issueDir, 'document.$ext'));
+              await file.writeAsBytes(bytes);
+              artifacts.add(<String, dynamic>{
+                'format': format,
+                // Project-root-relative — survives folder rename/copy/move
+                // (same anchor convention as asset locators).
+                'locator': p.join('forms', issueNumber, 'document.$ext'),
+                if (rendered['pageCount'] != null)
+                  'pageCount': rendered['pageCount'],
+              });
+            }
+
+            // TYPED document snapshot ("formdoc"): `form.get_document` returns
+            // the live document with patches applied — sections carry the exact
+            // styles (image maxWidth/placement) AND the patched table rows in
+            // one typed serialisation, so no template/uiDsl merge is needed.
+            // The in-app as-issued view renders THIS. Image srcs are restored
+            // to the template's relative paths (the data-URI embed above is for
+            // the frozen pdf/html only; FormView resolves file paths, not data
+            // URIs) and the referenced local images are copied next to the
+            // artifacts so the frozen HTML's relative <img src> resolves too.
+            try {
+              final docOut = await _callFormTool('form.get_document', {
+                'documentId': documentId,
+              });
+              final doc = (docOut['document'] as Map).cast<String, dynamic>();
+              final sections = (doc['sections'] as List?) ?? const [];
+              // blockId → template src (the pre-embed relative path).
+              final tplOut = await _callFormTool('form.get_template', {
+                'templateId': draft['document']?['templateId'],
+                if (templateVersion != null) 'version': templateVersion,
+              });
+              final tplSrcs = <String, String>{
+                for (final sec
+                    in (((tplOut['template'] as Map?)?['defaultSections']
+                                as List?) ??
+                            const [])
+                        .cast<Map>())
+                  for (final b
+                      in ((sec['blocks'] as List?) ?? const []).cast<Map>())
+                    if (b['type'] == 'image' && b['src'] is String)
+                      '${b['blockId']}': b['src'] as String,
+              };
+              for (final sec in sections.cast<Map>()) {
+                for (final b
+                    in ((sec['blocks'] as List?) ?? const []).cast<Map>()) {
+                  if (b['type'] != 'image') continue;
+                  final src = b['src'];
+                  if (src is String && src.startsWith('data:')) {
+                    final orig = tplSrcs['${b['blockId']}'];
+                    if (orig != null) b['src'] = orig;
+                  }
+                  // Copy local image assets next to the artifacts.
+                  final restored = b['src'];
+                  if (restored is String &&
+                      restored.isNotEmpty &&
+                      !restored.startsWith('data:') &&
+                      !restored.contains('://') &&
+                      !p.isAbsolute(restored)) {
+                    final from = File(p.join(init.projectRoot, restored));
+                    if (await from.exists()) {
+                      final to = File(p.join(issueDir, p.basename(restored)));
+                      await to.parent.create(recursive: true);
+                      await from.copy(to.path);
+                    }
+                  }
+                }
+              }
+              final snapshot = <String, dynamic>{
+                'templateId': draft['document']?['templateId'],
+                'templateVersion': templateVersion,
+                'sections': sections,
+                'data':
+                    doc['data'] ??
+                    draft['document']?['data'] ??
+                    const <String, dynamic>{},
+              };
+              await File(
+                p.join(issueDir, 'document.formdoc.json'),
+              ).writeAsString(jsonEncode(snapshot));
+              artifacts.add(<String, dynamic>{
+                'format': 'formdoc',
+                'locator': p.join(
+                  'forms',
+                  issueNumber,
+                  'document.formdoc.json',
+                ),
+              });
+            } catch (_) {
+              // Best-effort: the frozen pdf/html/uiDsl remain the record.
+            }
+
+            final issueId = 'issue-$issueNumber';
+            final issue = <String, dynamic>{
+              'issueId': issueId,
+              'issueNumber': issueNumber,
+              'documentId': documentId,
+              'templateId': draft['document']?['templateId'],
+              'templateVersion': templateVersion,
+              'content': draft['document'],
+              'artifacts': artifacts,
+              if (a['issuedBy'] != null) 'issuedBy': a['issuedBy'],
+              if (keyField != null) 'keyField': keyField,
+              if (keyValue != null) 'keyValue': keyValue,
+              'issuedAt': DateTime.now().toUtc().toIso8601String(),
+              if (a['supersedes'] != null) 'supersedes': a['supersedes'],
+              // Approval provenance frozen as-completed (who signed each gate).
+              if (approval != null)
+                'approval': <String, dynamic>{
+                  'requestedBy': approval['requestedBy'],
+                  'requestedAt': approval['requestedAt'],
+                  'approvedAt': approval['approvedAt'],
+                  'line': approval['line'],
+                },
+            };
+            await init.recordIssue(issue);
+            // The draft's lifecycle reflects the publish (the issue fact stays
+            // the immutable record either way).
+            await init.saveDraft(
+              documentId: documentId,
+              document: (draft['document'] as Map).cast<String, dynamic>(),
+              status: 'published',
+              savedBy: a['issuedBy'] as String?,
+            );
+            return issue;
+          }),
     );
 
     server.addTool(
@@ -474,9 +486,10 @@ class FormBuilderTools {
         'type': 'object',
         'properties': <String, dynamic>{},
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        return <String, dynamic>{'issues': await init.listIssues()};
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            return <String, dynamic>{'issues': await init.listIssues()};
+          }),
     );
 
     server.addTool(
@@ -489,14 +502,17 @@ class FormBuilderTools {
         },
         'required': <String>['issueId'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final issue = await init.getIssue(a['issueId'] as String);
-        if (issue == null) {
-          throw _ToolError('form_builder.issue_not_found',
-              'No issue "${a['issueId']}"');
-        }
-        return issue;
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final issue = await init.getIssue(a['issueId'] as String);
+            if (issue == null) {
+              throw _ToolError(
+                'form_builder.issue_not_found',
+                'No issue "${a['issueId']}"',
+              );
+            }
+            return issue;
+          }),
     );
 
     // --- approvals (request → approval line → inbox) ----------------------
@@ -531,24 +547,27 @@ class FormBuilderTools {
         },
         'required': <String>['documentId', 'requestedBy', 'line'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final approval = await init.requestApproval(
-          documentId: a['documentId'] as String,
-          requestedBy: a['requestedBy'] as String,
-          title: a['title'] as String?,
-          line: ((a['line'] as List).cast<Map>())
-              .map((e) => e.cast<String, dynamic>())
-              .toList(),
-        );
-        await _notify(
-          recipientId: (approval['line'] as List).cast<Map>().first['approverId']
-              as String,
-          text:
-              'Approval waiting: ${approval['title'] ?? approval['documentId']} '
-              '(requested by ${approval['requestedBy']})',
-        );
-        return approval;
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final approval = await init.requestApproval(
+              documentId: a['documentId'] as String,
+              requestedBy: a['requestedBy'] as String,
+              title: a['title'] as String?,
+              line:
+                  ((a['line'] as List).cast<Map>())
+                      .map((e) => e.cast<String, dynamic>())
+                      .toList(),
+            );
+            await _notify(
+              recipientId:
+                  (approval['line'] as List).cast<Map>().first['approverId']
+                      as String,
+              text:
+                  'Approval waiting: ${approval['title'] ?? approval['documentId']} '
+                  '(requested by ${approval['requestedBy']})',
+            );
+            return approval;
+          }),
     );
 
     server.addTool(
@@ -568,32 +587,34 @@ class FormBuilderTools {
         },
         'required': <String>['documentId', 'actor'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final approval = await init.approve(
-          documentId: a['documentId'] as String,
-          actor: a['actor'] as String,
-          comment: a['comment'] as String?,
-          finalize: a['finalize'] == true,
-        );
-        if (approval['state'] == 'approved') {
-          await _notify(
-            recipientId: approval['requestedBy'] as String,
-            text:
-                'Approval complete: ${approval['title'] ?? approval['documentId']}'
-                ' — ready to issue (form_builder.issue)',
-          );
-        } else {
-          final line = (approval['line'] as List).cast<Map>();
-          await _notify(
-            recipientId:
-                line[approval['currentIndex'] as int]['approverId'] as String,
-            text:
-                'Approval waiting: ${approval['title'] ?? approval['documentId']} '
-                '(requested by ${approval['requestedBy']})',
-          );
-        }
-        return approval;
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final approval = await init.approve(
+              documentId: a['documentId'] as String,
+              actor: a['actor'] as String,
+              comment: a['comment'] as String?,
+              finalize: a['finalize'] == true,
+            );
+            if (approval['state'] == 'approved') {
+              await _notify(
+                recipientId: approval['requestedBy'] as String,
+                text:
+                    'Approval complete: ${approval['title'] ?? approval['documentId']}'
+                    ' — ready to issue (form_builder.issue)',
+              );
+            } else {
+              final line = (approval['line'] as List).cast<Map>();
+              await _notify(
+                recipientId:
+                    line[approval['currentIndex'] as int]['approverId']
+                        as String,
+                text:
+                    'Approval waiting: ${approval['title'] ?? approval['documentId']} '
+                    '(requested by ${approval['requestedBy']})',
+              );
+            }
+            return approval;
+          }),
     );
 
     server.addTool(
@@ -611,20 +632,21 @@ class FormBuilderTools {
         },
         'required': <String>['documentId', 'actor', 'comment'],
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final approval = await init.reject(
-          documentId: a['documentId'] as String,
-          actor: a['actor'] as String,
-          comment: a['comment'] as String,
-        );
-        await _notify(
-          recipientId: approval['requestedBy'] as String,
-          text:
-              'Rejected: ${approval['title'] ?? approval['documentId']} — '
-              'reason: ${a['comment']}',
-        );
-        return approval;
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final approval = await init.reject(
+              documentId: a['documentId'] as String,
+              actor: a['actor'] as String,
+              comment: a['comment'] as String,
+            );
+            await _notify(
+              recipientId: approval['requestedBy'] as String,
+              text:
+                  'Rejected: ${approval['title'] ?? approval['documentId']} — '
+                  'reason: ${a['comment']}',
+            );
+            return approval;
+          }),
     );
 
     server.addTool(
@@ -644,27 +666,28 @@ class FormBuilderTools {
           'actor': <String, dynamic>{'type': 'string'},
         },
       },
-      handler: (args) => _withInit(args, (init, a) async {
-        final all = await init.listApprovals();
-        final scope = (a['scope'] as String?) ?? 'all';
-        final actor = a['actor'] as String?;
-        final filtered = switch (scope) {
-          'mine' => [
-              for (final ap in all)
-                if (ap['state'] == 'pending' &&
-                    ((ap['line'] as List).cast<Map>()[ap['currentIndex']
-                            as int]['approverId'] ==
-                        actor))
-                  ap,
-            ],
-          'requested' => [
-              for (final ap in all)
-                if (ap['requestedBy'] == actor) ap,
-            ],
-          _ => all,
-        };
-        return <String, dynamic>{'approvals': filtered};
-      }),
+      handler:
+          (args) => _withInit(args, (init, a) async {
+            final all = await init.listApprovals();
+            final scope = (a['scope'] as String?) ?? 'all';
+            final actor = a['actor'] as String?;
+            final filtered = switch (scope) {
+              'mine' => [
+                for (final ap in all)
+                  if (ap['state'] == 'pending' &&
+                      ((ap['line'] as List).cast<Map>()[ap['currentIndex']
+                              as int]['approverId'] ==
+                          actor))
+                    ap,
+              ],
+              'requested' => [
+                for (final ap in all)
+                  if (ap['requestedBy'] == actor) ap,
+              ],
+              _ => all,
+            };
+            return <String, dynamic>{'approvals': filtered};
+          }),
     );
   }
 
@@ -677,11 +700,13 @@ class FormBuilderTools {
     required String text,
   }) async {
     try {
-      await server.callTool('channel.send', <String, dynamic>{
-        'channelId': 'in_app',
-        'conversationId': recipientId,
-        'text': text,
-      }).timeout(const Duration(seconds: 5));
+      await server
+          .callTool('channel.send', <String, dynamic>{
+            'channelId': 'in_app',
+            'conversationId': recipientId,
+            'text': text,
+          })
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       stderr.writeln('form_builder approval notify skipped — $e');
     }
@@ -695,14 +720,16 @@ class FormBuilderTools {
     Map<String, dynamic> args,
   ) async {
     final result = await server.callTool(name, args);
-    final text = result.content
-        .whereType<mk.KernelTextContent>()
-        .map((c) => c.text)
-        .join();
+    final text =
+        result.content
+            .whereType<mk.KernelTextContent>()
+            .map((c) => c.text)
+            .join();
     final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-    final map = decoded is Map
-        ? decoded.cast<String, dynamic>()
-        : <String, dynamic>{'value': decoded};
+    final map =
+        decoded is Map
+            ? decoded.cast<String, dynamic>()
+            : <String, dynamic>{'value': decoded};
     if (result.isError == true) {
       throw _ToolError(
         (map['code'] as String?) ?? 'form.error',

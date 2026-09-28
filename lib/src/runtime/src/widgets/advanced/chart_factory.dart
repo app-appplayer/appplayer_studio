@@ -22,13 +22,13 @@ class ChartWidgetFactory extends WidgetFactory {
     // Extract visual properties
     final showGrid = context.resolve<bool>(properties['showGrid'] ?? true);
     final showLabels = context.resolve<bool>(properties['showLabels'] ?? true);
-    // §10: `options.legend.position` — `top` (default) · `bottom` · `left` ·
+    // `options.legend.position` — `top` (default) · `bottom` · `left` ·
     // `right` · `none`. The factory used to read only `showLegend`, a name
     // that appears nowhere in the spec, and defaulted it to false: a chart
     // written the documented way declared its dataset labels and drew no
     // legend at all. `showLegend` stays as a legacy override.
     final options = context.resolve(properties['options']);
-    // §10 `options.animation.duration` (ms, default 1000) and
+    // `options.animation.duration` (ms, default 1000) and
     // `options.responsive` (default true). Both were declared in the registry,
     // documented in the prose example, and read by nobody: a chart asking for
     // a one-second reveal appeared instantly, and `responsive: false` filled
@@ -66,19 +66,16 @@ class ChartWidgetFactory extends WidgetFactory {
     // explicitly.
     final primaryColor =
         parseColor(context.resolve(properties['primaryColor']), context) ??
-            context.themeManager.getColorValue('primary') ??
-            Colors.blue;
+            context.themeManager.colorOr('primary', Colors.blue);
     final colors = _parseColors(properties['colors'], context);
     final gridColor =
         parseColor(context.resolve(properties['gridColor']), context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey.shade300;
+            context.themeManager.colorOr('outlineVariant', Colors.grey.shade300);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final labelColor =
         parseColor(context.resolve(properties['labelColor']), context) ??
-            context.themeManager.getColorValue('onSurface') ??
-            Colors.black87;
+            context.themeManager.colorOr('onSurface', Colors.black87);
 
     // Determine if multi-dataset or single data
     final bool isMultiDataset = rawData is Map && rawData.containsKey('datasets');
@@ -107,11 +104,8 @@ class ChartWidgetFactory extends WidgetFactory {
     // into the scaffold tone, so prefer `surfaceContainer` for visible
     // separation. Falls back through surface → white for legacy themes.
     final effectiveBackground = backgroundColor ??
-        context.themeManager.getColorValue('surfaceContainer') ??
-        context.themeManager.getColorValue('surface') ??
-        Colors.white;
-    final effectiveBorder = context.themeManager.getColorValue('outlineVariant') ??
-        Colors.grey.shade200;
+        context.themeManager.colorOr('surfaceContainer', context.themeManager.getColorValue('surface') ?? Colors.white);
+    final effectiveBorder = context.themeManager.colorOr('outlineVariant', Colors.grey.shade200);
 
     if (chartData.isEmpty && datasets.isEmpty) {
       return applyCommonWrappers(
@@ -262,7 +256,7 @@ class ChartWidgetFactory extends WidgetFactory {
               }
             }
           }
-          // Spec §10: `borderColor` is the line, `backgroundColor` is the
+          // `borderColor` is the line, `backgroundColor` is the
           // fill. `color` is neither — it is a legacy spelling this factory
           // invented, kept as a fallback so documents carrying it still draw.
           final legacy = parseColor(dsMap['color'], context);
@@ -976,7 +970,12 @@ class _ChartPainter extends CustomPainter {
       // Draw each dataset polygon
       for (int dsIdx = 0; dsIdx < datasets.length; dsIdx++) {
         final ds = datasets[dsIdx];
-        final color = ds.color ?? colors[dsIdx % colors.length];
+        // `borderColor` first, like every other series type: it is the
+        // LINE colour, and a radar polygon is a line. Reading only
+        // `backgroundColor` here meant a document that coloured its series
+        // the documented way got the palette default on this one chart type.
+        final color =
+            ds.borderColor ?? ds.color ?? colors[dsIdx % colors.length];
         _drawRadarPolygon(
             canvas, center, radius, ds.data, globalMax, angleStep, color, ds.fill);
       }

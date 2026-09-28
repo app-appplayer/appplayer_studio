@@ -7,6 +7,16 @@ import 'package:appplayer_studio/ui.dart';
 /// Branding — read `<scene_builder.mbd>/branding/theme.json` and render
 /// the color palette + font tokens. First cut is read-only; the next
 /// round wires per-token edit + save through `studio.builder.writeBundleFile`.
+/// The Scene Builder seed among the host's built-in seed bundles, if any.
+@visibleForTesting
+String? sceneBuilderSeedPath(Iterable<String> seedMbdPaths) {
+  for (final path in seedMbdPaths) {
+    final name = path.split('/').where((s) => s.isNotEmpty).lastOrNull;
+    if (name == 'scene_builder.mbd') return path;
+  }
+  return null;
+}
+
 class BrandingView extends StatefulWidget {
   const BrandingView({
     super.key,
@@ -96,6 +106,10 @@ class _BrandingViewState extends State<BrandingView> {
         }
       }
     }
+    // The built-in Scene Builder bundle is a seed, and seeds are kept out
+    // of `studio.bundle.list` (it lists user installs only) — so the
+    // shipped theme is found through the host's seed set instead.
+    mbdPath ??= sceneBuilderSeedPath(widget.chromeBridge.builtInSeedMbdPaths);
     if (mbdPath == null) {
       setState(() {
         _loading = false;

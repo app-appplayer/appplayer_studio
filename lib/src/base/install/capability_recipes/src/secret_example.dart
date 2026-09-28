@@ -15,11 +15,12 @@
 /// Same registration as the other packs:
 /// `registerCapabilityTools(registry, capabilityId: secretCapabilityId,
 /// tools: secretCapabilityTools(store))`. Like `secure_example.dart` this is
-/// Flutter-bound (production storage = platform keychain), hence its home in
-/// the `secure_capability` recipe rather than the pure-Dart `capability_tools`.
+/// storage-agnostic — the host injects it (platform keychain in production,
+/// an in-memory or file-backed store headless), so this lives in the
+/// `secure_capability` recipe as a credential subject, not as a Flutter one.
 library;
 
-import 'package:appplayer_secure/appplayer_secure.dart' show SecureStorage;
+import 'package:appplayer_secure_core/appplayer_secure_core.dart' show SecureStorage;
 import 'capability_tool_pack.dart';
 
 /// Capability id (namespace) — exposed names are `secret.set`,

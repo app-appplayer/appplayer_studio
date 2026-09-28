@@ -36,8 +36,22 @@ class TextFieldWidgetFactory extends WidgetFactory {
     );
   }
 
+  /// Builds the field.
+  ///
+  /// [controllerOverride] / [onChangedOverride] are for the debounced wrapper,
+  /// which owns both. It used to take the finished widget apart and rebuild a
+  /// `TextField` around its own handler — which worked only while the result
+  /// WAS a `TextField` or a `Focus` around one. A document that also declared
+  /// `visible`, `tooltip` or `click` got a wrapper back, the rebuild did not
+  /// recognise it, and the field was returned untouched: the debounce was
+  /// silently gone and the field was driven by a different controller than the
+  /// one holding the debounced value.
   Widget _buildTextField(
-      Map<String, dynamic> definition, RenderContext context) {
+    Map<String, dynamic> definition,
+    RenderContext context, {
+    required TextEditingController controller,
+    required void Function(String) onChanged,
+  }) {
     final properties = extractProperties(definition);
 
     // Extract properties
@@ -61,8 +75,9 @@ class TextFieldWidgetFactory extends WidgetFactory {
 
     // Parse validation rules if provided
     final validationDef = properties['validation'];
-    final validationRules = ValidationEngine.parseValidation(validationDef);
-    final hasValidation = validationRules.isNotEmpty;
+    // Parsed for the decoration below; the debounced path validates through
+    // its own handler.
+    ValidationEngine.parseValidation(validationDef);
 
     // Handle error state
     // The 'error' property can be either a boolean (to show error state) or a string (the error message)
@@ -76,23 +91,11 @@ class TextFieldWidgetFactory extends WidgetFactory {
       errorText = null;
     }
 
-    // Get event handlers - MCP UI DSL v1.0 spec
-    final changeAction = actionOf(properties['onChange'] ?? properties['change'], context);
+    // Get event handlers - MCP UI DSL v1.0 spec.
+    // `onChange` is the debouncer's, injected above.
     final submitAction = actionOf(properties['onSubmit'] ?? properties['submit'], context);
     final blurAction = actionOf(properties['onBlur'] ?? properties['blur'], context);
     final focusAction = actionOf(properties['onFocus'] ?? properties['focus'], context);
-
-    // Get initial value from binding or value property
-    final bindingPath = readString(properties['binding'], context);
-    String initialValue = '';
-    if (bindingPath != null) {
-      initialValue = context.getState(bindingPath)?.toString() ?? '';
-    } else {
-      initialValue = context.resolve<String>(properties['value'] ?? '');
-    }
-
-    // Create text editing controller with initial value
-    final controller = TextEditingController(text: initialValue);
 
     // Parse style
     TextStyle? style;
@@ -106,16 +109,12 @@ class TextFieldWidgetFactory extends WidgetFactory {
         letterSpacing:
             context.resolve<num?>(styleDef['letterSpacing'])?.toDouble(),
         wordSpacing: context.resolve<num?>(styleDef['wordSpacing'])?.toDouble(),
-        height: context.resolve<num?>(styleDef['height'])?.toDouble(),
+        height: readLineHeight(styleDef, context),
       );
     }
 
-    // `showToggle` offers a reveal control alongside an obscured field
-    // (§2.6.5). The field is rebuilt through this closure so the toggle can
-    // flip `obscureText` without a second copy of the widget drifting from
-    // the first.
     final showToggle =
-        context.resolve<bool>(properties['showToggle'] ?? false) && obscureText;
+        (readBool(properties['showToggle'], context) ?? false) && obscureText;
 
     // `defaultCountry` (ISO 3166-1 alpha-2) seeds the dialling code on a phone
     // field. Declared in 1.4 and never read, so a document naming a country
@@ -126,9 +125,12 @@ class TextFieldWidgetFactory extends WidgetFactory {
         ? readEnum(properties['defaultCountry'], context)
         : null;
     final diallingPrefix = _diallingCodes[defaultCountry?.toUpperCase()];
-    if (diallingPrefix != null && controller.text.isEmpty) {
-      controller.text = diallingPrefix;
-    }
+    // The prefix is DECORATION, not content: it is drawn by `prefixText`
+    // below. Seeding the controller with it as well put the code on screen
+    // twice ("+82+82…" as soon as anything was typed) and wrote into the
+    // field without writing to the binding, so what was displayed and what
+    // the document held disagreed from the first frame. Only the debounced
+    // path ever showed it, because that path threw this controller away.
 
     Widget buildField({required bool obscure, Widget? extraSuffix}) => TextField(
       controller: controller,
@@ -152,33 +154,7 @@ class TextFieldWidgetFactory extends WidgetFactory {
       maxLength: maxLength,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
-      onChanged: (newValue) {
-        // Validate if rules are defined
-        if (hasValidation) {
-          ValidationEngine.validate(newValue, validationRules);
-          // Validation result will be used later if needed
-        }
-
-        // Update state if binding is specified
-        final path = readString(properties['binding'], context);
-        if (path != null) {
-          context.setValue(path, newValue);
-        }
-
-        // Execute action if change is specified
-        if (changeAction != null) {
-          // Create a child context with event data
-          final eventContext = context.createChildContext(
-            variables: {
-              'event': {
-                'value': newValue,
-                'type': 'change',
-              },
-            },
-          );
-          eventContext.handleAction(changeAction);
-        }
-      },
+      onChanged: onChanged,
       onSubmitted: (newValue) {
         // Update state if binding is specified
         final path = readString(properties['binding'], context);
@@ -310,12 +286,32 @@ class TextFieldWidgetFactory extends WidgetFactory {
         letterSpacing:
             context.resolve<num?>(styleDef['letterSpacing'])?.toDouble(),
         wordSpacing: context.resolve<num?>(styleDef['wordSpacing'])?.toDouble(),
-        height: context.resolve<num?>(styleDef['height'])?.toDouble(),
+        height: readLineHeight(styleDef, context),
       );
     }
 
+    // `showToggle` and `defaultCountry` (1.4) are computed here as
+    // well as in `_buildTextField`. There are two builders in this file — this
+    // one runs for an ordinary field, the other for a debounced one — and both
+    // slots were implemented only in the other. A document declaring either
+    // got nothing, on the path almost every document takes.
+    final showToggle =
+        (readBool(properties['showToggle'], context) ?? false) && obscureText;
+    final inputTypeName =
+        readEnum(properties['inputType'] ?? properties['keyboardType'], context);
+    final diallingPrefix = inputTypeName == 'phone'
+        ? _diallingCodes[
+            readEnum(properties['defaultCountry'], context)?.toUpperCase()]
+        : null;
+    // The prefix is DECORATION, not content: it is drawn by `prefixText`
+    // below. Seeding the controller with it as well put the code on screen
+    // twice ("+82+82…" as soon as anything was typed) and wrote into the
+    // field without writing to the binding, so what was displayed and what
+    // the document held disagreed from the first frame. Only the debounced
+    // path ever showed it, because that path threw this controller away.
+
     // Build text field with provided controller
-    Widget textField = TextField(
+    Widget buildField({required bool obscure, Widget? extraSuffix}) => TextField(
       controller: controller,
       style: style,
       decoration: InputDecoration(
@@ -323,14 +319,16 @@ class TextFieldWidgetFactory extends WidgetFactory {
         labelText: label,
         helperText: helperText,
         prefixIcon: prefixIcon != null ? Icon(_parseIcon(prefixIcon)) : null,
-        suffixIcon: suffixIcon != null ? Icon(_parseIcon(suffixIcon)) : null,
+        prefixText: diallingPrefix,
+        suffixIcon: extraSuffix ??
+            (suffixIcon != null ? Icon(_parseIcon(suffixIcon)) : null),
         border: const OutlineInputBorder(),
         counterText: maxLength != null ? null : '',
         // An explicit `error` wins; otherwise the field shows what its own
         // validation rules said about the current value.
         errorText: errorText ?? validationMessage,
       ),
-      obscureText: obscureText,
+      obscureText: obscure,
       enabled: enabled,
       readOnly: readOnly,
       maxLines: maxLines,
@@ -387,6 +385,22 @@ class TextFieldWidgetFactory extends WidgetFactory {
         }
       },
     );
+
+    Widget textField = showToggle
+        ? StatefulBuilder(
+            builder: (_, setLocal) => buildField(
+              obscure: !_revealed.contains(controller),
+              extraSuffix: IconButton(
+                icon: Icon(_revealed.contains(controller)
+                    ? Icons.visibility_off
+                    : Icons.visibility),
+                onPressed: () => setLocal(() {
+                  if (!_revealed.remove(controller)) _revealed.add(controller);
+                }),
+              ),
+            ),
+          )
+        : buildField(obscure: obscureText);
 
     // Wrap in Focus when either focus action is specified
     if (blurAction != null || focusAction != null) {
@@ -594,53 +608,15 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
     modifiedProperties.remove('change'); // Remove change action as we handle it
     modifiedProperties['value'] = _lastValue; // Use current value
 
-    // Build text field without debouncing
-    final textField =
-        factory._buildTextField(modifiedDefinition, widget.context);
-
-    // If it's wrapped in Focus, we need to intercept the TextField
-    if (textField is Focus) {
-      final focusChild = (textField).child;
-      if (focusChild is TextField) {
-        return Focus(
-          onFocusChange: (textField).onFocusChange,
-          child: TextField(
-            controller: _controller,
-            onChanged: _handleChange,
-            style: focusChild.style,
-            decoration: focusChild.decoration,
-            obscureText: focusChild.obscureText,
-            enabled: focusChild.enabled,
-            readOnly: focusChild.readOnly,
-            maxLines: focusChild.maxLines,
-            maxLength: focusChild.maxLength,
-            keyboardType: focusChild.keyboardType,
-            textInputAction: focusChild.textInputAction,
-            onSubmitted: focusChild.onSubmitted,
-          ),
-        );
-      }
-    }
-
-    // If it's a direct TextField, replace onChanged
-    if (textField is TextField) {
-      return TextField(
-        controller: _controller,
-        onChanged: _handleChange,
-        style: textField.style,
-        decoration: textField.decoration,
-        obscureText: textField.obscureText,
-        enabled: textField.enabled,
-        readOnly: textField.readOnly,
-        maxLines: textField.maxLines,
-        maxLength: textField.maxLength,
-        keyboardType: textField.keyboardType,
-        textInputAction: textField.textInputAction,
-        onSubmitted: textField.onSubmitted,
-      );
-    }
-
-    return textField;
+    // The debouncer owns the controller and the change handler; everything
+    // else — including whatever wrappers the document declared — comes back
+    // from the builder untouched.
+    return factory._buildTextField(
+      modifiedDefinition,
+      widget.context,
+      controller: _controller,
+      onChanged: _handleChange,
+    );
   }
 }
 

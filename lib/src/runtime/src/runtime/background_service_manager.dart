@@ -261,10 +261,15 @@ class BackgroundServiceRunner {
   void _startOneoffService() {
     final delay = definition.interval ?? 0;
     _timer = Timer(Duration(milliseconds: delay), () {
-      if (_isRunning) {
-        _executeToolAsync();
-      }
-      _isRunning = false;
+      if (!_isRunning) return;
+      // `_isRunning` is NOT cleared here. `_executeToolAsync` returns
+      // immediately, and every retry scheduled by `_handleExecutionError`
+      // checks this flag before running — clearing it on the way out meant a
+      // one-off service with `retryOnError` declared could never retry: the
+      // flag was already false by the time the first failure came back. The
+      // timer is one-shot, so the service still runs exactly once on success;
+      // `stop()` is what ends it.
+      _executeToolAsync();
     });
   }
 

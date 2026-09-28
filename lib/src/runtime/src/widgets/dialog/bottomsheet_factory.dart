@@ -73,8 +73,8 @@ class BottomSheetWidgetFactory extends WidgetFactory {
               margin: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
                 color: dragHandleColor ??
-                    context.themeManager.getColorValue('outlineVariant') ??
-                    Colors.grey[300],
+                    context.themeManager
+                        .colorOr('outlineVariant', Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

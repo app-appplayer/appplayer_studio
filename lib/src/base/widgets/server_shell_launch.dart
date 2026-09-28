@@ -82,10 +82,7 @@ const int kServerShellDebugPort = 8931;
 Future<int> _findFreePort(int base, {int span = 20}) async {
   for (var port = base; port < base + span; port++) {
     try {
-      final v4 = await ServerSocket.bind(
-        InternetAddress.loopbackIPv4,
-        port,
-      );
+      final v4 = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
       await v4.close();
       final v6 = await ServerSocket.bind(
         InternetAddress.anyIPv6,
@@ -195,9 +192,7 @@ Future<ServerShellLaunch> prepareServerShellLaunch({
   }
   final node = resolveCliExecutable('node');
   if (node == null) {
-    throw ServerShellLaunchException(
-      'node executable not found on PATH.',
-    );
+    throw ServerShellLaunchException('node executable not found on PATH.');
   }
 
   // ── ① Pack (canonical packer — the exact publish artifact) ───────

@@ -16,6 +16,18 @@ class VibeChatLog {
 
   final String _path;
 
+  /// Writes to the file run one at a time. Two appends in flight at once
+  /// both write at the old end of the file, and the shorter line overwrites
+  /// the start of the longer one — a slash command appends its user turn
+  /// and its result turn back to back.
+  Future<void> _writes = Future<void>.value();
+
+  Future<void> _serial(Future<void> Function() write) {
+    final next = _writes.then((_) => write());
+    _writes = next.catchError((_) {});
+    return next;
+  }
+
   static const String fileName = 'chat.jsonl';
 
   /// Open (or create) the chat log inside [projectPath].
@@ -49,7 +61,7 @@ class VibeChatLog {
 
   /// Append one turn to the log. Best-effort — failures are swallowed
   /// so a write hiccup never breaks the chat experience.
-  Future<void> append(ChatTurn turn) async {
+  Future<void> append(ChatTurn turn) => _serial(() async {
     try {
       final file = File(_path);
       await file.parent.create(recursive: true);
@@ -61,23 +73,23 @@ class VibeChatLog {
     } catch (_) {
       /* ignore */
     }
-  }
+  });
 
   /// Drop the entire log (used by `revert`-style flows that want a
   /// clean conversation, or by tests). Best-effort.
-  Future<void> clear() async {
+  Future<void> clear() => _serial(() async {
     try {
       final file = File(_path);
       if (await file.exists()) await file.delete();
     } catch (_) {
       /* ignore */
     }
-  }
+  });
 
   /// Remove every turn whose role + text + timestamp match [target].
   /// Append-only file → rewrite without the offending lines. Best
   /// effort; partial writes leave the file in its original state.
-  Future<void> removeTurn(ChatTurn target) async {
+  Future<void> removeTurn(ChatTurn target) => _serial(() async {
     try {
       final all = await readAll();
       final keep =
@@ -103,7 +115,7 @@ class VibeChatLog {
     } catch (_) {
       /* ignore */
     }
-  }
+  });
 
   static Map<String, dynamic> _turnToJson(ChatTurn turn) => <String, dynamic>{
     'role': turn.role,

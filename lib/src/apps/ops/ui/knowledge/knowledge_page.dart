@@ -184,7 +184,7 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
     }
     return ListView.separated(
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 4),
+      separatorBuilder: (_, _) => const SizedBox(height: 4),
       itemBuilder: (_, i) => items[i],
     );
   }
@@ -322,9 +322,14 @@ class _FactsTabState extends ConsumerState<_FactsTab> {
       final graph = await init.registries.knowledge.query(q, limit: 60);
       final kv = await init.registries.knowledge.listKvFacts(filter: q);
       if (!mounted) return;
+      // A saved fact lives in the graph and in its KV mirror — list it once.
+      final inGraph = <String>{for (final f in graph) f.id};
       setState(() {
         _graphResults = graph;
-        _kvResults = kv;
+        _kvResults = [
+          for (final e in kv)
+            if (!inGraph.contains(graphFactId(e.category, e.key))) e,
+        ];
         _initialLoaded = true;
       });
     } catch (e) {
@@ -634,7 +639,7 @@ class _FilesTabState extends ConsumerState<_FilesTab> {
                   ? const Center(child: Text('No files under knowledge/'))
                   : ListView.separated(
                     itemCount: _entries.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (_, i) => _fileTile(_entries[i]),
                   ),
         ),

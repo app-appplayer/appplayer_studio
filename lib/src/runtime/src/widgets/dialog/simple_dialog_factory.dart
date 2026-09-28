@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for SimpleDialog widgets
@@ -37,16 +38,36 @@ class SimpleDialogWidgetFactory extends WidgetFactory {
 
           Widget? leading;
           if (iconData != null) {
-            leading = Icon(_parseIconData(iconData));
+            // Through the shared resolver: the local switch below knew 25
+            // names and answered null for the rest, so an option declaring any
+            // other icon lost it silently — the perform-or-report rule applied to a slot.
+            leading = Icon(resolveIconRef(iconData));
           }
 
           return SimpleDialogOption(
             onPressed: () {
               if (onSelect != null) {
-                // Execute onSelect action with the selected value
+                // The chosen value is published as `event`, the way every
+                // other selectable widget publishes it. It used to be written
+                // into the action map as `selectedValue` only, so the ordinary
+                // spelling — `value: "{{event.value}}"` — resolved to nothing
+                // and the document was told which dialog fired but not what
+                // the user picked. `selectedValue` is kept for documents
+                // already written against it.
                 final actionConfig = Map<String, dynamic>.from(onSelect);
                 actionConfig['selectedValue'] = value;
-                context.actionHandler.execute(actionConfig, context);
+                context.actionHandler.execute(
+                  actionConfig,
+                  context.createChildContext(
+                    variables: {
+                      'event': {
+                        'value': value,
+                        'label': label,
+                        'type': 'select',
+                      },
+                    },
+                  ),
+                );
               }
             },
             child: leading != null
@@ -81,64 +102,6 @@ class SimpleDialogWidgetFactory extends WidgetFactory {
       titlePadding: titlePadding,
       children: children,
     );
-  }
-
-  IconData? _parseIconData(String name) {
-    // Map common icon names to Material Icons
-    switch (name) {
-      case 'check':
-        return Icons.check;
-      case 'close':
-        return Icons.close;
-      case 'add':
-        return Icons.add;
-      case 'delete':
-        return Icons.delete;
-      case 'edit':
-        return Icons.edit;
-      case 'search':
-        return Icons.search;
-      case 'settings':
-        return Icons.settings;
-      case 'home':
-        return Icons.home;
-      case 'star':
-        return Icons.star;
-      case 'favorite':
-        return Icons.favorite;
-      case 'info':
-        return Icons.info;
-      case 'warning':
-        return Icons.warning;
-      case 'error':
-        return Icons.error;
-      case 'person':
-        return Icons.person;
-      case 'email':
-        return Icons.email;
-      case 'phone':
-        return Icons.phone;
-      case 'location':
-        return Icons.location_on;
-      case 'calendar':
-        return Icons.calendar_today;
-      case 'camera':
-        return Icons.camera_alt;
-      case 'photo':
-        return Icons.photo;
-      case 'share':
-        return Icons.share;
-      case 'download':
-        return Icons.download;
-      case 'upload':
-        return Icons.upload;
-      case 'copy':
-        return Icons.copy;
-      case 'paste':
-        return Icons.paste;
-      default:
-        return null;
-    }
   }
 
   ShapeBorder? _parseShapeBorder(Map<String, dynamic>? shape) {

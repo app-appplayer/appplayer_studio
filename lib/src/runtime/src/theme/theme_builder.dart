@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart';
 
-/// Convert MCP UI DSL 1.3 [ThemeDefinition] into Flutter [ThemeData].
+/// Convert a [ThemeDefinition] into Flutter [ThemeData].
 ///
-/// Implements `specs/mcp_ui_dsl/05_Theme.md` Material 3 mapping:
+/// Implements the Material 3 mapping:
 /// - 28-role color → Flutter [ColorScheme]
 /// - 15-role typography → Flutter [TextTheme]
 /// - DensityDefinition → [VisualDensity]
 /// - ShapeDefinition → component shape themes
 /// - ElevationDefinition → tonal surface tint
-class McpUiThemeBuilder {
-  McpUiThemeBuilder._();
-
+abstract final class McpUiThemeBuilder {
   /// Build [ThemeData] from a [ThemeDefinition] for the specified brightness.
   static ThemeData build(ThemeDefinition def, {required bool isDark}) {
     final brightness = isDark ? Brightness.dark : Brightness.light;
@@ -140,7 +138,6 @@ class McpUiThemeBuilder {
   static TextStyle? _ts(TextStyleDefinition? s) {
     if (s == null) return null;
     final size = s.fontSize?.toDouble();
-    final lineH = s.lineHeight?.toDouble();
     final family = s.fontFamily;
     final fontFamily = family is String ? family : null;
     final fontFamilyFallback = family is List
@@ -152,9 +149,7 @@ class McpUiThemeBuilder {
       fontSize: size,
       fontWeight: _weight(s.fontWeight),
       letterSpacing: s.letterSpacing?.toDouble(),
-      height: (size != null && lineH != null && size > 0)
-          ? lineH / size
-          : null,
+      height: s.lineHeightMultiplierValue,
     );
   }
 

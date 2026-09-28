@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../actions/dispatch_origin.dart';
 import '../../renderer/render_context.dart';
 import '../../models/ui_definition.dart' show LifecycleDefinition;
 import '../../routing/page_activity_scope.dart';
@@ -17,12 +18,12 @@ import '../widget_factory.dart';
 /// Registered by the host via `MCPUIRuntime.registerDefinitionResolver`. The
 /// runtime never learns how a connection is opened or what a `from` origin
 /// physically is — establishing outbound connections is a host capability
-/// (spec §6.11.1), and this seam is the only thing the runtime needs.
+/// alone, and this seam is the only thing the runtime needs.
 ///
 /// Returns the parsed definition, or throws to signal that the source could not
 /// be resolved (unknown origin, dead connection, missing resource, malformed
 /// document). Throwing — never returning null-as-success — is what keeps
-/// §7.10.1 rule 6 enforceable: a runtime must fail rather than silently fall
+/// the no-fallback rule enforceable: a runtime must fail rather than silently fall
 /// back to its own origin.
 typedef DefinitionResolver = Future<Map<String, dynamic>> Function(
   String ref,
@@ -30,19 +31,19 @@ typedef DefinitionResolver = Future<Map<String, dynamic>> Function(
 );
 
 /// `view` — embeds a definition sourced from anywhere, including another MCP
-/// origin (spec §2.13.1, Composition Profile).
+/// origin.
 ///
-/// The consumer side of composition: §11.9 `dashboard` says how an app presents
+/// The consumer side of composition: `dashboard` says how an app presents
 /// itself *when embedded*; `view` is how an app *embeds*.
 ///
-/// Four `source` forms are accepted (§1.9.1):
+/// Four `source` forms are accepted:
 ///   * inline definition — a map that is the definition itself
 ///   * `"ui://…"` — resource on the current origin
 ///   * `{ "$ref": …, "from": { "connection": … } }` — another origin
 ///   * `"{{binding}}"` — a definition already held in state
 ///
 /// Resolution failure is LOCAL: the view renders `fallback` and fires
-/// `onError`, while siblings and the embedding page keep rendering (§6.11.4).
+/// `onError`, while siblings and the embedding page keep rendering.
 class ViewFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -135,34 +136,10 @@ class _ViewWidgetState extends State<_ViewWidget> {
   /// A source is plain JSON, so encoding it is both correct and cheap at the
   /// size these are; the alternative is a deep-equals helper that has to know
   /// every shape a source can take.
-  static bool _sameSource(dynamic a, dynamic b) {
-    if (identical(a, b)) return true;
-    if (a is String || b is String) return a == b;
-    try {
-      return jsonEncode(a) == jsonEncode(b);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _ViewWidget old) {
-    super.didUpdateWidget(old);
-    // A changed source means a different origin or resource — remount rather
-    // than reuse, since the previous scope belongs to the previous origin
-    // (§6.11.4).
-    // Compared BY VALUE. A source rebuilt each frame — an embedded application
-    // whose route is a uri produces a fresh `{$ref, from}` map every build — is
-    // a different object with identical meaning, and identity comparison read
-    // that as a changed origin: resolve, render, rebuild, resolve again. On the
-    // bench the tile flickered between its content and its spinner and then
-    // stuck on the spinner.
-    if (!_sameSource(old.source, widget.source)) {
-      _definition = null;
-      _error = null;
-      _resolve();
-    }
-  }
+  // No `didUpdateWidget` re-resolve: the widget is keyed by the source
+  // (`_sourceKey`), so a changed source remounts — fresh state, fresh scope,
+  // one resolve. An in-place branch would be a second mechanism for the same
+  // rule and could never run.
 
   Future<void> _resolve() async {
     final source = widget.source;
@@ -192,7 +169,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
     final resolver = widget.context.definitionResolver;
     if (resolver == null) {
       // No resolver wired = this runtime does not implement the Composition
-      // Profile. §18.7.3 / §1.7.2: reject rather than resolve the ref against
+      // Profile. Reject rather than resolve the ref against
       // our own origin, which would render a different server's UI in place of
       // the requested one.
       _fail(StateError(
@@ -260,7 +237,8 @@ class _ViewWidgetState extends State<_ViewWidget> {
           'event': <String, dynamic>{'error': error.toString()},
         },
       );
-      widget.context.actionHandler.execute(onError, eventContext);
+      DispatchOrigin.run(DispatchOrigin.runtime,
+          () => widget.context.actionHandler.execute(onError, eventContext));
     });
   }
 
@@ -297,7 +275,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
     }
 
     // The embedded definition renders in its OWN scope: its own state tree,
-    // seeded only by `props` (§7.10.1 rules 1–2). `props` is the single,
+    // seeded only by `props`. `props` is the single,
     // explicit, one-way channel in — the embedded definition never reads the
     // embedder's state.
     // Created ONCE per mounted view, not per build. The scope owns a fresh
@@ -315,7 +293,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
     // An embedded application definition renders its initial route; an embedded
     // page or widget renders directly.
     final content = def['type'] == 'application'
-        ? _initialRouteContent(def)
+        ? _embeddedApplicationContent(def)
         : (def['type'] == 'page' || def['type'] == 'screen')
             ? def['content']
             : def;
@@ -324,7 +302,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
 
     // The embedded definition's own lifecycle runs, once per mount.
     //
-    // A definition is the lifecycle-aware entity (§6.8), and mounting one
+    // A definition is the lifecycle-aware entity, and mounting one
     // without firing its hooks changes what the document does: a device whose
     // `onReady` subscribes to its own live reading rendered a value that never
     // arrived, and the only way to get it was a control the author had put
@@ -346,7 +324,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
   }
 
   /// Seeds `state.initial` and runs the embedded definition's lifecycle
-  /// (§6.11.2b), through the same [LifecycleRunner] a routed page uses.
+  /// hooks, through the same [LifecycleRunner] a routed page uses.
   ///
   /// Guarded per mount — the scope is created once, so this is too, and a
   /// rebuild must not re-subscribe.
@@ -359,7 +337,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
       initial.forEach((k, v) => scope.setValue('$k', v));
     }
 
-    // Both placements §1.5.3 allows are read by the parser, so the embedded
+    // Both allowed placements are read by the parser, so the embedded
     // definition is treated exactly like the same document opened on its own.
     final hooks = LifecycleDefinition.fromDefinition(def);
     for (final w in hooks.aliasWarnings) {
@@ -401,7 +379,7 @@ class _ViewWidgetState extends State<_ViewWidget> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // An embedded definition follows the page it is embedded in. Its own
-    // `onPause`/`onResume` mean the same thing they mean for a page (§1.5.1),
+    // `onPause`/`onResume` mean the same thing they mean for a page,
     // and a paused page leaves it mounted — so without this a tile on an
     // unselected tab keeps its subscriptions running and never hears the
     // resume its document declares.
@@ -430,6 +408,22 @@ class _ViewWidgetState extends State<_ViewWidget> {
   /// Pulls the page an embedded ApplicationDefinition opens on. An inline route
   /// value renders directly; a uri route value needs another resolver round,
   /// which is deferred to the resolver by handing it back as a nested `view`.
+  /// What an embedded application shows.
+  ///
+  /// `dashboard.content` first: `dashboard` is the application's
+  /// account of itself *when embedded*, which is exactly this position, and
+  /// `view` embeds `ui://app` on that basis. Only `routes` was read here, so
+  /// an application that presented itself through `dashboard` — the shape the
+  /// spec asks for — rendered as Unavailable.
+  dynamic _embeddedApplicationContent(Map<String, dynamic> app) {
+    final dashboard = app['dashboard'];
+    if (dashboard is Map) {
+      final content = dashboard['content'];
+      if (content != null) return content;
+    }
+    return _initialRouteContent(app);
+  }
+
   dynamic _initialRouteContent(Map<String, dynamic> app) {
     final routes = app['routes'];
     if (routes is! Map || routes.isEmpty) return null;
@@ -481,7 +475,7 @@ class _UnavailableIndicator extends StatelessWidget {
 /// Rebuilds [build] whenever the embedded scope's state changes.
 ///
 /// Scoped deliberately to the embedded StateManager: the embedder's changes are
-/// not this subtree's business (§7.10.1), and listening to both would rebuild
+/// not this subtree's business, and listening to both would rebuild
 /// every tile whenever any of them moved.
 class _EmbeddedStateScope extends StatefulWidget {
   const _EmbeddedStateScope({required this.state, required this.build});

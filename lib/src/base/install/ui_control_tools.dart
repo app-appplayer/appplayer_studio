@@ -23,8 +23,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show PopupMenuEntry, PopupMenuItem;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart'
-    show ServicesBinding, StandardMessageCodec;
+import 'package:flutter/services.dart' show JSONMessageCodec, ServicesBinding;
 import 'package:flutter/widgets.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
@@ -711,14 +710,25 @@ void registerUiControlTools(
         '`move` events, pointer up at `to`. `from`/`to` accept '
         '`{elementId}` OR `{x,y}`. `steps` (default 12) controls '
         'how many intermediate moves are emitted; higher = smoother '
-        '(helpful for inertia-based drag-and-drop). Returns '
-        '`{ok, from:{x,y}, to:{x,y}, steps}`.',
+        '(helpful for inertia-based drag-and-drop). `holdMs` keeps the '
+        'pointer still after the down event before the first move — a '
+        '`LongPressDraggable` (tree nodes, reorderable rows) only starts '
+        'its drag after the long-press delay (500ms), so pass 600 or '
+        'more for those; the default 0 suits a plain `Draggable`. '
+        'Returns `{ok, from:{x,y}, to:{x,y}, steps, holdMs}`.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
         'from': <String, dynamic>{'type': 'object'},
         'to': <String, dynamic>{'type': 'object'},
         'steps': <String, dynamic>{'type': 'integer', 'default': 12},
+        'holdMs': <String, dynamic>{
+          'type': 'integer',
+          'default': 0,
+          'description':
+              'Milliseconds to hold the pointer down, still, '
+              'before moving. 600+ starts a LongPressDraggable.',
+        },
       },
       'required': <String>['from', 'to'],
     },
@@ -740,13 +750,15 @@ void registerUiControlTools(
         );
       }
       final steps = (args['steps'] as num?)?.toInt() ?? 12;
-      await _dispatchDrag(from, to, steps.clamp(1, 200));
+      final holdMs = ((args['holdMs'] as num?)?.toInt() ?? 0).clamp(0, 5000);
+      await dispatchDrag(from, to, steps.clamp(1, 200), holdMs: holdMs);
       return _text(
         jsonEncode(<String, dynamic>{
           'ok': true,
           'from': <String, double>{'x': from.dx, 'y': from.dy},
           'to': <String, double>{'x': to.dx, 'y': to.dy},
           'steps': steps,
+          'holdMs': holdMs,
         }),
       );
     },
@@ -1115,9 +1127,7 @@ void registerUiControlTools(
       // rail label). Runs when the tag search found nothing and the query
       // targets text-ish fields.
       if (matches.isEmpty && (field == 'any' || field == 'text')) {
-        matches.addAll(
-          _visibleTextMatches(query, exact: exact, limit: limit),
-        );
+        matches.addAll(_visibleTextMatches(query, exact: exact, limit: limit));
       }
       return _text(
         jsonEncode(<String, dynamic>{
@@ -1562,7 +1572,14 @@ Future<void> _dispatchSecondaryTap(double x, double y) async {
   );
 }
 
-Future<void> _dispatchDrag(Offset from, Offset to, int steps) async {
+/// Synthesise a pointer drag through [GestureBinding]. Public so a widget
+/// test can drive the same events the `studio.ui.drag` tool emits.
+Future<void> dispatchDrag(
+  Offset from,
+  Offset to,
+  int steps, {
+  int holdMs = 0,
+}) async {
   final binding = GestureBinding.instance;
   final pointer = _nextPointer++;
   final kind = _pointerKind();
@@ -1578,12 +1595,18 @@ Future<void> _dispatchDrag(Offset from, Offset to, int steps) async {
     ),
     hitResult,
   );
+  // A LongPressDraggable arms only when the pointer stays still past the
+  // long-press delay; moving earlier cancels it and the drop never fires.
+  if (holdMs > 0) {
+    await Future<void>.delayed(Duration(milliseconds: holdMs));
+  }
+  final hold = Duration(milliseconds: holdMs);
   // Drag must emit at least one PointerMoveEvent before up so
   // GestureRecognizers (HorizontalDrag / VerticalDrag / Pan) accept it.
   for (var i = 1; i <= steps; i++) {
     final t = i / steps;
     final p = Offset.lerp(from, to, t)!;
-    final ts = now + Duration(milliseconds: 16 * i);
+    final ts = now + hold + Duration(milliseconds: 16 * i);
     binding.dispatchEvent(
       PointerMoveEvent(
         timeStamp: ts,
@@ -1598,7 +1621,7 @@ Future<void> _dispatchDrag(Offset from, Offset to, int steps) async {
   }
   binding.dispatchEvent(
     PointerUpEvent(
-      timeStamp: now + Duration(milliseconds: 16 * (steps + 1)),
+      timeStamp: now + hold + Duration(milliseconds: 16 * (steps + 1)),
       pointer: pointer,
       position: to,
       kind: kind,
@@ -1873,7 +1896,9 @@ Future<bool> _dispatchMacKey(_KeySpec spec, Set<String> mods) async {
       'charactersIgnoringModifiers': spec.characters,
       if (spec.logical != 0) 'specifiedLogicalKey': spec.logical,
     };
-    final bytes = const StandardMessageCodec().encodeMessage(payload);
+    // `flutter/keyevent` is a JSON channel (the embedder posts JSON maps);
+    // a standard-codec envelope is rejected by the framework's decoder.
+    final bytes = const JSONMessageCodec().encodeMessage(payload);
     final completer = Completer<void>();
     binding.defaultBinaryMessenger.handlePlatformMessage(
       'flutter/keyevent',
@@ -1932,6 +1957,7 @@ List<Map<String, dynamic>> _visibleTextMatches(
     }
     element.visitChildren(visit);
   }
+
   final root = WidgetsBinding.instance.rootElement;
   if (root != null) visit(root);
   return results;

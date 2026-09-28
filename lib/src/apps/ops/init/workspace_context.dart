@@ -60,10 +60,7 @@ class WorkspaceExecutionContext {
   /// Run [body] with [workspaceId] pinned as the execution workspace. Nested
   /// [run] calls shadow the outer value for their own subtree. A null/empty
   /// [workspaceId] runs [body] with no pin (transparent).
-  static Future<T> run<T>(
-    String? workspaceId,
-    Future<T> Function() body,
-  ) {
+  static Future<T> run<T>(String? workspaceId, Future<T> Function() body) {
     if (workspaceId == null || workspaceId.isEmpty) return body();
     return runZoned(body, zoneValues: <Object, Object?>{_zoneKey: workspaceId});
   }

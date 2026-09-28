@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:appplayer_studio/builtin_api.dart';
-import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart' as kops
+import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart'
+    as kops
     show KvStateStore;
 import 'package:uuid/uuid.dart';
 import 'package:yaml/yaml.dart';
@@ -12,6 +13,7 @@ import '../observability/activity_bus.dart';
 import '../observability/activity_event.dart';
 import '../triggers/trigger_events.dart';
 import '../util/atomic_write.dart';
+import '../util/log.dart';
 
 enum ProcessTrigger { manual, event, task }
 
@@ -93,6 +95,7 @@ class ProcessRun {
     required this.state,
     this.checkpointRef,
     this.pendingApproval,
+    this.error,
   });
   final String runId;
   final String processId;
@@ -104,12 +107,17 @@ class ProcessRun {
   final String? checkpointRef;
   final PendingApproval? pendingApproval;
 
+  /// Why the run stopped, when it stopped on a thrown error. A `blocked` run
+  /// without it leaves the cause recoverable only by re-running synchronously.
+  final String? error;
+
   ProcessRun copyWith({
     String? currentStep,
     Map<String, dynamic>? outcomes,
     ProcessRunState? state,
     PendingApproval? pendingApproval,
     bool clearPendingApproval = false,
+    String? error,
   }) => ProcessRun(
     runId: runId,
     processId: processId,
@@ -119,9 +127,9 @@ class ProcessRun {
     outcomes: outcomes ?? this.outcomes,
     state: state ?? this.state,
     checkpointRef: checkpointRef,
-    pendingApproval: clearPendingApproval
-        ? null
-        : (pendingApproval ?? this.pendingApproval),
+    pendingApproval:
+        clearPendingApproval ? null : (pendingApproval ?? this.pendingApproval),
+    error: error ?? this.error,
   );
 
   Map<String, dynamic> toJson() => {
@@ -134,6 +142,7 @@ class ProcessRun {
     'state': state.name,
     if (checkpointRef != null) 'checkpointRef': checkpointRef,
     if (pendingApproval != null) 'pendingApproval': pendingApproval!.toJson(),
+    if (error != null) 'error': error,
   };
 
   static ProcessRun fromJson(Map<String, dynamic> j) => ProcessRun(
@@ -154,6 +163,7 @@ class ProcessRun {
               Map<String, dynamic>.from(j['pendingApproval'] as Map),
             )
             : null,
+    error: j['error'] as String?,
   );
 }
 
@@ -204,6 +214,16 @@ typedef SkillDispatch =
       Map<String, dynamic> args,
     );
 
+/// True when a run suspended at [currentStep] waits for a person to do a
+/// `human` / `manual` step — work, not a sign-off. Such a run carries no
+/// pending approval: the tasks inbox lists it; the approvals inbox must not,
+/// or it offers a gate that was already approved for approval again.
+bool isHumanStepWait(Process p, String currentStep) => p.steps.any(
+  (s) =>
+      s.stepId == currentStep &&
+      (s.skillId == 'human' || s.skillId == 'manual'),
+);
+
 class ProcessRegistry {
   ProcessRegistry({
     required this.kv,
@@ -246,6 +266,14 @@ class ProcessRegistry {
   /// (see `knowledge_init` behaviorStore). Injected at boot where `orgKv` is in
   /// scope; null-safe (run `outcomes` stay empty if left unwired).
   Future<String?> Function(String key)? readOrgKv;
+
+  /// The project bundle id (`project.mbd` manifest id) behaviors are exposed
+  /// under. Host-wired to `KnowledgeInit.sharedPoolBundleId`. The folder name
+  /// is only the seed's starting value: a project copied or renamed to another
+  /// folder keeps its manifest id, and deriving the id from the folder made
+  /// every run of such a project "behavior not found". Null (unwired, unit
+  /// tests) ⇒ the seed contract `<folder>.project`.
+  String? Function()? projectBundleIdOf;
 
   final Map<String, Map<String, Process>> _byWorkspace = {};
   final Set<String> _loaded = {};
@@ -399,9 +427,10 @@ class ProcessRegistry {
 
   /// Drive a behavior run to its next suspend / completion OFF the caller's
   /// request path (background mode for [start] / [approve]). A thrown error
-  /// persists a `blocked` checkpoint so a poller sees the run stop instead of
-  /// it hanging on `running` forever; the synchronous path still surfaces the
-  /// throw to its own caller.
+  /// persists a `blocked` checkpoint carrying the error, so a poller sees the
+  /// run stop and why, instead of it hanging on `running` forever; the
+  /// synchronous path still surfaces the throw to its own caller. The prior
+  /// checkpoint (start time, reached step) is kept.
   Future<void> _driveInBackground(
     Process p,
     String runId,
@@ -410,17 +439,20 @@ class ProcessRegistry {
     try {
       final res = await drive();
       await _runFromResult(p, (res['runId'] ?? runId).toString(), res);
-    } catch (_) {
+    } catch (e) {
       try {
+        final prior = await _loadRun(runId);
         await _saveCheckpoint(
-          ProcessRun(
-            runId: runId,
-            processId: p.id,
-            workspaceId: p.workspaceId,
-            startedAt: DateTime.now(),
-            currentStep: '',
-            state: ProcessRunState.blocked,
-          ),
+          (prior ??
+                  ProcessRun(
+                    runId: runId,
+                    processId: p.id,
+                    workspaceId: p.workspaceId,
+                    startedAt: DateTime.now(),
+                    currentStep: '',
+                    state: ProcessRunState.blocked,
+                  ))
+              .copyWith(state: ProcessRunState.blocked, error: '$e'),
         );
       } catch (_) {
         // Best-effort — nothing else to do if even the checkpoint write fails.
@@ -573,12 +605,13 @@ class ProcessRegistry {
   // --- behavior delegation helpers ---
 
   /// `<projectBundleId>.<processId>` — the exposed behavior id under which
-  /// `process_save` mirrored this process into `project.mbd`. projectBundleId
-  /// is `<projectName>.project` (project root basename + `.project`).
-  String _behaviorIdFor(Process p) {
-    final name = rootDir.split(Platform.pathSeparator).last;
-    return '$name.project.${p.id}';
-  }
+  /// `process_save` mirrored this process into `project.mbd`.
+  String _behaviorIdFor(Process p) => '${_projectBundleId()}.${p.id}';
+
+  /// The `project.mbd` manifest id (see [projectBundleIdOf]).
+  String _projectBundleId() =>
+      projectBundleIdOf?.call() ??
+      '${rootDir.split(Platform.pathSeparator).last}.project';
 
   /// The behavior engine records each step's output into a durable working
   /// state (`BehaviorRunState.state`), but the facade result only surfaces
@@ -592,7 +625,7 @@ class ProcessRegistry {
     final read = readOrgKv;
     if (read == null) return const <String, dynamic>{};
     try {
-      final bundleId = '${rootDir.split(Platform.pathSeparator).last}.project';
+      final bundleId = _projectBundleId();
       final store = kops.KvStateStore(
         writeKv: (_, _) async {},
         readKv: read,
@@ -633,7 +666,7 @@ class ProcessRegistry {
     // node (`gate_approval_<afterStep>`) when the engine reports it, else the
     // first approval gate (single-gate common case).
     PendingApproval? pending;
-    if (state == ProcessRunState.waitingApproval) {
+    if (state == ProcessRunState.waitingApproval && !isHumanStepWait(p, cur)) {
       final approvalGates =
           p.gates.where((g) => g.kind == GateKind.approval).toList();
       if (approvalGates.isNotEmpty) {
@@ -806,8 +839,13 @@ class ProcessRegistry {
     final label = 'Process ${run.processId}';
     switch (run.state) {
       case ProcessRunState.running:
-        bus.info(run.processId, '$label started', kind: ActivityKind.info,
-            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+        bus.info(
+          run.processId,
+          '$label started',
+          kind: ActivityKind.info,
+          workspaceId: run.workspaceId,
+          meta: {'runId': run.runId},
+        );
       case ProcessRunState.waitingApproval:
         final who = run.pendingApproval?.approverId ?? '';
         bus.warn(
@@ -818,14 +856,31 @@ class ProcessRegistry {
           meta: {'runId': run.runId, if (who.isNotEmpty) 'approver': who},
         );
       case ProcessRunState.blocked:
-        bus.error(run.processId, '$label blocked', kind: ActivityKind.error,
-            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+        bus.error(
+          run.processId,
+          run.error == null
+              ? '$label blocked'
+              : '$label blocked · ${run.error}',
+          kind: ActivityKind.error,
+          workspaceId: run.workspaceId,
+          meta: {'runId': run.runId, if (run.error != null) 'error': run.error},
+        );
       case ProcessRunState.completed:
-        bus.info(run.processId, '$label completed', kind: ActivityKind.info,
-            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+        bus.info(
+          run.processId,
+          '$label completed',
+          kind: ActivityKind.info,
+          workspaceId: run.workspaceId,
+          meta: {'runId': run.runId},
+        );
       case ProcessRunState.cancelled:
-        bus.info(run.processId, '$label cancelled', kind: ActivityKind.info,
-            workspaceId: run.workspaceId, meta: {'runId': run.runId});
+        bus.info(
+          run.processId,
+          '$label cancelled',
+          kind: ActivityKind.info,
+          workspaceId: run.workspaceId,
+          meta: {'runId': run.runId},
+        );
     }
   }
 
@@ -844,7 +899,10 @@ class ProcessRegistry {
             bucket[p.id] = p;
           }
         } catch (e) {
-          stderr.writeln('Process load failed: ${entry.path}: $e');
+          // Recorded where a project's other boot findings are read — a file
+          // that fails to load is missing from every process list, and stderr
+          // alone left no trace of why.
+          OpsLog.warn('process', 'process load failed: ${entry.path}: $e');
         }
       }
     }
@@ -937,20 +995,36 @@ class ProcessRegistry {
     final gates = <ProcessGate>[...inlineGates];
     final rawGates = y['gates'];
     if (rawGates is List) {
+      final stepIds = <String>{for (final s in steps) s.stepId};
       for (final g in rawGates) {
-        if (g is Map) {
-          gates.add(
-            ProcessGate(
-              afterStep: g['afterStep'] as String? ?? '*',
-              kind: GateKind.values.firstWhere(
-                (k) => k.name == (g['kind'] as String? ?? 'philosophy'),
-                orElse: () => GateKind.philosophy,
-              ),
-              params:
-                  (g['params'] as Map?)?.cast<String, dynamic>() ?? const {},
-            ),
+        // A gate the engine cannot place must fail the save. Filling a missing
+        // `afterStep` / `kind` with defaults turned the entry into a philosophy
+        // gate after `*`, which attaches to no step — the gate did nothing and
+        // nobody was told.
+        final afterStep = g is Map ? g['afterStep'] : null;
+        final kindName = g is Map ? g['kind'] : null;
+        GateKind? kind;
+        for (final k in GateKind.values) {
+          if (k.name == kindName) kind = k;
+        }
+        if (g is! Map ||
+            afterStep is! String ||
+            !stepIds.contains(afterStep) ||
+            kind == null) {
+          throw StateError(
+            'process gate requires `afterStep` naming one of the steps '
+            '(${stepIds.join(', ')}) and `kind` '
+            '(${GateKind.values.map((k) => k.name).join(' | ')}), with an '
+            'approver as `params: {approverId: …}` — got $g',
           );
         }
+        gates.add(
+          ProcessGate(
+            afterStep: afterStep,
+            kind: kind,
+            params: (g['params'] as Map?)?.cast<String, dynamic>() ?? const {},
+          ),
+        );
       }
     }
     return Process(

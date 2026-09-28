@@ -33,14 +33,14 @@ class PatternEnforcerImpl implements PatternEnforcer {
       // wiring prop. The legacy convention below never applied inside params,
       // so never validate anything under a `params` subtree.
       if (path.split('/').contains('params')) return;
-      // DSL 1.3 action/state nodes are typed discriminated unions where
+      // DSL 1.4 action/state nodes are typed discriminated unions where
       // `action` is a state-mutation verb (set / toggle / increment / …) and
       // `binding` is a bare state key (e.g. "expression"). Those are the
       // canonical shapes the runtime renders, so they must not be flagged.
       // The legacy portable-wiring convention (action = "tools.<tool>",
       // binding = "@state.<key>") only ever appeared on untyped wiring props,
       // so the check below applies only to nodes without a `type`
-      // discriminator — a typed node is already a valid DSL 1.3 node.
+      // discriminator — a typed node is already a valid DSL 1.4 node.
       if (value['type'] is String) return;
       final action = value['action'];
       if (action is String &&

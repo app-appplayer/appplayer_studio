@@ -220,7 +220,7 @@ class EventBus {
     return subscription;
   }
 
-  /// Remove a specific event handler by subscription (per 07-events.md §8).
+  /// Remove a specific event handler by subscription.
   ///
   /// Cancels the given [subscription] and removes it from internal tracking.
   /// If the event type has no remaining listeners, its controller is closed.

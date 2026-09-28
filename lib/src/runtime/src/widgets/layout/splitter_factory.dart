@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `splitter` (spec §10.28).
+/// Factory for `splitter`.
 ///
 /// Divides a fixed area between siblings: dragging a gutter takes space from
 /// one pane and gives it to the next, so the total never changes. `resizable`
@@ -27,7 +27,7 @@ class SplitterFactory extends WidgetFactory {
             'horizontal';
     final gutterSize =
         context.resolve<num?>(properties['gutterSize'])?.toDouble() ?? 8.0;
-    // §10: `sizes` is `array<number> | binding`. A bare state path is read
+    // `sizes` is `array<number> | binding`. A bare state path is read
     // from state; anything else (a literal array, a `{{...}}` expression)
     // goes through the normal resolver.
     final rawSizesProperty = properties['sizes'];
@@ -41,7 +41,7 @@ class SplitterFactory extends WidgetFactory {
         ? rawSizes.map((e) => (e as num).toDouble()).toList()
         : List<double>.filled(childDefs.length, 1 / childDefs.length);
 
-    final minSizes = context.resolve<List<dynamic>?>(properties['minSizes'])
+    final minSizes = listOf(properties['minSizes'], context)
             ?.map((e) => (e as num).toDouble())
             .toList() ??
         List<double>.filled(childDefs.length, 0.05);

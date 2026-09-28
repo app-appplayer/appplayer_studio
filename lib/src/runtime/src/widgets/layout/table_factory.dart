@@ -7,11 +7,22 @@ class TableWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final rows = definition['rows'] as List<dynamic>? ?? [];
+    final declaredRows = definition['rows'] as List<dynamic>? ?? [];
+
+    // `Table` throws when a row carries no children. Rows that cannot be laid
+    // out — `{}`, or the column-keyed shape that belongs to `dataTable` — are
+    // dropped here rather than refused in the schema.
+    final rows = <Map<String, dynamic>>[
+      for (final row in declaredRows)
+        if (row is Map<String, dynamic> &&
+            (row['cells'] as List<dynamic>?)?.isNotEmpty == true)
+          row,
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     return Table(
       border: _resolveTableBorder(properties['border'], context),
-      // §10 `columnWidths`: index → width. Declared and never read, so a
+      // `columnWidths`: index → width. Declared and never read, so a
       // table that sized its first column watched every column come out the
       // same width.
       columnWidths: _resolveColumnWidths(properties['columnWidths'], context),
@@ -20,8 +31,7 @@ class TableWidgetFactory extends WidgetFactory {
       textBaseline: _resolveTextBaseline(properties['textBaseline']),
       defaultVerticalAlignment: _resolveTableCellVerticalAlignment(
           readEnum(properties['defaultVerticalAlignment'], context)),
-      children: rows.map((row) {
-        final rowData = row as Map<String, dynamic>;
+      children: rows.map((rowData) {
         final cells = rowData['cells'] as List<dynamic>? ?? [];
 
         return TableRow(
@@ -43,8 +53,7 @@ class TableWidgetFactory extends WidgetFactory {
     if (border is Map<String, dynamic>) {
       return TableBorder.all(
         color: parseColor(border['color'], context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey,
+            context.themeManager.colorOr('outlineVariant', Colors.grey),
         width: border['width']?.toDouble() ?? 1.0,
       );
     }
@@ -69,7 +78,7 @@ class TableWidgetFactory extends WidgetFactory {
 
   TableColumnWidth _resolveColumnWidth(dynamic width) {
     // A bare number is the obvious spelling — `columnWidths: {"0": 200}` is
-    // what §10's "map columnIndex → width override" reads as, and it fell
+    // what the documented "map columnIndex → width override" reads as, and it fell
     // through to `flex`, so a table that sized a column got the default.
     if (width is num) return FixedColumnWidth(width.toDouble());
     if (width is String) {
@@ -152,8 +161,7 @@ class TableWidgetFactory extends WidgetFactory {
         border: decoration['border'] != null
             ? Border.all(
                 color: parseColor(decoration['border']['color'], context) ??
-                    context.themeManager.getColorValue('outlineVariant') ??
-                    Colors.grey,
+                    context.themeManager.colorOr('outlineVariant', Colors.grey),
                 width: decoration['border']['width']?.toDouble() ?? 1.0,
               )
             : null,

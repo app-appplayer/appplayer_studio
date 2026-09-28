@@ -19,6 +19,8 @@ library;
 
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
+import 'tool_call_guard.dart';
+
 /// Tool handler signature — `(args) → KernelToolResult`. Builtin code
 /// imports only `KernelToolResult` / `KernelTextContent` from
 /// `builtin_api.dart`, so it has zero direct dependency on kernel symbols.
@@ -62,7 +64,9 @@ class BuiltinToolRegistry {
       name: name,
       description: description,
       inputSchema: inputSchema,
-      handler: handler,
+      // Argument check, thrown-error capture and `ok:false` flagging
+      // happen here once for every built-in tool (tool_call_guard.dart).
+      handler: guardToolHandler(name, inputSchema, handler),
     );
   }
 
@@ -103,7 +107,7 @@ class BuiltinToolRegistry {
     return _boot.removeResource(uri);
   }
 
-  /// Register an MCP prompt (cherry r8 — 2026-05-28).
+  /// Register an MCP prompt.
   ///
   /// Builtins call this for first-entry / onboarding text presets
   /// (`getting_started` · `drive_workspace` · etc.) the external MCP

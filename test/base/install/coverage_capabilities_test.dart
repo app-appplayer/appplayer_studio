@@ -40,7 +40,7 @@ void main() {
     // hooks are no-ops because registerExposed also calls boot.addTool.
     final registry = mk.HostToolRegistry(
       endpoint: boot,
-      attachToDispatcher: (_, __) {},
+      attachToDispatcher: (_, _) {},
       detachFromDispatcher: (_) {},
     );
     coverage = registerCoverageCapabilities(registry, capRoot: tmp.path);

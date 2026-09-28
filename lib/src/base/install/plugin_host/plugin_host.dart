@@ -10,7 +10,7 @@
 /// `package:brain_kernel` (a real Studio dep) + a sibling relative import.
 ///
 /// This is a behavioural reference, not frozen canon — if wiring surfaces a
-/// better source/storage/lifecycle shape, feed it back to cherry.
+/// better source/storage/lifecycle shape, change the recipe first.
 library;
 
 export 'src/plugin_source.dart';

@@ -91,7 +91,7 @@ class OpsTriggerBus {
       OpsLog.warn('trigger', 'subscription match failed: $e');
       return;
     }
-    // Observability trail (konpi's "which surface?" — the R2 dispatch decision
+    // Observability trail (the R2 dispatch decision
     // lands in ~/.makemind-ops/boot.log): how many rules matched this event and
     // who is being woken. A woken agent's own output then appears in ITS kernel
     // conversation (inline `agents.ask`), not the feed or a new task.
@@ -101,7 +101,7 @@ class OpsTriggerBus {
           'ws=${event.workspaceId} state=${event.state} '
           '→ ${matches.length} subscription(s) matched'
           '${matches.isEmpty ? '' : ' → waking '
-              '${matches.map((s) => s.targetAgentId).join(', ')}'}',
+                  '${matches.map((s) => s.targetAgentId).join(', ')}'}',
     );
     for (final sub in matches) {
       await _guard(

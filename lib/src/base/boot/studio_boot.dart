@@ -93,7 +93,7 @@ class StudioBoot {
       if (mcpProvider == null) continue;
       // providerName surfaces on `LlmPortAdapter.providerName` so the
       // chat header / Settings banner can render "Opus 4.7 · anthropic"
-      // / "claude-code · claude_code" etc. (cherry 2026-05-27 cascade).
+      // / "claude-code · claude_code" etc.
       // Mirrors the catalog tag exactly — `anthropic` / `openai` /
       // `gemini` / `claude_code` — so external code can string-match
       // without translating.
@@ -167,12 +167,15 @@ class StudioBoot {
     // `ClientTransport`; the transport's platform libs live in the caller.
     final clientHost = McpClientKernelHost();
 
+    // Kept: `host.kb` records go into the same key/value store the kernel
+    // persists into.
+    final kvStorage = KvStoragePortAdapter(rootDir: configRoot);
     final app = await KernelApp.boot(
       workspaceId: wsId,
-      kvStorage: KvStoragePortAdapter(rootDir: configRoot),
+      kvStorage: kvStorage,
       llmProviders: llmProviders,
       bundleRegistryStorageDir: configRoot,
-      // Per cherry inbox 2026-05-25 `kernel-host-adapter-split` —
+      // Since the kernel host-adapter split,
       // brain_kernel's main barrel no longer re-exports mcp_server /
       // mcp_client. vibe_studio uses the reference MCP-backed host
       // (mcp_server transport for the studio endpoint + mcp_client
@@ -241,7 +244,20 @@ class StudioBoot {
             continue;
           }
           await bundleRegistry.upsert(mbdPath: abs, namespace: ns);
-          stderr.writeln('$toolId: seed "$ns" registered ($abs)');
+          // A seed registered from another tree layout (a release copy,
+          // an older build dir) shares the namespace; leaving it makes
+          // namespace lookups — scenario saves, branding reads — land on
+          // the other tree.
+          var stale = 0;
+          for (final e in await bundleRegistry.list()) {
+            if (e.namespace == ns && e.mbdPath != abs) {
+              if (await bundleRegistry.remove(e.mbdPath)) stale++;
+            }
+          }
+          stderr.writeln(
+            '$toolId: seed "$ns" registered ($abs)'
+            '${stale > 0 ? ' — dropped $stale stale path(s)' : ''}',
+          );
 
           final bundle = readBundleAt(abs);
           if (bundle == null) {
@@ -309,6 +325,7 @@ class StudioBoot {
       claudeCodeModelId: claudeCodeModelId,
       claudeCodeExecutable: claudeCodeExecutable,
       defaultAgentModel: defaultAgentModel,
+      kvStorage: kvStorage,
     );
   }
 
@@ -318,7 +335,7 @@ class StudioBoot {
   /// `mll.LlmProvider`. Unknown providers return null so the caller
   /// silently skips the entry (lets a partial catalog still boot).
   ///
-  /// Cherry inbox 2026-05-25 `llm-port-adapter-multi-provider`:
+  /// Multi-provider port adapter:
   /// `LlmPortAdapter.fromInterface(modelId, provider)` accepts any
   /// `LlmProvider` — Claude (default ctor backward-compat) + the 8
   /// extra mcp_llm providers (OpenAI · Gemini · Cohere · Bedrock ·

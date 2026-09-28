@@ -7,7 +7,7 @@ import '../widget_factory.dart';
 
 /// Factory for Media Player widgets (Advanced conformance level)
 /// Implements a functional media player UI with controls
-/// Playback is performed by the host's [MediaPort] (spec §6.13). With none
+/// Playback is performed by the host's [MediaPort]. With none
 /// wired this widget draws no transport and reports through `onError` — it
 /// never advances a position bar over silence.
 /// Audio or video, read from the source's extension.
@@ -36,7 +36,7 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     // Extract media player properties - support design doc keys and implementation keys
     // Design: src → Implementation: source
     final source = context.resolve<String?>(properties['src'] ?? properties['source']);
-    // §10.6 declares the default `inferred`, and this read `video` — so a
+    // The documented default is `inferred`, and this read `video` — so a
     // document that pointed at an mp3 and said nothing asked the host for the
     // VIDEO capability and got a black rectangle with sound. Absent means
     // inferred from the source, which is what the word says; declared still
@@ -49,7 +49,7 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     final mediaType = (declaredType == null || declaredType.isEmpty)
         ? _inferMediaType(source)
         : declaredType;
-    // Spec §10.6 canonical `autoPlay`; `autoplay` kept as lowercase legacy.
+    // Canonical `autoPlay`; `autoplay` kept as lowercase legacy.
     final autoplay = context.resolve<bool>(
         properties['autoPlay'] ?? properties['autoplay'] ?? false);
     final volume = (dimensionOf(properties['volume'], context))?.toDouble() ?? 1.0;
@@ -58,7 +58,7 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     final controls = context.resolve<bool>(properties['controls'] ?? true);
     final loop = context.resolve<bool>(properties['loop'] ?? false);
     final muted = context.resolve<bool>(properties['muted'] ?? false);
-    // Spec §10.6 — `waveform` (audio only). Drawn from the host's amplitude
+    // `waveform` (audio only). Drawn from the host's amplitude
     // data; reported absent when the host has none.
     final wantsWaveform = context.resolve<bool>(properties['waveform'] ?? false);
     final playerId = context.resolve<String?>(properties['id']);
@@ -141,12 +141,12 @@ class _MediaPlayerWidget extends StatefulWidget {
   final Map<String, dynamic>? onTimeUpdate;
   final Map<String, dynamic>? onError;
 
-  /// Names this player for §4.9b media actions. Null when the document did not
+  /// Names this player for media actions. Null when the document did not
   /// name it — such a player can only be driven by its own controls.
   final String? playerId;
 
   /// The document asked for a waveform. Whether one can be drawn depends on
-  /// the host supplying amplitude data (§10.6).
+  /// the host supplying amplitude data.
   final bool wantsWaveform;
   final double volume;
   final RenderContext context;
@@ -191,7 +191,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
 
   /// The real playback. Null while opening, and forever when this runtime has
   /// no media capability — in which case nothing is drawn that suggests
-  /// otherwise (spec §6.13.1).
+  /// otherwise.
   MediaSession? _session;
   /// Amplitude envelope, once the host has produced one.
   List<double>? _peaks;
@@ -221,7 +221,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
       return;
     }
     if (caps.media == null || !caps.supports(needed)) {
-      // §6.13.2 — the absence is a capability fact reported to the document,
+      // The absence is a capability fact reported to the document,
       // never a message drawn where the media belongs.
       _reportUnavailable(CapabilityUnavailable(needed));
       return;
@@ -246,8 +246,8 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
       if (id != null && id.isNotEmpty) {
         widget.context.mediaRegistry?.register(id, session);
       }
-      // §10.6 — a waveform needs per-sample amplitude, which only the host can
-      // produce. Accepting the property and drawing nothing is what §6.13.1
+      // A waveform needs per-sample amplitude, which only the host can
+      // produce. Accepting the property and drawing nothing is what the DSL
       // forbids, so an unmet request is reported once.
       final waveform = session.waveform;
       if (widget.wantsWaveform && waveform == null) {
@@ -261,7 +261,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
       _sessionSubs.addAll([
         session.position.listen((p) {
           if (mounted) setState(() => _currentPosition = p.inMilliseconds / 1000);
-          // §4.9b — an author building their own scrubber has no other way to
+          // An author building their own scrubber has no other way to
           // know where playback is.
           _emitTimeUpdate(p);
         }),
@@ -337,7 +337,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
   Widget build(BuildContext context) {
     final isAudio = widget.mediaType.toLowerCase() == 'audio';
 
-    // §6.13.1/§6.13.2 — with no capability there is no player. Not a transport
+    // With no capability there is no player. Not a transport
     // that cannot transport, and not a box reading "unsupported": the failure
     // went to `onError` and the diagnostic channel. A declared `poster` is the
     // author's own content, so it still shows.
@@ -367,12 +367,20 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
               // Media display area
               _buildMediaDisplay(isAudio),
 
-              // Controls overlay
+              // Controls overlay.
+              //
+              // Faded out is not gone: an `AnimatedOpacity` at 0 still takes
+              // hits, so the transport that had just auto-hidden went on
+              // swallowing taps — and the tap meant to bring it back landed on
+              // the invisible play button instead, pausing the media.
               if (widget.controls)
-                AnimatedOpacity(
-                  opacity: _showControls ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: _buildControlsOverlay(isAudio),
+                IgnorePointer(
+                  ignoring: !_showControls,
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: _buildControlsOverlay(isAudio),
+                  ),
                 ),
 
               // Status badges
@@ -410,7 +418,7 @@ class _MediaPlayerWidgetState extends State<_MediaPlayerWidget> {
           children: [
             // The waveform when the document asked for one and the host
             // produced it — drawing the artwork square over real amplitude
-            // data would accept the property and show nothing (§6.13.1).
+            // data would accept the property and show nothing.
             if (_peaks != null)
               SizedBox(
                 height: 96,

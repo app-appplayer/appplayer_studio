@@ -44,9 +44,7 @@ class AppSpacingScale {
 }
 
 /// Spacing / padding / gap scale (8-point grid). Logical pixels.
-class AppSpacing {
-  const AppSpacing._();
-
+abstract final class AppSpacing {
   // Compact / mobile baseline — also the static default when no
   // FormFactor-aware accessor is needed.
   static const double xxs = 2;
@@ -110,9 +108,7 @@ class AppIconSizesScale {
 }
 
 /// Icon-size scale. Logical pixels.
-class AppIconSizes {
-  const AppIconSizes._();
-
+abstract final class AppIconSizes {
   // Compact / mobile baseline — also static defaults.
   static const double sm = 16;
   static const double md = 24;
@@ -173,9 +169,7 @@ class AppTypographyScale {
   final double scale;
 }
 
-class AppTypography {
-  const AppTypography._();
-
+abstract final class AppTypography {
   /// Resolve typography for the active [FormFactor]. Pulls the host
   /// theme's [TextTheme] then applies a [FormFactor]-specific scale.
   static AppTypographyScale of(BuildContext context) {

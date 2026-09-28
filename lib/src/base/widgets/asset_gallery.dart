@@ -55,7 +55,7 @@ class AssetThumbnail extends StatelessWidget {
             return Image.memory(
               bytes,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _typeIcon(c, type),
+              errorBuilder: (_, _, _) => _typeIcon(c, type),
             );
           }
         }
@@ -68,7 +68,7 @@ class AssetThumbnail extends StatelessWidget {
       return Image.network(
         ref,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _typeIcon(c, type),
+        errorBuilder: (_, _, _) => _typeIcon(c, type),
       );
     }
     if (path is String &&
@@ -80,7 +80,7 @@ class AssetThumbnail extends StatelessWidget {
       return Image.file(
         file,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _typeIcon(c, type),
+        errorBuilder: (_, _, _) => _typeIcon(c, type),
       );
     }
     return _typeIcon(c, type);

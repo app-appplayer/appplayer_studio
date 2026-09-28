@@ -8,7 +8,7 @@ import 'package:appplayer_studio/base.dart'
 import 'package:mcp_bundle/mcp_bundle.dart'
     show FormDocument, FormDocumentMetadata, FormSection;
 
-import '../infra/form_spec_vocab.dart' show kPlacementAnchors;
+import '../../../base/install/form_spec_vocab.dart' show kPlacementAnchors;
 import 'form_tool_client.dart';
 
 const JsonEncoder _pretty = JsonEncoder.withIndent('  ');
@@ -186,6 +186,19 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
       if (mounted && _selectedId == templateId) {
         setState(() => _panelError = '$e');
       }
+    }
+  }
+
+  /// Re-assemble the preview after an edit. A template whose sections do not
+  /// parse shows the reason in the panel instead of throwing out of
+  /// `setState`.
+  void _refreshPreview() {
+    try {
+      _previewDoc = _assemblePreview(_tpl!);
+      _panelError = null;
+    } catch (e) {
+      _previewDoc = null;
+      _panelError = '$e';
     }
   }
 
@@ -686,7 +699,7 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
     setState(() {
       fn(json);
       _dirty = true;
-      _previewDoc = _assemblePreview(_tpl!);
+      _refreshPreview();
     });
   }
 
@@ -775,7 +788,7 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
         },
       });
       _dirty = true;
-      _previewDoc = _assemblePreview(_tpl!);
+      _refreshPreview();
     });
   }
 
@@ -790,7 +803,7 @@ class _TemplatesPageState extends State<TemplatesPage> with ScopedDialogs {
       }
       _inspected = null;
       _dirty = true;
-      _previewDoc = _assemblePreview(_tpl!);
+      _refreshPreview();
     });
   }
 

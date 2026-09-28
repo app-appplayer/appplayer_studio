@@ -2,8 +2,8 @@
 /// no longer forks a parallel flat type set. It re-exports the single
 /// canonical model (LayerId / CanonicalPatch / PatchOp / PatchOriginator /
 /// ValidationIssue / CanonicalChange / …) from the host + kernel, and
-/// keeps only the two App-Builder-shell concepts (CenterMode, ConvertResult)
-/// that have no platform equivalent.
+/// keeps only the App-Builder-shell concept (CenterMode) that has no
+/// platform equivalent.
 library;
 
 // Host (vibe_studio base) — canonical patch model, layer ids, import kind,
@@ -11,6 +11,7 @@ library;
 export 'package:appplayer_studio/base.dart'
     show
         ChatTurn,
+        ConvertResult,
         LayerId,
         CanonicalPatch,
         ImportKind,
@@ -91,17 +92,4 @@ enum CenterMode {
     }
     return CenterMode.ui;
   }
-}
-
-/// Result of a converter run — App Builder's code-generation output
-/// (Dart / embedded). No platform equivalent; stays local.
-class ConvertResult {
-  const ConvertResult({
-    required this.outDir,
-    required this.canonicalHash,
-    required this.writtenFiles,
-  });
-  final String outDir;
-  final String canonicalHash;
-  final List<String> writtenFiles;
 }

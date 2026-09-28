@@ -22,8 +22,7 @@ import 'package:path/path.dart' as p;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../main/chrome_bridge.dart';
-import '../settings/manifest_field_inheritance.dart'
-    show readPackageOverrides;
+import '../settings/manifest_field_inheritance.dart' show readPackageOverrides;
 import '../settings/vibe_settings.dart';
 import 'builtin_app.dart' show BuiltInAppRegistry;
 import 'project_layout.dart';
@@ -174,9 +173,10 @@ void registerProjectTools(
         // recents; recording here keeps MCP `project.open` at parity
         // with the UI dialog path regardless of the active app.
         if (result['ok'] == true) {
-          final recorded = result['projectPath'] is String
-              ? result['projectPath'] as String
-              : path;
+          final recorded =
+              result['projectPath'] is String
+                  ? result['projectPath'] as String
+                  : path;
           // ignore: unawaited_futures
           bridge.recordRecentProject?.call(recorded);
         }

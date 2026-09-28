@@ -38,8 +38,8 @@ class UseTemplateFactory extends WidgetFactory {
       );
     }
 
-    // §9.9.1: a template definition's own `onMount` / `onUnmount` fire once
-    // PER INSTANCE, after `stateDefaults` initialization. §18 makes running
+    // A template definition's own `onMount` / `onUnmount` fire once
+    // PER INSTANCE, after `stateDefaults` initialization. Conformance makes running
     // `onUnmount` a MUST. Nothing ran them before — a template could declare
     // both and be rendered with neither.
     //

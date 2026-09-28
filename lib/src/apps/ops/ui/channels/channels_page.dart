@@ -36,9 +36,7 @@ const Map<String, List<_Field>> _platformFields = {
     _Field('botToken', 'Bot token', secret: true),
     _Field('signingSecret', 'Signing secret', secret: true),
   ],
-  'telegram': [
-    _Field('botToken', 'Bot token', secret: true),
-  ],
+  'telegram': [_Field('botToken', 'Bot token', secret: true)],
   'email': [
     _Field('botEmail', 'From address'),
     _Field('host', 'IMAP/SMTP host'),
@@ -51,6 +49,9 @@ const Map<String, List<_Field>> _platformFields = {
 class _ChannelsPageState extends ConsumerState<ChannelsPage> {
   bool _loading = true;
   String? _error;
+
+  /// Why the last remove did not fully succeed — shown until the next one.
+  String? _removeError;
   List<Map<String, dynamic>> _channels = const [];
   List<String> _credentialIds = const [];
 
@@ -70,10 +71,11 @@ class _ChannelsPageState extends ConsumerState<ChannelsPage> {
       final creds = await opsCallTool(ref, 'channel.credential_ids', const {});
       if (!mounted) return;
       setState(() {
-        _channels = ((list['channels'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((e) => e.cast<String, dynamic>())
-            .toList();
+        _channels =
+            ((list['channels'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList();
         _credentialIds =
             ((creds['ids'] as List?) ?? const []).map((e) => '$e').toList();
         _loading = false;
@@ -88,14 +90,26 @@ class _ChannelsPageState extends ConsumerState<ChannelsPage> {
   }
 
   Future<void> _remove(String id) async {
+    final failures = <String>[];
     try {
       await opsCallTool(ref, 'channel.disconnect', {'id': id});
-    } catch (_) {
-      /* may not be connected — still remove the credential */
+    } catch (e) {
+      // A stored-only credential has no live connector; that is the one
+      // disconnect failure removal is expected to meet.
+      if (!'$e'.contains('channel.not_found')) {
+        failures.add('disconnect failed: $e');
+      }
     }
     try {
       await opsCallTool(ref, 'channel.credential_remove', {'id': id});
-    } catch (_) {}
+    } catch (e) {
+      failures.add('credentials were not deleted: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _removeError =
+          failures.isEmpty ? null : 'Removing "$id": ${failures.join('; ')}';
+    });
     await _refresh();
   }
 
@@ -121,13 +135,17 @@ class _ChannelsPageState extends ConsumerState<ChannelsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('SYSTEM',
-                        style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      'SYSTEM',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                     const SizedBox(height: 4),
-                    Text('Channels',
-                        style: Theme.of(context).textTheme.displayMedium,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      'Channels',
+                      style: Theme.of(context).textTheme.displayMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -146,6 +164,16 @@ class _ChannelsPageState extends ConsumerState<ChannelsPage> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          if (_removeError != null) ...[
+            Text(
+              _removeError!,
+              key: const ValueKey('channels.removeError'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Expanded(child: _body(context)),
         ],
       ),
@@ -165,7 +193,9 @@ class _ChannelsPageState extends ConsumerState<ChannelsPage> {
     }..remove('in_app');
     if (ids.isEmpty) {
       return const Center(
-        child: Text('No channels yet. Add one to notify or receive externally.'),
+        child: Text(
+          'No channels yet. Add one to notify or receive externally.',
+        ),
       );
     }
     final connectedById = <String, Map<String, dynamic>>{
@@ -294,12 +324,15 @@ class _AddChannelDialogState extends ConsumerState<_AddChannelDialog> {
                   for (final p in _platformFields.keys)
                     DropdownMenuItem(value: p, child: Text(p)),
                 ],
-                onChanged: _busy
-                    ? null
-                    : (v) => setState(() {
+                onChanged:
+                    _busy
+                        ? null
+                        : (v) => setState(() {
                           _platform = v ?? _platform;
                           if (_idCtrl.text.trim().isEmpty ||
-                              _platformFields.containsKey(_idCtrl.text.trim())) {
+                              _platformFields.containsKey(
+                                _idCtrl.text.trim(),
+                              )) {
                             _idCtrl.text = _platform;
                           }
                         }),
@@ -310,7 +343,8 @@ class _AddChannelDialogState extends ConsumerState<_AddChannelDialog> {
                 enabled: !_busy,
                 decoration: const InputDecoration(
                   labelText: 'Account id',
-                  helperText: 'Unique per account (e.g. company-kakao, alice-email)',
+                  helperText:
+                      'Unique per account (e.g. company-kakao, alice-email)',
                 ),
               ),
               const SizedBox(height: 8),
@@ -326,9 +360,12 @@ class _AddChannelDialogState extends ConsumerState<_AddChannelDialog> {
               if (_msg != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(_msg!,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
+                  child: Text(
+                    _msg!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -341,13 +378,14 @@ class _AddChannelDialogState extends ConsumerState<_AddChannelDialog> {
         ),
         FilledButton(
           onPressed: _busy ? null : _save,
-          child: _busy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save & connect'),
+          child:
+              _busy
+                  ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                  : const Text('Save & connect'),
         ),
       ],
     );

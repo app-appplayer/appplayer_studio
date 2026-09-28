@@ -33,12 +33,12 @@ class ExpandedWidgetFactory extends WidgetFactory {
       return Container(); // Return empty container if no child
     }
 
-    // Build expanded
-    Widget expanded = Expanded(
+    // The wrappers go INSIDE — see `flexible`, same reason: `Expanded` is a
+    // ParentDataWidget and its row reads it as its own direct child, so
+    // anything wrapped around it hides it and Flutter asserts.
+    return Expanded(
       flex: flex,
-      child: child,
+      child: applyCommonWrappers(child, properties, context),
     );
-
-    return applyCommonWrappers(expanded, properties, context);
   }
 }

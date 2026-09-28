@@ -11,14 +11,17 @@
 /// Data-injected (no filesystem access of its own): the host supplies [text]
 /// (text kinds) or [bytes] (images), and is called back through [onSave] — so
 /// the widget stays pure and reusable. Picks a renderer by the [path]
-/// extension. PDF is a placeholder until the runtime ships a `pdf` widget.
+/// extension. PDF renders through `pdfrx` — from [bytes] when supplied,
+/// otherwise from the file at [path].
 library;
 
 import 'dart:io' show File;
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../tokens.dart';
 
@@ -78,6 +81,41 @@ VbuDocKind vbuDocKindForPath(String path) {
   }
 }
 
+/// Renderer for a document whose content is at hand. The extension decides
+/// first; an extension the table does not know falls back to the bytes:
+/// a tool's own project file (`.opsproj`, `.apbproj`, …) is JSON text and
+/// must open as code, not as "binary". Text is detected the way editors
+/// do it — no NUL byte and valid UTF-8 in the first 4 KiB.
+VbuDocKind vbuDocKindFor(String path, {String? text, List<int>? bytes}) {
+  final byExt = vbuDocKindForPath(path);
+  if (byExt != VbuDocKind.binary) return byExt;
+  if (text != null) return VbuDocKind.code;
+  if (bytes != null && _looksLikeText(bytes)) return VbuDocKind.code;
+  return VbuDocKind.binary;
+}
+
+bool _looksLikeText(List<int> bytes) {
+  if (bytes.isEmpty) return true;
+  final head = bytes.length > 4096 ? bytes.sublist(0, 4096) : bytes;
+  if (head.contains(0)) return false;
+  try {
+    utf8.decode(head, allowMalformed: false);
+    return true;
+  } on FormatException {
+    // A cut in the middle of a multi-byte sequence at the 4 KiB edge is
+    // still text; a decode failure earlier in the head is not.
+    if (head.length < bytes.length) {
+      try {
+        utf8.decode(head.sublist(0, head.length - 4), allowMalformed: false);
+        return true;
+      } on FormatException {
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
 class VbuDocumentViewer extends StatefulWidget {
   const VbuDocumentViewer({
     super.key,
@@ -113,14 +151,23 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
   bool _editing = false;
   bool _dirty = false;
 
-  VbuDocKind get _kind => vbuDocKindForPath(widget.path);
+  VbuDocKind get _kind =>
+      vbuDocKindFor(widget.path, text: widget.text, bytes: widget.bytes);
+
+  /// Text to render: the given text, else the bytes decoded — a file the
+  /// extension table did not know arrives as bytes even when it is text.
+  String get _contentText =>
+      widget.text ??
+      (widget.bytes == null
+          ? ''
+          : utf8.decode(widget.bytes!, allowMalformed: true));
   bool get _textKind =>
       _kind == VbuDocKind.markdown || _kind == VbuDocKind.code;
 
   @override
   void initState() {
     super.initState();
-    _ctl = TextEditingController(text: widget.text ?? '');
+    _ctl = TextEditingController(text: _contentText);
     _ctl.addListener(() {
       if (!_dirty) setState(() => _dirty = true);
     });
@@ -130,7 +177,7 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
   void didUpdateWidget(covariant VbuDocumentViewer old) {
     super.didUpdateWidget(old);
     if (old.path != widget.path || old.text != widget.text) {
-      _ctl.text = widget.text ?? '';
+      _ctl.text = _contentText;
       _editing = false;
       _dirty = false;
     }
@@ -159,12 +206,7 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _toolbar(c),
-        Expanded(
-          child: Container(
-            color: c.surface,
-            child: _body(c),
-          ),
-        ),
+        Expanded(child: Container(color: c.surface, child: _body(c))),
       ],
     );
   }
@@ -220,20 +262,20 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
   }
 
   Widget _kindChip(VbuPalette c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: c.surface3,
-          borderRadius: BorderRadius.circular(VbuTokens.radiusSm),
-        ),
-        child: Text(
-          _kind.name,
-          style: TextStyle(
-            fontFamily: VbuTokens.fontMono,
-            fontSize: 10,
-            color: c.textTertiary,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: c.surface3,
+      borderRadius: BorderRadius.circular(VbuTokens.radiusSm),
+    ),
+    child: Text(
+      _kind.name,
+      style: TextStyle(
+        fontFamily: VbuTokens.fontMono,
+        fontSize: 10,
+        color: c.textTertiary,
+      ),
+    ),
+  );
 
   Widget _toolbarButton(
     VbuPalette c, {
@@ -275,13 +317,7 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
       case VbuDocKind.image:
         return _imageView(c);
       case VbuDocKind.pdf:
-        return _placeholder(
-          c,
-          Icons.picture_as_pdf_outlined,
-          'PDF preview pending',
-          'A `pdf` runtime widget is on the way. For now, open the file '
-              'externally.',
-        );
+        return _pdfView(c);
       case VbuDocKind.binary:
         return _placeholder(
           c,
@@ -293,81 +329,121 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
   }
 
   Widget _markdownView(VbuPalette c) => Markdown(
-        data: widget.text ?? '',
-        selectable: true,
-        padding: const EdgeInsets.all(VbuTokens.space4),
-        styleSheet: MarkdownStyleSheet(
-          p: TextStyle(color: c.textPrimary, fontSize: 14, height: 1.6),
-          h1: TextStyle(color: c.textPrimary, fontSize: 22, fontWeight: FontWeight.w700),
-          h2: TextStyle(color: c.textPrimary, fontSize: 18, fontWeight: FontWeight.w700),
-          h3: TextStyle(color: c.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
-          code: TextStyle(
-            fontFamily: VbuTokens.fontMono,
-            fontSize: 12.5,
-            color: c.mint,
-            backgroundColor: c.surface2,
-          ),
-          codeblockDecoration: BoxDecoration(
-            color: c.surface2,
-            borderRadius: BorderRadius.circular(VbuTokens.radiusSm),
-          ),
-          a: TextStyle(color: c.blue),
-          blockquoteDecoration: BoxDecoration(
-            color: c.surface2,
-            border: Border(left: BorderSide(color: c.borderStrong, width: 3)),
-          ),
-        ),
-      );
+    data: _contentText,
+    selectable: true,
+    padding: const EdgeInsets.all(VbuTokens.space4),
+    styleSheet: MarkdownStyleSheet(
+      p: TextStyle(color: c.textPrimary, fontSize: 14, height: 1.6),
+      h1: TextStyle(
+        color: c.textPrimary,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+      h2: TextStyle(
+        color: c.textPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+      h3: TextStyle(
+        color: c.textPrimary,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      code: TextStyle(
+        fontFamily: VbuTokens.fontMono,
+        fontSize: 12.5,
+        color: c.mint,
+        backgroundColor: c.surface2,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(VbuTokens.radiusSm),
+      ),
+      a: TextStyle(color: c.blue),
+      blockquoteDecoration: BoxDecoration(
+        color: c.surface2,
+        border: Border(left: BorderSide(color: c.borderStrong, width: 3)),
+      ),
+    ),
+  );
 
   Widget _codeView(VbuPalette c) => SingleChildScrollView(
-        padding: const EdgeInsets.all(VbuTokens.space3),
-        child: SizedBox(
-          width: double.infinity,
-          child: SelectableText(
-            widget.text ?? '',
-            style: TextStyle(
-              fontFamily: VbuTokens.fontMono,
-              fontSize: 12.5,
-              color: c.textPrimary,
-              height: 1.55,
-            ),
-          ),
+    padding: const EdgeInsets.all(VbuTokens.space3),
+    child: SizedBox(
+      width: double.infinity,
+      child: SelectableText(
+        _contentText,
+        style: TextStyle(
+          fontFamily: VbuTokens.fontMono,
+          fontSize: 12.5,
+          color: c.textPrimary,
+          height: 1.55,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _editor(VbuPalette c) => Padding(
-        padding: const EdgeInsets.all(VbuTokens.space3),
-        child: TextField(
-          controller: _ctl,
-          expands: true,
-          maxLines: null,
-          minLines: null,
-          textAlignVertical: TextAlignVertical.top,
-          style: TextStyle(
-            fontFamily: VbuTokens.fontMono,
-            fontSize: 12.5,
-            color: c.textPrimary,
-            height: 1.55,
+    padding: const EdgeInsets.all(VbuTokens.space3),
+    child: TextField(
+      controller: _ctl,
+      expands: true,
+      maxLines: null,
+      minLines: null,
+      textAlignVertical: TextAlignVertical.top,
+      style: TextStyle(
+        fontFamily: VbuTokens.fontMono,
+        fontSize: 12.5,
+        color: c.textPrimary,
+        height: 1.55,
+      ),
+      decoration: const InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+      ),
+    ),
+  );
+
+  Widget _pdfView(VbuPalette c) {
+    final bytes = widget.bytes;
+    final key = ValueKey('vbu.doc.pdf.${widget.path}');
+    // A file that cannot be opened reads like any other unreadable document
+    // here, instead of pdfrx's full stack-trace banner.
+    final params = pdfrx.PdfViewerParams(
+      errorBannerBuilder:
+          (_, error, _, _) => _placeholder(
+            c,
+            Icons.picture_as_pdf_outlined,
+            'Cannot open PDF',
+            '$error',
           ),
-          decoration: const InputDecoration(
-            isDense: true,
-            border: InputBorder.none,
-          ),
-        ),
-      );
+    );
+    return bytes != null
+        ? pdfrx.PdfViewer.data(
+          bytes,
+          key: key,
+          sourceName: widget.path,
+          params: params,
+        )
+        : pdfrx.PdfViewer.file(widget.path, key: key, params: params);
+  }
 
   Widget _imageView(VbuPalette c) {
     final Widget img;
     if (widget.bytes != null) {
       img = Image.memory(widget.bytes!, fit: BoxFit.contain);
     } else {
-      img = Image.file(File(widget.path), fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _placeholder(
-                c,
-                Icons.broken_image_outlined,
-                'Cannot load image',
-                widget.path,
-              ));
+      img = Image.file(
+        File(widget.path),
+        fit: BoxFit.contain,
+        errorBuilder:
+            (_, _, _) => _placeholder(
+              c,
+              Icons.broken_image_outlined,
+              'Cannot load image',
+              widget.path,
+            ),
+      );
     }
     return Container(
       color: c.surface,
@@ -381,33 +457,29 @@ class _VbuDocumentViewerState extends State<VbuDocumentViewer> {
     IconData icon,
     String title,
     String detail,
-  ) =>
-      Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 40, color: c.textTertiary),
-            const SizedBox(height: VbuTokens.space2),
-            Text(
-              title,
-              style: TextStyle(color: c.textSecondary, fontSize: 13),
+  ) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(icon, size: 40, color: c.textTertiary),
+        const SizedBox(height: VbuTokens.space2),
+        Text(title, style: TextStyle(color: c.textSecondary, fontSize: 13)),
+        const SizedBox(height: VbuTokens.space1),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: VbuTokens.space6),
+          child: Text(
+            detail,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: VbuTokens.fontMono,
+              color: c.textTertiary,
+              fontSize: 11,
             ),
-            const SizedBox(height: VbuTokens.space1),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: VbuTokens.space6),
-              child: Text(
-                detail,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: VbuTokens.fontMono,
-                  color: c.textTertiary,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   static IconData _iconForKind(VbuDocKind k) {
     switch (k) {

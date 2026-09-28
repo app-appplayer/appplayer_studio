@@ -131,10 +131,20 @@ class _LiveRegionState extends State<LiveRegion> {
   void initState() {
     super.initState();
 
-    // Create region
+    _subscribe();
+
+    // Announce initial value if requested
+    if (widget.announceInitialValue && widget.initialValue != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        LiveRegionManager.instance
+            .announce(widget.regionId, widget.initialValue!);
+      });
+    }
+  }
+
+  void _subscribe() {
     LiveRegionManager.instance.createRegion(widget.regionId, widget.type);
 
-    // Subscribe to announcements
     final stream = LiveRegionManager.instance.getRegionStream(widget.regionId);
     if (stream != null) {
       _subscription = stream.listen((message) {
@@ -145,14 +155,28 @@ class _LiveRegionState extends State<LiveRegion> {
         }
       });
     }
+  }
 
-    // Announce initial value if requested
-    if (widget.announceInitialValue && widget.initialValue != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        LiveRegionManager.instance
-            .announce(widget.regionId, widget.initialValue!);
-      });
+  /// A region id that changes is a different region.
+  ///
+  /// Without this the state kept listening to the region it was created with:
+  /// the new id was never registered, so `announce` on it warned "live region
+  /// not found" and the widget went on showing the OLD region's last
+  /// announcement. The old region also stayed registered for the life of the
+  /// process, since only `dispose` removes one. A document that binds
+  /// `regionId` — one status line serving several forms — hit both.
+  @override
+  void didUpdateWidget(covariant LiveRegion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.regionId == widget.regionId &&
+        oldWidget.type == widget.type) {
+      return;
     }
+
+    _subscription.cancel();
+    LiveRegionManager.instance.removeRegion(oldWidget.regionId);
+    _lastAnnouncement = null;
+    _subscribe();
   }
 
   @override
@@ -378,7 +402,15 @@ class _AccessibleProgressIndicatorState
 
     if (widget.value != oldWidget.value) {
       if (widget.announceProgress && widget.value != null) {
-        _startAnnouncementTimer();
+        // Only START one; a running timer is left alone.
+        //
+        // Restarting it announced the new value immediately, every time, and
+        // an upload reports progress far faster than anyone can listen —
+        // `announcementInterval` never throttled anything, so a screen reader
+        // was read the percentage on every frame and talked over the rest of
+        // the page. The interval is the whole point of the field: say it once
+        // now, then at most once per interval after that.
+        if (_announcementTimer == null) _startAnnouncementTimer();
       } else {
         _stopAnnouncementTimer();
       }
@@ -499,6 +531,13 @@ class _AccessibleFormFieldState extends State<AccessibleFormField> {
       final error = widget.validator!(value);
 
       if (error != _errorText) {
+        // Read the previous error BEFORE overwriting it. The clear branch used
+        // to test `_errorText` after `setState` had already set it to the new
+        // value, so it was null exactly when the branch needed it not to be —
+        // "Error cleared" could never be announced, and a screen-reader user
+        // was told about every error and never about the fix.
+        final previous = _errorText;
+
         setState(() {
           _errorText = error;
         });
@@ -510,7 +549,7 @@ class _AccessibleFormFieldState extends State<AccessibleFormField> {
               '${widget.fieldId}_error',
               'Error: $error',
             );
-          } else if (_errorText != null) {
+          } else if (previous != null) {
             LiveRegionManager.instance.announce(
               '${widget.fieldId}_error',
               'Error cleared',

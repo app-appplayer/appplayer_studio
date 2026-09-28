@@ -261,10 +261,8 @@ class _InspectorRenderState extends State<InspectorRender> {
                     : (dy) {
                       setState(() {
                         final h = context.size?.height ?? 600.0;
-                        _dashboardFraction = (_dashboardFraction - dy / h).clamp(
-                          0.1,
-                          0.9,
-                        );
+                        _dashboardFraction = (_dashboardFraction - dy / h)
+                            .clamp(0.1, 0.9);
                       });
                     },
           ),

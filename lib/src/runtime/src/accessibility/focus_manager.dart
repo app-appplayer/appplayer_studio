@@ -374,9 +374,8 @@ class _FocusRestoreState extends State<FocusRestore> {
 }
 
 /// Minimum touch target sizes per WCAG 2.5.8
-class TouchTargetSize {
+abstract final class TouchTargetSize {
   static const double minimumSize = 48.0;
-  TouchTargetSize._();
 }
 
 /// Skip to content widget for accessibility

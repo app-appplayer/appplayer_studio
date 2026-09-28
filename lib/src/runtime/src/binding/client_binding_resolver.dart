@@ -3,12 +3,13 @@
 /// Resolves {{client.*}} bindings to client-side values.
 library client_binding_resolver;
 
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:flutter/material.dart' show ThemeData;
+
+import '../platform/host_platform.dart';
 
 /// Resolves client-side binding expressions
 class ClientBindingResolver {
@@ -142,7 +143,7 @@ class ClientBindingResolver {
         return _getOrientation();
 
       case 'isWeb':
-        return kIsWeb;
+        return HostPlatform.isWeb;
 
       case 'isDebug':
         return kDebugMode;
@@ -185,40 +186,20 @@ class ClientBindingResolver {
   }
 
   /// Get the current working directory
-  String? _getWorkingDirectory() {
-    if (kIsWeb) return null;
-    try {
-      return Directory.current.path;
-    } catch (_) {
-      return null;
-    }
-  }
+  String? _getWorkingDirectory() => HostPlatform.workingDirectory;
 
   /// Get the current user name
   String? _getUserName() {
     if (kIsWeb) return null;
     try {
-      return Platform.environment['USER'] ??
-          Platform.environment['USERNAME'] ??
-          Platform.environment['LOGNAME'];
+      return HostPlatform.userName;
     } catch (_) {
       return null;
     }
   }
 
   /// Get the raw OS platform name
-  String _getPlatformOS() {
-    if (kIsWeb) return 'web';
-
-    if (Platform.isAndroid) return 'android';
-    if (Platform.isIOS) return 'ios';
-    if (Platform.isMacOS) return 'macos';
-    if (Platform.isWindows) return 'windows';
-    if (Platform.isLinux) return 'linux';
-    if (Platform.isFuchsia) return 'fuchsia';
-
-    return 'unknown';
-  }
+  String _getPlatformOS() => HostPlatform.name;
 
   /// Get the system locale
   String _getLocale() {
@@ -232,6 +213,16 @@ class ClientBindingResolver {
 
   /// Get the system theme (light/dark)
   String _getTheme() {
+    // The HOST's theme when the host supplied one, and only then the OS
+    // preference. Every other `client.theme.*` path reads `_hostThemeData`, so
+    // reading the platform here made one namespace disagree with itself: an app
+    // running dark on a light OS reported `mode: light` beside dark colours,
+    // and a document that picks its own asset from the mode picked the wrong
+    // one.
+    final host = _hostThemeData;
+    if (host != null) {
+      return host.brightness == Brightness.dark ? 'dark' : 'light';
+    }
     try {
       final brightness =
           SchedulerBinding.instance.platformDispatcher.platformBrightness;
@@ -287,33 +278,18 @@ class ClientBindingResolver {
 
   /// Get the platform file separator
   String _getFileSeparator() {
-    if (kIsWeb) return '/';
-    return Platform.pathSeparator;
+    return HostPlatform.pathSeparator;
   }
 
   /// Get the OS version string
   String _getOSVersion() {
-    if (kIsWeb) return 'web';
-    try {
-      return Platform.operatingSystemVersion;
-    } catch (_) {
-      return 'unknown';
-    }
+    return HostPlatform.osVersion;
   }
 
   /// Get the platform category (mobile, desktop, web)
-  String _getPlatformCategory() {
-    if (kIsWeb) return 'web';
-    try {
-      if (Platform.isAndroid || Platform.isIOS) return 'mobile';
-      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-        return 'desktop';
-      }
-    } catch (_) {
-      // Platform not available
-    }
-    return 'unknown';
-  }
+  String _getPlatformCategory() => HostPlatform.category;
+
+
 
   /// Get the current device orientation
   String _getOrientation() {
@@ -363,7 +339,7 @@ class ClientBindingResolver {
     if (!_systemInfoGranted) return null;
     if (!_isEnvAllowed(name)) return null;
     try {
-      return Platform.environment[name];
+      return HostPlatform.env(name);
     } catch (_) {
       return null;
     }
@@ -449,7 +425,7 @@ class ClientBindingResolver {
       'file.separator': _getFileSeparator(),
       'system.os': _getPlatformOS(),
       'system.version': _getOSVersion(),
-      'isWeb': kIsWeb,
+      'isWeb': HostPlatform.isWeb,
       'isDebug': kDebugMode,
       'isRelease': kReleaseMode,
       'isProfile': kProfileMode,

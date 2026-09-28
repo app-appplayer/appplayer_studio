@@ -14,6 +14,11 @@ import 'package:appplayer_studio/builtin_api.dart'
     show KernelToolResult, KernelTextContent;
 
 import '../debug/ui_debug_bridge.dart';
+import '../ops_shell.dart' show OpsRoute;
+
+/// Sidebar route ids, read from [OpsRoute] so the tool accepts exactly what
+/// the shell renders.
+final List<String> _routeIds = <String>[for (final r in OpsRoute.values) r.id];
 
 class UiDebugTools {
   const UiDebugTools();
@@ -62,9 +67,7 @@ class UiDebugTools {
       server,
       'ui_navigate',
       'Set the sidebar route — same as a human clicking a sidebar item. '
-          'Valid routes (OpsRoute): home · observability · members · '
-          'knowledge · skills · profiles · tasks · philosophies · processes · '
-          'workspaces · bundles · audit · about.',
+          'Valid routes (OpsRoute): ${_routeIds.join(' · ')}.',
       const {
         'type': 'object',
         'properties': {
@@ -74,6 +77,11 @@ class UiDebugTools {
       },
       (args) async {
         final route = args['route'] as String;
+        if (!_routeIds.contains(route)) {
+          throw StateError(
+            'unknown route "$route" — one of: ${_routeIds.join(', ')}',
+          );
+        }
         UiDebugBridge.navigate(route);
         return {'route': UiDebugBridge.activeRoute() ?? route};
       },
@@ -180,16 +188,17 @@ class UiDebugTools {
           return KernelToolResult(
             content: [KernelTextContent(text: jsonEncode(result))],
           );
-        } catch (e, st) {
+        } catch (e) {
+          // Clean message on the MCP surface (same as the system tools): the
+          // answer feeds the chat UI and external LLMs, where a stack dump is
+          // noise.
+          var msg = e.toString();
+          for (final prefix in const <String>['Bad state: ', 'Exception: ']) {
+            if (msg.startsWith(prefix)) msg = msg.substring(prefix.length);
+          }
           return KernelToolResult(
             content: [
-              KernelTextContent(
-                text: jsonEncode({
-                  'error': e.toString(),
-                  'stack': st.toString(),
-                  'tool': name,
-                }),
-              ),
+              KernelTextContent(text: jsonEncode({'error': msg, 'tool': name})),
             ],
             isError: true,
           );

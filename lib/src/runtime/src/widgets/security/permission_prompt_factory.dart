@@ -10,8 +10,8 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final permissions = context.resolve<List<dynamic>?>(
-            properties['permissions'] ?? []) ??
+    final permissions = listOf(
+            properties['permissions'] ?? [], context) ??
         [];
     final style =
         context.resolve<String>(properties['style'] ?? 'inline');
@@ -69,8 +69,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
               children: [
                 Icon(
                   icon ?? Icons.lock_outline,
-                  color: renderContext.themeManager.getColorValue('error') ??
-                      Colors.orange,
+                  color: renderContext.themeManager.colorOr('error', Colors.orange),
                   size: 24,
                 ),
                 const SizedBox(width: 12),
@@ -91,8 +90,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
                 description,
                 style: TextStyle(
                   fontSize: 14,
-                  color: (renderContext.themeManager.getColorValue('onSurface') ??
-                          Colors.black87)
+                  color: (renderContext.themeManager.colorOr('onSurface', Colors.black87))
                       .withValues(alpha: 0.6),
                 ),
               ),
@@ -106,8 +104,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
                         Icon(Icons.check_circle_outline,
                             size: 16,
                             color: renderContext.themeManager
-                                    .getColorValue('primary') ??
-                                Colors.blue),
+                                    .colorOr('primary', Colors.blue)),
                         const SizedBox(width: 8),
                         Text(p.toString(),
                             style: const TextStyle(fontSize: 13)),
@@ -155,8 +152,7 @@ class PermissionPromptWidgetFactory extends WidgetFactory {
     return MaterialBanner(
       leading: Icon(
         icon ?? Icons.lock_outline,
-        color: renderContext.themeManager.getColorValue('error') ??
-            Colors.orange,
+        color: renderContext.themeManager.colorOr('error', Colors.orange),
       ),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -68,7 +68,8 @@ List<CapabilityTool> secureCapabilityTools(AppPlayerSecure secure) {
     ),
     CapabilityTool(
       verb: 'open',
-      description: 'At-rest decrypt (open) sealed base64 bytes; the same '
+      description:
+          'At-rest decrypt (open) sealed base64 bytes; the same '
           'context used to seal is required.',
       inputSchema: const <String, dynamic>{
         'type': 'object',
@@ -92,10 +93,7 @@ List<CapabilityTool> secureCapabilityTools(AppPlayerSecure secure) {
           rethrow;
         } on Object catch (e) {
           // Wrong context / tampered ciphertext → auth failure.
-          throw CapabilityToolError(
-            code: 'secure.open_failed',
-            message: '$e',
-          );
+          throw CapabilityToolError(code: 'secure.open_failed', message: '$e');
         }
       },
     ),

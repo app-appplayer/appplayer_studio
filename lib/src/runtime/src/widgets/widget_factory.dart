@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
+    show lineHeightMultiplier;
 
 import '../renderer/render_context.dart';
 import '../utils/color_parser.dart';
@@ -41,7 +43,7 @@ abstract class WidgetFactory {
       );
     }
 
-    // Handle click — spec 1.3.4 common property §2.2. Wraps any widget in a
+    // Handle click — a common property. Wraps any widget in a
     // gesture surface and dispatches the bound action on tap. Widget-local
     // activation slots (button.onTap, iconButton.onTap, richText.spans[].onTap,
     // ...) remain canonical for those widgets; `click` is the universal
@@ -240,7 +242,7 @@ abstract class WidgetFactory {
 
   /// Parse a DSL color value into a Flutter [Color].
   ///
-  /// Supported forms (spec §5 + FR-THEME-002):
+  /// Supported forms:
   ///   * 6-digit hex `#RRGGBB`
   ///   * 8-digit hex `#AARRGGBB`
   ///   * 3-digit hex shorthand `#RGB`
@@ -265,7 +267,7 @@ abstract class WidgetFactory {
 
     if (value is String) {
       switch (value) {
-        // Spec § Alignment primitive — directional canonical
+        // Alignment primitive — directional canonical
         // (topStart / topEnd / bottomStart / bottomEnd, RTL-aware
         // per Material 3). Visual aliases (topLeft / topRight /
         // bottomLeft / bottomRight) are accepted at runtime for
@@ -337,7 +339,7 @@ abstract class WidgetFactory {
   double? dimensionOf(dynamic raw, RenderContext context) =>
       readDimension(raw, context);
 
-  /// A boolean / number / integer / string slot, resolved (§3).
+  /// A boolean / number / integer / string slot, resolved.
   ///
   /// Every one of these used to be read with a raw cast, so a setting bound to
   /// state either reverted to its default or threw. They sit beside
@@ -364,6 +366,12 @@ abstract class WidgetFactory {
   Map<String, dynamic>? actionOf(dynamic raw, RenderContext context) =>
       readAction(raw, context);
 
+  /// A list slot (rows / items / tabs / options / nodes), read tolerantly —
+  /// see [readList] for why a hard cast here paints an error box over a widget
+  /// during ordinary editing.
+  List<dynamic>? listOf(dynamic raw, RenderContext context) =>
+      readList(raw, context);
+
   /// Parse BoxConstraints
   BoxConstraints? parseConstraints(dynamic value) {
     if (value == null) return null;
@@ -387,8 +395,8 @@ abstract class WidgetFactory {
   // value (already past binding resolution) so factories can simply call
   // `parseSpacingToken('md', context)` from a property they expose.
   //
-  // Spec § 5.4 (typography), § 5.5 (spacing), § 5.6 (shape), § 5.7
-  // (elevation). Returning `null` on unknown tokens lets callers fall back
+  // Theme tokens: typography, spacing, shape and
+  // elevation. Returning `null` on unknown tokens lets callers fall back
   // to numeric / object forms without throwing on bad bundle input.
 
   /// Resolve an M3 spacing token (`xxs` / `xs` / `sm` / `md` / `lg` / `xl` /
@@ -475,7 +483,26 @@ double? readDimension(dynamic raw, RenderContext context) {
   return null;
 }
 
-/// A boolean slot, read the way §3 says every value may be written.
+/// A text style's line height, as the multiplier `TextStyle.height` takes.
+///
+/// A widget `style` is the same `TextStyle` the theme typography uses, so it
+/// carries line height under both names the spec gives it — `lineHeight`
+/// (05_Theme §5.4.2) and `height` — and both are read, through the one rule
+/// in [lineHeightMultiplier]. A px `lineHeight` is divided by the style's own
+/// `fontSize`, or by [fontSize] when the style sets none (the size of the
+/// variant it layers on, say).
+double? readLineHeight(
+  Map<String, dynamic> style,
+  RenderContext context, {
+  double? fontSize,
+}) =>
+    lineHeightMultiplier(
+      lineHeight: readDimension(style['lineHeight'], context),
+      height: readDimension(style['height'], context),
+      fontSize: readDimension(style['fontSize'], context) ?? fontSize,
+    );
+
+/// A boolean slot, read the way every value may be written.
 ///
 /// `boolOf(properties['showGrid'], context)` was the common spelling, and it answers
 /// null for `"{{state.showGrid}}"` — the setting silently reverts to its
@@ -517,6 +544,25 @@ String? readString(dynamic raw, RenderContext context) {
   return null;
 }
 
+/// A list slot — rows, items, tabs, options, nodes.
+///
+/// `listOf(..., context)` throws when the resolved value is
+/// anything else, and the renderer answers a throw by painting a red
+/// `Error rendering …` box over the widget. That state is normal rather than
+/// exceptional: a server response still loading, an author mid-edit, a path
+/// that holds a scalar for a moment. Measured on a published build — `tabBar`,
+/// `dataTable` and `bottomNavigation` each covered their own area with an
+/// error box while the rest of the page rendered.
+///
+/// A wrong-shaped list reads as EMPTY, which is what the widget would draw for
+/// no data anyway, and the mistake stays visible as an empty widget instead of
+/// as a stack trace on screen.
+List<dynamic>? readList(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v is List) return v;
+  return null;
+}
+
 /// An `Action` slot as the list of actions to run. The slot accepts one
 /// action, a list of them, or a binding resolving to either; casting it to
 /// `Map<String, dynamic>?` renders an error for the list form.
@@ -535,7 +581,7 @@ List<Map<String, dynamic>> readActions(dynamic raw, RenderContext context) {
 }
 
 /// The single-action view of an `Action` slot. A list collapses to a
-/// `sequence`, which is what running them in order means (§4.6) — not to its
+/// `sequence`, which is what running them in order means — not to its
 /// first entry, which would silently drop the rest.
 Map<String, dynamic>? readAction(dynamic raw, RenderContext context) {
   final actions = readActions(raw, context);

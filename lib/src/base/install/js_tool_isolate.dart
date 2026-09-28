@@ -20,7 +20,9 @@
 ///      and stores `dispatch` for resolving `host.*` calls. The
 ///      worker installs the JS-side bridge (`__hostCall` / pending
 ///      map) and a `setupBridge('hostInvoke', ...)` handler that
-///      forwards `{uuid, atom, verb, args}` over the event port. The
+///      forwards `{uuid, atom, verb, args, nonJson}` over the event port
+///      (arguments JSON cannot carry are listed, and refused — see
+///      `js_bridge_protocol.dart`). The
 ///      main isolate listens, awaits the atom dispatch, then ships
 ///      the resolve/reject back to the worker.
 ///   3. `evaluate` / `evaluateAsync` ship the code to the worker and
@@ -42,13 +44,10 @@ import 'package:flutter_js/extensions/handle_promises.dart';
 import 'package:flutter_js/flutter_js.dart' as fjs;
 
 import 'atoms/atom_category.dart';
+import 'js_bridge_protocol.dart';
 
-/// Dispatcher signature — given an atom key + verb + args list, the
-/// host computes the atom's return value (JSON-serializable). Errors
-/// thrown from the dispatcher are forwarded to the worker as
-/// `__hostReject` with the exception's string form.
-typedef HostAtomDispatcher =
-    Future<Object?> Function(String atomKey, String verb, List<Object?> args);
+export 'js_bridge_protocol.dart'
+    show HostAtomDispatcher, NonJsonArgument, NonJsonArgumentPolicy;
 
 enum _K {
   ready,
@@ -126,6 +125,7 @@ class JsToolIsolate {
         final verb = raw[#verb] as String;
         final args =
             (raw[#args] as List?)?.cast<Object?>() ?? const <Object?>[];
+        final nonJson = NonJsonArgument.listFromWire(raw[#nonJson]);
         final dispatch = dispatcherRef.first;
         if (dispatch == null) {
           cmdPort.send(<Symbol, dynamic>{
@@ -139,7 +139,7 @@ class JsToolIsolate {
         // the dispatcher settles.
         Future<void>(() async {
           try {
-            final result = await dispatch(atom, verb, args);
+            final result = await dispatch(atom, verb, args, nonJson);
             cmdPort.send(<Symbol, dynamic>{
               #kind: _K.hostResolve,
               #uuid: uuid,
@@ -263,55 +263,55 @@ class _EvalResult {
 // here; the worker only talks to main via the cmd/event ports.
 // ---------------------------------------------------------------------------
 
-/// JS bootstrap installed inside the worker — wires `host`, the
-/// pending-promise map, and the `__hostCall` / `__hostResolve` /
-/// `__hostReject` machinery. Mirrors `JsHostBridge._kBootstrapJs` so
-/// the existing per-tool JS source contracts are preserved.
-const String _kWorkerBootstrapJs = r'''
-(function() {
-  if (globalThis.__hostBridgeReady) return;
-  globalThis.__hostBridgeReady = true;
-  globalThis.__hostPending = {};
-  globalThis.__hostNextUuid = 0;
-  globalThis.host = {};
-  globalThis.__hostResolve = function(uuid, jsonResult) {
-    var p = globalThis.__hostPending[uuid];
-    if (!p) return;
-    delete globalThis.__hostPending[uuid];
-    var v;
-    try { v = JSON.parse(jsonResult); } catch (e) { v = null; }
-    p.resolve(v);
-  };
-  globalThis.__hostReject = function(uuid, message) {
-    var p = globalThis.__hostPending[uuid];
-    if (!p) return;
-    delete globalThis.__hostPending[uuid];
-    p.reject(new Error(message));
-  };
-  globalThis.__hostCall = function(atom, verb, args) {
-    var uuid = '_h' + (++globalThis.__hostNextUuid);
-    return new Promise(function(resolve, reject) {
-      globalThis.__hostPending[uuid] = { resolve: resolve, reject: reject };
-      sendMessage(
-        'hostInvoke',
-        JSON.stringify({ uuid: uuid, atom: atom, verb: verb, args: args || [] }),
-      );
-    });
-  };
-})();
-''';
-
-String _atomSurfaceJsLine(String key, List<String> verbs) {
-  final buf = StringBuffer();
-  buf.writeln("host['$key'] = host['$key'] || {};");
-  for (final v in verbs) {
-    buf.writeln(
-      "host['$key']['$v'] = function() { "
-      "return __hostCall('$key', '$v', "
-      'Array.prototype.slice.call(arguments)); };',
+/// Settle [code] (a value or a Promise) and answer its value as JSON text.
+///
+/// flutter_js reports a settled value differently per engine: JavaScriptCore
+/// (macOS, iOS) hands back `JSON.stringify(value)`, QuickJS (Windows, Linux,
+/// Android) hands back Dart `toString()` of the converted value — `{count: 2}`,
+/// which is not JSON. So the value is stringified inside JS (a rejection as its
+/// message), parked in a per-call slot, and read back with a synchronous
+/// evaluate once the Promise has settled. A string read synchronously comes
+/// back as itself on both engines. A value JSON cannot represent is an error.
+///
+/// [code] is one expression; a trailing `;` is accepted and dropped. Code that
+/// does not parse as an expression is an error carrying the engine's message.
+Future<fjs.JsEvalResult> settleAsJson(
+  fjs.JavascriptRuntime rt,
+  String code,
+  int id, {
+  String? sourceUrl,
+}) async {
+  final expression = code.trimRight().replaceFirst(RegExp(r';+$'), '');
+  final slot = 'globalThis.__mmSettled[$id]';
+  const message = 'String((e && e.message) || e)';
+  final pending = await rt.evaluateAsync(
+    '(globalThis.__mmSettled = globalThis.__mmSettled || {}, '
+    'Promise.resolve().then(function () { return ($expression\n); })'
+    '.then(function (v) { '
+    'var s = JSON.stringify(v === undefined ? null : v); '
+    '$slot = "ok:" + (s === undefined ? "null" : s); })'
+    '.then(null, function (e) { $slot = "err:" + $message; })'
+    '.then(function () { return 0; }))',
+    sourceUrl: sourceUrl,
+  );
+  if (pending.isError) {
+    return fjs.JsEvalResult(pending.stringResult, null, isError: true);
+  }
+  await rt.handlePromise(pending);
+  final read = rt.evaluate(
+    '(function () { var s = $slot; delete $slot; return s; })()',
+  );
+  final text = read.stringResult;
+  if (read.isError || !(text.startsWith('ok:') || text.startsWith('err:'))) {
+    return fjs.JsEvalResult(
+      'settle produced no outcome: $text',
+      null,
+      isError: true,
     );
   }
-  return buf.toString();
+  return text.startsWith('ok:')
+      ? fjs.JsEvalResult(text.substring(3), null)
+      : fjs.JsEvalResult(text.substring(4), null, isError: true);
 }
 
 void _workerEntry(SendPort initPort) {
@@ -359,11 +359,12 @@ void _workerEntry(SendPort initPort) {
     } else if (kind == _K.evaluateAsync) {
       final replyId = raw[#replyId] as int;
       try {
-        final pending = await rt.evaluateAsync(
+        final settled = await settleAsJson(
+          rt,
           raw[#code] as String,
+          replyId,
           sourceUrl: raw[#sourceUrl] as String?,
         );
-        final settled = await rt.handlePromise(pending);
         eventPort?.send(<Symbol, dynamic>{
           #kind: _K.evaluateResult,
           #replyId: replyId,
@@ -382,12 +383,17 @@ void _workerEntry(SendPort initPort) {
       final replyId = raw[#replyId] as int;
       try {
         eventPort = raw[#eventPort] as SendPort;
-        rt.evaluate(_kWorkerBootstrapJs, sourceUrl: '<host-bootstrap>');
+        rt.evaluate(
+          hostBridgeBootstrapJs(
+            "function (p) { sendMessage('hostInvoke', p); }",
+          ),
+          sourceUrl: '<host-bootstrap>',
+        );
         final atomVerbs = (raw[#atomVerbs] as Map).cast<String, dynamic>();
         for (final entry in atomVerbs.entries) {
           final verbs = (entry.value as List).cast<String>();
           rt.evaluate(
-            _atomSurfaceJsLine(entry.key, verbs),
+            atomSurfaceJsLine(entry.key, verbs),
             sourceUrl: '<host-atom:${entry.key}>',
           );
         }
@@ -412,6 +418,7 @@ void _workerEntry(SendPort initPort) {
             #atom: parsed['atom']?.toString() ?? '',
             #verb: parsed['verb']?.toString() ?? '',
             #args: (parsed['args'] as List?) ?? const <dynamic>[],
+            #nonJson: (parsed['nonJson'] as List?) ?? const <dynamic>[],
           });
         });
         eventPort?.send(<Symbol, dynamic>{

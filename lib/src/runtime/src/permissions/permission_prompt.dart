@@ -84,6 +84,12 @@ class PermissionPrompt {
       permissionType: 'shell',
       title: 'Command Execution Permission',
       description: 'This action wants to execute a shell command.',
+      // The scope is the EXECUTABLE, matching what `PermissionManager._getScope`
+      // looks a stored decision up by. Without it the decision was stored under
+      // a null scope and searched for under `git`, so "Remember this decision"
+      // silently did nothing for `client.exec` — the user was asked again on
+      // every run, and the checkbox they had ticked was a lie.
+      scope: command.split(RegExp(r'\s+')).first,
       details: [
         'Command: $command',
         if (workingDir != null) 'Working Directory: $workingDir',

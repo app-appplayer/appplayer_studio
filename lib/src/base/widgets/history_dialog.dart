@@ -88,7 +88,7 @@ class _HistoryDialog extends StatelessWidget {
                         ),
                         itemCount: entries.length,
                         separatorBuilder:
-                            (_, __) =>
+                            (_, _) =>
                                 const SizedBox(height: VibeTokens.space1),
                         itemBuilder: (_, i) => _HistoryRow(entry: entries[i]),
                       ),

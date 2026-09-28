@@ -6,11 +6,12 @@
 /// 3. `create`          — new instance (optional initial tree)
 /// 4. `delete`          — remove one instance
 /// 5. `rename`          — change instance id
-/// 6. `render`          — isolated screenshot (host integration TODO —
-///                        for now returns `{ok:true, todo:"host
-///                        renderer hookup"}` so the surface lands
-///                        without blocking on the PreviewMcpUi atom
-///                        registration).
+/// 6. `render`          — isolated screenshot: the resolved entry is
+///                        mounted alone (bundle theme, no app shell)
+///                        through the host-supplied [LibraryRenderer]
+///                        and returned as a PNG image. A host that
+///                        supplies no renderer rejects with
+///                        `renderUnavailable`.
 /// 7. `placeInline`     — read a stored entry, substitute
 ///                        `{{paramName}}` against caller params, and
 ///                        `addNode` the resolved tree into
@@ -29,8 +30,11 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:brain_kernel/brain_kernel.dart' as mk;
+import 'package:path/path.dart' as p;
 
 import 'builder_library_service.dart';
 import 'builder_ui_write_service.dart';
@@ -40,6 +44,20 @@ import 'schema_validator.dart';
 /// omits `mbdPath` from its arguments. Wired by the host (see
 /// `vibe_studio_host_app.dart`) against `chromeBridge.activeProjectInfo`.
 typedef ActiveMbdResolver = String? Function();
+
+/// Renders a UI DSL page definition to PNG bytes at [width] x [height]
+/// logical pixels. Throws when the host cannot mount or capture it.
+typedef LibraryRenderer =
+    Future<Uint8List> Function(
+      Map<String, dynamic> definition, {
+      required double width,
+      required double height,
+      required double pixelRatio,
+    });
+
+/// Default render surface — a phone-sized portrait frame.
+const double _kRenderWidth = 390;
+const double _kRenderHeight = 844;
 
 /// Read `mbdPath` from [args] or fall back to the active-project
 /// resolver. Returns null when both are absent — callers map that to
@@ -59,6 +77,7 @@ void registerLibraryTools(
   required BuilderUiWriteService writer,
   required SchemaValidator validator,
   ActiveMbdResolver? resolveActiveMbdPath,
+  LibraryRenderer? renderer,
 }) {
   boot.addTool(
     name: 'studio.builder.lib.list',
@@ -305,11 +324,11 @@ void registerLibraryTools(
     name: 'studio.builder.lib.render',
     description:
         'Take an isolated screenshot of one library instance — '
-        'mount its tree alone (no app shell, no other library '
-        'entries) and capture. Omit `mbdPath` to target the active '
-        'project. NOTE: host integration is pending — returns a '
-        'TODO marker today; the real handler will plug into the '
-        'host\'s renderer once the PreviewMcpUi atom lands (#15).',
+        'mount its tree alone (bundle theme applied, no app shell, no '
+        'other library entries) and return it as a PNG image. '
+        '`params` fill `{{paramName}}` placeholders exactly as '
+        '`lib.placeInline` would. Omit `mbdPath` to target the active '
+        'project.',
     inputSchema: const <String, dynamic>{
       'type': 'object',
       'properties': <String, dynamic>{
@@ -318,6 +337,22 @@ void registerLibraryTools(
           'description': 'Optional. Defaults to the active project\'s .mbd.',
         },
         'id': <String, dynamic>{'type': 'string'},
+        'params': <String, dynamic>{
+          'type': 'object',
+          'description': 'Values for `{{paramName}}` placeholders.',
+        },
+        'width': <String, dynamic>{
+          'type': 'number',
+          'description': 'Logical width. Default 390.',
+        },
+        'height': <String, dynamic>{
+          'type': 'number',
+          'description': 'Logical height. Default 844.',
+        },
+        'pixelRatio': <String, dynamic>{
+          'type': 'number',
+          'description': 'Device pixel ratio of the capture. Default 1.',
+        },
       },
       'required': <String>['id'],
     },
@@ -339,10 +374,39 @@ void registerLibraryTools(
           message: 'lib.render requires id.',
         );
       }
-      // Verify entry exists so the placeholder still surfaces real
-      // lookup errors.
+      final rawParams = args['params'];
+      if (rawParams != null && rawParams is! Map) {
+        return _reject(
+          code: 'invalidArgument',
+          expected: 'params (object)',
+          actual: rawParams.runtimeType.toString(),
+          message: 'lib.render params must be an object.',
+        );
+      }
+      final width = (args['width'] as num?)?.toDouble() ?? _kRenderWidth;
+      final height = (args['height'] as num?)?.toDouble() ?? _kRenderHeight;
+      final pixelRatio = (args['pixelRatio'] as num?)?.toDouble() ?? 1.0;
+      if (width <= 0 || height <= 0 || pixelRatio <= 0) {
+        return _reject(
+          code: 'invalidArgument',
+          expected: 'width, height, pixelRatio > 0',
+          actual: <String, dynamic>{
+            'width': width,
+            'height': height,
+            'pixelRatio': pixelRatio,
+          },
+          message: 'lib.render size and pixelRatio must be positive.',
+        );
+      }
+      final ({Object? tree, List<String> warnings}) resolved;
       try {
-        await library.read(mbd, id);
+        resolved = await library.resolveInline(
+          mbd,
+          id,
+          rawParams == null
+              ? const <String, Object?>{}
+              : Map<String, Object?>.from(rawParams as Map),
+        );
       } on FormatException catch (e) {
         return _reject(
           code: 'pathNotFound',
@@ -350,13 +414,55 @@ void registerLibraryTools(
           suggestion: 'Call studio.builder.lib.list to confirm the id.',
         );
       }
-      return _ok(<String, dynamic>{
-        'ok': true,
-        'id': id,
-        'todo':
-            'host renderer hookup pending — PreviewMcpUi atom (#15) '
-            'needs to land before isolated screenshot is wired.',
-      });
+      final tree = resolved.tree;
+      if (tree is! Map || tree.isEmpty) {
+        return _reject(
+          code: 'emptyEntry',
+          message: 'library entry "$id" has no widget tree to render.',
+          suggestion: 'Author the entry body before rendering it.',
+        );
+      }
+      final render = renderer;
+      if (render == null) {
+        return _reject(
+          code: 'renderUnavailable',
+          message: 'this host has no render surface for lib.render.',
+        );
+      }
+      final definition = <String, dynamic>{
+        'type': 'page',
+        'content': Map<String, dynamic>.from(tree),
+        if (_bundleTheme(mbd) case final theme?) 'theme': theme,
+      };
+      final Uint8List png;
+      try {
+        png = await render(
+          definition,
+          width: width,
+          height: height,
+          pixelRatio: pixelRatio,
+        );
+      } catch (e) {
+        return _reject(
+          code: 'renderFailed',
+          message: 'lib.render could not render "$id": $e',
+        );
+      }
+      return mk.KernelToolResult(
+        content: <mk.KernelContent>[
+          mk.KernelTextContent(
+            text: jsonEncode(<String, dynamic>{
+              'ok': true,
+              'id': id,
+              'width': width,
+              'height': height,
+              'pixelRatio': pixelRatio,
+              if (resolved.warnings.isNotEmpty) 'warnings': resolved.warnings,
+            }),
+          ),
+          mk.KernelImageContent(data: base64Encode(png), mimeType: 'image/png'),
+        ],
+      );
     },
   );
 
@@ -688,3 +794,18 @@ mk.KernelToolResult _rejectMap(Map<String, dynamic> rejection) =>
       ],
       isError: true,
     );
+
+/// The bundle's own `ui/app.json` theme, so an isolated render uses the
+/// palette the entry will be placed into. Null when the bundle declares
+/// none or the file is unreadable (the runtime baseline applies).
+Map<String, dynamic>? _bundleTheme(String mbdPath) {
+  final file = File(p.join(mbdPath, 'ui', 'app.json'));
+  if (!file.existsSync()) return null;
+  try {
+    final app = jsonDecode(file.readAsStringSync());
+    final theme = app is Map ? app['theme'] : null;
+    return theme is Map ? Map<String, dynamic>.from(theme) : null;
+  } on FormatException {
+    return null;
+  }
+}

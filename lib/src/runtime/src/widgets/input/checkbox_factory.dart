@@ -9,7 +9,7 @@ class CheckboxWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.6.0: binding shorthand — read from state path if set.
+    // Binding shorthand — read from state path if set.
     final binding = (stringOf(properties['binding'], context)) ??
         (stringOf(properties['bindTo'], context));
     final bool value = binding != null

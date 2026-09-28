@@ -35,7 +35,7 @@ class ContainerWidgetFactory extends WidgetFactory {
     // (color/backgroundColor/borderRadius/border/gradient/image/shadow/...)
     // so callers can mix freely. See `BoxDecorationResolver.resolve`.
     //
-    // Spec § 2.4.1 documents `color` as a top-level box shorthand; merge
+    // `color` is documented as a top-level box shorthand; merge
     // the legacy `backgroundColor` alias into the same slot before
     // dispatching so the resolver only has to look at one key. Only
     // overlay when at least one top-level value is actually present —
@@ -56,7 +56,7 @@ class ContainerWidgetFactory extends WidgetFactory {
     // Constraints — accept either the nested object form
     // (`constraints: {minWidth, maxWidth, minHeight, maxHeight}`) OR
     // top-level shorthand fields (`minWidth: ..., maxWidth: ..., ...`)
-    // per spec § 2.4.1. The flat form lets `box` fully absorb what the
+    // as documented. The flat form lets `box` fully absorb what the
     // legacy `constrained` widget expressed.
     BoxConstraints? boxConstraints =
         parseConstraints(properties['constraints']);

@@ -164,9 +164,9 @@ class _ApprovalCard extends StatelessWidget {
               );
             } catch (e) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Approve failed: $e')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Approve failed: $e')));
               }
             }
             onDone();

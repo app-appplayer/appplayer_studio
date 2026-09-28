@@ -266,6 +266,9 @@ class OverlaySpec {
 
   factory OverlaySpec.fromJson(String id, Map<String, dynamic> raw) {
     final kindStr = raw['kind']?.toString() ?? '';
+    if (kindStr.isEmpty) {
+      throw const FormatException('overlay kind required');
+    }
     final kind = overlayKindFromString(kindStr);
     if (kind == null) {
       throw FormatException('unknown overlay kind: $kindStr');

@@ -1,8 +1,9 @@
+import '../actions/dispatch_origin.dart';
 import '../models/ui_definition.dart' show LifecycleDefinition;
 import '../utils/mcp_logger.dart';
 
-/// Runs a definition's lifecycle hooks in the order the spec fixes (§1.5.2,
-/// §6.8.3), for every place a definition can be mounted.
+/// Runs a definition's lifecycle hooks in their fixed order,
+/// for every place a definition can be mounted.
 ///
 /// One runner, because the alternative is what this replaces: an application,
 /// a routed page and an embedded `view` each executed a different subset of
@@ -16,9 +17,9 @@ import '../utils/mcp_logger.dart';
 /// unmount:  onUnmount → onDestroy
 /// ```
 ///
-/// `onPause` is deliberately absent from the unmount sequence. §1.5.1 defines
+/// `onPause` is deliberately absent from the unmount sequence. The DSL defines
 /// it as "loses active focus but **is not destroyed**", and it is half of the
-/// `(onPause ↔ onResume)*` pair §1.5.2 draws — an instance that fires it and
+/// `(onPause ↔ onResume)*` pair — an instance that fires it and
 /// then dies has broken both. It matters because of what an author puts
 /// there: save a draft, stop a timer, "pick this up when we come back". Firing
 /// it on the way out makes teardown work look like it belongs in `onPause`,
@@ -28,10 +29,10 @@ import '../utils/mcp_logger.dart';
 /// `onPause`/`onResume` are reached only through [pause] and [resume] — the
 /// paths where the instance survives.
 ///
-/// Hooks are awaited in order — §6.8.3 requires `onInit` to complete before
-/// `onReady` begins, and `onDestroy` to complete before the runtime releases
+/// Hooks are awaited in order — `onInit` must complete before
+/// `onReady` begins, and `onDestroy` before the runtime releases
 /// page-scoped resources. A failing hook is logged and the rest still run
-/// (§6.8.3); one bad hook must not strand a subscription or leave a view
+/// anyway; one bad hook must not strand a subscription or leave a view
 /// half-built.
 class LifecycleRunner {
   LifecycleRunner({
@@ -74,7 +75,7 @@ class LifecycleRunner {
     await _run('onReady', lifecycle?.onReady);
   }
 
-  /// `onUnmount` → `onDestroy` (§6.8.3). Idempotent, and a no-op when the
+  /// `onUnmount` → `onDestroy`. Idempotent, and a no-op when the
   /// definition never mounted — releasing what was never started would
   /// unsubscribe a resource this definition does not hold.
   Future<void> unmount() async {
@@ -95,7 +96,7 @@ class LifecycleRunner {
 
   /// Focus regained after [pause].
   ///
-  /// Only fires when this instance was actually paused. §1.5.2 draws the two
+  /// Only fires when this instance was actually paused. The two are drawn
   /// as a pair, so a resume with no pause before it says something that did
   /// not happen — a shell that builds a page already selected would otherwise
   /// report `onReady` and then immediately `onResume`.
@@ -109,7 +110,8 @@ class LifecycleRunner {
     if (actions == null || actions.isEmpty) return;
     for (final action in actions) {
       try {
-        await execute(action, name);
+        await DispatchOrigin.run(
+            DispatchOrigin.lifecycle, () => execute(action, name));
       } catch (e) {
         _logger.warning('$label $name failed: $e');
       }

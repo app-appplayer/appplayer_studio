@@ -54,9 +54,9 @@ class StudioReconnectWatch {
     this.detectInterval = const Duration(seconds: 2),
     this.retryInterval = const Duration(seconds: 5),
     this.dialTimeout = const Duration(seconds: 15),
-  })  : _isLive = isLive,
-        _dial = dial,
-        _canDial = canDial ?? _alwaysDialable;
+  }) : _isLive = isLive,
+       _dial = dial,
+       _canDial = canDial ?? _alwaysDialable;
 
   static bool _alwaysDialable(String _) => true;
 
@@ -102,9 +102,9 @@ class StudioReconnectWatch {
   /// the set device observation must be scoped to (spec 17 §7.6e: watching
   /// everything ever registered is an always-on scan).
   Set<String> get stalledServers => <String>{
-        for (final id in _held.keys)
-          if (!_isLive(id) && _canDial(id)) id,
-      };
+    for (final id in _held.keys)
+      if (!_isLive(id) && _canDial(id)) id,
+  };
 
   /// Ids with a mounted view, live or not. Diagnostics.
   Iterable<String> get held => List<String>.unmodifiable(_held.keys);

@@ -18,7 +18,7 @@ class BindingExpression {
   /// Lambda parameter name (e.g., 'item' in `item => item.price > 100`)
   final String? parameterName;
 
-  /// Second lambda parameter, for the accumulator form §3.6.3 writes:
+  /// Second lambda parameter, for the accumulator form:
   /// `reduce(items, (acc, i) => acc + i.price * i.qty, 0)`. Null for the
   /// single-parameter lambdas `filter`/`map` take.
   final String? parameterName2;
@@ -93,8 +93,13 @@ class BindingExpression {
       }
     }
 
-    // Remove outer parentheses if they wrap the entire expression
-    if (baseExpr.startsWith('(') && baseExpr.endsWith(')')) {
+    // Remove outer parentheses if they wrap the entire expression.
+    //
+    // Repeated rather than once: `((a + b))` is what a generated document
+    // produces when it parenthesises a sub-expression that was already
+    // parenthesised, and stripping only the outer pair left `(a + b)` as the
+    // *path* of a simple expression, which resolves to null.
+    while (baseExpr.startsWith('(') && baseExpr.endsWith(')')) {
       // Check if these parentheses are balanced and wrap the entire expression
       int depth = 0;
       bool wrapsEntireExpression = true;
@@ -109,9 +114,8 @@ class BindingExpression {
           break;
         }
       }
-      if (wrapsEntireExpression) {
-        baseExpr = baseExpr.substring(1, baseExpr.length - 1).trim();
-      }
+      if (!wrapsEntireExpression) break;
+      baseExpr = baseExpr.substring(1, baseExpr.length - 1).trim();
     }
 
     // Check for ternary operator
@@ -245,7 +249,7 @@ class BindingExpression {
           final precedence = precedenceMap[oneChar]!;
           // `-` and `+` are also the sign of a literal. A sign has nothing on
           // its left to be a binary operator OF, so splitting there produced an
-          // empty left operand: `-1.57 + (value / max) * 6.28` (§10's gauge
+          // empty left operand: `-1.57 + (value / max) * 6.28` (a gauge
           // needle) split at index 0 and answered with the right-hand term
           // alone — a needle drawn at the wrong angle, reported by nothing.
           if (_isSignPosition(baseExpr, i)) {
@@ -298,6 +302,27 @@ class BindingExpression {
         path: '',
         operator: '!',
         left: _parse(operand),
+        transform: transform,
+      );
+    }
+
+    // A call's RESULT can be the receiver: `filter(items, 'ok').length`.
+    // `rows.length` resolves (the path walk answers it), the same reading of
+    // the same list through a call did not, and the difference is invisible —
+    // it renders as an empty string. Two consumers wrote the "N of M" form and
+    // both read a blank. The method form is equivalent to the
+    // function form; this makes the receiver an expression rather than only a
+    // path.
+    final tailMatch =
+        RegExp(r'^(.*\))\.([A-Za-z_]\w*)(?:\((.*)\))?$').firstMatch(baseExpr);
+    if (tailMatch != null && _hasBalancedCall(tailMatch.group(1)!)) {
+      final rawArgs = tailMatch.group(3);
+      return BindingExpression(
+        type: ExpressionType.methodCall,
+        path: '',
+        left: _parse(tailMatch.group(1)!),
+        methodName: tailMatch.group(2),
+        arguments: rawArgs == null ? null : _parseArguments(rawArgs),
         transform: transform,
       );
     }
@@ -447,6 +472,43 @@ class BindingExpression {
     );
   }
 
+  /// Whether [expr] is itself a complete call — `name(...)` with its
+  /// parentheses balanced — so a trailing `.prop` belongs to its result rather
+  /// than to a path that happens to contain brackets.
+  static bool _hasBalancedCall(String expr) {
+    if (!RegExp(r'^[\w\.]+\(').hasMatch(expr) || !expr.endsWith(')')) {
+      return false;
+    }
+    var depth = 0;
+    String? quote;
+    for (var i = 0; i < expr.length; i++) {
+      final char = expr[i];
+      if (quote != null) {
+        if (char == quote && (i == 0 || expr[i - 1] != '\\')) quote = null;
+        continue;
+      }
+      if (char == '"' || char == "'") {
+        quote = char;
+      } else if (char == '(') {
+        depth++;
+      } else if (char == ')') {
+        depth--;
+        if (depth == 0 && i != expr.length - 1) {
+          // A call that closes before the end is still ONE receiver when what
+          // follows is another link in the chain: `filter(rows, 'done')` here
+          // is followed by `.map('name')`. Rejecting it outright allowed only
+          // a single hop, so `filter(…).map(…).join(…)` fell through to a
+          // path lookup and resolved to null — a blank where a joined list
+          // belonged, with nothing said. Anything OTHER than a `.` after the
+          // close means two terms with an operator between them, which is not
+          // a receiver.
+          if (i + 1 >= expr.length || expr[i + 1] != '.') return false;
+        }
+      }
+    }
+    return depth == 0;
+  }
+
   /// Whether the `+`/`-` at [index] is a SIGN rather than a binary operator:
   /// nothing precedes it, or what precedes it is another operator or an open
   /// paren/comma, which cannot be a left operand.
@@ -461,7 +523,7 @@ class BindingExpression {
   }
 
   /// Whether [expr] has a binary operator at its top level — the same scan the
-  /// parser uses, asked as a question. Arguments need it: §3.2.1's grammar
+  /// parser uses, asked as a question. Arguments need it: the grammar
   /// makes an argument an `Expression`, so `round(price * quantity, 2)` is
   /// legal, and treating it as a path made it a lookup for a variable *named*
   /// `price * quantity`.
@@ -500,7 +562,7 @@ class BindingExpression {
     String? quote;
 
     // Split by comma, respecting nested parentheses *and* quoted strings. A
-    // comma inside a quoted argument used to end the argument: §3.6.1's own
+    // comma inside a quoted argument used to end the argument: the documented
     // example `format(price, '#,##0.00')` arrived as three arguments, so the
     // pattern lost its grouping and its decimals and the number came back
     // rounded to an integer. `split(text, ',')` had the same shape.
@@ -557,10 +619,25 @@ class BindingExpression {
           left: _parse(bodyPart),
         );
       }
-      // `(acc, item) => body` — the accumulator form §3.6.3 writes for
+      // `(acc, item) => body` — the accumulator form written for
       // `reduce`. Only the one-parameter spelling parsed, so the spec's own
       // example fell through to a path lookup and reduce answered with its
       // initial value: a total of 0 that reads like an empty cart.
+      // `(r) => body` — the same lambda, parenthesised. Only the bare `r =>`
+      // spelling parsed, so this fell through to the operator branch and came
+      // back as a value; `filter` then read that value as a property NAME and
+      // answered with an empty list. An author who writes their predicate the
+      // way every other language writes it got no rows and no error.
+      final single =
+          RegExp(r'^\(\s*([a-zA-Z_]\w*)\s*\)$').firstMatch(paramPart);
+      if (single != null && bodyPart.isNotEmpty) {
+        return BindingExpression(
+          type: ExpressionType.lambda,
+          path: '',
+          parameterName: single.group(1),
+          left: _parse(bodyPart),
+        );
+      }
       final pair = RegExp(r'^\(\s*([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)\s*\)$')
           .firstMatch(paramPart);
       if (pair != null && bodyPart.isNotEmpty) {
@@ -574,11 +651,11 @@ class BindingExpression {
       }
     }
 
-    // An argument is an Expression (§3.2.1), so it may be an operation — the
-    // spec's own §3.6.1 example is `round(price * quantity, 2)`. This must be
+    // An argument is an Expression, so it may be an operation — the
+    // documented example is `round(price * quantity, 2)`. This must be
     // asked BEFORE the unary branch below: `-1.57 + 0.5` starts with a sign,
     // and reading it as "unary minus applied to the rest" makes the sign
-    // swallow the whole expression — `-(1.57 + 0.5)`, so §10's gauge angle
+    // swallow the whole expression — `-(1.57 + 0.5)`, so a gauge angle
     // came back with the wrong sign the moment an author wrapped it in
     // `round(…)` to fix the decimals. `_parse` splits on the operator first
     // and treats the leading sign as the sign of its own term.
@@ -669,7 +746,7 @@ class BindingExpression {
     // A nested call is an expression, not a path. Falling through to the path
     // branch turned `length(filter(rows, …))` into a lookup for a variable
     // *named* `filter(rows, …)`, which resolves to null — so the composition
-    // §3.6.1 shows in its own example (`length(filter(items, 'completed'))`)
+    // the documentation shows (`length(filter(items, 'completed'))`)
     // answered 0 for every input.
     if (RegExp(r'^[\w\.]+\(.*\)$').hasMatch(value)) {
       return _parse(value);

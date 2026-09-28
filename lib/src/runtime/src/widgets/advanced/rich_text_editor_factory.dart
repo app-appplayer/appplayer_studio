@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `richTextEditor` (spec §10.27).
+/// Factory for `richTextEditor`.
 ///
 /// The bound value is **HTML** (or Markdown via `format`), and that choice is
 /// the whole reason this needed a decision rather than a definition: an
@@ -12,7 +12,7 @@ import '../widget_factory.dart';
 /// inherits, and a proprietary delta model would leave the content unreadable
 /// to anything but the editor that produced it.
 ///
-/// Sanitisation is not optional. §7.5 applies to this value exactly as to any
+/// Sanitisation is not optional. The sanitisation rule applies to this value exactly as to any
 /// other author-supplied markup, and the whitelist here is the one the spec
 /// states — anything outside it is **stripped, not escaped**, so a document
 /// cannot smuggle markup through the editor.
@@ -28,7 +28,7 @@ class RichTextEditorFactory extends WidgetFactory {
         context.resolve<num?>(properties['minHeight'])?.toDouble() ?? 160.0;
     final maxLength = context.resolve<num?>(properties['maxLength'])?.toInt();
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
-    final toolbar = (context.resolve<List<dynamic>?>(properties['toolbar']) ??
+    final toolbar = (listOf(properties['toolbar'], context) ??
             const ['bold', 'italic', 'link', 'bulletList', 'heading'])
         .map((e) => e.toString())
         .toSet();
@@ -72,7 +72,7 @@ const _allowedTags = {
   'ul', 'ol', 'li', 'blockquote', 'pre', 'br', 'img',
 };
 
-/// Strips everything outside the declared subset (spec §10.27, §7.5).
+/// Strips everything outside the declared subset.
 ///
 /// Stripped rather than escaped: escaping would render the offending markup as
 /// visible text, which looks like corruption to the author and still carries
@@ -127,7 +127,7 @@ String _stripTags(String input) {
 
 bool _safeUrl(String url) {
   final lower = url.trim().toLowerCase();
-  // Same refusal list as §7.3.4: these are not destinations.
+  // Same refusal list as `openUrl`: these are not destinations.
   return !lower.startsWith('javascript:') &&
       !lower.startsWith('vbscript:') &&
       !lower.startsWith('file:');
@@ -203,7 +203,7 @@ class _RichTextEditorState extends State<_RichTextEditor> {
     final md = widget.markdown;
     final controls = <Widget>[
       // A control absent from the toolbar is also absent as a shortcut, or the
-      // toolbar lies about what the document can contain (spec §10.27).
+      // toolbar lies about what the document can contain.
       if (widget.toolbar.contains('bold'))
         _ToolButton(
           icon: Icons.format_bold,

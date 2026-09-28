@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'js_tool_isolate.dart';
 import 'atoms/atom_category.dart';
+import 'js_bridge_protocol.dart';
 
 /// Result of an evaluate / evaluateAsync call — wraps the
 /// JSON-serialized return value from the worker. Mirrors the subset
@@ -63,10 +64,17 @@ class JsToolRuntime {
     await iso.attachHostBridge(
       atoms: atoms,
       allowedAtoms: allowedAtoms,
-      dispatch: (atomKey, verb, args) async {
+      dispatch: (atomKey, verb, args, nonJson) async {
         final atom = byKey[atomKey];
         if (atom == null) {
           throw ArgumentError('atom "$atomKey" not exposed to bundle');
+        }
+        // An argument JSON could not carry arrived as null; the verb never
+        // runs on the substitute (bundle spec 04_Tools §4.8).
+        if (nonJson.isNotEmpty) {
+          throw atom is NonJsonArgumentPolicy
+              ? (atom as NonJsonArgumentPolicy).refuseNonJson(verb, nonJson)
+              : defaultNonJsonRefusal(atomKey, verb, nonJson);
         }
         return atom.dispatch(verb, args);
       },

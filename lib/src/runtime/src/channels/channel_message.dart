@@ -1,7 +1,7 @@
 /// Channel message protocol model for MCP UI DSL v1.1
 ///
 /// Provides structured message representation with id, direction,
-/// sequence, and timestamp per spec §2160-2187.
+/// sequence, and timestamp.
 library channel_message;
 
 /// Direction of a channel message

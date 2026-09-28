@@ -133,6 +133,7 @@ class WidgetSpec {
     required this.description,
     this.profile,
     this.since,
+    this.aliases = const <String>[],
     this.properties = const <WidgetPropSpec>[],
     this.examples = const <WidgetExampleSpec>[],
   });
@@ -140,6 +141,20 @@ class WidgetSpec {
   /// Widget type as it appears in DSL — `linear` / `VbuTabStrip` /
   /// `markdown`. PascalCase for vbu atoms, lowerCamel for standard.
   final String type;
+
+  /// Other spellings of this same widget, declared by the spec's
+  /// widget-level `aliases:` (`box` is also `container`, `decoratedBox`;
+  /// `mediaPlayer` is also `video`, `audio`).
+  ///
+  /// These are the names the runtime registers alongside the canonical one,
+  /// so a document may carry any of them. They were parsed for PROPERTIES
+  /// long before they were parsed here, which is why authoring rejected
+  /// `{"type": "container"}` as an unknown type while the runtime drew it —
+  /// 31 widgets declare them and the catalogue read none.
+  final List<String> aliases;
+
+  /// Every name this widget answers to, canonical first.
+  List<String> get spellings => <String>[type, ...aliases];
 
   /// Category bucket — `layout` / `atom` / `form` / `chrome` / etc.
   /// Read from the yaml `category` field (no host-side classifier).
@@ -179,6 +194,10 @@ class WidgetSpec {
     'category': category,
     'source': source.name,
     'summary': summary,
+    // Listed rather than given rows of their own: an alias is the same widget,
+    // and a catalogue that repeats it teaches a vocabulary bigger than the
+    // one the spec defines.
+    if (aliases.isNotEmpty) 'aliases': aliases,
   };
 
   /// JSON shape used by `catalog.schema`. [withExamples] mirrors the
@@ -191,6 +210,7 @@ class WidgetSpec {
     'category': category,
     'source': source.name,
     'description': description,
+    if (aliases.isNotEmpty) 'aliases': aliases,
     if (profile != null) 'profile': profile,
     if (since != null) 'since': since,
     'properties': <Map<String, dynamic>>[

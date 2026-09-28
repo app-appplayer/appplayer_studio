@@ -86,7 +86,8 @@ void registerFsTools(
     if ((workspace == null || workspace.isEmpty) && projectRoot == null) {
       return <String, Object?>{
         'ok': false,
-        'error': 'no workspaceDir or active project — set workspaceDir in '
+        'error':
+            'no workspaceDir or active project — set workspaceDir in '
             'Studio Settings or open a project',
       };
     }
@@ -98,9 +99,10 @@ void registerFsTools(
       effective = base;
     } else {
       final s = raw;
-      effective = (ProjectPaths.isExternalRef(s) || p.isAbsolute(s))
-          ? s
-          : ProjectPaths.resolve(base, s);
+      effective =
+          (ProjectPaths.isExternalRef(s) || p.isAbsolute(s))
+              ? s
+              : ProjectPaths.resolve(base, s);
     }
     final abs = p.normalize(p.absolute(effective));
     // Permit when inside the active project root OR the shared workspaceDir.
@@ -236,7 +238,8 @@ void registerFsTools(
       'properties': <String, dynamic>{
         'path': <String, dynamic>{
           'type': 'string',
-          'description': 'Absolute path inside workspaceDir. Empty/omitted '
+          'description':
+              'Absolute path inside workspaceDir. Empty/omitted '
               'lists the workspaceDir root.',
         },
       },
@@ -365,7 +368,8 @@ void registerFsTools(
         if (base == null || base.isEmpty) {
           return okResult(<String, Object?>{
             'ok': false,
-            'error': 'no workspaceDir or active project — set workspaceDir in '
+            'error':
+                'no workspaceDir or active project — set workspaceDir in '
                 'Studio Settings or open a project',
           });
         }

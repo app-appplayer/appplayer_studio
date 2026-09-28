@@ -46,8 +46,7 @@ class AlertDialogWidgetFactory extends WidgetFactory {
               label,
               style: TextStyle(
                 color: isDestructiveAction
-                    ? (context.themeManager.getColorValue('error') ??
-                        Colors.red)
+                    ? (context.themeManager.colorOr('error', Colors.red))
                     : null,
                 fontWeight: isDefaultAction ? FontWeight.bold : null,
               ),

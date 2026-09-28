@@ -32,7 +32,7 @@ export 'infra/vibe_server_bridge.dart';
 export 'theme/tokens.dart';
 
 // Built-in app implementation — the host doesn't import this directly;
-// `registerBuiltInApps()` in `builtin_app_registry_bootstrap.dart`
+// `registerBuiltInApps()` in `../builtin_app_registry_bootstrap.dart`
 // wires it into [BuiltInAppRegistry]. Exported here so tests / tooling
 // can introspect.
 export 'app_builder_builtin.dart';

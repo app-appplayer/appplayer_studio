@@ -86,55 +86,59 @@ void main() {
   });
 
   group('TaskScheduler R4 catchup — missed-slot logic', () {
-    test('daily 08:00: missed while closed → true; not-yet / already → false',
-        () async {
-      final (s, tmp) = await _makeScheduler();
-      const cron = '0 8 * * *';
-      // Closed since yesterday 09:00, now today 08:30 → today's 08:00 missed.
-      expect(
-        s.missedSlotSinceForTest(
-          cron,
-          DateTime(2026, 7, 9, 9),
-          DateTime(2026, 7, 10, 8, 30),
-        ),
-        isTrue,
-      );
-      // Since 07:00 today, now 07:30 — the 08:00 slot hasn't come yet.
-      expect(
-        s.missedSlotSinceForTest(
-          cron,
-          DateTime(2026, 7, 10, 7),
-          DateTime(2026, 7, 10, 7, 30),
-        ),
-        isFalse,
-      );
-      // Already fired at 08:00; now 08:30 — that slot is not "after" the fire.
-      expect(
-        s.missedSlotSinceForTest(
-          cron,
-          DateTime(2026, 7, 10, 8),
-          DateTime(2026, 7, 10, 8, 30),
-        ),
-        isFalse,
-      );
-      await tmp.delete(recursive: true);
-    });
+    test(
+      'daily 08:00: missed while closed → true; not-yet / already → false',
+      () async {
+        final (s, tmp) = await _makeScheduler();
+        const cron = '0 8 * * *';
+        // Closed since yesterday 09:00, now today 08:30 → today's 08:00 missed.
+        expect(
+          s.missedSlotSinceForTest(
+            cron,
+            DateTime(2026, 7, 9, 9),
+            DateTime(2026, 7, 10, 8, 30),
+          ),
+          isTrue,
+        );
+        // Since 07:00 today, now 07:30 — the 08:00 slot hasn't come yet.
+        expect(
+          s.missedSlotSinceForTest(
+            cron,
+            DateTime(2026, 7, 10, 7),
+            DateTime(2026, 7, 10, 7, 30),
+          ),
+          isFalse,
+        );
+        // Already fired at 08:00; now 08:30 — that slot is not "after" the fire.
+        expect(
+          s.missedSlotSinceForTest(
+            cron,
+            DateTime(2026, 7, 10, 8),
+            DateTime(2026, 7, 10, 8, 30),
+          ),
+          isFalse,
+        );
+        await tmp.delete(recursive: true);
+      },
+    );
 
-    test('long gap collapses to a single catch-up within the lookback window',
-        () async {
-      final (s, tmp) = await _makeScheduler();
-      // Closed 5 days; a daily 08:00 slot exists within the last 25h → true
-      // (one catch-up, not five).
-      expect(
-        s.missedSlotSinceForTest(
-          '0 8 * * *',
-          DateTime(2026, 7, 5, 8),
-          DateTime(2026, 7, 10, 8, 30),
-        ),
-        isTrue,
-      );
-      await tmp.delete(recursive: true);
-    });
+    test(
+      'long gap collapses to a single catch-up within the lookback window',
+      () async {
+        final (s, tmp) = await _makeScheduler();
+        // Closed 5 days; a daily 08:00 slot exists within the last 25h → true
+        // (one catch-up, not five).
+        expect(
+          s.missedSlotSinceForTest(
+            '0 8 * * *',
+            DateTime(2026, 7, 5, 8),
+            DateTime(2026, 7, 10, 8, 30),
+          ),
+          isTrue,
+        );
+        await tmp.delete(recursive: true);
+      },
+    );
   });
 
   group('TaskScheduler R4 catchup — firing', () {
@@ -164,20 +168,29 @@ void main() {
         if (!ran.isCompleted) ran.complete();
         return {'ok': true};
       };
-      await tasks.create(Task(
-        id: 't-catchup',
-        workspaceId: 'wsA',
-        kind: TaskKind.recurring,
-        title: 'brief',
-        assigneeIds: const [],
-        skillIds: const ['sk_brief'],
-        schedule: TaskSchedule(cron: '* * * * *'),
-        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-        lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
-      ));
+      await tasks.create(
+        Task(
+          id: 't-catchup',
+          workspaceId: 'wsA',
+          kind: TaskKind.recurring,
+          title: 'brief',
+          assigneeIds: const [],
+          skillIds: const ['sk_brief'],
+          schedule: TaskSchedule(cron: '* * * * *'),
+          createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+          lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
+        ),
+      );
 
       await s.catchUpForTest();
       await ran.future.timeout(const Duration(seconds: 5));
+      // The run keeps writing its record after dispatch answers; delete the
+      // folder only once it is done (deleting under the pending write failed
+      // the test under full-suite load).
+      for (var i = 0; i < 200 && s.inFlightCount > 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(s.inFlightCount, 0);
       expect(calls, 1);
       await tmp.delete(recursive: true);
     });
@@ -189,17 +202,19 @@ void main() {
         calls++;
         return {'ok': true};
       };
-      await tasks.create(Task(
-        id: 't-oneoff',
-        workspaceId: 'wsA',
-        kind: TaskKind.oneOff,
-        title: 'once',
-        assigneeIds: const [],
-        skillIds: const ['sk_once'],
-        schedule: TaskSchedule(cron: '* * * * *'),
-        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-        lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
-      ));
+      await tasks.create(
+        Task(
+          id: 't-oneoff',
+          workspaceId: 'wsA',
+          kind: TaskKind.oneOff,
+          title: 'once',
+          assigneeIds: const [],
+          skillIds: const ['sk_once'],
+          schedule: TaskSchedule(cron: '* * * * *'),
+          createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+          lastFiredAt: DateTime.now().subtract(const Duration(minutes: 10)),
+        ),
+      );
 
       await s.catchUpForTest();
       await Future<void>.delayed(const Duration(milliseconds: 50));

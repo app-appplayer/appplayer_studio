@@ -75,7 +75,7 @@ enum ViewMode {
 }
 
 /// Resolves the effective [FormFactor] by walking the priority chain
-/// defined in the responsive-rendering plan §4:
+/// below:
 ///
 /// 1. Per-app pin (`AppConfig.viewMode`)
 /// 2. Global pin (`AppSettings.defaultViewMode`)
@@ -83,9 +83,7 @@ enum ViewMode {
 /// 4. `MediaQuery` auto
 ///
 /// `auto` at any step skips that step.
-class ViewModeResolver {
-  const ViewModeResolver._();
-
+abstract final class ViewModeResolver {
   static FormFactor resolve({
     ViewMode? perApp,
     ViewMode? global,

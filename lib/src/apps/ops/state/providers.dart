@@ -5,6 +5,7 @@ import 'package:appplayer_studio/builtin_api.dart'
     show AgentAxis, IntegratedAxisEntry, KernelTextContent;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 
 import '../config/ops_config.dart';
 import '../init/knowledge_init.dart';
@@ -34,6 +35,11 @@ final knowledgeInitProvider = Provider<KnowledgeInit>(
   (ref) => throw UnimplementedError('KnowledgeInit not yet bootstrapped'),
   dependencies: const [],
 );
+
+/// Ops providers fail fast: one that throws (a service not yet
+/// bootstrapped, a registry read that failed) reports the error once
+/// instead of being retried in the background.
+Duration? opsNoRetry(int retryCount, Object error) => null;
 
 /// Host [BuiltinToolRegistry] handle, injected at the OpsShell
 /// `ProviderScope` from `mount`. Lets UI actions reach Ops's own MCP
@@ -75,7 +81,7 @@ Future<Map<String, dynamic>> opsCallTool(
 // (2026-05-28). Ops no longer owns a separate MCP transport / sampling
 // handle — everything routes through the host endpoint
 // (`http://127.0.0.1:7840/mcp`) and the host's chat panel tool-use
-// loop. See `diora/design/builtin-os-cleanup-plan-2026-05-28.md`.
+// loop.
 
 /// Observability subsystem — [ActivityBus] + [TelemetryStore].
 /// Bootstrapped at app start in main.dart and overridden into the booted
@@ -168,52 +174,73 @@ final mcpSseEndpointProvider = Provider<String?>(
 // list providers `ref.watch` the matching tick so any mutation — whether
 // triggered by the UI or by an MCP tool call — automatically invalidates
 // the cached list and the UI rebuilds.
+//
+// Each tick is a running count, not the raw `void` event: Riverpod skips an
+// update whose value equals the previous one, so a stream that always emits
+// `null` would notify its watchers once and then go silent.
 
-final workspaceChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).registries.workspace.changes;
+/// Counts [changes] events so every mutation is a distinct provider value.
+Stream<int> changeTicks(Stream<void> changes) {
+  var count = 0;
+  return changes.map((_) => ++count);
+}
+
+final workspaceChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(
+    ref.watch(knowledgeInitProvider).registries.workspace.changes,
+  );
 }, dependencies: [knowledgeInitProvider]);
 
-final memberChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).registries.member.changes;
+final memberChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(
+    ref.watch(knowledgeInitProvider).registries.member.changes,
+  );
 }, dependencies: [knowledgeInitProvider]);
 
-final taskChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).registries.task.changes;
+final taskChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(ref.watch(knowledgeInitProvider).registries.task.changes);
 }, dependencies: [knowledgeInitProvider]);
 
-final processChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).registries.process.changes;
+final processChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(
+    ref.watch(knowledgeInitProvider).registries.process.changes,
+  );
 }, dependencies: [knowledgeInitProvider]);
 
-final skillChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).skills.changes;
+final skillChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(ref.watch(knowledgeInitProvider).skills.changes);
 }, dependencies: [knowledgeInitProvider]);
 
 /// Skill definitions visible in the active workspace — own workspace, its org
 /// ancestors, and genuine templates — resolved exactly like the `skill_list`
 /// tool so the UI never lists a sibling/parent workspace's skills. Refreshes
 /// on any skill or workspace change.
-final visibleSkillsProvider = FutureProvider<List<SkillDefinition>>((ref) async {
-  ref.watch(skillChangesProvider);
-  ref.watch(workspaceChangesProvider);
-  final init = ref.watch(knowledgeInitProvider);
-  final wsId = init.registries.workspace.activeId;
-  final ids = await init.skillResolver.visibleIds(workspaceId: wsId);
-  final defs = <SkillDefinition>[];
-  for (final id in ids) {
-    final def = await init.skillResolver.resolve(id, workspaceId: wsId);
-    if (def != null) defs.add(def);
-  }
-  defs.sort((a, b) => a.id.compareTo(b.id));
-  return defs;
-}, dependencies: [
-  knowledgeInitProvider,
-  skillChangesProvider,
-  workspaceChangesProvider,
-]);
+final visibleSkillsProvider = FutureProvider<List<SkillDefinition>>(
+  (ref) async {
+    ref.watch(skillChangesProvider);
+    ref.watch(workspaceChangesProvider);
+    final init = ref.watch(knowledgeInitProvider);
+    final wsId = init.registries.workspace.activeId;
+    final ids = await init.skillResolver.visibleIds(workspaceId: wsId);
+    final defs = <SkillDefinition>[];
+    for (final id in ids) {
+      final def = await init.skillResolver.resolve(id, workspaceId: wsId);
+      if (def != null) defs.add(def);
+    }
+    defs.sort((a, b) => a.id.compareTo(b.id));
+    return defs;
+  },
+  dependencies: [
+    knowledgeInitProvider,
+    skillChangesProvider,
+    workspaceChangesProvider,
+  ],
+);
 
-final knowledgeChangesProvider = StreamProvider<void>((ref) {
-  return ref.watch(knowledgeInitProvider).registries.knowledge.changes;
+final knowledgeChangesProvider = StreamProvider<int>((ref) {
+  return changeTicks(
+    ref.watch(knowledgeInitProvider).registries.knowledge.changes,
+  );
 }, dependencies: [knowledgeInitProvider]);
 
 final activeWorkspaceIdProvider = StateProvider<String?>((ref) {
@@ -315,6 +342,10 @@ final integratedAxisProvider =
     FutureProvider.family<List<IntegratedAxisEntry>, AgentAxis>(
       (ref, axis) async {
         ref.watch(memberChangesProvider);
+        // Pool starters come from the skill registry: a skill saved while
+        // this view is open must re-list, or the header keeps "0 pool"
+        // next to a Pool tab that already shows the entry.
+        ref.watch(skillChangesProvider);
         final init = ref.watch(knowledgeInitProvider);
         final wsId = ref.watch(activeWorkspaceIdProvider);
         if (wsId == null) return const [];
@@ -324,6 +355,7 @@ final integratedAxisProvider =
       dependencies: [
         knowledgeInitProvider,
         memberChangesProvider,
+        skillChangesProvider,
         activeWorkspaceIdProvider,
       ],
     );
@@ -336,132 +368,138 @@ final integratedAxisProvider =
 /// re-layout with no re-fetch. No new backend: reads the workspace / member /
 /// process registries. Re-resolves on workspace / member / knowledge / skill /
 /// process changes so the chart stays live.
-final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>((ref) async {
-  ref.watch(workspaceChangesProvider);
-  ref.watch(memberChangesProvider);
-  ref.watch(knowledgeChangesProvider);
-  ref.watch(skillChangesProvider);
-  final init = ref.watch(knowledgeInitProvider);
+final orgChartInputsProvider = FutureProvider<List<OrgWsInput>>(
+  (ref) async {
+    ref.watch(workspaceChangesProvider);
+    ref.watch(memberChangesProvider);
+    ref.watch(knowledgeChangesProvider);
+    ref.watch(skillChangesProvider);
+    final init = ref.watch(knowledgeInitProvider);
 
-  ref.watch(processChangesProvider);
+    ref.watch(processChangesProvider);
 
-  final wsList = await init.registries.workspace.list();
-  final inputs = <OrgWsInput>[];
+    final wsList = await init.registries.workspace.list();
+    final inputs = <OrgWsInput>[];
 
-  for (final ws in wsList) {
-    final members = await init.registries.member.listForWorkspace(ws.id);
-    // Member id → display name, and member id → qualified flowbrain agent id
-    // (for the detail dialog). The process YAML references members by id, but
-    // `system.agents.getAgent` needs the qualified agentId — keep both so the
-    // chart can match on member id yet open the right agent on tap.
-    final labelOf = <String, String>{};
-    final agentIdOf = <String, String>{};
-    for (final m in members) {
-      labelOf[m.id] = m.displayName;
-      if (m is AgentMember) {
-        labelOf[m.agentId] = m.displayName;
-        agentIdOf[m.id] = m.agentId;
+    for (final ws in wsList) {
+      final members = await init.registries.member.listForWorkspace(ws.id);
+      // Member id → display name, and member id → qualified flowbrain agent id
+      // (for the detail dialog). The process YAML references members by id, but
+      // `system.agents.getAgent` needs the qualified agentId — keep both so the
+      // chart can match on member id yet open the right agent on tap.
+      final labelOf = <String, String>{};
+      final agentIdOf = <String, String>{};
+      for (final m in members) {
+        labelOf[m.id] = m.displayName;
+        if (m is AgentMember) {
+          labelOf[m.agentId] = m.displayName;
+          agentIdOf[m.id] = m.agentId;
+        }
       }
-    }
-    String nameFor(String id) => labelOf[id] ?? id;
+      String nameFor(String id) => labelOf[id] ?? id;
 
-    // All members — agents AND people (persons appear in the structure lens
-    // org chart; only agents carry knowledge refs). isAgent drives the 🤖/👤
-    // icon.
-    final agents = <OrgAgentInput>[
-      for (final mem in members)
-        if (mem is AgentMember)
-          OrgAgentInput(
-            agentId: mem.agentId,
-            memberId: mem.id,
-            displayName: mem.displayName,
-            role: mem.tags['role'] ?? 'agent',
-            isAgent: true,
-            skillRefs: mem.skillIds,
-            profileRef: mem.profileRef.isEmpty ? null : mem.profileRef,
-            philosophyRef: mem.philosophyRef.isEmpty ? null : mem.philosophyRef,
-          )
-        else
-          OrgAgentInput(
-            agentId: mem.id,
-            memberId: mem.id,
-            displayName: mem.displayName,
-            role: mem.tags['role'] ?? 'member',
-            isAgent: false,
-          ),
-    ];
+      // All members — agents AND people (persons appear in the structure lens
+      // org chart; only agents carry knowledge refs). isAgent drives the 🤖/👤
+      // icon.
+      final agents = <OrgAgentInput>[
+        for (final mem in members)
+          if (mem is AgentMember)
+            OrgAgentInput(
+              agentId: mem.agentId,
+              memberId: mem.id,
+              displayName: mem.displayName,
+              role: mem.tags['role'] ?? 'agent',
+              isAgent: true,
+              skillRefs: mem.skillIds,
+              profileRef: mem.profileRef.isEmpty ? null : mem.profileRef,
+              philosophyRef:
+                  mem.philosophyRef.isEmpty ? null : mem.philosophyRef,
+            )
+          else
+            OrgAgentInput(
+              agentId: mem.id,
+              memberId: mem.id,
+              displayName: mem.displayName,
+              role: mem.tags['role'] ?? 'member',
+              isAgent: false,
+            ),
+      ];
 
-    // Processes → pipeline lanes. Each process contributes its ordered steps
-    // (assignee + skill) and its gates (approval → sign-off marker, philosophy
-    // / quality → inline checkpoint). The approver of an approval gate comes
-    // from the separate gates list or an inline step approval (both surface as
-    // GateKind.approval with params.approverId).
-    final processes = <OrgProcessInput>[];
-    try {
-      final procs = await init.registries.process.list(wsId: ws.id);
-      for (final p in procs) {
-        processes.add(
-          OrgProcessInput(
-            id: p.id,
-            title: p.title,
-            trigger: p.trigger.name,
-            triggerSource: p.triggerSource,
-            steps: [
-              for (final s in p.steps)
-                OrgStepInput(
-                  stepId: s.stepId,
-                  assigneeId: s.assigneeId,
-                  assigneeLabel: nameFor(s.assigneeId),
-                  assigneeAgentId: agentIdOf[s.assigneeId],
-                  skillId: s.skillId,
-                  dependsOn: s.dependsOn,
-                ),
-            ],
-            gates: [
-              for (final g in p.gates)
-                OrgGateInput(
-                  afterStep: g.afterStep,
-                  kind: g.kind.name,
-                  approverId: g.params['approverId'] as String?,
-                  approverLabel: (g.params['approverId'] is String)
-                      ? nameFor(g.params['approverId'] as String)
-                      : null,
-                  approverAgentId: (g.params['approverId'] is String)
-                      ? agentIdOf[g.params['approverId'] as String]
-                      : null,
-                ),
-            ],
-          ),
-        );
+      // Processes → pipeline lanes. Each process contributes its ordered steps
+      // (assignee + skill) and its gates (approval → sign-off marker, philosophy
+      // / quality → inline checkpoint). The approver of an approval gate comes
+      // from the separate gates list or an inline step approval (both surface as
+      // GateKind.approval with params.approverId).
+      final processes = <OrgProcessInput>[];
+      try {
+        final procs = await init.registries.process.list(wsId: ws.id);
+        for (final p in procs) {
+          processes.add(
+            OrgProcessInput(
+              id: p.id,
+              title: p.title,
+              trigger: p.trigger.name,
+              triggerSource: p.triggerSource,
+              steps: [
+                for (final s in p.steps)
+                  OrgStepInput(
+                    stepId: s.stepId,
+                    assigneeId: s.assigneeId,
+                    assigneeLabel: nameFor(s.assigneeId),
+                    assigneeAgentId: agentIdOf[s.assigneeId],
+                    skillId: s.skillId,
+                    dependsOn: s.dependsOn,
+                  ),
+              ],
+              gates: [
+                for (final g in p.gates)
+                  OrgGateInput(
+                    afterStep: g.afterStep,
+                    kind: g.kind.name,
+                    approverId: g.params['approverId'] as String?,
+                    approverLabel:
+                        (g.params['approverId'] is String)
+                            ? nameFor(g.params['approverId'] as String)
+                            : null,
+                    approverAgentId:
+                        (g.params['approverId'] is String)
+                            ? agentIdOf[g.params['approverId'] as String]
+                            : null,
+                  ),
+              ],
+            ),
+          );
+        }
+      } catch (_) {
+        // Process registry optional / unbound — leave lanes empty.
       }
-    } catch (_) {
-      // Process registry optional / unbound — leave lanes empty.
+
+      inputs.add(
+        OrgWsInput(
+          id: ws.id,
+          title: ws.title,
+          type: ws.type.name,
+          parentId: ws.parentId,
+          leadMemberId: ws.leadMemberId,
+          unitRole: ws.unitRole.name,
+          sortOrder: ws.sortOrder,
+          agents: agents,
+          processes: processes,
+        ),
+      );
     }
 
-    inputs.add(
-      OrgWsInput(
-        id: ws.id,
-        title: ws.title,
-        type: ws.type.name,
-        parentId: ws.parentId,
-        leadMemberId: ws.leadMemberId,
-        unitRole: ws.unitRole.name,
-        sortOrder: ws.sortOrder,
-        agents: agents,
-        processes: processes,
-      ),
-    );
-  }
-
-  return inputs;
-}, dependencies: [
-  knowledgeInitProvider,
-  workspaceChangesProvider,
-  memberChangesProvider,
-  knowledgeChangesProvider,
-  skillChangesProvider,
-  processChangesProvider,
-]);
+    return inputs;
+  },
+  dependencies: [
+    knowledgeInitProvider,
+    workspaceChangesProvider,
+    memberChangesProvider,
+    knowledgeChangesProvider,
+    skillChangesProvider,
+    processChangesProvider,
+  ],
+);
 
 /// Processes route view: false = list (default), true = flow board (B2 —
 /// runs as cards moving through step columns).
@@ -472,29 +510,32 @@ final processBoardViewProvider = StateProvider<bool>((ref) => false);
 /// (same rule as the org overlay). autoDispose — only while the board shows.
 final processBoardRunsProvider = StreamProvider.autoDispose
     .family<Map<String, List<ProcessRun>>, String>((ref, wsId) async* {
-  final init = ref.watch(knowledgeInitProvider);
-  while (true) {
-    final map = <String, List<ProcessRun>>{};
-    try {
-      final procs = await init.registries.process.list(wsId: wsId);
-      for (final p in procs) {
-        map[p.id] =
-            await init.registries.process.listRuns(p.id, workspaceId: wsId);
+      final init = ref.watch(knowledgeInitProvider);
+      while (true) {
+        final map = <String, List<ProcessRun>>{};
+        try {
+          final procs = await init.registries.process.list(wsId: wsId);
+          for (final p in procs) {
+            map[p.id] = await init.registries.process.listRuns(
+              p.id,
+              workspaceId: wsId,
+            );
+          }
+        } catch (_) {
+          // Mid-switch/unbound — an empty board this tick, not an error state.
+        }
+        yield map;
+        await Future<void>.delayed(const Duration(seconds: 4));
       }
-    } catch (_) {
-      // Mid-switch/unbound — an empty board this tick, not an error state.
-    }
-    yield map;
-    await Future<void>.delayed(const Duration(seconds: 4));
-  }
-}, dependencies: [knowledgeInitProvider]);
+    }, dependencies: [knowledgeInitProvider]);
 
 /// "Today's flow" home card pulse (B4) — hour-bucketed invocations /
 /// delegations / approval waits / run starts for the active workspace.
 /// Facts and run records emit no change tick → poll (autoDispose: alive
 /// only while Home shows).
-final todayFlowProvider =
-    StreamProvider.autoDispose<TodayFlowData>((ref) async* {
+final todayFlowProvider = StreamProvider.autoDispose<TodayFlowData>((
+  ref,
+) async* {
   final init = ref.watch(knowledgeInitProvider);
   final wsId = ref.watch(activeWorkspaceIdProvider);
   while (true) {
@@ -507,8 +548,9 @@ final todayFlowProvider =
 /// mutations, but activity (facts / process-run state) emits NO change tick
 /// — so this polls. autoDispose keeps the timer alive only while the
 /// Organization page is mounted.
-final orgOverlayProvider =
-    StreamProvider.autoDispose<OrgOverlayData>((ref) async* {
+final orgOverlayProvider = StreamProvider.autoDispose<OrgOverlayData>((
+  ref,
+) async* {
   final init = ref.watch(knowledgeInitProvider);
   while (true) {
     yield await pollOrgOverlay(init);
@@ -534,15 +576,26 @@ final installedBundlesProvider =
     }, dependencies: [knowledgeInitProvider]);
 
 /// Recent KV facts surfaced on the Home page's knowledge band.
-final recentKvFactsProvider = FutureProvider<List<dynamic>>((ref) async {
-  final init = ref.watch(knowledgeInitProvider);
-  try {
-    final all = await init.registries.knowledge.listKvFacts();
-    return all.take(3).toList();
-  } catch (_) {
-    return const <dynamic>[];
-  }
-}, dependencies: [knowledgeInitProvider]);
+final recentKvFactsProvider = FutureProvider<List<dynamic>>(
+  (ref) async {
+    // Re-read on every knowledge change and workspace switch — the facts live
+    // in the active workspace's KV partition.
+    ref.watch(knowledgeChangesProvider);
+    ref.watch(activeWorkspaceIdProvider);
+    final init = ref.watch(knowledgeInitProvider);
+    try {
+      final all = await init.registries.knowledge.listKvFacts();
+      return all.take(3).toList();
+    } catch (_) {
+      return const <dynamic>[];
+    }
+  },
+  dependencies: [
+    knowledgeInitProvider,
+    knowledgeChangesProvider,
+    activeWorkspaceIdProvider,
+  ],
+);
 
 /// Aggregate counts for the home KPI tiles + status bar.
 class KnowledgeCounts {
@@ -556,22 +609,31 @@ class KnowledgeCounts {
   final int summaries;
 }
 
-final knowledgeCountsProvider = FutureProvider<KnowledgeCounts>((ref) async {
-  final init = ref.watch(knowledgeInitProvider);
-  try {
-    final facts = await init.registries.knowledge.listKvFacts();
-    final patterns = await init.registries.knowledge.queryPatterns();
-    return KnowledgeCounts(
-      facts: facts.length,
-      patterns: patterns.length,
-      // SummaryRecord listing isn't exposed on the registry; defer the
-      // real count until a list endpoint exists. Kept at 0 for now.
-      summaries: 0,
-    );
-  } catch (_) {
-    return const KnowledgeCounts(facts: 0, patterns: 0, summaries: 0);
-  }
-}, dependencies: [knowledgeInitProvider]);
+final knowledgeCountsProvider = FutureProvider<KnowledgeCounts>(
+  (ref) async {
+    ref.watch(knowledgeChangesProvider);
+    ref.watch(activeWorkspaceIdProvider);
+    final init = ref.watch(knowledgeInitProvider);
+    try {
+      final facts = await init.registries.knowledge.listKvFacts();
+      final patterns = await init.registries.knowledge.queryPatterns();
+      return KnowledgeCounts(
+        facts: facts.length,
+        patterns: patterns.length,
+        // SummaryRecord listing isn't exposed on the registry; defer the
+        // real count until a list endpoint exists. Kept at 0 for now.
+        summaries: 0,
+      );
+    } catch (_) {
+      return const KnowledgeCounts(facts: 0, patterns: 0, summaries: 0);
+    }
+  },
+  dependencies: [
+    knowledgeInitProvider,
+    knowledgeChangesProvider,
+    activeWorkspaceIdProvider,
+  ],
+);
 
 /// Synthetic activity entries derived from the registries' current state.
 /// Each entry is a record matching what the home page renders. Until a
@@ -626,9 +688,7 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
       // and label the actor with its displayName, never the raw qualified
       // agentId (audit P1.3 — parity with Members / Organization).
       final lifecycle = facts
-          .where(
-            (f) => isAgentLifecycleFact(f.type) && !isProvisioningFact(f),
-          )
+          .where((f) => isAgentLifecycleFact(f.type) && !isProvisioningFact(f))
           .take(4);
       for (final f in lifecycle) {
         final c = f.content;
@@ -672,17 +732,17 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
         final isAgent = members.any(
           (m) =>
               m.runtimeType.toString().contains('Agent') &&
-              (m.id == assignee ||
-                  (m is AgentMember && m.agentId == assignee)),
+              (m.id == assignee || (m is AgentMember && m.agentId == assignee)),
         );
         out.add(
           HomeActivityEntry(
             actorKind: isAgent ? 'agent' : 'human',
             // Always the displayName, never the raw/qualified agentId (audit
             // P1.3 — parity with the lifecycle rows above and Members/Tasks).
-            actorLabel: assignee == 'unassigned'
-                ? 'unassigned'
-                : memberDisplayNameFor(members, assignee),
+            actorLabel:
+                assignee == 'unassigned'
+                    ? 'unassigned'
+                    : memberDisplayNameFor(members, assignee),
             headline: '${t.kind.name} task · ${t.title}',
             meta:
                 'state: ${t.state.name}'
@@ -727,17 +787,20 @@ final recentActivityProvider = FutureProvider<List<HomeActivityEntry>>(
 /// [knowledgeChangesProvider] so a save — whether from the UI or an MCP
 /// `knowledge_fact_save` call — auto-refreshes the list without a manual tab
 /// reload. The toolbar `invalidate` stays as a force-refresh affordance.
-final assetsProvider = FutureProvider<List<KvFactEntry>>((ref) async {
-  ref.watch(activeWorkspaceIdProvider); // re-fetch on workspace switch
-  ref.watch(knowledgeChangesProvider); // re-fetch on any knowledge mutation
-  final init = ref.watch(knowledgeInitProvider);
-  final facts = await init.registries.knowledge.listKvFacts();
-  return facts.where((f) => f.category == 'asset').toList();
-}, dependencies: [
-  knowledgeInitProvider,
-  activeWorkspaceIdProvider,
-  knowledgeChangesProvider,
-]);
+final assetsProvider = FutureProvider<List<KvFactEntry>>(
+  (ref) async {
+    ref.watch(activeWorkspaceIdProvider); // re-fetch on workspace switch
+    ref.watch(knowledgeChangesProvider); // re-fetch on any knowledge mutation
+    final init = ref.watch(knowledgeInitProvider);
+    final facts = await init.registries.knowledge.listKvFacts();
+    return facts.where((f) => f.category == 'asset').toList();
+  },
+  dependencies: [
+    knowledgeInitProvider,
+    activeWorkspaceIdProvider,
+    knowledgeChangesProvider,
+  ],
+);
 
 /// Whether a secret is stored under [credentialRef] (host vault `secret.exists`).
 /// Drives the Resources card lock icon. `invalidate` after a set / remove.
@@ -748,10 +811,8 @@ final credentialExistsProvider = FutureProvider.family<bool, String>((
 ) async {
   final server = ref.read(opsToolServerProvider);
   final result = await server.callTool('secret.exists', {'ref': credentialRef});
-  final text = result.content
-      .whereType<KernelTextContent>()
-      .map((c) => c.text)
-      .join();
+  final text =
+      result.content.whereType<KernelTextContent>().map((c) => c.text).join();
   if (text.isEmpty) return false;
   final decoded = jsonDecode(text);
   return decoded is Map && decoded['exists'] == true;

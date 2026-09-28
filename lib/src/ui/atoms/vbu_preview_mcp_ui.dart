@@ -8,8 +8,9 @@
 /// runtime in via the child slot once available.
 ///
 /// When [child] is null the atom paints a placeholder: device icon +
-/// meta (bundleId · uiPath · deviceSize · inspector flag). This is the
-/// state shown while the real factory is still TODO (cherry inbox).
+/// meta (bundleId · uiPath · deviceSize · inspector flag). The workspace
+/// view replaces the placeholder factory with the real preview mount
+/// (`DslWorkspaceView`); the placeholder remains for hosts that do not.
 library;
 
 import 'package:flutter/material.dart';

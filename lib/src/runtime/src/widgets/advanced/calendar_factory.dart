@@ -11,24 +11,24 @@ class CalendarWidgetFactory extends WidgetFactory {
 
     // Extract calendar properties
     final view = context.resolve<String>(properties['view'] ?? 'month');
-    final selectedDateStr = context.resolve<String?>(properties['selectedDate']);
-    final events = context.resolve<List<dynamic>?>(properties['events'] ?? []) ??
-        [];
+    final selectedDateStr =
+        context.resolve<String?>(properties['selectedDate']);
+    final events = listOf(properties['events'] ?? [], context) ?? [];
     final showHeader = context.resolve<bool>(properties['showHeader'] ?? true);
     final showWeekNumbers =
         context.resolve<bool>(properties['showWeekNumbers'] ?? false);
     final firstDayOfWeek =
         context.resolve<int>(properties['firstDayOfWeek'] ?? 0);
     final width = parseDimension(context.resolve((properties['width'])));
-    final height = parseDimension(context.resolve((properties['height']))) ?? 400.0;
+    final height =
+        parseDimension(context.resolve((properties['height']))) ?? 400.0;
 
     // Extract colors — theme-adaptive defaults. Today/selected/event
     // previously pinned to hardcoded Material-2 blues / red which clashed
     // with dark surfaces and non-blue brand palettes.
     final primaryColor =
         parseColor(context.resolve(properties['primaryColor']), context) ??
-            context.themeManager.getColorValue('primary') ??
-            Colors.blue;
+            context.themeManager.colorOr('primary', Colors.blue);
     final todayColor =
         parseColor(context.resolve(properties['todayColor']), context) ??
             (context.themeManager
@@ -37,26 +37,21 @@ class CalendarWidgetFactory extends WidgetFactory {
             Colors.blue.shade100;
     final selectedColor =
         parseColor(context.resolve(properties['selectedColor']), context) ??
-            context.themeManager.getColorValue('primary') ??
-            Colors.blue.shade700;
+            context.themeManager.colorOr('primary', Colors.blue.shade700);
     final eventColor =
         parseColor(context.resolve(properties['eventColor']), context) ??
-            context.themeManager.getColorValue('error') ??
-            Colors.red;
+            context.themeManager.colorOr('error', Colors.red);
     // Default to the theme's surface slot so an unset backgroundColor
     // adapts to dark mode. Previously this was a hardcoded
     // `Colors.white` which made the calendar a bright white block on
     // dark scaffolds.
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context) ??
-            context.themeManager.getColorValue('surface') ??
-            Colors.white;
+            context.themeManager.colorOr('surface', Colors.white);
 
     // Extract date range constraints
-    final firstDateStr =
-        context.resolve<String?>(properties['firstDate']);
-    final lastDateStr =
-        context.resolve<String?>(properties['lastDate']);
+    final firstDateStr = context.resolve<String?>(properties['firstDate']);
+    final lastDateStr = context.resolve<String?>(properties['lastDate']);
     DateTime? firstDate;
     DateTime? lastDate;
     if (firstDateStr != null) {
@@ -227,8 +222,7 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
     if (widget.selectedDate != oldWidget.selectedDate) {
       setState(() {
         _selectedDate = widget.selectedDate;
-        _currentMonth =
-            DateTime(_selectedDate.year, _selectedDate.month, 1);
+        _currentMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
       });
     }
   }
@@ -369,69 +363,70 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
           ? (available / rows).clamp(28.0, cellWidth)
           : cellWidth;
       return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        childAspectRatio: cellHeight <= 0 ? 1.0 : cellWidth / cellHeight,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-      ),
-      itemCount: days.length,
-      itemBuilder: (context, index) {
-        final day = days[index];
-        if (day == null) {
-          return const SizedBox();
-        }
+        padding: const EdgeInsets.all(8),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 7,
+          childAspectRatio: cellHeight <= 0 ? 1.0 : cellWidth / cellHeight,
+          crossAxisSpacing: 2,
+          mainAxisSpacing: 2,
+        ),
+        itemCount: days.length,
+        itemBuilder: (context, index) {
+          final day = days[index];
+          if (day == null) {
+            return const SizedBox();
+          }
 
-        final isToday = _isSameDay(day, today);
-        final isSelected = _isSameDay(day, _selectedDate);
-        final isCurrentMonth = day.month == _currentMonth.month;
-        final hasEvents = _hasEvents(day);
+          final isToday = _isSameDay(day, today);
+          final isSelected = _isSameDay(day, _selectedDate);
+          final isCurrentMonth = day.month == _currentMonth.month;
+          final hasEvents = _hasEvents(day);
 
-        return InkWell(
-          onTap: () => _selectDate(day),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? widget.selectedColor
-                  : isToday
-                      ? widget.todayColor
-                      : null,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Text(
-                  '${day.day}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: isToday || isSelected ? FontWeight.bold : null,
-                    color: isSelected
-                        ? Colors.white
-                        : isCurrentMonth
-                            ? _onSurface(context)
-                            : _onSurface(context).withValues(alpha: 0.4),
-                  ),
-                ),
-                if (hasEvents)
-                  Positioned(
-                    bottom: 4,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : widget.eventColor,
-                        shape: BoxShape.circle,
-                      ),
+          return InkWell(
+            onTap: () => _selectDate(day),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? widget.selectedColor
+                    : isToday
+                        ? widget.todayColor
+                        : null,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          isToday || isSelected ? FontWeight.bold : null,
+                      color: isSelected
+                          ? Colors.white
+                          : isCurrentMonth
+                              ? _onSurface(context)
+                              : _onSurface(context).withValues(alpha: 0.4),
                     ),
                   ),
-              ],
+                  if (hasEvents)
+                    Positioned(
+                      bottom: 4,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.white : widget.eventColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
       );
     });
   }
@@ -472,8 +467,9 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
                             '${day.day}',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight:
-                                  isToday || isSelected ? FontWeight.bold : null,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.bold
+                                  : null,
                               color: isSelected
                                   ? Colors.white
                                   : _onSurface(context),
@@ -620,8 +616,7 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
     // with seven leading blanks — a whole week of the previous month above
     // the 1st, and the weekday header (which does use the spec's numbering)
     // one column out of step with the grid beneath it.
-    final startWeekday =
-        (_weekIndex(firstDay) - widget.firstDayOfWeek + 7) % 7;
+    final startWeekday = (_weekIndex(firstDay) - widget.firstDayOfWeek + 7) % 7;
 
     final List<DateTime?> days = [];
 
@@ -649,8 +644,7 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
   int _weekIndex(DateTime date) => date.weekday % 7;
 
   DateTime _getWeekStart(DateTime date) {
-    final daysFromStart =
-        (_weekIndex(date) - widget.firstDayOfWeek + 7) % 7;
+    final daysFromStart = (_weekIndex(date) - widget.firstDayOfWeek + 7) % 7;
     return DateTime(date.year, date.month, date.day - daysFromStart);
   }
 
@@ -741,8 +735,10 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
         variables: {
           'event': {
             // `value` is what every other input reports, and what a document
-            // binds by habit; `date` stays for anything already reading it.
-            'value': date.toIso8601String(),
+            // binds by habit — an ISO *date*, as the spec says and as the
+            // widget's own `events[].date` is written, not a timestamp with a
+            // midnight tail. `date` stays for anything already reading it.
+            'value': _isoDate(date),
             'date': date.toIso8601String(),
             'year': date.year,
             'month': date.month,
@@ -754,9 +750,12 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
     }
   }
 
+  static String _isoDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
   void _previousMonth() {
-    final newMonth =
-        DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+    final newMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
     // Enforce firstDate constraint on month navigation
     if (widget.firstDate != null) {
       final firstMonthStart =
@@ -770,8 +769,7 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
   }
 
   void _nextMonth() {
-    final newMonth =
-        DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
+    final newMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
     // Enforce lastDate constraint on month navigation
     if (widget.lastDate != null) {
       final lastMonthStart =

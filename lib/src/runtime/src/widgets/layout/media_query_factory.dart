@@ -36,8 +36,50 @@ class MediaQueryWidgetFactory extends WidgetFactory {
   /// Breakpoint system used for width-based resolution
   final BreakpointSystem _breakpointSystem = BreakpointSystem();
 
-  /// Ordered breakpoint names from smallest to largest
-  static const _breakpointOrder = ['xs', 'sm', 'md', 'lg', 'xl'];
+  /// Ordered breakpoint classes, smallest to largest.
+  ///
+  /// These are the names `BreakpointSystem` answers with. The list used to be
+  /// `xs`/`sm`/`md`/`lg`/`xl`, which matched nothing it returned — so the
+  /// exact-match branch never fired and the widget rendered whichever key
+  /// happened to come first in that list, at every window width. A
+  /// `mediaQuery` was, in effect, not responsive.
+  static const _breakpointOrder = [
+    'compact',
+    'medium',
+    'expanded',
+    'large',
+    'extraLarge',
+  ];
+
+  /// The pre-1.4 spelling of each class, still accepted so documents written
+  /// against it keep choosing the same layout.
+  static const _legacyAliases = <String, String>{
+    'xs': 'compact',
+    'sm': 'medium',
+    'md': 'expanded',
+    'lg': 'large',
+    'xl': 'extraLarge',
+  };
+
+  /// The canonical class for [name], whichever spelling it arrived in.
+  static String _canonical(String name) => _legacyAliases[name] ?? name;
+
+  /// The declaration for [breakpointClass], under either spelling.
+  static Map<String, dynamic>? _declaredFor(
+    Map<String, dynamic> breakpoints,
+    String breakpointClass,
+  ) {
+    if (breakpoints.containsKey(breakpointClass)) {
+      return breakpoints[breakpointClass] as Map<String, dynamic>?;
+    }
+    for (final entry in _legacyAliases.entries) {
+      if (entry.value == breakpointClass &&
+          breakpoints.containsKey(entry.key)) {
+        return breakpoints[entry.key] as Map<String, dynamic>?;
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -140,7 +182,7 @@ class MediaQueryWidgetFactory extends WidgetFactory {
 
     if (breakpoint != null) {
       final currentBp = _breakpointSystem.getCurrentBreakpoint(width);
-      if (currentBp != breakpoint) return false;
+      if (currentBp != _canonical(breakpoint)) return false;
     }
 
     return true;
@@ -165,33 +207,26 @@ class MediaQueryWidgetFactory extends WidgetFactory {
         Map<String, dynamic>? childDef;
 
         // Try exact match first
-        if (breakpoints.containsKey(currentBp)) {
-          childDef = breakpoints[currentBp] as Map<String, dynamic>?;
-        }
+        childDef = _declaredFor(breakpoints, currentBp);
 
         // Fall back to next smaller breakpoint
         if (childDef == null) {
           for (int i = bpIndex - 1; i >= 0; i--) {
-            final fallbackKey = _breakpointOrder[i];
-            if (breakpoints.containsKey(fallbackKey)) {
-              childDef = breakpoints[fallbackKey] as Map<String, dynamic>?;
-              break;
-            }
+            childDef = _declaredFor(breakpoints, _breakpointOrder[i]);
+            if (childDef != null) break;
           }
         }
 
         // Fall back to next larger breakpoint
         if (childDef == null) {
           for (int i = bpIndex + 1; i < _breakpointOrder.length; i++) {
-            final fallbackKey = _breakpointOrder[i];
-            if (breakpoints.containsKey(fallbackKey)) {
-              childDef = breakpoints[fallbackKey] as Map<String, dynamic>?;
-              break;
-            }
+            childDef = _declaredFor(breakpoints, _breakpointOrder[i]);
+            if (childDef != null) break;
           }
         }
 
-        // Use default child if no breakpoint matched
+        // Use the declared default, then `defaultChild`
+        childDef ??= breakpoints['default'] as Map<String, dynamic>?;
         childDef ??= defaultChild;
 
         if (childDef != null) {

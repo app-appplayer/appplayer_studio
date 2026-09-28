@@ -98,7 +98,7 @@ class VibeStatusbar extends StatelessWidget {
             ValueListenableBuilder<String>(
               valueListenable: chromeBridge!.statusbarText,
               builder:
-                  (_, txt, __) =>
+                  (_, txt, _) =>
                       txt.isEmpty
                           ? const SizedBox.shrink()
                           : Text(txt, style: mono),

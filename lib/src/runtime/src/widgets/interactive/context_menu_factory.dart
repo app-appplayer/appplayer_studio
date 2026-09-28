@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `contextMenu` (spec §2.8.10).
+/// Factory for `contextMenu`.
 ///
 /// Cannot be composed: the raising gesture is platform-specific — and on touch
 /// competes with scroll and text selection — and the menu must appear **at the
@@ -17,7 +17,7 @@ class ContextMenuFactory extends WidgetFactory {
     final childDef = properties['child'] as Map<String, dynamic>?;
     if (childDef == null) return const SizedBox.shrink();
 
-    final items = context.resolve<List<dynamic>?>(properties['items']) ?? const [];
+    final items = listOf(properties['items'], context) ?? const [];
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
     final onSelect = actionOf(properties['onSelect'], context);
 

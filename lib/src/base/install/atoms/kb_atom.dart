@@ -1,53 +1,43 @@
-/// Knowledge atom — `host.kb.*`. Two surfaces:
+/// `host.kb.*` atom — forwards to the kernel's [BundleKbStore].
 ///
-///   * **Query** — BM25 search over installed knowledge bundles via
-///     the host's [mk.KnowledgeQueryEngine]. Cross-bundle (a domain
-///     can query the user's entire knowledge graph).
-///   * **Domain storage** — namespace-scoped key/value durable state
-///     via the host's [mk.DomainStorage]. Each bundle gets its own
-///     slice (`namespace = bundle.manifest.id`); domains can NOT see
-///     each other's state. Use cases: recents, pins, preferences,
-///     per-domain caches, progressive learnings.
+/// The contract (verbs, return shapes, key rules, versions and conflicts)
+/// lives in one implementation every host runs (bundle spec 04_Tools §4.8.1).
+/// This atom only unpacks js arguments, so it cannot answer differently from
+/// another host's.
 ///
-/// Both surfaces are managed by the kernel — bundles never write
-/// directly to disk. Memory `feedback_knowledge_definition` formalises
-/// that "knowledge" spans facts/skills/profile/philosophy/workflow/
-/// agents; per-domain state lives in the same knowledge area so a
-/// single backup/move carries every domain's accumulated context.
+///   * `get(key)` → value | `null`
+///   * `put(key, value, [{force}])` → `{ok: true}` | `{ok: false, conflict: {value}}`
+///   * `list([prefix])` → `[{key, value}]`, ascending by key
+///   * `delete(key, [{force}])` → `{removed: bool}` | `{ok: false, conflict: {value}}`
+///   * `conflicts()` → `[{key, mine, theirs}]`
+///   * `query(text, [{topK, namespace, sourceId}])` → hits
 ///
-/// Verbs:
-///   * `query(text, {topK?, namespace?, sourceId?})` — BM25 hits
-///   * `put(key, value)` — write to own namespace
-///   * `get(key)` — read from own namespace; null when absent
-///   * `list(prefix?)` — entries [{key, value}] in own namespace
-///   * `delete(key)` — remove from own namespace; returns `removed: bool`
-///
-/// `host.kb.*` operations are auto-scoped to the bundle's manifest.id —
-/// JS callers don't pass a namespace.
+/// The store is keyed by the app's identity, which the host decides — js
+/// callers never name a namespace for their own state.
 library;
 
-import 'package:brain_kernel/brain_kernel.dart' as mk;
+import 'package:brain_kernel/brain_kernel.dart' show BundleKbStore, KbError;
 
+import '../js_bridge_protocol.dart' show NonJsonArgument, NonJsonArgumentPolicy;
 import 'atom_category.dart';
 
-class KbAtom extends AtomCategory {
-  KbAtom({
-    required this.engine,
-    required this.storage,
-    required this.namespace,
-  });
+class KbAtom extends AtomCategory implements NonJsonArgumentPolicy {
+  KbAtom(this.store);
 
-  /// BM25 search engine. Cross-bundle — `namespace` arg on `query`
-  /// (if provided) scopes the search; absent = all installed bundles.
-  final mk.KnowledgeQueryEngine engine;
+  /// A key JSON cannot carry is not a key; anything else it cannot carry is
+  /// not a value. Nothing is stored either way.
+  @override
+  Object refuseNonJson(String verb, List<NonJsonArgument> found) {
+    final first = found.first;
+    final keyArgument = verb != 'conflicts' && first.argumentIndex == 0;
+    return KbError(
+      keyArgument ? KbError.invalidKey : KbError.invalidValue,
+      'kb.$verb: ${first.where} is ${first.kind}, which JSON cannot carry',
+    );
+  }
 
-  /// Per-bundle scoped storage. Operations are auto-scoped to
-  /// [namespace]; JS callers never see other bundles' data.
-  final mk.DomainStorage storage;
-
-  /// The bundle's `manifest.id` — every put/get/list/delete pins to
-  /// this. Set by the activation context.
-  final String namespace;
+  /// This bundle's state, keyed by its app identity.
+  final BundleKbStore store;
 
   @override
   String get key => 'kb';
@@ -55,94 +45,82 @@ class KbAtom extends AtomCategory {
   @override
   List<AtomVerb> get verbs => const [
     AtomVerb(
-      'query',
-      description:
-          'BM25 query over installed knowledge bundles. '
-          '(text, [{topK, namespace, sourceId}]).',
+      'get',
+      description: "Read this app's value. (key) → value | null.",
     ),
     AtomVerb(
       'put',
-      description: 'Write to the bundle\'s own domain storage. (key, value).',
-    ),
-    AtomVerb(
-      'get',
       description:
-          'Read from the bundle\'s own domain storage. (key) → value | null.',
+          'Write on the version last read. (key, value, [{force}]) → '
+          '{ok: true} | {ok: false, conflict: {value}}.',
     ),
     AtomVerb(
       'list',
-      description:
-          'List entries in the bundle\'s own domain storage. ([prefix]) '
-          '→ [{key, value}].',
+      description: "This app's entries. ([prefix]) → [{key, value}].",
     ),
     AtomVerb(
       'delete',
       description:
-          'Remove an entry from the bundle\'s own domain storage. '
-          '(key) → {removed: bool}.',
+          'Remove on the version last read. (key, [{force}]) → {removed} | '
+          '{ok: false, conflict: {value}}.',
+    ),
+    AtomVerb(
+      'conflicts',
+      description:
+          'Offline writes rejected on reconnect. () → [{key, mine, theirs}].',
+    ),
+    AtomVerb(
+      'query',
+      description:
+          'Knowledge query. (text, [{topK, namespace, sourceId}]) → hits.',
     ),
   ];
 
   @override
   Future<Object?> dispatch(String verb, List<Object?> args) async {
+    Object? arg(int i) => i < args.length ? args[i] : null;
+    bool force(int i) {
+      final opts = arg(i);
+      return opts is Map && opts['force'] == true;
+    }
+
     switch (verb) {
-      case 'query':
-        if (args.isEmpty) {
-          throw ArgumentError('query requires (text, [opts])');
-        }
-        final text = args[0];
-        if (text is! String) {
-          throw ArgumentError('text must be a String');
-        }
-        final opts =
-            args.length > 1 && args[1] is Map ? args[1] as Map : const {};
-        final topK = (opts['topK'] as num?)?.toInt() ?? 5;
-        final ns = opts['namespace'] as String?;
-        final sourceId = opts['sourceId'] as String?;
-        final hits = await engine.query(
-          text,
-          topK: topK,
-          namespace: ns,
-          sourceId: sourceId,
-        );
-        return <Map<String, dynamic>>[for (final h in hits) h.toJson()];
+      case 'get':
+        return store.get(_key(arg(0)));
       case 'put':
         if (args.length < 2) {
-          throw ArgumentError('put requires (key, value)');
+          throw const KbError(
+            KbError.invalidValue,
+            'put requires (key, value)',
+          );
         }
-        final key = _stringKey(args[0]);
-        await storage.put(namespace, key, args[1]);
-        return <String, dynamic>{'ok': true};
-      case 'get':
-        if (args.isEmpty) {
-          throw ArgumentError('get requires (key)');
-        }
-        final key = _stringKey(args[0]);
-        return storage.get(namespace, key);
+        return store.put(_key(arg(0)), arg(1), force: force(2));
       case 'list':
-        final prefix =
-            args.isNotEmpty && args[0] is String ? args[0] as String : '';
-        final entries = await storage.list(namespace, prefix: prefix);
-        return <Map<String, dynamic>>[
-          for (final e in entries)
-            <String, dynamic>{'key': e.key, 'value': e.value},
-        ];
+        final prefix = arg(0);
+        return store.list(prefix is String ? prefix : '');
       case 'delete':
-        if (args.isEmpty) {
-          throw ArgumentError('delete requires (key)');
+        return store.delete(_key(arg(0)), force: force(1));
+      case 'conflicts':
+        return store.conflicts();
+      case 'query':
+        final text = arg(0);
+        if (text is! String) {
+          throw ArgumentError('query requires (text, [opts])');
         }
-        final key = _stringKey(args[0]);
-        final removed = await storage.delete(namespace, key);
-        return <String, dynamic>{'removed': removed};
+        final opts = arg(1) is Map ? arg(1) as Map : const <String, Object?>{};
+        return store.query(
+          text,
+          topK: (opts['topK'] as num?)?.toInt() ?? 5,
+          namespace: opts['namespace'] as String?,
+          sourceId: opts['sourceId'] as String?,
+        );
       default:
         throw ArgumentError('unknown verb: kb.$verb');
     }
   }
 
-  String _stringKey(Object? raw) {
-    if (raw is! String || raw.isEmpty) {
-      throw ArgumentError('key must be a non-empty String');
-    }
-    return raw;
+  static String _key(Object? raw) {
+    BundleKbStore.checkKey(raw);
+    return raw! as String;
   }
 }

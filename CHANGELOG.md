@@ -1,3 +1,403 @@
+## [0.1.9] - 2026-09-06
+
+Most of this release is what a full pass over the four QA matrices turned up,
+fixed in place and re-verified on the running debug instance. One change is
+structural: the patch pipeline no longer refuses an edit because the bundle
+already carried an error somewhere else.
+
+### Changed
+
+- **FFmpeg is the LGPL build.** The full-GPL build (x264, x265, xvidcore,
+  vid.stab) put every binary that ships it under the GPL v3. The app now
+  links `ffmpeg_kit_flutter_new_full` (LGPL v3) and encodes H.264 with
+  VideoToolbox on Apple Silicon Macs and openh264 elsewhere; `crf` keeps its
+  0–51 scale and is mapped to each encoder's quality control. On Linux the
+  LGPL build has no software H.264 encoder, so mp4 encoding is unavailable
+  there (webm works).
+- Ops lists refresh after every change again. Riverpod 3 skips an update
+  equal to the previous value, and the Ops change notifications all emitted
+  `null`, so after the first change task and workspace lists and the Home
+  counts stopped following deletes and edits. Each notification now carries a
+  running count.
+- Recordings are converted to YUV with the BT.709 matrix and tagged BT.709.
+  They carried an RGB colour tag, so a `webm` export of a recording did not
+  decode; `webm` exports are also pinned to `yuv420p`.
+- **A patch is judged by the errors it introduces, not by the bundle's
+  standing.** The pipeline validated the *current* bundle before every edit,
+  so a bundle with one pre-existing finding refused every properties-panel
+  write — silently, since the panel never surfaced the rejection. It now
+  validates the patched copy and rejects only errors that were not there
+  before; a result that no longer parses as a bundle is itself an error. The
+  properties panel shows a rejected edit as a toast and keeps the draft.
+- Scene Builder writes user scenarios to the user scope (the open scene
+  project's `scenarios/`, else `<configRoot>/scenarios/`); only a scenario
+  loaded from a bundle is written back into that bundle. The host's own seed
+  tree is never a save target.
+- Ops process ▶ Run starts the run in the background and acknowledges the
+  click at once; the board picks the running card up on its next poll. A
+  freshly saved process shows every step as queued — nothing is in progress
+  before a run exists.
+- The health summary line names blocking and advisory counts and says
+  "all green" only when both are zero.
+- Chat cards read "reply" for an answer that carried no patch; "patched" is
+  reserved for turns that did.
+- Dependency floors: `mcp_bundle ^0.4.10`, `mcp_analysis ^0.2.0`,
+  `flutter_mcp_ui_runtime ^0.8.0`, `flutter_mcp_ui_core ^0.6.5`,
+  `brain_kernel ^0.2.2`. The template ecosystem pins move with them.
+- Vendored runtime fork moved from the 0.5 line to 0.8.0, regenerated from the
+  canonical source. 0.8.0 drops the `error` key from `onError` reports (read
+  `message`), answers `location` only to a person's act, and keeps the trust
+  level across `setPermissionsConfig`. 0.7.11–0.7.12 bring one `onError` report per failure with
+  `source` · `message` · `widgetType`/`actionType`, one log record per widget
+  that could not render, `AssetForm.file` for `file:` assets,
+  `PaymentOutcome.deliveryFailed`, and `{{…}}` binding in a `resource`
+  action's `uri`. The vendored host media adapter was regenerated with it, so
+  `file:` sounds keep playing from their path under the new form. The move
+  from 0.5 was the larger step (the tree had been hand-touched: the marker still
+  read 0.7.4 while parts of the copy were newer): forty-odd widgets the fork did not know
+  are registered (multiSelect, combobox, autocomplete, otpInput,
+  dateTimePicker, fileInput, qrCode, barcode, accordion, popover, menu,
+  breadcrumb, pagination, splitter, diffViewer, kanban, gantt, spreadsheet,
+  richTextEditor, pdfViewer, voiceInput, dataGrid, treeView, meter, video,
+  audio, modal, dialog, toast, skeleton, steps, numberInput, code, …), a host
+  platform abstraction (`platform/`), progress-indicator spellings that carry
+  their own shape, and `kanban.height`. Floors `flutter_mcp_ui_runtime`
+  `^0.5.3 → ^0.7.9`, `flutter_mcp_ui_core` `^0.4.3 → ^0.6.5`,
+  `flutter_mcp_ui_generator` `^0.4.1 → ^0.6.2`.
+- Every built-in tool (App Builder, Ops, Form Builder) is checked against
+  its own input schema before its handler runs: a missing required field, a
+  wrong JSON type or a value outside an `enum` answers `invalidArguments`
+  naming each field. A handler that throws answers `toolFailed` instead of
+  raising to the caller, and a result whose body reports failure (`ok:false`,
+  or an `error` message without `ok:true`) is flagged `isError`. Before this,
+  72 of the 88 App Builder tools with required fields threw a raw cast error
+  when called without them and 12 answered as if they had succeeded.
+- LLM API keys are kept in the OS keychain, no longer in `settings.json` or
+  the Ops `config.yaml`. Keys found in an older plaintext file are moved into
+  the keychain on load and removed from the file. `config_get`,
+  `config_reload` and the diagnostic export report `hasApiKey` instead of the
+  key.
+- `studio.debug.dispatch_log` masks secret argument values (`apiKey`,
+  `token`, `password`, `passphrase`, the value given to `secret.set`, …).
+- `app_builder.convert.embed` and `app_builder.convert.selfui` say that they
+  write starter scaffolds: the result carries `scaffold: true` and
+  `notGenerated`, and `canonicalHash` is now the sha256 of the canonical JSON
+  (it was a 63-bit string hash labelled `sha256:`).
+- `health_check` lists every check that did not run under `unchecked` and
+  reports `incomplete` instead of `pass`; `grade` refuses to score over a
+  missing check; `release_check` is `ready` only when the final health
+  reading exists and every check ran.
+- The build dispatcher's `ConvertResult` duplicate is gone; App Builder uses
+  the platform type.
+- Dependency floors: `flutter_riverpod ^3.4.3`, `google_fonts ^8.2.1`,
+  `flutter_lints ^6.0.0` (dev); internal packages on their latest published
+  versions — `mcp_server ^2.2.3` (template pin with it),
+  `flutter_mcp_ui_generator ^0.6.3`.
+
+### Added
+
+- `host.kb` runs on the kernel's `kb` store (bundle spec 04_Tools §4.8.1):
+  records live in the kernel key/value store under `app/<appId>/kb/<key>`, one
+  versioned record per key. A write on a stale version answers
+  `{ok: false, conflict: {value}}`; `{force: true}` overwrites; `conflicts()`
+  lists rejected offline writes. Keys and values follow the shared rules
+  (`KB_INVALID_KEY`, `KB_INVALID_VALUE`). State is keyed by app identity
+  (platform 20 §2.1.2): `listing:<listingId>` for a bundle a host extension
+  installed from a marketplace listing (`StudioExtensionContext.registerKbAppIdOf`),
+  otherwise `bundle:<manifest.id>`. Bundle tabs and plugin bundles share one
+  store. The former per-bundle `<configRoot>/domains`
+  state is imported once per app — never overwritten, never deleted, and a
+  key the bundle later deletes does not come back.
+- `kind: mcp` bundle tools open their connection in the kernel's outbound
+  client host: one connection per server per bundle, reused by every call and
+  every tool naming that server, closed when the bundle is. `target.tool`
+  names the remote tool; `transport: stdio` starts the named local process.
+- Bundle tools of `kind: cloud` run: the call's input is POSTed as JSON to the
+  tool's https `target.url` and the JSON response is the result. A non-https
+  target, a non-2xx status, a body that is not JSON or a failed request fails
+  the call with the reason; an empty body answers `{}`.
+- Ops: a background process run that stops on an error keeps the error on its
+  run record (`process_runs` → `error`, and the activity feed line). Boot logs
+  a line when the project has no `project.mbd`, from which every process run
+  resolves its behavior.
+- `studio.ui.drag` takes `holdMs`: the pointer stays down and still for that
+  long before the first move, so `LongPressDraggable` targets (the tree's
+  nodes, reorderable rows) accept the drop.
+- Analysis capability recipe: `list_jobs`, `cancel_job`, `delete_spec`,
+  `list_functions`. Port errors reach the caller as
+  `analysis.<code>` with the spec issues attached instead of a generic
+  capability error.
+- `VibeSettings.mutate` — a serialized read-modify-write for the shared host
+  settings file. Every built-in that records its last project goes through it.
+- The widget catalogue lists a widget's aliases (`box` is also `container`,
+  `constrained`, …; `textInput` is also `textField`, …) and authoring accepts
+  every spelling the spec declares.
+
+- Host media capabilities for the preview (UI DSL §6.13): sound, media
+  playback, a web engine (`webview_flutter` natively, an iframe on the web),
+  PDF and vector animation — the runtime declares them, the host now performs
+  them — and `bundle://` asset reads off the project folder (§6.12). New
+  dependencies: `just_audio`, `webview_flutter`, `lottie`, `pdfrx`, `web`.
+- BLE stack assembled once per process (one radio, shared scan) behind the
+  BLE transport and provisioning bridges; mDNS board discovery binds its
+  sockets the way each platform allows.
+- Reachability signals: a dead server connection is redialled the moment the
+  device is seen again instead of on a blind interval; the reconnect watch
+  keeps dialling with no attempt cap (tests run on virtual time via
+  `fake_async`).
+- DSL primitive loader and an extended schema validator (legacy value forms,
+  a validation survey across the seed bundles, seed widget vocabulary and
+  coverage tests).
+- Account storage (platform spec 20): a tier with an account (Pro, through
+  its marketplace sign-in) syncs the chrome theme through `shell/common` with
+  AppPlayer and the person's other devices, writes this device's profile, and
+  keeps bundle `host.kb` records in the account's `app/<appId>` scope while
+  the device takes part. Participation is off by default and set in Settings
+  → Account sync, which also shows the last sync and "Sync now". A bundle
+  opened while the device does not sync keeps its `kb` on the device.
+  Signing in is not enough: the tier also says which plan opens storage
+  (Pro: AppPlayer Cloud) and it is checked on sign-in and whenever the switch
+  is turned on. Without it nothing is stored or shared — not even the device
+  profile — and Settings names the plan that is needed.
+  Joining no longer writes this device's old theme back to the account: a
+  theme that arrives from the account and is applied on the next frame is
+  not pushed up again, stale or as an echo.
+- Runtime log bridge and a studio navigator seam in the host; Ops refuses to
+  open a project of another built-in's kind.
+- `studio.builder.lib.render` renders a library entry on its own — bundle
+  theme applied, no app shell — and returns a PNG image. It answered
+  `{ok:true, todo}` without rendering before.
+- Ops Audit shows the tool calls this studio has handled since it started
+  (latest 200, newest first): time, tool, duration, outcome, and on expand
+  the masked arguments and the result. Filter by tool name or errors only.
+- Settings → Studio → About → Open-source licenses lists every third-party
+  license in one place: the Dart packages Flutter bundles plus the native
+  libraries and fonts the app ships (FFmpeg and its component libraries,
+  PDFium and its component libraries, libserialport, QuickJS, JetBrains
+  Mono), which were not listed anywhere before. Registration, format and
+  page come from the platform's `OpenSourceLicenses` (appplayer_core).
+- The document viewer renders PDF files; one that cannot be opened reads
+  "Cannot open PDF" instead of the engine's stack trace.
+### Fixed
+
+- App Builder showed a project as unsaved right after it was created or
+  exported. The check for outside edits compared the committed hash with a
+  hash of the bundle read back from disk, and the two maps list their keys in
+  a different order; bundle hashes now ignore key order.
+- App Builder stopped noticing outside edits after the first save: a save
+  replaces the bundle folder, and the watcher followed the replaced copy. The
+  watcher now watches the folder that holds the bundle.
+- An unsaved mark raised by an outside edit carried over to the next project
+  opened in App Builder; every project switch now starts from the new
+  project's own state.
+- App Builder's chat log lost slash-command results: the user turn and its
+  result were appended at the same moment and the shorter line overwrote the
+  start of the longer one. Writes to the log now run one at a time. The
+  host chat log and the history log append the same way and are serialized
+  too.
+- Closing an App Builder project left its undo sidecar and draft writes
+  running; `VibeProject.dispose` now waits for them.
+- The studio stopped exiting on SIGTERM once a recording had been encoded:
+  FFmpegKit installs its own signal handlers on first use. They are
+  switched off for SIGTERM/SIGINT before the first encode or probe.
+- `app_builder.schema.get {kind: widget}` failed outside the makemind
+  workspace ("no embedded copy"); the widget kind reads the runtime's
+  generated schema, as documented.
+- `studio.app.open {project}` reported `projectBound` even when the app
+  refused the folder, and could bind through the tab it was leaving. It
+  reports a refused bind as the failed `project` step and binds after the
+  new tab has taken the project slot.
+- `studio.chrome.select_tab` answered before the tabs had handed their
+  project slots over, so an immediately following `studio.project.new` /
+  `.open` could land on the previous tab (a scene project created from the
+  Ops tab). It answers once the switch has been built
+  (`ChromeBridge.settleTabSwitch`).
+- A built-in tab never released `studio.project.info`'s slot, and Scene
+  Builder none of its project slots: the release compared method tear-offs
+  with `identical`, which is always false. App Builder also gated every
+  release on still owning the new-project slot. Slots are released by
+  equality, each on its own ownership, and the project-info slot falls back
+  to the host's reader.
+- `studio.scene.project.new` / `.open` run from another tab wrote the scene
+  folder into that tab's project and called its open handler (App Builder's
+  tab kept the scene folder in `tabs.json`). They bring the Scene Builder tab
+  to the front first.
+- Tool arguments are checked below the top level: array items and nested
+  object fields answer `invalidArguments` with a path (`line[0]`,
+  `options.dpi`) instead of a cast error from inside the handler. The nested
+  check covers shape (type, required) only; enums below the top level stay
+  advisory so calls that always worked (`formats: ['png']`) still do. The host
+  capability tools (`form.*`, `io.*`, `fs.*`, `kv.*`, `db.*`, `canvas.*`,
+  `analysis.*`, …) now get the same shape check (not their enums); they were
+  registered outside the built-in registry and answered missing or mistyped
+  arguments with the cast text.
+- Ops: `workspace_switch` accepted a workspace that does not exist (every
+  later member / task / process write went into it) or is archived; both
+  are refused. `ui_navigate` accepted any route name and now takes the
+  sidebar's routes (its description lists them from the shell). The UI
+  debug tools no longer put a stack trace in the error answer.
+- The studio follows MCP UI DSL **1.4.3** (was pinned at 1.3.4): the
+  embedded app / page / theme schemas are regenerated from the 1.4 spec
+  (widgets already came from the 1.4 core), `spec.version` / `schema.get`
+  report 1.4.3, and tool descriptions name 1.4. On the 20 workspace bundles
+  the 1.4 schemas raise no new finding and drop 15 false ones per app that
+  writes theme `lineHeight`.
+- `app_builder.convert.embed` / `.selfui` took `outDir` as given, so the
+  documented `outDir=build/embed` resolved against the process directory
+  (`/` for the app) instead of the project. Both now anchor it to the project
+  root like `convert.dart`, and refuse a path outside it.
+- Scene Builder left a scene project recorded on its tab (`tabs.json`) after
+  a session that did not reopen it; the tab showed "No scene open" while the
+  record kept the folder. Activating the tab now syncs the record.
+- Generated native apps: the README promised MCP over HTTP on 8080 by
+  default while the app starts on stdio (`--http` serves it); the server
+  entry dropped the reason on exit and the scaffolding `_register` helper
+  raised analyzer warnings. After `flutter create`, the macOS project and
+  Podfile are raised to macOS 12.0 — Xcode 27 does not build the 10.15 the
+  scaffold targets.
+- Form Builder answered a project open (or new project) before `form.*`
+  was rebound to that project, so a template saved right after the open
+  went to the unbound in-memory store and was lost. The open and new-project
+  slots now answer once the core is booted and the rebind is done.
+- A stored template whose sections do not parse no longer takes the Compose
+  page down; Compose and the Templates preview show why it cannot be shown.
+- Line height from the theme is honoured whether it is written as `height`
+  (multiplier) or `lineHeight` (px): `flutter_mcp_ui_runtime` ^0.8.1 and
+  `flutter_mcp_ui_core` ^0.6.6, vendored runtime copy regenerated. Emitted
+  app templates pin the same runtime. `mcp_form` ^0.2.2 rejects a malformed
+  template with the offending path and keeps accepting what 0.2.0 accepted.
+- Scene Builder's new-scenario screen still said scenarios are saved under the
+  seed bundle; it names the open scene project's `scenarios/` (or the studio
+  config folder) where they are saved.
+- Form Builder's status line no longer cites tool names (`form_builder.approve`)
+  that the capability's messages carry for agents.
+- The "Health regressed" chat note compared a freshly opened project with the
+  project open before it.
+- The Inspector's Health section checked tool references without the host
+  tool list, so it disagreed with `health_check`; it also left out wiring and
+  a11y findings.
+- `studio.project.close` answered "shell not mounted" on any tab visited after
+  a built-in: the built-in cleared the host's project slots on deactivate.
+  Tab slots now fall back to the host's.
+- The project header's recent-projects menu never appeared (the shell passed
+  no recents and ignored a pick).
+- Slash command results put ✓ in front of a failing verdict; a failed or
+  blocked result is marked ⚠.
+- Disabled Undo/Redo showed no tooltip.
+- Scene Builder's Branding view opened empty instead of the seed theme.
+- Ops: the Skills page's Integrated tab said "0 pool" after a skill was saved
+  — `skill_save` announced the skill before adding it to the runtime pool.
+  `skill_delete` now also takes the skill out of the pool and out of
+  `project.mbd`, where it came back from on the next boot.
+- Ops: a fact search returned every fact twice (fact graph and KV); the
+  Knowledge page listed them twice.
+- Ops: About showed the configured workspace, not the active one.
+- Ops: "Delete" on a workspace archived it; it is now called Archive and says
+  what is kept.
+- Form Builder: an issued document recorded no issuer; errors read as raw
+  exception dumps; the last status line stayed on Compose after leaving it;
+  the project slot answered without `projectName`.
+- `studio.*` host tools reported failures without `isError`.
+- Settings showed the default MCP port in the URL hint instead of the
+  instance's port.
+- `studio.recorder.status` reports `elapsedMs`; an overlay with an empty kind
+  is rejected.
+
+- App Builder: a page `tool` action in the preview never ran the project
+  bundle's tool, so anything filled from a tool response (a roster loaded on
+  mount, a button's refresh) stayed empty in the preview while the same
+  bundle worked in its app tab. The preview now runs the project bundle's
+  tools on a preview-only server — `host.kb` and the other atoms wired as in
+  a tab — and hands the response to the runtime in the MCP shape it merges
+  into state (UI DSL 1.3 §4.4). The runner opens on the first call, is
+  replaced when the preview is refreshed or another bundle opens, and closes
+  with the shell. A tool the bundle does not declare, or one that did not
+  register, fails the action with the reason. A list bound to state keeps
+  its one design-time sample row only until something fills it.
+- A `host.*` call from a js tool whose argument JSON cannot carry (a function,
+  a symbol, a bigint, `NaN`, `±Infinity`, or a structure that contains itself)
+  arrived as `null` and ran — `host.kb.put("a", function () {})` stored
+  `null`. The bridge now lists such arguments with where they sat and the
+  host refuses the call without running the verb (bundle spec 04_Tools §4.8):
+  `kb` answers `KB_INVALID_KEY` for the key and `KB_INVALID_VALUE` otherwise;
+  other atoms answer `<atom>.<verb>: argument <path> is <kind>, which JSON
+  cannot carry`. `undefined` still crosses as `null`, an `undefined`
+  property is still omitted, and `toJSON` is followed.
+- A `kind: js` bundle tool that returns an object or an array answered JSON
+  only on macOS. On Windows and Linux the JS engine (QuickJS) reported the
+  settled value as Dart `toString()` (`{count: 2}`), so bindings to its fields
+  read null. The value is now stringified inside JS on every engine, and a
+  rejection arrives as an error with its message.
+- Ops: a process in a project whose folder was copied or renamed ran nothing
+  ("behavior not found"). Behaviors are now addressed by the `project.mbd`
+  manifest id instead of the folder name.
+- Ops: a `gates:` entry without `afterStep` naming a step, or without a known
+  `kind`, was filled with defaults and attached to no step, so the gate
+  silently did nothing — including the shape the built-in process guide
+  showed. Such an entry now fails the save with the expected shape; a process
+  file that fails to load is recorded in the Ops boot log. The guide shows
+  `afterStep` · `kind` · `params: {approverId}`.
+- Ops: a run waiting at a human step after an approval still carried that
+  approval as pending, so the approvals inbox offered the approved gate again.
+  A human-step wait now carries no pending approval (it is listed in the tasks
+  inbox only).
+- Ops: a task whose title or description held several lines, `: ` or quotes
+  (background `agent_ask` hand-offs) was written as invalid YAML and did not
+  load again. Free text is now written quoted.
+- A bundle installed as a plugin did not get `host.kb` although it required
+  it; plugin activation now shares the host's knowledge engine and domain
+  storage with tab activation.
+- The UI DSL runtime's author diagnostics from the App Builder preview (for
+  example an unknown widget type) reached no log: only the runtime fork used
+  by bundle tabs was bridged. The package runtime is bridged as well.
+- Ops log records written during the test suite no longer land in the real
+  `~/.makemind-ops/boot.log`.
+- Ops: the Contact channel dialog was built outside the tab's ProviderScope
+  and showed "No ProviderScope found"; About's diagnostics, connector and
+  portability buttons had no route and fell back to Home; the Integrated
+  skills header did not re-list after a skill was saved; a tool's own project
+  file (`.opsproj`) opened as "Binary / unsupported" because only the
+  extension table decided — unknown extensions are now sniffed for text;
+  "Copy build info" gave no feedback.
+- App Builder: the Assets panel's add button never re-enabled after typing;
+  the dashboard preview showed the runtime's raw exception when no dashboard
+  was authored (now an empty state); slash-command results and other shell
+  notes were appended to the tab-level chat and vanished once a project was
+  open — they go to the host's active chat; the slash and lint bridge slots
+  were released unconditionally by a replaced shell, stranding the live tab.
+- Form Builder: the Compose page was rebuilt on every route switch, losing
+  the template and typed fields on a trip to Approvals — it stays mounted;
+  Correct & reissue prefills table rows from the frozen formdoc snapshot,
+  which exists for every issue, instead of the optional uiDsl artifact.
+- Scene Builder: the editor reset to blank-create after Save whenever the
+  parent rebuilt with an unchanged null selection.
+- Boot: a seed registered under a namespace that already pointed at another
+  tree (an older layout, a release copy) left both entries, and namespace
+  lookups landed on the stale one. The stale paths are dropped at seed
+  registration.
+- Built-ins that bind a project while their tab is inactive (restore at boot)
+  re-keyed the *active* tab's project and chat; the sync now runs only from
+  the active tab and again on activation.
+- Chrome notifier writes from `didChangeDependencies` (agent roster, manager
+  override, lifecycle) ran mid-build and tripped setState-during-build; they
+  are deferred to post-frame in the Ops and Form shells.
+- Two built-ins saving the shared settings file in the same tick raced on
+  one temp file (rename failed) and on the file itself (the later save
+  dropped the earlier tab's key); unique temp names and the serialized
+  writer above.
+- `studio.ui.key` encoded the `flutter/keyevent` message with the standard
+  codec; the channel is JSON.
+- Ops and Form Builder pages sat on the shell's coloured ground with no
+  Material below it; their ListTiles tripped Flutter's "ink splashes may be
+  invisible" check. A transparent Material now wraps each route body.
+- Framework errors logged by the host name the studio frames from the stack
+  so the owning widget can be found from the log.
+- The boot log said "path missing or unreadable" for built-in app tabs,
+  which have no manifest to activate and restore fine.
+- Removing a channel in Ops hid a failure to delete its stored
+  credentials; the page now says so, and only "not connected" is treated as
+  a normal disconnect outcome.
+
 ## [0.1.8] - 2026-08-01
 
 The failure this format is worst at is a reference whose *shape* is valid and

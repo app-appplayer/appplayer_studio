@@ -19,7 +19,7 @@ class _EditorPalette {
   final Color lineNumber;
 }
 
-/// Languages the spec § 10.14 enum advertises. The runtime currently
+/// Languages the enum advertises. The runtime currently
 /// renders all of them as plain monospace text — actual syntax
 /// highlighting is on a separate implementation track. Listing the
 /// canonical names here keeps the runtime in lockstep with the spec
@@ -77,7 +77,7 @@ class CodeEditorWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Extract properties — spec §2.6.0 binding shorthand: when `code` is
+    // Extract properties — binding shorthand: when `code` is
     // omitted, read from the `binding` state path.
     final binding = stringOf(properties['binding'], context);
     final rawCode = properties['code'] != null
@@ -96,7 +96,7 @@ class CodeEditorWidgetFactory extends WidgetFactory {
     final readOnly = boolOf(properties['readOnly'], context) ?? false;
     final showLineNumbers = boolOf(properties['showLineNumbers'], context) ?? true;
     final fontSize = (dimensionOf(properties['fontSize'], context))?.toDouble() ?? 14.0;
-    // Spec §10.14: `theme` selects light / dark palette. Defaults to
+    // `theme` selects light / dark palette. Defaults to
     // `vsDark` — the same palette the legacy `dark` spelling resolves to, and
     // the canonical name. A default has to be a value the spec advertises;
     // `dark` is accepted but no longer offered.
@@ -109,7 +109,7 @@ class CodeEditorWidgetFactory extends WidgetFactory {
     final height = (dimensionOf(properties['height'], context))?.toDouble() ?? 300.0;
 
     // Theme palette — author-supplied properties win, then the
-    // `theme` prop selects a named palette (spec § 10.14:
+    // `theme` prop selects a named palette (one of
     // `vsLight` / `vsDark` / `monokai` / `solarizedLight` /
     // `solarizedDark` / `github` / `dracula`). Legacy `light` / `dark`
     // strings are accepted as aliases of `vsLight` / `vsDark`.

@@ -1,4 +1,4 @@
-/// Minimal 1-D barcode encoders — spec §10.24.
+/// Minimal 1-D barcode encoders.
 ///
 /// Pure Dart for the same reason as the QR encoder: a rendering dependency in
 /// this runtime is one every embedding host carries on every platform. Each

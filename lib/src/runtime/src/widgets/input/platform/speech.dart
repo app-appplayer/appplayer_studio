@@ -1,4 +1,4 @@
-/// Platform-split speech recognition (spec §2.6.29).
+/// Platform-split speech recognition.
 ///
 /// The web exposes SpeechRecognition directly, so that branch works with no
 /// dependency. Native platforms need a plugin, which would land on every host

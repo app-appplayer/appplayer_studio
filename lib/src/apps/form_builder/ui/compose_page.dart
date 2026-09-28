@@ -20,12 +20,25 @@ const JsonEncoder _pretty = JsonEncoder.withIndent('  ');
 /// remove rows, type into cells) — and every keystroke re-renders the
 /// sheet. No JSON typing; the engine document is materialised
 /// (`form.create_document` + per-table `form.patch`) at action time.
+
+/// What Compose's status line says about a failure: the capability's own
+/// sentence, without its machine code prefix and without the tool names it
+/// cites for agents ("… must complete (form_builder.approve) before …").
+@visibleForTesting
+String formFailureText(Object e) {
+  if (e is! FormToolException) return '$e';
+  return e.message
+      .replaceAll(RegExp(r' ?\(form_builder\.[a-z_]+\)'), '')
+      .trim();
+}
+
 class ComposePage extends StatefulWidget {
   const ComposePage({
     super.key,
     required this.server,
     required this.init,
     this.correction,
+    this.active = true,
   });
 
   final BuiltinToolRegistry server;
@@ -36,6 +49,10 @@ class ComposePage extends StatefulWidget {
   /// from the frozen uiDsl artifact) and the eventual issue carries
   /// `supersedes: correction['issueId']`.
   final Map<String, dynamic>? correction;
+
+  /// Whether Compose is the page on screen. The page is kept alive while
+  /// another page is shown (so a draft survives a trip to Approvals).
+  final bool active;
 
   @override
   State<ComposePage> createState() => _ComposePageState();
@@ -124,9 +141,21 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
     });
   }
 
+  @override
+  void didUpdateWidget(ComposePage old) {
+    super.didUpdateWidget(old);
+    // Coming back to Compose, the last action's result may no longer hold —
+    // an approval refused before a trip to Approvals is granted by now.
+    if (!old.active && widget.active && _statusLine.isNotEmpty) {
+      setState(() => _statusLine = '');
+    }
+  }
+
   void _note(String message) {
     if (mounted) setState(() => _statusLine = message);
   }
+
+  String _describe(Object e) => formFailureText(e);
 
   // --- template loading ------------------------------------------------------
 
@@ -183,7 +212,7 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
         }
       });
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -246,7 +275,7 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
       );
       if (picked != null) await _loadTemplate(picked);
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -255,27 +284,53 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
         (correction['content'] as Map?)?.cast<String, dynamic>() ?? const {};
     final templateId = content['templateId'] as String?;
     if (templateId == null) return;
-    // Table rows come back from the frozen uiDsl artifact (the only freeze
-    // that carries per-document form.patch results).
+    // Table rows come from the as-issued record. The typed `formdoc`
+    // snapshot is frozen on every issue and carries the patched rows; the
+    // `uiDsl` artifact carries them too but only exists when it was one of
+    // the chosen output formats, so it is the fallback, not the source.
     Map<String, List<Map<String, String>>>? tableRows;
+    Map<String, List<Map<String, String>>> rowsOf(
+      Iterable<FormSection> sections,
+    ) => {
+      for (final sec in sections)
+        for (final b in sec.blocks)
+          if (b is FormTableBlock)
+            b.blockId: [
+              for (final r in b.rows)
+                {for (final e in r.cells.entries) e.key: '${e.value}'},
+            ],
+    };
+    final artifacts =
+        ((correction['artifacts'] as List?) ?? const []).cast<Map>();
+    String? locatorOf(String format) {
+      for (final a in artifacts) {
+        if (a['format'] == format) return a['locator'] as String?;
+      }
+      return null;
+    }
+
     try {
-      for (final a
-          in ((correction['artifacts'] as List?) ?? const []).cast<Map>()) {
-        if (a['format'] != 'uiDsl') continue;
-        final path = p.join(widget.init.projectRoot, a['locator'] as String);
-        final tree = jsonDecode(File(path).readAsStringSync());
-        if (tree is! Map) break;
-        final doc = formDocumentFromUiDsl(tree.cast<String, dynamic>());
-        tableRows = {
-          for (final sec in doc.sections)
-            for (final b in sec.blocks)
-              if (b is FormTableBlock)
-                b.blockId: [
-                  for (final r in b.rows)
-                    {for (final e in r.cells.entries) e.key: '${e.value}'},
-                ],
-        };
-        break;
+      final formdoc = locatorOf('formdoc');
+      final uiDsl = locatorOf('uiDsl');
+      if (formdoc != null) {
+        final snapshot = jsonDecode(
+          File(p.join(widget.init.projectRoot, formdoc)).readAsStringSync(),
+        );
+        if (snapshot is Map) {
+          tableRows = rowsOf([
+            for (final sec in (snapshot['sections'] as List? ?? const []))
+              FormSection.fromJson((sec as Map).cast<String, dynamic>()),
+          ]);
+        }
+      } else if (uiDsl != null) {
+        final tree = jsonDecode(
+          File(p.join(widget.init.projectRoot, uiDsl)).readAsStringSync(),
+        );
+        if (tree is Map) {
+          tableRows = rowsOf(
+            formDocumentFromUiDsl(tree.cast<String, dynamic>()).sections,
+          );
+        }
       }
     } catch (_) {
       tableRows = null;
@@ -386,7 +441,7 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
         ok ? 'Valid — no issues.' : 'Validation: ${_pretty.convert(issues)}',
       );
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -425,7 +480,7 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
       _note('Draft saved ($documentId)');
       _refreshDrafts();
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -441,35 +496,42 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
       builder:
           (ctx) => AlertDialog(
             title: const Text('Request approval'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Title (optional)',
-                    border: OutlineInputBorder(),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Title (optional)',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: byCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Requested by',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: byCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Requested by',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: lineCtrl,
-                  decoration: const InputDecoration(
-                    labelText:
-                        'Approval line — approver ids in order, '
-                        'comma-separated (e.g. dept-lead, owner)',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: lineCtrl,
+                    // The explanation rides the helper line, which wraps; as
+                    // the label it was cut off in the dialog's width.
+                    decoration: const InputDecoration(
+                      labelText: 'Approval line',
+                      helperText:
+                          'Approver ids in order, comma-separated '
+                          '(e.g. dept-lead, owner)',
+                      helperMaxLines: 2,
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -509,7 +571,7 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
       );
       _refreshDrafts();
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -523,14 +585,22 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
       }
       final out = await callFormTool(widget.server, 'form_builder.issue', {
         'documentId': documentId,
+        // The person at the studio — the same `owner` the approval request
+        // defaults to. Left out, the registry's ISSUED BY stayed blank for
+        // every document issued from this page.
+        'issuedBy': 'owner',
         'formats': _issueFormats.toList(),
         if (_supersedes != null) 'supersedes': _supersedes,
       });
-      _note('Issued ${out['issueNumber']} → ${out['artifacts']}');
+      final formats = <String>[
+        for (final a in out['artifacts'] as List? ?? const <dynamic>[])
+          if (a is Map && a['format'] != null) '${a['format']}',
+      ];
+      _note('Issued ${out['issueNumber']} — ${formats.join(', ')}');
       if (mounted) setState(() => _supersedes = null);
       _refreshDrafts();
     } catch (e) {
-      _note('$e');
+      _note(_describe(e));
     }
   }
 
@@ -567,7 +637,15 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final doc = _assembleDoc();
+    // A stored template whose sections do not parse (saved before the
+    // capability checked template shape) must not take the page down.
+    FormDocument? doc;
+    String? docError;
+    try {
+      doc = _assembleDoc();
+    } catch (e) {
+      docError = _describe(e);
+    }
     final pageSize =
         ((_tpl?['layoutPolicy'] as Map?)?['pageSize'] as Map?)
             ?.cast<String, dynamic>();
@@ -597,8 +675,12 @@ class _ComposePageState extends State<ComposePage> with ScopedDialogs {
                       }
                     },
                   )
-                  : const Center(
-                    child: Text('Pick a template — fill it on the form.'),
+                  : Center(
+                    child: Text(
+                      docError != null
+                          ? 'This template cannot be shown: $docError'
+                          : 'Pick a template — fill it on the form.',
+                    ),
                   ),
         ),
         const VerticalDivider(width: 1),

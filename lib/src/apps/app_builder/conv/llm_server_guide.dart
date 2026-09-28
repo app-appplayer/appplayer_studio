@@ -14,7 +14,8 @@ library;
 
 import 'template_ecosystem_versions.dart';
 
-final String mcpServerDartPattern = r'''
+final String mcpServerDartPattern =
+    r'''
 # MCP server Dart pattern (AppPlayer Builder)
 
 You are generating a runnable Dart MCP server inside the user's
@@ -71,7 +72,7 @@ its makemind catalog entry before guessing.
 
 ## Tool action wiring (`{type: "tool", ...}` in canonical)
 
-mcp_ui DSL 1.3 spec defines two cooperating mechanisms (§3.10 +
+mcp_ui DSL 1.4 spec defines two cooperating mechanisms (§3.10 +
 §4.4.1 / §4.4.2):
 
 ### Default — auto-merge (§3.10)
@@ -292,12 +293,14 @@ that the LLM may add when the user asks for them.
 Generated `pubspec.yaml` MUST reference hosted pub versions, never
 local paths. Current pins:
 
-''' + '''
+''' +
+    '''
 ```yaml
 mcp_server: $kTemplateMcpServer
 mcp_bundle: $kTemplateMcpBundle
 ```
-''' + r'''
+''' +
+    r'''
 
 ## Native variants (MCP server + self-UI Flutter app)
 

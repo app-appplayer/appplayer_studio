@@ -4,8 +4,8 @@
 library directory_watch_channel;
 
 import 'dart:async';
+import '../../platform/host_platform.dart';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:watcher/watcher.dart';
 
 import '../channel_manager.dart';
@@ -16,7 +16,7 @@ class DirectoryWatchChannel implements Channel {
   final bool recursive;
 
   StreamController<DirectoryWatchEvent>? _controller;
-  DirectoryWatcher? _watcher;
+  Watcher? _watcher;
   StreamSubscription? _subscription;
   bool _isActive = false;
 
@@ -25,9 +25,16 @@ class DirectoryWatchChannel implements Channel {
     this.recursive = false,
   });
 
+  /// How the channel obtains its watcher.
+  ///
+  /// See [FileWatchChannel.watcherFactory] — the reasoning is the same, and a
+  /// directory adds one more shape a real filesystem will not produce on
+  /// demand: a rename, which arrives as a removal and an addition.
+  static Watcher Function(String path) watcherFactory = DirectoryWatcher.new;
+
   @override
   Future<void> start() async {
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       throw UnsupportedError('Directory watching not supported on web');
     }
 
@@ -39,7 +46,7 @@ class DirectoryWatchChannel implements Channel {
     }
 
     _controller = StreamController<DirectoryWatchEvent>.broadcast();
-    _watcher = DirectoryWatcher(path);
+    _watcher = watcherFactory(path);
 
     _subscription = _watcher!.events.listen(
       (event) {

@@ -244,7 +244,13 @@ void main() {
     test('throws when kind key is missing', () {
       expect(
         () => OverlaySpec.fromJson('ov_x', <String, dynamic>{}),
-        throwsA(isA<FormatException>()),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            'overlay kind required',
+          ),
+        ),
       );
     });
   });

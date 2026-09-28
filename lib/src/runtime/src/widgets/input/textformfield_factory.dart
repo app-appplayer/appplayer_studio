@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 import '../../validation/validation_engine.dart';
 import '../../validation/custom_validator.dart';
@@ -177,23 +178,11 @@ class TextFormFieldWidgetFactory extends WidgetFactory {
     }
   }
 
-  IconData _parseIcon(String iconName) {
-    // Simple icon mapping - can be expanded
-    switch (iconName) {
-      case 'email':
-        return Icons.email;
-      case 'phone':
-        return Icons.phone;
-      case 'person':
-        return Icons.person;
-      case 'lock':
-        return Icons.lock;
-      case 'search':
-        return Icons.search;
-      default:
-        return Icons.text_fields;
-    }
-  }
+  /// Through the shared resolver, like every other factory that takes an icon
+  /// name: the table this replaced knew five names and answered
+  /// `Icons.text_fields` for the rest, so a declared icon drew a plausible
+  /// WRONG glyph instead of the missing-icon cue.
+  IconData _parseIcon(String iconName) => resolveIconData(iconName);
 }
 
 /// Async validated text field widget

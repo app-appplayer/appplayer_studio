@@ -18,7 +18,7 @@ class ChipWidgetFactory extends WidgetFactory {
     // `IconRef` — a name, a `{codepoint}` object, or a binding to either.
     // Reading it `as String?` threw on the object form the registry declares.
     final deleteIcon = context.resolve<dynamic>(properties['deleteIcon']);
-    // Per DDD spec §5.9, canonical name is 'onDelete'
+    // Canonical name is 'onDelete'
     final onDelete = actionOf(properties['onDelete'], context);
     final onDeleteLegacy = actionOf(properties['onDeleted'], context);
     final deleteAlias = properties['delete'] as Map<String, dynamic>?;
@@ -48,7 +48,10 @@ class ChipWidgetFactory extends WidgetFactory {
       } else if (avatarIcon != null) {
         avatarWidget = CircleAvatar(
           radius: 14,
-          child: Icon(_parseIconData(avatarIcon), size: 18),
+          // Through the shared resolver, like every other icon in this file:
+          // the local switch below knew three names and answered `close` for
+          // everything else, so `avatar: {icon: "home"}` drew a ✕.
+          child: Icon(resolveIconRef(avatarIcon), size: 18),
         );
       } else if (avatarImage != null) {
         avatarWidget = CircleAvatar(
@@ -161,8 +164,7 @@ class ChipWidgetFactory extends WidgetFactory {
 
     return BorderSide(
       color: parseColor(context.resolve(side['color']), context) ??
-          context.themeManager.getColorValue('outlineVariant') ??
-          Colors.black,
+          context.themeManager.colorOr('outlineVariant', Colors.black),
       width: side['width']?.toDouble() ?? 1.0,
     );
   }
@@ -184,16 +186,4 @@ class ChipWidgetFactory extends WidgetFactory {
     }
   }
 
-  IconData _parseIconData(String iconName) {
-    switch (iconName) {
-      case 'close':
-        return Icons.close;
-      case 'cancel':
-        return Icons.cancel;
-      case 'clear':
-        return Icons.clear;
-      default:
-        return Icons.close;
-    }
-  }
 }

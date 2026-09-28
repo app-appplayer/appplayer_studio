@@ -1,6 +1,6 @@
-/// `AssetRef` parsing — MCP UI DSL 1.4 `configs/_primitive/AssetRef.yaml`.
+/// `AssetRef` parsing.
 ///
-/// One parser, used by every slot typed `AssetRef`. Spec §6.12 requires
+/// One parser, used by every slot typed `AssetRef`. The DSL requires
 /// that two widgets given the same reference resolve it identically, which
 /// only holds if they agree on what the reference *is* before they try to
 /// load it.
@@ -10,9 +10,9 @@ import 'package:flutter/foundation.dart';
 
 /// The shape an [AssetRef] takes, which selects the loader.
 ///
-/// The set is deliberately open (§6.12.1): [unknown] is a scheme this
+/// The set is deliberately open: [unknown] is a scheme this
 /// runtime does not implement, not a malformed reference. It travels the
-/// unresolvable path (§6.12.4) rather than being rejected.
+/// unresolvable path rather than being rejected.
 enum AssetForm {
   /// `data:<mime>;base64,<payload>` or `data:<mime>,<urlencoded>`.
   data,
@@ -33,6 +33,12 @@ enum AssetForm {
   origin,
 
   /// A scheme this runtime does not resolve.
+  /// A local file, `file:///…` — the form a host produces when it resolves
+  /// `bundle://` before the runtime sees the document (one of
+  /// "a `data:` URI or a local path"). Resolved where the build has a
+  /// filesystem; unresolvable on the web.
+  file,
+
   unknown,
 }
 
@@ -50,12 +56,12 @@ class AssetRef {
   /// Object form's `origin`, when one was declared.
   ///
   /// `null` means the **ambient origin** — the origin of the definition
-  /// that declared the asset, never the embedder's (§6.12.3).
+  /// that declared the asset, never the embedder's.
   final Map<String, dynamic>? origin;
 
   /// Parses a value already stripped of bindings.
   ///
-  /// Callers MUST resolve bindings before calling this (§6.12.2): a slot
+  /// Callers MUST resolve bindings before calling this: a slot
   /// that parses the literal `"{{item.picture}}"` finds no scheme and
   /// fails on a document that is correct.
   ///
@@ -85,6 +91,7 @@ class AssetRef {
     if (src.startsWith('bundle://')) return AssetForm.bundle;
     if (src.startsWith('client://')) return AssetForm.client;
     if (src.startsWith('assets/')) return AssetForm.flutterAsset;
+    if (src.startsWith('file:')) return AssetForm.file;
     return AssetForm.unknown;
   }
 
@@ -94,8 +101,8 @@ class AssetRef {
 
   /// Whether this reference names a Material icon rather than an asset.
   ///
-  /// `icon.icon` accepts a name, a codepoint object, or an `AssetRef`
-  /// (§2.5.4). A bare string carrying no known scheme and no `assets/`
+  /// `icon.icon` accepts a name, a codepoint object, or an `AssetRef`.
+  /// A bare string carrying no known scheme and no `assets/`
   /// prefix is a **name**, which keeps the named form the zero-ceremony
   /// default rather than an error.
   bool get looksLikeIconName => form == AssetForm.unknown && !uri.contains(':');

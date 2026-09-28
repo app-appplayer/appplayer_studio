@@ -288,10 +288,16 @@ class CachedApp {
   factory CachedApp.fromDefinition(Map<String, dynamic> definition) {
     final runtime = definition['mcpRuntime'];
     if (runtime == null || runtime is! Map) {
+      // A v1.0 application carries its identity at the top level, and that is
+      // where the engine's cache LOOKUP reads it from. Filing every such app
+      // under `unknown:unknown` meant the reader never found what the writer
+      // had stored — the app cache was write-only for the documented format,
+      // and an application that declared its identity was refetched on every
+      // launch with nothing to say it had been cached at all.
       return CachedApp(
-        id: 'unknown',
-        domain: 'unknown',
-        version: '1.0.0',
+        id: definition['id']?.toString() ?? 'unknown',
+        domain: definition['domain']?.toString() ?? 'unknown',
+        version: definition['version']?.toString() ?? '1.0.0',
         definition: definition,
         cachedAt: DateTime.now(),
       );

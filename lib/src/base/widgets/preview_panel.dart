@@ -116,7 +116,13 @@ class PreviewPanel extends StatefulWidget {
     this.externalRefreshEpoch = 0,
     this.captureKey,
     this.variant,
+    this.onToolCall,
   });
+
+  /// Runs the document's `tool` actions for the default [PreviewMcpUi] body
+  /// and answers the tool response. Null → tool actions fail in the preview.
+  final Future<dynamic> Function(String tool, Map<String, dynamic> params)?
+  onToolCall;
 
   /// Optional renderer override + chrome tuning (see [PreviewVariant]).
   /// Null = default [PreviewMcpUi] in a framed mobile surface.
@@ -318,6 +324,14 @@ class _PreviewPanelState extends State<PreviewPanel> {
       case _PreviewBright.dark:
         return 'dark';
     }
+  }
+
+  /// Whether `ui.dashboard.content` carries a typed widget definition.
+  bool _hasDashboard() {
+    final ui = widget.canonical.currentJson['ui'];
+    final dashboard = ui is Map ? ui['dashboard'] : null;
+    final content = dashboard is Map ? dashboard['content'] : null;
+    return content is Map && content.containsKey('type');
   }
 
   DeviceFrame _currentFrame() {
@@ -562,6 +576,12 @@ class _PreviewPanelState extends State<PreviewPanel> {
             ),
           );
         }
+        // Dashboard mode with no dashboard authored: the runtime would
+        // throw on an empty definition and the panel would show the raw
+        // exception text. An empty state says what to do instead.
+        if (widget.dashboardMode && !_hasDashboard()) {
+          return const _EmptyDashboard();
+        }
         return PreviewMcpUi(
           canonical: widget.canonical,
           focusPageId: widget.focusPageId,
@@ -573,6 +593,7 @@ class _PreviewPanelState extends State<PreviewPanel> {
           inspectRoot: widget.inspectRoot,
           selectedWidgetPath: widget.selectedWidgetPath,
           onSelectWidget: widget.onSelectWidget,
+          onToolCall: widget.onToolCall,
         );
       case PreviewTrack.selfUi:
         if (!hasSelfUi) return const _Empty();
@@ -1027,6 +1048,24 @@ class _Frame extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: child,
+      ),
+    );
+  }
+}
+
+class _EmptyDashboard extends StatelessWidget {
+  const _EmptyDashboard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        'No dashboard yet — add one under Dashboard › content in the '
+        'properties panel.',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: VibeTokens.colorOf(context).textTertiary,
+        ),
       ),
     );
   }

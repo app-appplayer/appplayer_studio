@@ -38,7 +38,7 @@ class NumberFieldFactory extends WidgetFactory {
       errorText = null;
     }
 
-    // Spec §2.6.0: binding shorthand — read from state path if set.
+    // Binding shorthand — read from state path if set.
     final binding = stringOf(properties['binding'], context);
     final currentValue = binding != null
         ? context.getState(binding)
@@ -76,14 +76,66 @@ class NumberFieldFactory extends WidgetFactory {
     // Build input formatters
     final inputFormatters = <TextInputFormatter>[];
 
-    // Add numeric formatter
-    if (effectiveDecimals > 0) {
-      inputFormatters.add(
-        FilteringTextInputFormatter.allow(RegExp(r'^\-?\d*\.?\d*$')),
-      );
-    } else {
-      inputFormatters.add(
-        FilteringTextInputFormatter.allow(RegExp(r'^\-?\d*$')),
+    // `FilteringTextInputFormatter.allow` takes a pattern matching ALLOWED
+    // CHARACTERS. These were anchored whole-string patterns (`^\-?\d*$`), and
+    // a string that does not match in full produces NO matches at all — so
+    // the filter kept nothing. One stray keystroke, a letter or the thousand
+    // separator the field itself displays, EMPTIED the whole field instead of
+    // being dropped: a quantity the user had typed vanished as they kept
+    // typing, and the binding went null with it.
+    final separator =
+        thousandSeparator.isEmpty ? '' : RegExp.escape(thousandSeparator);
+    inputFormatters.add(
+      FilteringTextInputFormatter.allow(
+        RegExp(effectiveDecimals > 0
+            ? '[0-9.\\-$separator]'
+            : '[0-9\\-$separator]'),
+      ),
+    );
+
+    /// The number behind what is displayed.
+    ///
+    /// The field's text is presentation: it may carry a thousand separator and
+    /// a `format` wrapper ("$1,234 kg"). `num.tryParse` answers null for all
+    /// of those, and the stepper below used to treat that as zero — so
+    /// stepping a formatted 1,000 landed on 1. Everything that is not part of
+    /// a number is dropped before parsing.
+    num? parseDisplayed(String text) {
+      final stripped = text.replaceAll(RegExp(r'[^0-9.\-]'), '');
+      if (stripped.isEmpty) return null;
+      return effectiveDecimals > 0
+          ? double.tryParse(stripped)
+          : int.tryParse(stripped) ?? double.tryParse(stripped)?.toInt();
+    }
+
+    /// Runs the document's `onChange` with the new value visible as
+    /// `{{event.value}}`.
+    ///
+    /// The substitution used to be hand-rolled and only reached keys inside
+    /// `params`, so the ordinary spelling — a `state` action whose `value` is
+    /// `{{event.value}}` — received the literal string and wrote nothing
+    /// usable. Every other input widget publishes the event through a child
+    /// context; this one now does too, and the params substitution is kept for
+    /// documents already written against it.
+    void fireChange(num? value) {
+      final changeAction = properties['onChange'] ?? properties['change'];
+      if (changeAction is! Map<String, dynamic>) return;
+      final eventData = Map<String, dynamic>.from(changeAction);
+      if (eventData['params'] is Map<String, dynamic>) {
+        final params = Map<String, dynamic>.from(
+            eventData['params'] as Map<String, dynamic>);
+        params.forEach((key, raw) {
+          if (raw == '{{event.value}}') params[key] = value;
+        });
+        eventData['params'] = params;
+      }
+      context.actionHandler.execute(
+        eventData,
+        context.createChildContext(
+          variables: {
+            'event': {'value': value, 'type': 'change'},
+          },
+        ),
       );
     }
 
@@ -120,30 +172,12 @@ class NumberFieldFactory extends WidgetFactory {
           }
         }
 
-        // Spec §2.6.0: write back to binding path.
+        // Write back to binding path.
         if (binding != null) {
           context.setValue(binding, numValue);
         }
 
-        // Execute change action if defined
-        final changeAction = properties['onChange'] ?? properties['change'];
-        if (changeAction != null) {
-          // Create modified action with event value
-          final eventData = Map<String, dynamic>.from(changeAction);
-          
-          // Replace {{event.value}} placeholder in params
-          if (eventData['params'] != null && eventData['params'] is Map<String, dynamic>) {
-            final params = Map<String, dynamic>.from(eventData['params']);
-            params.forEach((key, value) {
-              if (value == '{{event.value}}') {
-                params[key] = numValue;
-              }
-            });
-            eventData['params'] = params;
-          }
-          
-          context.actionHandler.execute(eventData, context);
-        }
+        fireChange(numValue);
       },
     );
 
@@ -158,7 +192,7 @@ class NumberFieldFactory extends WidgetFactory {
             icon: const Icon(Icons.remove),
             onPressed: enabled
                 ? () {
-                    final current = num.tryParse(controller.text) ?? 0;
+                    final current = parseDisplayed(controller.text) ?? 0;
                     final newValue = current - step;
 
                     // Check bounds
@@ -171,24 +205,7 @@ class NumberFieldFactory extends WidgetFactory {
                         context.setValue(binding, newValue);
                       }
 
-                      // Execute change action if defined
-                      final changeAction = properties['onChange'] ?? properties['change'];
-                      if (changeAction != null) {
-                        final eventData = Map<String, dynamic>.from(changeAction);
-
-                        // Replace {{event.value}} placeholder in params
-                        if (eventData['params'] != null && eventData['params'] is Map<String, dynamic>) {
-                          final params = Map<String, dynamic>.from(eventData['params']);
-                          params.forEach((key, value) {
-                            if (value == '{{event.value}}') {
-                              params[key] = newValue;
-                            }
-                          });
-                          eventData['params'] = params;
-                        }
-
-                        context.actionHandler.execute(eventData, context);
-                      }
+                      fireChange(newValue);
                     }
                   }
                 : null,
@@ -198,7 +215,7 @@ class NumberFieldFactory extends WidgetFactory {
             icon: const Icon(Icons.add),
             onPressed: enabled
                 ? () {
-                    final current = num.tryParse(controller.text) ?? 0;
+                    final current = parseDisplayed(controller.text) ?? 0;
                     final newValue = current + step;
 
                     // Check bounds
@@ -211,24 +228,7 @@ class NumberFieldFactory extends WidgetFactory {
                         context.setValue(binding, newValue);
                       }
 
-                      // Execute change action if defined
-                      final changeAction = properties['onChange'] ?? properties['change'];
-                      if (changeAction != null) {
-                        final eventData = Map<String, dynamic>.from(changeAction);
-                        
-                        // Replace {{event.value}} placeholder in params
-                        if (eventData['params'] != null && eventData['params'] is Map<String, dynamic>) {
-                          final params = Map<String, dynamic>.from(eventData['params']);
-                          params.forEach((key, value) {
-                            if (value == '{{event.value}}') {
-                              params[key] = newValue;
-                            }
-                          });
-                          eventData['params'] = params;
-                        }
-                        
-                        context.actionHandler.execute(eventData, context);
-                      }
+                      fireChange(newValue);
                     }
                   }
                 : null,

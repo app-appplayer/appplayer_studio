@@ -28,7 +28,7 @@ class RadioWidgetFactory extends WidgetFactory {
     // `radio` widget therefore carries its own single-item group so the DSL
     // keeps working unchanged.
     void handleChange(dynamic newValue) {
-      // Spec §2.6.0: canonical `binding`; accept legacy `bindTo`.
+      // Canonical `binding`; accept legacy `bindTo`.
       final path = (stringOf(properties['binding'], context)) ??
           (stringOf(properties['bindTo'], context));
       if (path != null) {
@@ -44,7 +44,11 @@ class RadioWidgetFactory extends WidgetFactory {
 
     Widget radio = RadioGroup<dynamic>(
       groupValue: groupValue,
-      onChanged: onChange != null ? handleChange : (_) {},
+      // Always `handleChange`: it writes the binding first and only then
+      // dispatches `onChange`. Gating the whole callback on `onChange` made a
+      // radio declared with nothing but a `binding` — the shortest correct
+      // form — inert.
+      onChanged: handleChange,
       child: Radio<dynamic>(
         value: value,
         activeColor: activeColor,
@@ -63,25 +67,11 @@ class RadioWidgetFactory extends WidgetFactory {
         children: [
           radio,
           GestureDetector(
-            onTap: onChange != null
-                ? () {
-                    // Simulate radio tap when label is clicked
-                    if (value != groupValue) {
-                      // Update state if bindTo is specified
-                      final path = stringOf(properties['bindTo'], context);
-                      if (path != null) {
-                        context.setValue(path, value);
-                      }
-
-                      // Execute action
-                      final eventData = Map<String, dynamic>.from(onChange);
-                      if (eventData['value'] == '{{event.value}}') {
-                        eventData['value'] = value;
-                      }
-                      context.actionHandler.execute(eventData, context);
-                    }
-                  }
-                : null,
+            // The label is part of the control — tapping it is tapping the
+            // radio, through the same path, so `binding` works there too.
+            onTap: () {
+              if (value != groupValue) handleChange(value);
+            },
             child: Text(label),
           ),
         ],

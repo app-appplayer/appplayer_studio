@@ -13,18 +13,18 @@ class TreeWidgetFactory extends WidgetFactory {
 
     // Extract tree properties. Use nullable resolve so absent `data`
     // returns empty rather than throwing a non-nullable cast.
-    final data =
-        (context.resolve<List<dynamic>?>(properties['data'])) ?? [];
-    // Spec §10.11 canonical `initiallyExpanded`; `expandAll` kept as legacy.
+    final data = (listOf(properties['data'], context)) ?? [];
+    // Canonical `initiallyExpanded`; `expandAll` kept as legacy.
     final expandAll = context.resolve<bool>(
         properties['initiallyExpanded'] ?? properties['expandAll'] ?? false);
     // Both were read and discarded. `childrenKey` meant a tree over data
     // keyed anything other than `children` showed only its roots, and
     // `onNodeTap` meant a declared tap handler never fired — `onSelect` only
     // fires when `selectable` is on, so a plain tree had no working tap at all.
-    final childrenKey = stringOf(properties['childrenKey'], context) ?? 'children';
+    final childrenKey =
+        stringOf(properties['childrenKey'], context) ?? 'children';
     final onNodeTap = actionOf(properties['onNodeTap'], context);
-    // §10.11 `draggable` — declared, and the factory did not read it: a tree
+    // `draggable` — declared, and the factory did not read it: a tree
     // marked draggable could not be dragged, and the `onDrop` its own
     // description names was not in the registry at all.
     final draggable = boolOf(properties['draggable'], context) ?? false;
@@ -33,33 +33,34 @@ class TreeWidgetFactory extends WidgetFactory {
     final selectable = context.resolve<bool>(properties['selectable'] ?? false);
     final width = parseDimension(context.resolve((properties['width'])));
     final height = parseDimension(context.resolve((properties['height'])));
-    final indentation = (dimensionOf(properties['indentation'], context))?.toDouble() ?? 24.0;
-    // Spec §10.11 `itemPadding`: EdgeInsets applied inside every row so the
+    final indentation =
+        (dimensionOf(properties['indentation'], context))?.toDouble() ?? 24.0;
+    // `itemPadding`: EdgeInsets applied inside every row so the
     // vertical component drives row height. Falls back to the design-doc
     // default of 4px vertical + 8px right.
     final itemPadding = edgeInsetsOf(properties['itemPadding'], context) ??
         const EdgeInsets.only(top: 4, bottom: 4, right: 8);
-    final expandable =
-        context.resolve<bool>(properties['expandable'] ?? true);
-    final itemTemplate =
-        properties['itemTemplate'] as Map<String, dynamic>?;
+    final expandable = context.resolve<bool>(properties['expandable'] ?? true);
+    final itemTemplate = properties['itemTemplate'] as Map<String, dynamic>?;
 
     // Extract colors — theme-adaptive fallbacks. Line color follows
     // divider; selected highlight is a soft primary tint that reads
     // in both light and dark modes.
     final lineColor =
         parseColor(context.resolve(properties['lineColor']), context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey;
-    final selectedColor = parseColor(
-            context.resolve(properties['selectedColor']), context) ??
-        (context.themeManager.getColorValue('primary')?.withValues(alpha: 0.2)) ??
-        Colors.blue.shade100;
+            context.themeManager.colorOr('outlineVariant', Colors.grey);
+    final selectedColor =
+        parseColor(context.resolve(properties['selectedColor']), context) ??
+            (context.themeManager
+                .getColorValue('primary')
+                ?.withValues(alpha: 0.2)) ??
+            Colors.blue.shade100;
     final onSurfaceColor =
-        context.themeManager.getColorValue('onSurface') ?? Colors.black87;
+        context.themeManager.colorOr('onSurface', Colors.black87);
 
     // Extract action handlers
-    final onSelect = actionOf(properties['onSelect'] ?? properties['select'], context);
+    final onSelect =
+        actionOf(properties['onSelect'] ?? properties['select'], context);
     final onExpand = actionOf(properties['onExpand'], context);
     final onCollapse = actionOf(properties['onCollapse'], context);
 
@@ -203,7 +204,6 @@ class _TreeViewState extends State<_TreeView> {
     );
   }
 
-
   /// Runs the node's tap handlers. `onNodeTap` fires for every node —
   /// selection is a separate idea, and gating the tap on `selectable` left a
   /// declared handler that could never run.
@@ -234,12 +234,19 @@ class _TreeViewState extends State<_TreeView> {
   /// move that cannot say where it landed is a move the document cannot apply.
   Widget _draggableRow(Map<String, dynamic> node, Widget row) {
     if (!widget.draggable) return row;
+    // The row's own element, so the drop edge is measured against the row
+    // and not against the whole tree — which is what `context` here is, and
+    // against which nearly every drop read as `after`.
+    BuildContext? rowContext;
     final target = DragTarget<Map<String, dynamic>>(
-      onWillAcceptWithDetails: (details) => details.data != node,
+      // A node cannot be dropped on itself, nor into its own subtree: the
+      // move the document would be asked to apply has no consistent result.
+      onWillAcceptWithDetails: (details) =>
+          details.data != node && !_contains(details.data, node),
       onAcceptWithDetails: (details) {
         final onDrop = widget.onDrop;
         if (onDrop == null) return;
-        final box = context.findRenderObject() as RenderBox?;
+        final box = rowContext?.findRenderObject() as RenderBox?;
         var position = 'inside';
         if (box != null && box.hasSize) {
           final local = box.globalToLocal(details.offset);
@@ -258,10 +265,18 @@ class _TreeViewState extends State<_TreeView> {
           },
         }).handleAction(onDrop);
       },
-      builder: (_, __, ___) => row,
+      builder: (ctx, _, __) {
+        rowContext = ctx;
+        return row;
+      },
     );
     return LongPressDraggable<Map<String, dynamic>>(
       data: node,
+      // The feedback's origin rides on the pointer, so the offset a drop
+      // reports *is* the pointer — which is what the edge test needs. With
+      // the default anchor the offset is the feedback's corner, half a row
+      // above the finger, and a drop on a row's centre read as `before`.
+      dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: Material(
         color: Colors.transparent,
         child: Opacity(opacity: 0.8, child: row),
@@ -269,6 +284,19 @@ class _TreeViewState extends State<_TreeView> {
       childWhenDragging: Opacity(opacity: 0.4, child: row),
       child: target,
     );
+  }
+
+  /// True when [node] is [ancestor] itself or lies anywhere under it.
+  bool _contains(Map<String, dynamic> ancestor, Map<String, dynamic> node) {
+    if (identical(ancestor, node)) return true;
+    final id = node['id'];
+    if (id != null && ancestor['id'] == id) return true;
+    final children = ancestor[widget.childrenKey];
+    if (children is! List) return false;
+    for (final child in children) {
+      if (child is Map<String, dynamic> && _contains(child, node)) return true;
+    }
+    return false;
   }
 
   Widget _buildNode(dynamic nodeData) {
@@ -357,6 +385,11 @@ class _TreeViewState extends State<_TreeView> {
         // The expandable row's tap: selection when the tree is selectable,
         // and `onNodeTap` either way.
         onSelect: () => _tapNode(id, node),
+        // The row alone is the drag source and drop target — not the
+        // subtree under it. Only leaves were wrapped, so a group could not
+        // be dragged and nothing could be dropped *into* one: the one case
+        // the tree documents, reparenting, was unreachable.
+        rowWrapper: (row) => _draggableRow(node, row),
         onExpansionChanged: (expanded) {
           final action = expanded ? widget.onExpand : widget.onCollapse;
           if (action != null) {
@@ -397,29 +430,35 @@ class _TreeViewState extends State<_TreeView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          InkWell(
-            onTap: () => _tapNode(id, node),
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: widget.indentation * widget.depth + 16,
-                top: 8,
-                bottom: 8,
-                right: 16,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child:
-                          Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
-                    ),
-                  Flexible(child: labelWidget),
-                ],
-              ),
-            ),
-          ),
+          _draggableRow(
+              node,
+              InkWell(
+                onTap: () => _tapNode(id, node),
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: widget.indentation * widget.depth + 16,
+                    top: 8,
+                    bottom: 8,
+                    right: 16,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (icon != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Icon(icon,
+                              size: 20,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6)),
+                        ),
+                      Flexible(child: labelWidget),
+                    ],
+                  ),
+                ),
+              )),
           _TreeView(
             nodes: children,
             expandAll: widget.expandAll,
@@ -451,36 +490,42 @@ class _TreeViewState extends State<_TreeView> {
       return _draggableRow(
           node,
           InkWell(
-        onTap: () => _tapNode(id, node),
-        child: Container(
-          decoration: isSelected
-              ? BoxDecoration(
-                  color: widget.selectedColor,
-                  borderRadius: BorderRadius.circular(4),
-                )
-              : null,
-          padding: EdgeInsets.only(
-            left: widget.indentation * widget.depth + widget.itemPadding.left,
-            right: widget.itemPadding.right,
-            top: widget.itemPadding.top,
-            bottom: widget.itemPadding.bottom,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Empty slot so leaf labels align with expandable siblings
-              // at the same depth.
-              const SizedBox(width: 20),
-              if (icon != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
-                ),
-              Flexible(child: labelWidget),
-            ],
-          ),
-        ),
-      ));
+            onTap: () => _tapNode(id, node),
+            child: Container(
+              decoration: isSelected
+                  ? BoxDecoration(
+                      color: widget.selectedColor,
+                      borderRadius: BorderRadius.circular(4),
+                    )
+                  : null,
+              padding: EdgeInsets.only(
+                left:
+                    widget.indentation * widget.depth + widget.itemPadding.left,
+                right: widget.itemPadding.right,
+                top: widget.itemPadding.top,
+                bottom: widget.itemPadding.bottom,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Empty slot so leaf labels align with expandable siblings
+                  // at the same depth.
+                  const SizedBox(width: 20),
+                  if (icon != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(icon,
+                          size: 18,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.6)),
+                    ),
+                  Flexible(child: labelWidget),
+                ],
+              ),
+            ),
+          ));
     }
   }
 
@@ -504,7 +549,12 @@ class _ExpandableNode extends StatefulWidget {
     required this.onSelect,
     required this.onExpansionChanged,
     required this.childrenBuilder,
+    this.rowWrapper,
   });
+
+  /// Wraps the header row alone (drag source, drop target), never the
+  /// children below it.
+  final Widget Function(Widget row)? rowWrapper;
 
   final bool initiallyExpanded;
   final double indentationLeft;
@@ -558,14 +608,21 @@ class _ExpandableNodeState extends State<_ExpandableNode> {
               child: Icon(
                 _expanded ? Icons.arrow_drop_down : Icons.arrow_right,
                 size: 20,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.7),
               ),
             ),
             if (widget.leadingIcon != null)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: Icon(widget.leadingIcon,
-                    size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
+                    size: 18,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.6)),
               ),
             Flexible(child: widget.label),
           ],
@@ -577,10 +634,9 @@ class _ExpandableNodeState extends State<_ExpandableNode> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        row,
+        widget.rowWrapper?.call(row) ?? row,
         if (_expanded) widget.childrenBuilder(),
       ],
     );
   }
 }
-

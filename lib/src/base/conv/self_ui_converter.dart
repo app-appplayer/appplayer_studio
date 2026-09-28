@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
+
 import 'package:brain_kernel/brain_kernel.dart' show McpBundle;
 import 'package:path/path.dart' as p;
 
@@ -19,8 +21,10 @@ abstract interface class SelfUiConverter {
 
 enum SelfUiFramework { lvgl, qt, none }
 
-/// Default implementation. Emits a minimal LVGL or Qt skeleton plus a host
-/// simulator build script.
+/// Default implementation. Emits a starter scaffold only — an empty LVGL
+/// init function or an empty Qt window plus a stub simulator script. The
+/// canonical UI is not translated yet; the result lists what is missing
+/// ([ConvertResult.notGenerated]).
 class SelfUiConverterImpl implements SelfUiConverter {
   SelfUiConverterImpl({PatternEnforcer? enforcer})
     : _enforcer = enforcer ?? const PatternEnforcerImpl();
@@ -48,7 +52,7 @@ class SelfUiConverterImpl implements SelfUiConverter {
     final written = <String>[];
     final canonicalJson = jsonEncode(canonical.toJson());
     final canonicalHash =
-        'sha256:${canonicalJson.hashCode.toUnsigned(63).toRadixString(16)}';
+        'sha256:${sha256.convert(utf8.encode(canonicalJson))}';
 
     if (framework == SelfUiFramework.lvgl) {
       final main = File(p.join(outDir, 'src', 'ui_main.c'));
@@ -85,6 +89,11 @@ class SelfUiConverterImpl implements SelfUiConverter {
       outDir: outDir,
       canonicalHash: canonicalHash,
       writtenFiles: written,
+      notGenerated: const <String>[
+        'widget tree from the canonical UI (pages, templates, bindings)',
+        'theme and assets',
+        'simulator build commands',
+      ],
     );
   }
 

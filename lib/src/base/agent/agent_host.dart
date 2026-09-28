@@ -205,8 +205,8 @@ class AgentHost {
   ///      `KernelApp.toolsForAgent(explicitAllowlist:)` so the helper's
   ///      glob matcher (e.g. `bk.fact.*`) handles patterns.
   ///   2. `profile.toolNames` empty → role-default subset via
-  ///      `KernelApp.toolsForAgent(role:, bundleId:)` (cherry 2026-05-27
-  ///      per-agent scoping cascade). `manager` sees the master catalog
+  ///      `KernelApp.toolsForAgent(role:, bundleId:)` (kernel per-agent
+  ///      scoping). `manager` sees the master catalog
   ///      (Home / domain manager — coordinator role); `worker` sees only
   ///      its owning bundle's `<bundleId>.*` + `bk.<bundleId>.*` slice;
   ///      `reviewer` sees the read-friendly query surface.

@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 import '../../utils/binding_path.dart';
 import '../widget_factory.dart';
 
-/// Factory for `popover` (spec §2.11.6). Alias: `hoverCard`.
+/// Factory for `popover`. Alias: `hoverCard`.
 ///
 /// Distinct from `tooltip` (text only, nothing focusable) and `customDialog`
 /// (modal, centred). A popover keeps the page usable behind it and positions

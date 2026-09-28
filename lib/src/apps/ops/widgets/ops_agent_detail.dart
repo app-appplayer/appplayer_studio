@@ -333,7 +333,7 @@ class _LayerPip extends StatelessWidget {
                     curve: Curves.easeOutCubic,
                     tween: Tween(begin: 0, end: layer.percent.clamp(0.0, 1.0)),
                     builder:
-                        (_, v, __) => LinearProgressIndicator(
+                        (_, v, _) => LinearProgressIndicator(
                           value: v,
                           backgroundColor: OpsColors.surface2,
                           valueColor: AlwaysStoppedAnimation(layer.color),

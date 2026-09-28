@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
+
 import 'package:mcp_bundle/mcp_bundle.dart' show McpBundle;
 import 'package:path/path.dart' as p;
 
@@ -29,8 +31,10 @@ class EmbedException implements Exception {
   String toString() => 'EmbedException: $message';
 }
 
-/// Default implementation. Emits a placeholder native server skeleton + a
-/// build template for the requested board family.
+/// Default implementation. Emits a starter scaffold only — an empty C
+/// `main` plus a CMake template for the board family (and, with a bundle,
+/// the canonical JSON as data). Device logic is the author's; the result
+/// lists what is missing ([ConvertResult.notGenerated]).
 class EmbedConverterImpl implements EmbedConverter {
   EmbedConverterImpl({PatternEnforcer? enforcer})
     : _enforcer = enforcer ?? const PatternEnforcerImpl();
@@ -68,7 +72,7 @@ class EmbedConverterImpl implements EmbedConverter {
     final written = <String>[];
     final canonicalJson = jsonEncode(canonical.toJson());
     final canonicalHash =
-        'sha256:${canonicalJson.hashCode.toUnsigned(63).toRadixString(16)}';
+        'sha256:${sha256.convert(utf8.encode(canonicalJson))}';
 
     final serverFile = File(p.join(outDir, 'src', 'server.c'));
     await serverFile.parent.create(recursive: true);
@@ -105,6 +109,11 @@ class EmbedConverterImpl implements EmbedConverter {
       outDir: outDir,
       canonicalHash: canonicalHash,
       writtenFiles: written,
+      notGenerated: const <String>[
+        'MCP server and DSL emission in C',
+        'LVGL display binding',
+        'board HAL and transport',
+      ],
     );
   }
 

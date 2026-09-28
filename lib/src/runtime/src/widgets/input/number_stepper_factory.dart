@@ -17,8 +17,7 @@ class NumberStepperWidgetFactory extends WidgetFactory {
     final binding = stringOf(properties['binding'], context);
     final onChange = properties['onChange'] ?? properties['change'];
     final color = parseColor(context.resolve(properties['color']), context) ??
-        context.themeManager.getColorValue('primary') ??
-        Colors.blue;
+        context.themeManager.colorOr('primary', Colors.blue);
     final size = context.resolve<String>(properties['size'] ?? 'medium');
     final enabled = context.resolve<bool>(properties['enabled'] ?? true);
 

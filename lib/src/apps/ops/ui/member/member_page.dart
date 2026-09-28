@@ -295,9 +295,17 @@ Future<void> _showContactChannelDialog(
   WidgetRef ref,
   Member member,
 ) async {
+  // The dialog is a ConsumerStatefulWidget. `showDialog` mounts it on the
+  // root navigator, above the Ops tab's own ProviderScope, so it must carry
+  // the tab's container with it or `ref` finds no scope.
+  final container = ProviderScope.containerOf(context);
   await showDialog<void>(
     context: context,
-    builder: (_) => _ContactChannelDialog(member: member),
+    builder:
+        (_) => UncontrolledProviderScope(
+          container: container,
+          child: _ContactChannelDialog(member: member),
+        ),
   );
 }
 
@@ -591,7 +599,7 @@ class _GlobalMemberList extends ConsumerWidget {
               }
               return ListView.separated(
                 itemCount: rows.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder:
                     (_, i) => _globalMemberTile(context, ref, rows[i], wsList),
               );
@@ -810,6 +818,9 @@ Future<void> _showAgentForm(
                         'LLM',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
+                      // Room for the Provider field's floating label, which
+                      // otherwise rises into the heading above it.
+                      const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: providerId,
                         decoration: const InputDecoration(

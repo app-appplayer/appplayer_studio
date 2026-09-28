@@ -48,7 +48,7 @@ class ClipRRectWidgetFactory extends WidgetFactory {
         return BorderRadius.circular(value['all'].toDouble());
       }
 
-      // Spec § BorderRadius primitive: directional canonical
+      // BorderRadius primitive: directional canonical
       // (topStart / topEnd / bottomStart / bottomEnd). Visual aliases
       // (topLeft / topRight / bottomLeft / bottomRight) are accepted
       // at runtime for backward compat.

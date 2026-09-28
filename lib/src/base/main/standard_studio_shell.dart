@@ -196,6 +196,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
         return _leftPanelVisible;
       };
       bridge.openSettings = _onSettings;
+      bridge.applyThemeMode = _applyThemeMode;
       bridge.openHistory = _onHistory;
       bridge.captureRootKey = _shellRootKey;
       bridge.captureScreenshot = _captureScreenshot;
@@ -212,6 +213,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       bridge.toggleLeftPanel = null;
       bridge.setLeftPanelVisible = null;
       bridge.openSettings = null;
+      bridge.applyThemeMode = null;
       bridge.openHistory = null;
       bridge.captureRootKey = null;
       bridge.notify = null;
@@ -437,6 +439,8 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       settingsPath: settingsPath,
       extraSections: widget.extraSettingsSections,
       domain: domain,
+      appName: widget.appLabel,
+      mcpPort: widget.port,
     );
     if (updated == null) return;
     setState(() => _settings = updated);
@@ -446,6 +450,22 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
     // Push into the live `StudioFrame` so its `MaterialApp.themeMode`
     // rebuilds with the new `VibeSettings.themeMode` — flips the
     // chrome brightness without an app restart.
+    StudioFrameScope.maybeOf(context)?.updateSettings(updated);
+  }
+
+  /// Apply [themeMode] the way a Settings save does, without the dialog — the
+  /// theme arrived from the account. The file is edited through
+  /// [VibeSettings.mutate] so keys other tabs wrote since this shell loaded
+  /// its copy are kept.
+  void _applyThemeMode(String themeMode) {
+    if (!mounted || _settings.themeMode == themeMode) return;
+    final settingsPath = p.join(widget.backbone.configRoot, 'settings.json');
+    final updated = VibeSettings.fromJson(_settings.toJson())
+      ..themeMode = themeMode;
+    setState(() => _settings = updated);
+    // ignore: unawaited_futures
+    VibeSettings.mutate(settingsPath, (s) => s.themeMode = themeMode);
+    widget.onSettingsSaved?.call(updated);
     StudioFrameScope.maybeOf(context)?.updateSettings(updated);
   }
 
@@ -490,7 +510,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                     valueListenable:
                                         widget.chromeBridge?.homeActive ??
                                         ValueNotifier<bool>(false),
-                                    builder: (ctx, homeActive, __) {
+                                    builder: (ctx, homeActive, _) {
                                       final bridge = widget.chromeBridge;
                                       final newTip =
                                           homeActive
@@ -561,7 +581,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                             ValueNotifier<DomainLifecycleState>(
                                               const DomainLifecycleState.empty(),
                                             ),
-                                        builder: (_, life, __) {
+                                        builder: (_, life, _) {
                                           return ValueListenableBuilder<
                                             List<HeaderAction>
                                           >(
@@ -571,7 +591,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   List<HeaderAction>
                                                 >(const <HeaderAction>[]),
                                             builder:
-                                                (_, dyn, __) => ProjectHeader(
+                                                (_, dyn, _) => ProjectHeader(
                                                   projectName:
                                                       life.projectName ??
                                                       bundleName,
@@ -586,7 +606,12 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   // in a project it's New.
                                                   onNew: onNew,
                                                   onOpen: onOpen,
-                                                  onOpenRecent: (_) {},
+                                                  recentProjects:
+                                                      life.recentProjects,
+                                                  onOpenRecent:
+                                                      (path) => bridge
+                                                          ?.openProjectInActive
+                                                          ?.call(path),
                                                   onSave:
                                                       () =>
                                                           fire('project.save'),
@@ -640,7 +665,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                       VibeChatController
                                     >(
                                       valueListenable: widget.chat,
-                                      builder: (_, ctrl, __) {
+                                      builder: (_, ctrl, _) {
                                         final bridge = widget.chromeBridge;
                                         if (bridge == null) {
                                           return ChatPanel(
@@ -674,13 +699,13 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                               (
                                                 _,
                                                 hints,
-                                                __,
+                                                _,
                                               ) => ValueListenableBuilder<
                                                 String
                                               >(
                                                 valueListenable:
                                                     bridge.activeChatAgentId,
-                                                builder: (_, chatAgentId, __) {
+                                                builder: (_, chatAgentId, _) {
                                                   // Per-agent model picker: read
                                                   // the active chat agent's
                                                   // current modelId; fall back to
@@ -752,7 +777,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   >(
                                                     valueListenable:
                                                         bridge.chatAgentRoster,
-                                                    builder: (_, roster, __) {
+                                                    builder: (_, roster, _) {
                                                       // Prepend the manager so
                                                       // the user can always
                                                       // switch back to it from
@@ -818,9 +843,28 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                                 .layerLabelBuilder ??
                                                             ((_) => null),
                                                         slashHints: hints,
-                                                        onSlashCommand:
-                                                            bridge
-                                                                .runSlashCommandInActive,
+                                                        // Resolved per call:
+                                                        // the slot is set by
+                                                        // the active built-in
+                                                        // after this panel is
+                                                        // built, so a captured
+                                                        // value would be stale
+                                                        // (null → the line went
+                                                        // to the LLM; an old
+                                                        // closure → a dead
+                                                        // shell).
+                                                        onSlashCommand: (v) {
+                                                          final run =
+                                                              bridge
+                                                                  .runSlashCommandInActive;
+                                                          if (run == null) {
+                                                            ctrl.ask(v);
+                                                            return Future<
+                                                              String?
+                                                            >.value(null);
+                                                          }
+                                                          return run(v);
+                                                        },
                                                         // Reflect the active
                                                         // conversation's agent
                                                         // (manager by default;
@@ -875,7 +919,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                     const <HeaderAction>[],
                                   ),
                               builder:
-                                  (_, dyn, __) => ActivityBar(
+                                  (_, dyn, _) => ActivityBar(
                                     onExpand:
                                         () => setState(
                                           () => _leftPanelVisible = true,
@@ -928,10 +972,10 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                   ValueListenableBuilder<int>(
                     valueListenable: widget.chromeBridge!.lintBlocks,
                     builder:
-                        (_, lintBlocks, __) => ValueListenableBuilder<int>(
+                        (_, lintBlocks, _) => ValueListenableBuilder<int>(
                           valueListenable: widget.chromeBridge!.lintWarns,
                           builder:
-                              (_, lintWarns, __) => VibeStatusbar(
+                              (_, lintWarns, _) => VibeStatusbar(
                                 state: StatusbarState.synced,
                                 latencyMs: 0,
                                 patches: 0,

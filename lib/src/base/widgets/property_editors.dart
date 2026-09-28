@@ -2058,7 +2058,7 @@ class _VibeIconPickerDialogState extends State<_VibeIconPickerDialog>
     }
     return ListView.separated(
       itemCount: widget.registeredIcons.length,
-      separatorBuilder: (_, __) => Divider(height: 1, color: c.borderSubtle),
+      separatorBuilder: (_, _) => Divider(height: 1, color: c.borderSubtle),
       itemBuilder: (_, i) {
         final entry = widget.registeredIcons[i];
         final ref = entry.contentRef ?? '';

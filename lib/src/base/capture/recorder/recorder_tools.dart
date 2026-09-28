@@ -150,7 +150,8 @@ void registerRecorderTools(
     name: 'studio.recorder.encode',
     description:
         "Encode a recording's PNG sequence into an MP4 via the "
-        'in-app `ffmpeg_kit_flutter_new` (LGPL build, H.264 + AAC). '
+        'in-app FFmpeg (LGPL build; H.264 via VideoToolbox on Apple '
+        'Silicon, openh264 elsewhere; AAC). '
         'Runs async on a native worker — UI thread stays free, '
         'studio core tool dispatch is unaffected. Pass `recordingId` '
         '(directory name returned by `recorder.stop`) OR `outputDir` '
@@ -186,9 +187,10 @@ void registerRecorderTools(
         'crf': <String, dynamic>{
           'type': 'integer',
           'description':
-              'Constant rate factor (libx264 quality). Lower = higher '
-              'quality + bigger file. Default unset = ffmpeg default '
-              '(23). YouTube-friendly range: 18–24.',
+              'Quality on the CRF scale (0–51). Lower = higher quality + '
+              'bigger file. Default 23. Mapped to the platform H.264 '
+              "encoder's own quality control. YouTube-friendly range: "
+              '18–24.',
         },
         'audioTracks': <String, dynamic>{
           'type': 'array',
@@ -369,6 +371,9 @@ void registerRecorderTools(
             text: jsonEncode(<String, dynamic>{
               'active': true,
               ...rec.toJson(),
+              // The contract above (and the Recordings status bar) read
+              // `elapsedMs`; `durationMs` alone left that bar at 0s.
+              'elapsedMs': rec.duration.inMilliseconds,
               'markers':
                   _markers
                       .map((m) => m.toJson(_recorderStart ?? DateTime.now()))

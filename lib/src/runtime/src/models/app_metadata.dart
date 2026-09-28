@@ -1,4 +1,4 @@
-/// Application metadata model — MCP UI DSL spec §11 (Bundle Metadata).
+/// Application metadata model — bundle metadata.
 ///
 /// Captures the optional descriptive fields stamped on an
 /// `ApplicationDefinition` (or returned by the `ui://app/info`
@@ -9,7 +9,7 @@
 /// All nested references (`icon`, `screenshots`, `splash.image`,
 /// `publisher.logo`) are assumed to be already resolved by the
 /// server / runtime — a raw `bundle://` URI SHOULD NOT appear on
-/// the outbound `ui://app/info` response (spec §11.6).
+/// the outbound `ui://app/info` response.
 ///
 /// `PublisherInfo` and `SplashConfig` are reused from `mcp_bundle`
 /// to keep a single definition for the shared bundle-manifest types.
@@ -19,7 +19,7 @@ import 'package:mcp_bundle/mcp_bundle.dart' show PublisherInfo, SplashConfig;
 
 export 'package:mcp_bundle/mcp_bundle.dart' show PublisherInfo, SplashConfig;
 
-/// Creation / update timestamps — spec §11.3.
+/// Creation / update timestamps.
 class TimestampInfo {
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -44,7 +44,7 @@ class TimestampInfo {
       };
 }
 
-/// Top-level application metadata — spec §11.1.
+/// Top-level application metadata.
 ///
 /// `title` and `version` are surfaced here for convenience so embedders
 /// have a single struct to display, even though they are also required
@@ -75,7 +75,7 @@ class DslAppMetadata {
   });
 
   /// Parse from either an `ApplicationDefinition` DSL root or a
-  /// `ui://app/info` resource payload (same shape per spec §11.6).
+  /// `ui://app/info` resource payload (same shape).
   factory DslAppMetadata.fromJson(Map<String, dynamic> json) {
     return DslAppMetadata(
       id: json['id'] as String?,
@@ -95,7 +95,7 @@ class DslAppMetadata {
     );
   }
 
-  /// Spec §11.2 names the publisher site field `website`, while
+  /// The DSL names the publisher site field `website`, while
   /// [PublisherInfo] (shared with bundle manifests) stores it as `url`.
   /// Normalise on the way in so downstream code sees a single shape.
   static PublisherInfo? _parsePublisher(Object? raw) {
@@ -124,7 +124,7 @@ class DslAppMetadata {
         if (splash != null) 'splash': splash!.toJson(),
       };
 
-  /// Emit the spec §11.2 shape (`website` rather than `url`).
+  /// Emit the DSL shape (`website` rather than `url`).
   static Map<String, dynamic> _publisherToJson(PublisherInfo p) => {
         'name': p.name,
         if (p.logo != null) 'logo': p.logo,

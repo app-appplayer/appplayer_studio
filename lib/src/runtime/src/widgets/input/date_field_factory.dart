@@ -13,7 +13,7 @@ class DateFieldFactory extends WidgetFactory {
     final binding = stringOf(properties['binding'], context);
     final errorText = context.resolve(properties['errorText']) as String?;
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
-    // Spec §2.6.13: `format` controls displayed date string; `mode` chooses
+    // `format` controls displayed date string; `mode` chooses
     // between calendar dialog and input, `locale` for localization.
     final formatStr = readEnum(properties['format'], context) ?? 'yyyy-MM-dd';
     final modeStr = readEnum(properties['mode'], context) ?? 'calendar';
@@ -49,54 +49,61 @@ class DateFieldFactory extends WidgetFactory {
 
     final controller = TextEditingController(text: currentValue ?? '');
 
-    Widget dateField = GestureDetector(
-      onTap: enabled
-          ? () async {
-              // Parse current date
-              DateTime? initialDate;
-              if (currentValue != null && currentValue.isNotEmpty) {
-                try {
-                  initialDate = DateTime.parse(currentValue);
-                } catch (e) {
-                  // Invalid date
+    // The picker opens from the widget's OWN build context, not the render
+    // context's stored one: that field is nullable, so asserting it made the
+    // tap throw wherever it was unset, and where it was set it could belong to
+    // a different subtree than the one the user tapped — which is the
+    // Navigator the dialog would have been pushed onto. Same fix as
+    // `dateRangePicker` and `timeField`.
+    Widget dateField = Builder(
+      builder: (buildContext) => GestureDetector(
+        onTap: enabled
+            ? () async {
+                // Parse current date
+                DateTime? initialDate;
+                if (currentValue != null && currentValue.isNotEmpty) {
+                  try {
+                    initialDate = DateTime.parse(currentValue);
+                  } catch (e) {
+                    // Invalid date
+                  }
+                }
+                initialDate ??= DateTime.now();
+
+                // Ensure initial date is within range
+                if (initialDate.isBefore(firstDate!)) {
+                  initialDate = firstDate;
+                } else if (initialDate.isAfter(lastDate!)) {
+                  initialDate = lastDate;
+                }
+
+                final pickedDate = await showDatePicker(
+                  context: buildContext,
+                  initialDate: initialDate,
+                  firstDate: firstDate,
+                  lastDate: lastDate!,
+                  initialEntryMode: modeStr == 'input'
+                      ? DatePickerEntryMode.input
+                      : DatePickerEntryMode.calendar,
+                  locale: localeStr != null ? Locale(localeStr) : null,
+                );
+
+                if (pickedDate != null && binding != null) {
+                  final formattedDate = _applyDateFormat(formatStr, pickedDate);
+                  context.setValue(binding, formattedDate);
+                  controller.text = formattedDate;
                 }
               }
-              initialDate ??= DateTime.now();
-
-              // Ensure initial date is within range
-              if (initialDate.isBefore(firstDate!)) {
-                initialDate = firstDate;
-              } else if (initialDate.isAfter(lastDate!)) {
-                initialDate = lastDate;
-              }
-
-              final pickedDate = await showDatePicker(
-                context: context.buildContext!,
-                initialDate: initialDate,
-                firstDate: firstDate,
-                lastDate: lastDate!,
-                initialEntryMode: modeStr == 'input'
-                    ? DatePickerEntryMode.input
-                    : DatePickerEntryMode.calendar,
-                locale:
-                    localeStr != null ? Locale(localeStr) : null,
-              );
-
-              if (pickedDate != null && binding != null) {
-                final formattedDate = _applyDateFormat(formatStr, pickedDate);
-                context.setValue(binding, formattedDate);
-                controller.text = formattedDate;
-              }
-            }
-          : null,
-      child: AbsorbPointer(
-        child: TextField(
-          controller: controller,
-          enabled: enabled,
-          decoration: InputDecoration(
-            labelText: label,
-            errorText: errorText,
-            suffixIcon: const Icon(Icons.calendar_today),
+            : null,
+        child: AbsorbPointer(
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            decoration: InputDecoration(
+              labelText: label,
+              errorText: errorText,
+              suffixIcon: const Icon(Icons.calendar_today),
+            ),
           ),
         ),
       ),
@@ -111,7 +118,7 @@ class DateFieldFactory extends WidgetFactory {
   ///   dd / d     — zero-padded / unpadded day
   /// Tokens outside this set are passed through verbatim so authors can
   /// include literal separators. Rich ICU patterns (day names, etc.) are
-  /// not supported; spec §2.6.13 documents only the basic subset.
+  /// not supported; only the basic subset is documented.
   static String _applyDateFormat(String format, DateTime d) {
     final y4 = d.year.toString().padLeft(4, '0');
     final y2 = y4.substring(2);

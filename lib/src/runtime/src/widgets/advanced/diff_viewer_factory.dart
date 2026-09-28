@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `diffViewer` (spec §10.26).
+/// Factory for `diffViewer`.
 ///
 /// Separate from `codeEditor` rather than a mode on it, because the input is
 /// two documents: a `mode` flag on a single-value widget would leave one of

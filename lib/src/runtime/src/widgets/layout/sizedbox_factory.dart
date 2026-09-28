@@ -10,8 +10,8 @@ class SizedBoxWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties - use parseDimension for MCP UI DSL v1.0 compliance
-    final width = parseDimension(properties['width']);
-    final height = parseDimension(properties['height']);
+    final width = dimensionOf(properties['width'], context);
+    final height = dimensionOf(properties['height'], context);
 
     // Build child (support both 'child' and 'children' per MCP UI DSL spec)
     final childDef = (properties['child'] ?? definition['child'])

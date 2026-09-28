@@ -173,7 +173,7 @@ class _FormShellState extends State<FormShell> {
     final dir = p.join(parent, name);
     await Directory(dir).create(recursive: true);
     await applyFormProjectSeed(dir, name);
-    return _bindProject(dir);
+    return _bindProjectAndWait(dir);
   }
 
   Future<Map<String, dynamic>> _openProject(String path) async {
@@ -192,7 +192,16 @@ class _FormShellState extends State<FormShell> {
         'error': 'Not a Form Builder project (project.formproj missing)',
       };
     }
-    return _bindProject(path);
+    return _bindProjectAndWait(path);
+  }
+
+  /// The chrome open/new slots answer once the project is bound through —
+  /// core booted and `form.*` persisting to its FactGraph — so a tool call
+  /// that follows the answer acts on this project.
+  Future<Map<String, dynamic>> _bindProjectAndWait(String dir) async {
+    final out = _bindProject(dir);
+    await FormBuilderBuiltInApp.ensureBoot(dir);
+    return out;
   }
 
   Map<String, dynamic> _bindProject(String dir) {
@@ -212,19 +221,29 @@ class _FormShellState extends State<FormShell> {
     // ignore: unawaited_futures
     () async {
       try {
-        final path = _hostSettingsPath;
-        final s = await VibeSettings.load(path);
-        s.domainLastProject[widget.app.id] = dir;
-        await s.save(path);
+        await VibeSettings.mutate(
+          _hostSettingsPath,
+          (s) => s.domainLastProject[widget.app.id] = dir,
+        );
       } catch (_) {
         /* best-effort persistence */
       }
     }();
-    // One chat / fs anchor per project (single coordinator model).
-    widget.chromeBridge.setActiveTabProject?.call(dir);
+    // One chat / fs anchor per project (single coordinator model). The slot
+    // addresses the ACTIVE tab: an inactive mount (restore while a sibling
+    // tab is active) syncs on its next activation instead.
+    if (_isActiveTab) widget.chromeBridge.setActiveTabProject?.call(dir);
     // ignore: unawaited_futures
     _applyScopedManager(dir);
-    return <String, dynamic>{'ok': true, 'projectRoot': dir};
+    // Same shape as the other apps' project slots (`studio.project.new` /
+    // `open` answer `{ok, projectPath, projectName}`); `projectRoot` stays
+    // for callers that already read it.
+    return <String, dynamic>{
+      'ok': true,
+      'projectPath': dir,
+      'projectName': p.basename(dir),
+      'projectRoot': dir,
+    };
   }
 
   Map<String, dynamic> _closeProject() {
@@ -348,15 +367,21 @@ class _FormShellState extends State<FormShell> {
       widget.chromeBridge.newProjectInActive = _newProjectSlot;
       widget.chromeBridge.openProjectInActive = _openProjectSlot;
       widget.chromeBridge.closeProjectInActive = _closeProjectSlot;
-      if (_scopedManagerId != null) {
-        widget.chromeBridge.chatManagerOverride.value = _scopedManagerId;
-      }
+      // Chrome notifier writes go post-frame: this runs during the parent's
+      // build, and a synchronous set makes the chat chip's
+      // ValueListenableBuilder markNeedsBuild mid-build.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        if (_scopedManagerId != null) {
+          widget.chromeBridge.chatManagerOverride.value = _scopedManagerId;
+        }
         _publishLifecycleState();
+        // A project bound while inactive (restore) was not synced to the
+        // host then; the slot addresses the active tab, which is now us.
+        widget.chromeBridge.setActiveTabProject?.call(_currentProject);
       });
     } else {
-      _releaseSlotsIfMine();
+      _releaseSlotsIfMine(deferChatSlots: true);
     }
   }
 
@@ -370,7 +395,9 @@ class _FormShellState extends State<FormShell> {
       _openProject;
   late final Map<String, dynamic> Function() _closeProjectSlot = _closeProject;
 
-  void _releaseSlotsIfMine() {
+  /// [deferChatSlots] moves the chat override release to post-frame — from
+  /// didChangeDependencies this runs mid-build; dispose runs after it.
+  void _releaseSlotsIfMine({bool deferChatSlots = false}) {
     if (widget.chromeBridge.newProjectInActive == _newProjectSlot) {
       widget.chromeBridge.newProjectInActive = null;
     }
@@ -380,9 +407,17 @@ class _FormShellState extends State<FormShell> {
     if (widget.chromeBridge.closeProjectInActive == _closeProjectSlot) {
       widget.chromeBridge.closeProjectInActive = null;
     }
-    if (_scopedManagerId != null &&
-        widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
-      widget.chromeBridge.chatManagerOverride.value = null;
+    void releaseOverride() {
+      if (_scopedManagerId != null &&
+          widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
+        widget.chromeBridge.chatManagerOverride.value = null;
+      }
+    }
+
+    if (deferChatSlots) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => releaseOverride());
+    } else {
+      releaseOverride();
     }
   }
 
@@ -465,45 +500,69 @@ class _FormShellState extends State<FormShell> {
               // initState-loaded lists) survives the rebuild and shows the
               // PREVIOUS project's templates/drafts/issues (stale-page bug,
               // live-caught 2026-07-03 usage test).
-              child: switch (_route) {
-                FormRoute.templates => TemplatesPage(
-                  key: ValueKey('fb-templates::${init.projectRoot}'),
-                  server: widget.server,
-                  projectRoot: init.projectRoot,
+              // Compose stays mounted across route switches (Offstage, not
+              // the switch below): a draft in progress — template picked,
+              // fields typed, table rows — survived a trip to Approvals only
+              // if the page State did. The other routes rebuild on entry.
+              // Transparent Material below the shell's coloured ground so
+              // the pages' ListTiles keep their ink and tile colours.
+              child: Material(
+                type: MaterialType.transparency,
+                child: Stack(
+                  children: <Widget>[
+                    Offstage(
+                      offstage: _route != FormRoute.compose,
+                      child: TickerMode(
+                        enabled: _route == FormRoute.compose,
+                        child: ComposePage(
+                          key: ValueKey(
+                            'fb-compose::${init.projectRoot}'
+                            '::${_correction?['issueId'] ?? ''}',
+                          ),
+                          server: widget.server,
+                          init: init,
+                          correction: _correction,
+                          active: _route == FormRoute.compose,
+                        ),
+                      ),
+                    ),
+                    if (_route != FormRoute.compose)
+                      switch (_route) {
+                        FormRoute.templates => TemplatesPage(
+                          key: ValueKey('fb-templates::${init.projectRoot}'),
+                          server: widget.server,
+                          projectRoot: init.projectRoot,
+                        ),
+                        FormRoute.compose => const SizedBox.shrink(),
+                        FormRoute.approvals => ApprovalsPage(
+                          key: ValueKey(
+                            'fb-approvals::${init.projectRoot}'
+                            '::${_landingEntity ?? ''}',
+                          ),
+                          server: widget.server,
+                          init: init,
+                          landingDocumentId: _landingEntity,
+                        ),
+                        FormRoute.issues => RegistryPage(
+                          key: ValueKey(
+                            'fb-registry::${init.projectRoot}'
+                            '::${_landingEntity ?? ''}',
+                          ),
+                          init: init,
+                          landingIssueId: _landingEntity,
+                          onCorrect:
+                              (issue) => setState(() {
+                                _correction = issue;
+                                _route = FormRoute.compose;
+                              }),
+                        ),
+                        FormRoute.about => _AboutPage(
+                          projectRoot: init.projectRoot,
+                        ),
+                      },
+                  ],
                 ),
-                FormRoute.compose => ComposePage(
-                  key: ValueKey(
-                    'fb-compose::${init.projectRoot}'
-                    '::${_correction?['issueId'] ?? ''}',
-                  ),
-                  server: widget.server,
-                  init: init,
-                  correction: _correction,
-                ),
-                FormRoute.approvals => ApprovalsPage(
-                  key: ValueKey(
-                    'fb-approvals::${init.projectRoot}'
-                    '::${_landingEntity ?? ''}',
-                  ),
-                  server: widget.server,
-                  init: init,
-                  landingDocumentId: _landingEntity,
-                ),
-                FormRoute.issues => RegistryPage(
-                  key: ValueKey(
-                    'fb-registry::${init.projectRoot}'
-                    '::${_landingEntity ?? ''}',
-                  ),
-                  init: init,
-                  landingIssueId: _landingEntity,
-                  onCorrect:
-                      (issue) => setState(() {
-                        _correction = issue;
-                        _route = FormRoute.compose;
-                      }),
-                ),
-                FormRoute.about => _AboutPage(projectRoot: init.projectRoot),
-              },
+              ),
             ),
           ],
         );

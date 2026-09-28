@@ -2,8 +2,10 @@
 /// Wires bundle declarations into the host's MCP server with the
 /// `<exposedShortId>.<verb>` prefix the activation plan uses.
 ///
-/// **Phase 2.2** — `mcp` tools dispatch through a real
-/// `mcp_client.Client` connected at activation time.
+/// `kind: 'mcp'` tools call their server through the kernel's outbound
+/// client host (one connection per server per bundle, opened on first call,
+/// closed with the bundle); `host.kb` goes to the kernel `kb` store keyed by
+/// app identity ([StudioKbWiring]).
 /// **Phase 4.1** — registers agents into [AgentHost.shared].
 /// **Phase 5.4** — `kind: 'js'` tools load their `.js` source into a
 /// per-bundle [JsToolRuntime] + [JsHostBridge] and dispatch via the
@@ -20,8 +22,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../session/session.dart';
+import 'package:http/http.dart' as http;
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
-import 'package:mcp_client/mcp_client.dart' as mc;
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../agent/agent_host.dart';
@@ -41,6 +43,7 @@ import 'atoms/workspace_atom.dart';
 import 'bundle_activation.dart';
 import 'bundle_loading.dart';
 import 'js_tool_runtime.dart';
+import 'studio_kb.dart';
 
 class HostBundleActivationContext implements BundleActivationContext {
   HostBundleActivationContext({
@@ -48,34 +51,49 @@ class HostBundleActivationContext implements BundleActivationContext {
     required this.tabKey,
     required this.bundle,
     required this.exposedShortId,
-    mk.KnowledgeQueryEngine? knowledgeEngine,
-    mk.DomainStorage? domainStorage,
+    StudioKbWiring? kb,
+    mk.KernelClientHost? Function()? clientHost,
     ChromeBridge? chromeBridge,
     WorkspaceCanonical? Function()? activeWorkspace,
     StudioBackbone? backbone,
     BundleSessionBridge? sessionBridge,
+    http.Client? httpClient,
   }) : _boot = boot,
-       _knowledgeEngine = knowledgeEngine,
-       _domainStorage = domainStorage,
+       _kb = kb,
+       _clientHost = clientHost,
        _chromeBridge = chromeBridge,
        _activeWorkspace = activeWorkspace,
        _backbone = backbone,
-       _sessionBridge = sessionBridge;
+       _sessionBridge = sessionBridge,
+       _httpClient = httpClient;
 
   final mk.KernelServerHost _boot;
 
-  /// Optional knowledge engine for the `host.kb.query` verb. Hosts
-  /// that don't ship knowledge query support pass null — the rest of
-  /// `host.kb.*` (put/get/list/delete) still works as long as a
-  /// [DomainStorage] is provided.
-  final mk.KnowledgeQueryEngine? _knowledgeEngine;
+  /// HTTP client for `kind: 'cloud'` calls. Null → a client per call,
+  /// closed after it. Tests inject one to answer without a network.
+  final http.Client? _httpClient;
 
-  /// Optional domain-scoped storage for `host.kb.put/get/list/delete`.
-  /// Auto-scoped to `bundle.manifest.id` so bundles can't read each
-  /// other's state. Hosts without storage support pass null and the
-  /// kb atom is omitted entirely (all kb verbs go away, not just
-  /// the storage half).
-  final mk.DomainStorage? _domainStorage;
+  /// The host's `host.kb` wiring (kernel key/value records, app identity,
+  /// the one-time import of the former domain storage). Null → the bundle
+  /// gets no `kb` atom.
+  final StudioKbWiring? _kb;
+
+  /// This activation's `kb` view, created on first use and kept: the store
+  /// remembers the version it last saw per key, which is what makes a write
+  /// safe against another writer.
+  mk.BundleKbStore? _kbStore;
+
+  mk.BundleKbStore? _kbStoreFor(mb.McpBundle b) {
+    final kb = _kb;
+    if (kb == null) return null;
+    return _kbStore ??= kb.storeFor(b);
+  }
+
+  /// The kernel's outbound MCP client host — `kind: 'mcp'` tools open their
+  /// connection there (bundle spec 04_Tools §4.5). Read per call so a host
+  /// that boots its kernel later still serves the tool. Null → such a tool
+  /// answers that this host has no outbound MCP client.
+  final mk.KernelClientHost? Function()? _clientHost;
 
   /// Optional chrome bridge for the `host.ui` atom. When null the
   /// bundle's `ui.notify` / `ui.dialog` / `ui.prompt` calls fall back
@@ -154,9 +172,9 @@ class HostBundleActivationContext implements BundleActivationContext {
   /// `unregisterAll` walks this list and calls `removeTool` on each.
   final List<String> _registeredToolNames = <String>[];
 
-  /// External MCP clients opened through `kind: 'mcp'` registrations.
-  /// `unregisterAll` calls `disconnect()` on each in tear-down.
-  final List<mc.Client> _clients = <mc.Client>[];
+  /// Client-host connections `kind: 'mcp'` tools of this bundle opened —
+  /// one per server. `unregisterAll` closes them with the bundle.
+  final Set<String> _mcpConnectionIds = <String>{};
 
   /// Agent ids registered via [registerAgent]. Tear-down calls
   /// `AgentHost.shared.removeProfile` for each (catalog only —
@@ -236,6 +254,8 @@ class HostBundleActivationContext implements BundleActivationContext {
         return _registerJsTool(tool);
       case mb.ToolKind.mcp:
         return _registerMcpTool(tool);
+      case mb.ToolKind.cloud:
+        return _registerCloudTool(tool);
       case mb.ToolKind.ts:
         // `type: server` bundle tool — compiled and executed by the
         // marketplace serving runtime, never by this host (no local TS
@@ -319,11 +339,10 @@ class HostBundleActivationContext implements BundleActivationContext {
       if (_closed) {
         return _errorResult('context closed (tab is being torn down)');
       }
-      // Wrap in `Promise.resolve` so the same dispatch path handles
-      // both sync (return value) and async (return Promise) tools.
+      // `evaluateAsync` settles a plain return and a Promise the same way.
       // Args round-trip through JSON so JS gets a plain object.
       final argsJson = jsonEncode(args);
-      final code = 'Promise.resolve($fn(JSON.parse(${jsonEncode(argsJson)})))';
+      final code = '$fn(JSON.parse(${jsonEncode(argsJson)}))';
       try {
         final result = await rt.evaluateAsync(code);
         if (result.isError) {
@@ -332,11 +351,8 @@ class HostBundleActivationContext implements BundleActivationContext {
             extra: <String, dynamic>{'exposedName': exposedName, 'fn': fn},
           );
         }
-        // handlePromise wraps the resolved value through JSON.stringify,
-        // so stringResult holds a JSON literal we hand back verbatim.
-        // `JSON.stringify(undefined)` produces no string at all, so an
-        // empty stringResult is rewritten to a JSON `null` for the
-        // MCP envelope (which can't carry an empty body).
+        // The worker stringifies the settled value inside JS, so the text is
+        // JSON on every engine (`undefined` arrives as `null`).
         final raw = result.stringResult;
         final body = raw.isEmpty ? 'null' : raw;
         return mk.KernelToolResult(
@@ -365,39 +381,33 @@ class HostBundleActivationContext implements BundleActivationContext {
     return RegistrationResult(ok: true, exposedName: exposedName);
   }
 
-  /// Wire a `kind: 'mcp'` tool — proxy through an `mcp_client.Client`.
+  /// Wire a `kind: 'mcp'` tool — call the remote tool (`target.tool`, or this
+  /// entry's own name) on the server `target` names (bundle spec 04_Tools
+  /// §4.5).
+  ///
+  /// The connection belongs to the kernel's outbound client host under
+  /// `bundle:<bundle id>:<endpoint>` — one per server per bundle, reused by
+  /// every tool naming that server, closed with the bundle. A private client
+  /// per registration was a second connection registry beside the client
+  /// host's. The studio is a desktop host, so `transport: stdio` starts the
+  /// local process the target names. The connection is opened on the first
+  /// call; each call reports its own failure so the tool stays listed and
+  /// says what is wrong.
   Future<RegistrationResult> _registerMcpTool(mb.ToolEntry tool) async {
     final exposedName = '$exposedShortId.${tool.name}';
-    final transportLabel = tool.target['transport']?.toString() ?? '?';
-    final endpoint =
-        tool.target['url']?.toString() ??
-        tool.target['command']?.toString() ??
-        '';
+    final target = tool.target;
+    final transport = target['transport']?.toString();
+    final url = target['url']?.toString() ?? '';
+    final command = target['command']?.toString() ?? '';
+    final endpointLabel = transport == 'stdio' ? command : url;
+    final remote =
+        target['tool'] is String && (target['tool'] as String).isNotEmpty
+            ? target['tool'] as String
+            : tool.name;
+    final connectionId = 'bundle:${bundle.manifest.id}:$endpointLabel';
     final desc =
         tool.description ??
-        'Bundle tool ${tool.name} (proxied to $transportLabel).';
-
-    // Try to connect at activation time so the handler can dispatch
-    // synchronously per call. Connection failure doesn't abort
-    // registration — the handler reports the error per call so the
-    // tool stays visible (tools/list) and the LLM can see why it's
-    // failing.
-    mc.Client? client;
-    String? connectError;
-    try {
-      // Hard cap so a flaky / unreachable endpoint can't hang the
-      // whole activation. The handler still reports the failure on
-      // each call so the user can fix the manifest.
-      client = await _connectMcpClient(
-        tool.target,
-      ).timeout(const Duration(seconds: 3));
-    } catch (e) {
-      connectError = e.toString();
-    }
-    if (client != null) _clients.add(client);
-
-    // Per-bundle external-MCP-client tool — same dual path as the
-    // JS tool above: bridge when wired, `_boot.addTool` otherwise.
+        'Bundle tool ${tool.name} (proxied to ${transport ?? '?'}).';
     final mcpSchema =
         tool.inputSchema ??
         const <String, dynamic>{
@@ -408,35 +418,69 @@ class HostBundleActivationContext implements BundleActivationContext {
       if (_closed) {
         return _errorResult('context closed (tab is being torn down)');
       }
-      if (client == null) {
+      final extra = <String, dynamic>{
+        'tabKey': tabKey,
+        'exposedName': exposedName,
+        'originalName': tool.name,
+        'transport': transport ?? '?',
+        if (endpointLabel.isNotEmpty) 'endpoint': endpointLabel,
+      };
+      final host = _clientHost?.call();
+      if (host == null) {
         return _errorResult(
-          'external MCP client not connected: ${connectError ?? "unknown"}',
-          extra: <String, dynamic>{
-            'tabKey': tabKey,
-            'exposedName': exposedName,
-            'transport': transportLabel,
-            if (endpoint.isNotEmpty) 'endpoint': endpoint,
-          },
+          'mcp tool ${tool.name} cannot run: this host has no outbound MCP '
+          'client',
+          extra: extra,
         );
       }
+      final mk.KernelTransportKind kind;
+      String? endpoint;
+      Map<String, dynamic>? options;
+      switch (transport) {
+        case 'http':
+          if (url.isEmpty) {
+            return _errorResult(
+              'mcp tool ${tool.name} needs target.url for transport http',
+              extra: extra,
+            );
+          }
+          kind = mk.KernelTransportKind.streamableHttp;
+          endpoint = url;
+        case 'stdio':
+          if (command.isEmpty) {
+            return _errorResult(
+              'mcp tool ${tool.name} needs target.command for transport stdio',
+              extra: extra,
+            );
+          }
+          kind = mk.KernelTransportKind.stdio;
+          options = <String, dynamic>{
+            'command': command,
+            'args':
+                (target['args'] as List?)?.whereType<String>().toList() ??
+                const <String>[],
+          };
+        default:
+          return _errorResult(
+            'mcp tool ${tool.name}: unknown transport ${transport ?? '(none)'}',
+            extra: extra,
+          );
+      }
       try {
-        final result = await client.callTool(tool.name, args);
-        // Bridge mcp_client.CallToolResult → mcp_server.CallToolResult.
-        // Both encode content as `[{type:'text',text:...}]` etc; the
-        // simplest faithful bridge is round-trip through JSON.
-        final encoded = jsonEncode(result.toJson());
+        final connection = await host.connect(
+          id: connectionId,
+          transport: kind,
+          endpoint: endpoint,
+          options: options,
+        );
+        _mcpConnectionIds.add(connectionId);
+        final result = await connection.callTool(remote, args);
         return mk.KernelToolResult(
-          content: <mk.KernelContent>[mk.KernelTextContent(text: encoded)],
+          content: result.content,
           isError: result.isError ?? false,
         );
       } catch (e) {
-        return _errorResult(
-          'external dispatch failed: $e',
-          extra: <String, dynamic>{
-            'exposedName': exposedName,
-            'originalName': tool.name,
-          },
-        );
+        return _errorResult('external dispatch failed: $e', extra: extra);
       }
     }
 
@@ -445,6 +489,93 @@ class HostBundleActivationContext implements BundleActivationContext {
       description: desc,
       inputSchema: mcpSchema,
       handler: mcpHandler,
+    );
+    _registeredToolNames.add(exposedName);
+    return RegistrationResult(ok: true, exposedName: exposedName);
+  }
+
+  /// Wire a `kind: 'cloud'` tool — POST the call's input as JSON to
+  /// `target.url` and answer the JSON response. Only `https` is accepted.
+  /// A non-2xx status or a body that is not JSON fails the call with the
+  /// reason; it is never turned into an empty result. An empty body answers
+  /// `{}`. The target is checked per call, like the mcp proxy, so the tool
+  /// stays listed and each call says what is wrong with the manifest.
+  Future<RegistrationResult> _registerCloudTool(mb.ToolEntry tool) async {
+    final exposedName = '$exposedShortId.${tool.name}';
+    final url = tool.target['url'];
+    final desc =
+        tool.description ?? 'Bundle tool ${tool.name} (HTTPS POST to $url).';
+    final cloudSchema =
+        tool.inputSchema ??
+        const <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{},
+        };
+    Future<mk.KernelToolResult> cloudHandler(Map<String, dynamic> args) async {
+      if (_closed) {
+        return _errorResult('context closed (tab is being torn down)');
+      }
+      final extra = <String, dynamic>{
+        'exposedName': exposedName,
+        'url': '$url',
+      };
+      final uri = url is String ? Uri.tryParse(url) : null;
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        return _errorResult(
+          'cloud tool ${tool.name} needs an https target.url, got: $url',
+          extra: extra,
+        );
+      }
+      final client = _httpClient ?? http.Client();
+      try {
+        final response = await client.post(
+          uri,
+          headers: const <String, String>{'content-type': 'application/json'},
+          body: jsonEncode(args),
+        );
+        if (response.statusCode < 200 || response.statusCode > 299) {
+          return _errorResult(
+            'cloud tool ${tool.name} failed: '
+                    '${response.statusCode} ${response.reasonPhrase ?? ''}'
+                .trim(),
+            extra: extra,
+          );
+        }
+        final body = utf8.decode(response.bodyBytes);
+        if (body.trim().isEmpty) {
+          return mk.KernelToolResult(
+            content: <mk.KernelContent>[mk.KernelTextContent(text: '{}')],
+            isError: false,
+          );
+        }
+        try {
+          jsonDecode(body);
+        } on FormatException {
+          return _errorResult(
+            'cloud tool ${tool.name} answered a body that is not JSON '
+            '(${response.bodyBytes.length} bytes)',
+            extra: extra,
+          );
+        }
+        return mk.KernelToolResult(
+          content: <mk.KernelContent>[mk.KernelTextContent(text: body)],
+          isError: false,
+        );
+      } catch (e) {
+        return _errorResult(
+          'cloud tool ${tool.name} request failed: $e',
+          extra: extra,
+        );
+      } finally {
+        if (_httpClient == null) client.close();
+      }
+    }
+
+    _boot.addTool(
+      name: exposedName,
+      description: desc,
+      inputSchema: cloudSchema,
+      handler: cloudHandler,
     );
     _registeredToolNames.add(exposedName);
     return RegistrationResult(ok: true, exposedName: exposedName);
@@ -687,6 +818,20 @@ class HostBundleActivationContext implements BundleActivationContext {
     if (existing != null) return existing;
     final rt = JsToolRuntime();
     final allowedAtoms = bundle.requires?.builtinAtoms ?? const <String>[];
+    // The first time this app is seen, its former domain-storage state moves
+    // into `kb` before any tool can read it. A failed import leaves the old
+    // files where they are and does not stop the bundle.
+    final kb = _kb;
+    final kbStore = _kbStoreFor(bundle);
+    if (kb != null && kbStore != null) {
+      try {
+        await kb.importLegacyOnce(bundle, kbStore);
+      } catch (e) {
+        _chromeBridge?.recordBootEvent(
+          'kb import for "${bundle.manifest.id}" failed: $e',
+        );
+      }
+    }
     final atoms = _builtinAtomsFor(bundle);
     await rt.attachHostBridge(atoms: atoms, allowedAtoms: allowedAtoms);
     _jsRuntime = rt;
@@ -701,8 +846,7 @@ class HostBundleActivationContext implements BundleActivationContext {
   /// `project_studio_appplayer_superset`).
   List<AtomCategory> _builtinAtomsFor(mb.McpBundle b) {
     final dir = b.directory;
-    final ke = _knowledgeEngine;
-    final ds = _domainStorage;
+    final kbStore = _kbStoreFor(b);
     final cb = _chromeBridge;
     final ws = _activeWorkspace;
     return <AtomCategory>[
@@ -715,11 +859,7 @@ class HostBundleActivationContext implements BundleActivationContext {
         sessionResolver: () => _session,
       ),
       AgentAtom(),
-      // host.kb requires both engine (for query) and storage (for
-      // put/get/list/delete). Hosts ship both together — partial
-      // wiring would surface a confusing subset of verbs.
-      if (ke != null && ds != null)
-        KbAtom(engine: ke, storage: ds, namespace: b.manifest.id),
+      if (kbStore != null) KbAtom(kbStore),
       if (cb != null) UiAtom(bridge: cb),
       // Always register WorkspaceAtom — when the host hasn't wired a
       // canonical provider the atom's own verbs return `{ok:false,
@@ -773,14 +913,18 @@ class HostBundleActivationContext implements BundleActivationContext {
       }
     }
     _registeredToolNames.clear();
-    for (final c in _clients) {
-      try {
-        c.disconnect();
-      } catch (_) {
-        /* best-effort */
+    final clients = _clientHost?.call();
+    if (clients != null && _mcpConnectionIds.isNotEmpty) {
+      for (final connection in clients.connections.toList()) {
+        if (!_mcpConnectionIds.contains(connection.id)) continue;
+        try {
+          await connection.close();
+        } catch (_) {
+          /* best-effort */
+        }
       }
     }
-    _clients.clear();
+    _mcpConnectionIds.clear();
     final host = AgentHost.shared;
     if (host != null) {
       for (final id in _registeredAgentIds) {
@@ -897,51 +1041,6 @@ class HostBundleActivationContext implements BundleActivationContext {
       }
     }
     _jsRuntime = null;
-  }
-
-  /// Build + connect an mcp_client for the tool's target spec. Throws
-  /// on connect failure so the caller can surface it to the user.
-  Future<mc.Client> _connectMcpClient(Map<String, dynamic> target) async {
-    final transport = target['transport']?.toString();
-    final mc.TransportConfig cfg;
-    switch (transport) {
-      case 'http':
-        final url = target['url']?.toString();
-        if (url == null || url.isEmpty) {
-          throw StateError('target.url required for transport=http');
-        }
-        cfg = mc.TransportConfig.streamableHttp(baseUrl: url);
-        break;
-      case 'stdio':
-        final command = target['command']?.toString();
-        if (command == null || command.isEmpty) {
-          throw StateError('target.command required for transport=stdio');
-        }
-        final args =
-            (target['args'] as List?)?.whereType<String>().toList() ??
-            const <String>[];
-        cfg = mc.TransportConfig.stdio(command: command, arguments: args);
-        break;
-      default:
-        throw StateError('unknown transport: $transport');
-    }
-    final config = mc.McpClientConfig(
-      name: 'vibe_studio_host',
-      version: '0.1.0',
-      // maxRetries=0 is a no-op (the retry loop is `while attempts <
-      // maxRetries`), so 1 = single connect attempt with no retry.
-      maxRetries: 1,
-      retryDelay: const Duration(milliseconds: 500),
-      requestTimeout: const Duration(seconds: 5),
-    );
-    final result = await mc.McpClient.createAndConnect(
-      config: config,
-      transportConfig: cfg,
-    );
-    return result.fold(
-      (client) => client,
-      (err) => throw StateError('connect failed: $err'),
-    );
   }
 
   mk.KernelToolResult _errorResult(

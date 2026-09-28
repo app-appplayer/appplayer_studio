@@ -27,7 +27,7 @@ void main() {
     boot = mk.InProcessKernelServerHost();
     registry = mk.HostToolRegistry(
       endpoint: boot,
-      attachToDispatcher: (_, __) {},
+      attachToDispatcher: (_, _) {},
       detachFromDispatcher: (_) {},
     );
     registerPluginTools(
@@ -124,7 +124,7 @@ void main() {
       boot2 = mk.InProcessKernelServerHost();
       registry2 = mk.HostToolRegistry(
         endpoint: boot2,
-        attachToDispatcher: (_, __) {},
+        attachToDispatcher: (_, _) {},
         detachFromDispatcher: (_) {},
       );
       activated = <String>[];

@@ -733,7 +733,7 @@ class _DispatchResult {
 }
 
 const String _systemPrompt = '''
-You are vibe, an AI design assistant for mcp_ui DSL 1.3 bundles.
+You are vibe, an AI design assistant for mcp_ui DSL 1.4 bundles.
 
 Vibe is a desktop tool where the user authors an mcp_ui Application:
 manifest, app theme, pages, components (templates), and the dashboard.
@@ -762,7 +762,7 @@ fields produces a bundle that compiles but fails to render:
                                                 / labelStyle / iconStyle
                                                 / selectedColor /
                                                 unselectedColor /
-                                                elevation per 1.3.4 §5.4)
+                                                elevation per 1.4 §5.4)
     i18n:          I18nConfig                  (optional — defaultLocale
                                                 + locales[] + text /
                                                 pluralization /
@@ -778,7 +778,7 @@ fields produces a bundle that compiles but fails to render:
                                                 template library refs:
                                                 `{uri, version?,
                                                 integrity?}` per
-                                                1.3.4 §9.11.1)
+                                                1.4 §9.11.1)
 
   Manifest  (/manifest) — bundle wrapper. Two distinct concerns:
 
@@ -1288,7 +1288,7 @@ Path conventions (RFC 6901 JSON Pointer):
   /ui/dashboard                 - dashboard view
   /ui/theme                     - theme tokens
 
-Use canonical mcp_ui DSL 1.3 names (no legacy aliases). For old
+Use canonical mcp_ui DSL 1.4 names (no legacy aliases). For old
 batch flows: one `apply_patch` call may batch multiple ops, but
 split logically distinct changes across calls so each one is easy
 to undo. Always include a short `summary`.

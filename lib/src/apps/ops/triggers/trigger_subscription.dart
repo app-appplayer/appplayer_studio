@@ -77,7 +77,8 @@ class TriggerSubscription {
   /// The request text handed to [targetAgentId], with the event's fields
   /// substituted into [requestTemplate] (or a default digest).
   String render(AgentWorkCompleted e) {
-    final tpl = requestTemplate ??
+    final tpl =
+        requestTemplate ??
         '${e.sourceAgentId} completed ${e.kind.name} (${e.refId}): '
             '{summary}';
     return tpl
@@ -118,9 +119,7 @@ class TriggerRegistry {
       await _ensureLoaded(wsId);
       return _byWorkspace[wsId]?.values.toList() ?? <TriggerSubscription>[];
     }
-    return _byWorkspace.values
-        .expand((m) => m.values)
-        .toList(growable: false);
+    return _byWorkspace.values.expand((m) => m.values).toList(growable: false);
   }
 
   /// Subscriptions whose filters match [e] — loads the event's workspace lazily.
@@ -212,12 +211,13 @@ class TriggerRegistry {
       workspaceId: wsId,
       targetAgentId: y['targetAgentId'] as String? ?? '',
       sourceAgentId: y['sourceAgentId'] as String?,
-      kind: kindName == null
-          ? null
-          : WorkKind.values.firstWhere(
-              (k) => k.name == kindName,
-              orElse: () => WorkKind.task,
-            ),
+      kind:
+          kindName == null
+              ? null
+              : WorkKind.values.firstWhere(
+                (k) => k.name == kindName,
+                orElse: () => WorkKind.task,
+              ),
       onState: y['onState'] as String? ?? 'completed',
       requestTemplate: y['requestTemplate'] as String?,
       once: y['once'] == true,

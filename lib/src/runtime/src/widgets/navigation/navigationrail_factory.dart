@@ -69,12 +69,16 @@ class NavigationRailWidgetFactory extends WidgetFactory {
       trailing: trailing,
       onDestinationSelected: onDestinationSelected != null
           ? (index) {
-              final eventData =
-                  Map<String, dynamic>.from(onDestinationSelected);
-              if (eventData['index'] == '{{event.index}}') {
-                eventData['index'] = index;
-              }
-              context.actionHandler.execute(eventData, context);
+              // `{{event.index}}` resolves wherever the action puts it. The
+              // previous form substituted into an `index` KEY of the action
+              // map, which no action reads — so a rail wired to
+              // `state.set { value: "{{event.index}}" }` wrote null.
+              final eventContext = context.createChildContext(
+                variables: {
+                  'event': {'index': index, 'type': 'change'},
+                },
+              );
+              context.actionHandler.execute(onDestinationSelected, eventContext);
             }
           : null,
     );
@@ -85,7 +89,10 @@ class NavigationRailWidgetFactory extends WidgetFactory {
   NavigationRailDestination _buildDestination(
       dynamic destData, RenderContext context) {
     if (destData is Map<String, dynamic>) {
-      final icon = _parseIcon(destData['icon'], context);
+      final icon = _parseIcon(destData['icon'], context) ?? const Icon(Icons.home);
+      // Undeclared means "same as the icon", which is what Material does with
+      // a null `selectedIcon`. Substituting a house here replaced whatever the
+      // document declared on exactly the one destination the user is on.
       final selectedIcon = _parseIcon(destData['selectedIcon'], context);
       Widget label;
       if (destData['label'] != null) {
@@ -119,7 +126,7 @@ class NavigationRailWidgetFactory extends WidgetFactory {
     );
   }
 
-  Widget _parseIcon(dynamic iconData, RenderContext context) {
+  Widget? _parseIcon(dynamic iconData, RenderContext context) {
     if (iconData is Map<String, dynamic>) {
       return context.buildWidget(iconData);
     }
@@ -128,7 +135,7 @@ class NavigationRailWidgetFactory extends WidgetFactory {
       return Icon(_parseIconData(iconData));
     }
 
-    return const Icon(Icons.home);
+    return null;
   }
 
   IconData _parseIconData(String iconName) => resolveIconData(iconName);

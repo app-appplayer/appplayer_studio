@@ -214,6 +214,26 @@ void main() {
       expect(j.containsKey('markers'), isTrue);
       expect(j.containsKey('captions'), isTrue);
     });
+
+    test('elapsedMs is present and grows while recording', () async {
+      final (:boot, :recorder, :encoder, :tmp) = _setup();
+      addTearDown(() async {
+        await recorder.stop();
+        tmp.deleteSync(recursive: true);
+      });
+      await boot.callTool('studio.recorder.start', <String, dynamic>{});
+      Future<int> elapsed() async =>
+          _callResult(
+                await boot.callTool(
+                  'studio.recorder.status',
+                  <String, dynamic>{},
+                ),
+              )['elapsedMs']
+              as int;
+      final first = await elapsed();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(await elapsed(), greaterThan(first));
+    });
   });
 
   // r41 ------------------------------------------------------------------

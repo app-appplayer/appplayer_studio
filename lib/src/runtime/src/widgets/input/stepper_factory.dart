@@ -9,7 +9,7 @@ class StepperWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.6.0/§2.6.20: `binding` shorthand maps to the active step index.
+    // `binding` shorthand maps to the active step index.
     // Legacy `currentStep` property remains a one-way read-only source.
     final binding = stringOf(properties['binding'], context);
     // `currentStep` is `number | binding`; reading it as `int?` threw on the
@@ -20,7 +20,7 @@ class StepperWidgetFactory extends WidgetFactory {
                 0)
             .toInt())
         : (context.resolve<num?>(properties['currentStep']) ?? 0).toInt();
-    // Spec §2.6.20 canonical `stepperType`; `type` kept as legacy alias.
+    // Canonical `stepperType`; `type` kept as legacy alias.
     final stepperType =
         _parseStepperType(properties['stepperType'] ?? properties['type']) ??
             StepperType.vertical;
@@ -76,7 +76,7 @@ class StepperWidgetFactory extends WidgetFactory {
 
   Step _buildStep(dynamic stepData, RenderContext context) {
     if (stepData is Map<String, dynamic>) {
-      // §2.6.20 documents a step as `{ title, subtitle?, state?, content,
+      // A step is documented as `{ title, subtitle?, state?, content,
       // isActive? }` and its example writes `"title": "Account"` — a string.
       // A widget is accepted too, for titles that need more than a label.
       // `titleText` predates the spec's shape and still resolves.

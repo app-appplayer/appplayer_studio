@@ -23,13 +23,12 @@ import '../util/log.dart';
 /// own tool handlers through `BuiltinToolRegistry`.
 ///
 /// Other vibe_studio builtins (App Builder · Scene Builder) follow the same
-/// path — aligned with this cleanup's
-/// `diora/design/builtin-os-cleanup-plan-2026-05-28.md`.
+/// path (built-ins never own an MCP transport).
 class McpInbound {
   McpInbound._();
 
-  /// Register every Skill, system, and docs tool (including prompts after
-  /// cherry r8) on the host endpoint via the [BuiltinToolRegistry] facade.
+  /// Register every Skill, system, and docs tool (including prompts) on the
+  /// host endpoint via the [BuiltinToolRegistry] facade.
   /// Browser ops are NOT registered here — built-ins use the host's shared
   /// `browser.*` capability (parity rule); skill steps route through it via
   /// `SkillExecutor._runBrowser`. Single entry — no raw kernel handle

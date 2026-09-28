@@ -54,10 +54,18 @@ class I18nManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The client remote translations are fetched with.
+  ///
+  /// A [http.Client] rather than the top-level `http.get`, so a host — or a
+  /// test — can supply its own. Without a seam here this path cannot be
+  /// exercised at all: the only way to reach it was a real network call, and
+  /// "we cannot test it" is a statement about the design, not about the code.
+  static http.Client httpClient = http.Client();
+
   /// Load translations from remote URL
   Future<void> _loadRemoteTranslations(String url) async {
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await httpClient.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
         data.forEach((locale, translations) {

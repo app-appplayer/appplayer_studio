@@ -2050,9 +2050,7 @@ Future<void> _snapshotBundle(
             .replaceAll(':', '-')
             .split('.')
             .first;
-    final dir = Directory(
-      p.join(bundleHistoryRootFor(mbdPath), '$ts-$label'),
-    );
+    final dir = Directory(p.join(bundleHistoryRootFor(mbdPath), '$ts-$label'));
     await dir.create(recursive: true);
     for (final rel in files) {
       final src = File(p.join(mbdPath, rel));

@@ -4,8 +4,8 @@
 library file_watch_channel;
 
 import 'dart:async';
+import '../../platform/host_platform.dart';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:watcher/watcher.dart';
 
 import '../channel_manager.dart';
@@ -15,15 +15,26 @@ class FileWatchChannel implements Channel {
   final String path;
 
   StreamController<FileWatchEvent>? _controller;
-  FileWatcher? _watcher;
+  Watcher? _watcher;
   StreamSubscription? _subscription;
   bool _isActive = false;
 
   FileWatchChannel({required this.path});
 
+  /// How the channel obtains its watcher.
+  ///
+  /// A watcher is a live subscription to the OS, and the two things a caller
+  /// most needs to trust about this channel — that an edit arrives as
+  /// `modified` and a deletion as `deleted`, and that the watcher's own
+  /// failure reaches the document instead of the console — cannot be produced
+  /// by touching files: the first depends on a polling interval, the second on
+  /// the OS choosing to fail. Replacing this supplies a stream the caller
+  /// drives directly.
+  static Watcher Function(String path) watcherFactory = FileWatcher.new;
+
   @override
   Future<void> start() async {
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       throw UnsupportedError('File watching not supported on web');
     }
 
@@ -35,7 +46,7 @@ class FileWatchChannel implements Channel {
     }
 
     _controller = StreamController<FileWatchEvent>.broadcast();
-    _watcher = FileWatcher(path);
+    _watcher = watcherFactory(path);
 
     _subscription = _watcher!.events.listen(
       (event) {

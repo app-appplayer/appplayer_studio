@@ -56,8 +56,9 @@ class Scenario {
   final bool encodeAfter;
 
   /// Pass-through for `EncoderService.encode` options — currently
-  /// `{crf, codec, pixelFormat, outputPath}`. Empty map = ffmpeg
-  /// defaults (crf 23, libx264, yuv420p, `<outputDir>/<id>.mp4`).
+  /// `{crf, codec, pixelFormat, outputPath}`. Empty map = crf 23, the
+  /// platform H.264 encoder (`h264_encoder.dart`), yuv420p,
+  /// `<outputDir>/<id>.mp4`.
   final Map<String, dynamic> encodeOptions;
 
   /// Audio tracks muxed into the final MP4 at encode time

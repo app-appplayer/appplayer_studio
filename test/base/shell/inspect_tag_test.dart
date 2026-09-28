@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:appplayer_studio/src/base/shell/inspect_tag.dart';
+import 'package:appplayer_studio/src/ui/inspect_tag.dart';
 
 void main() {
   testWidgets('inspectTag wraps child in MetaData with type only', (

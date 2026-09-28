@@ -63,7 +63,7 @@ class PermissionManager {
   /// Used to cap what an embedded subtree may ask for: the effective set of a
   /// `view` is the intersection with its embedder's, never the union, so a
   /// device's own document cannot escalate through the screen it was given
-  /// (spec §7.10.1).
+  /// (permissions intersect, never add up).
   bool isGranted(String permission) =>
       _grantedPermissions.contains(_normalizePermissionType(permission));
 

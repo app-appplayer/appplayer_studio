@@ -25,14 +25,14 @@ class DatePickerWidgetFactory extends WidgetFactory {
         : DateTime(2100);
     final dateFormat = stringOf(properties['dateFormat'], context) ?? 'yyyy-MM-dd';
     final variant = readEnum(properties['variant'], context) ?? 'elevated';
-    // §2.5 `IconRef`: a name, a `{codepoint}` object or a `{uri}` object,
+    // `IconRef`: a name, a `{codepoint}` object or a `{uri}` object,
     // accepted anywhere an icon is taken. Reading it as a String threw on the
     // two object forms the schema plainly allows.
     final iconData = properties['icon'] == null
         ? resolveIconData('calendar_today')
         : resolveIconRef(properties['icon']);
 
-    // Spec §2.6.0: canonical `binding`; accept legacy `bindTo` alias.
+    // Canonical `binding`; accept legacy `bindTo` alias.
     final binding = (stringOf(properties['binding'], context)) ??
         (stringOf(properties['bindTo'], context));
     String? currentValue;

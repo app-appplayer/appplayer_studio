@@ -97,10 +97,18 @@ class DslSpecLoader {
 
   /// Lookup by exact type. Loads on demand. Returns null when no
   /// matching standard widget exists.
+  /// The spec for [type], by any spelling the spec declares for it.
+  ///
+  /// Canonical names are matched first and as a whole pass, so a widget can
+  /// never be shadowed by another widget's alias — `list` stays `list` even if
+  /// something else claims it as an alias.
   Future<WidgetSpec?> get(String type) async {
     final all = await load();
     for (final s in all) {
       if (s.type == type) return s;
+    }
+    for (final s in all) {
+      if (s.aliases.contains(type)) return s;
     }
     return null;
   }
@@ -143,6 +151,10 @@ class DslSpecLoader {
     final description = (yaml['description'] as String?) ?? '';
     final profile = yaml['profile'] as String?;
     final since = yaml['since'] as String?;
+    // Widget-level `aliases:` — the other spellings the runtime registers for
+    // this same widget. Read here rather than only inside `properties` below,
+    // which is where the parser used to stop.
+    final rawWidgetAliases = yaml['aliases'];
 
     final props = <WidgetPropSpec>[];
     final rawProps = yaml['properties'];
@@ -181,12 +193,14 @@ class DslSpecLoader {
             defaultValue: v['default'],
             required: isRequired,
             enumValues: enumValues,
-            legacyValues: rawLegacy is List
-                ? List<String>.unmodifiable(rawLegacy.whereType<String>())
-                : const <String>[],
-            aliases: rawAliases is List
-                ? List<String>.unmodifiable(rawAliases.whereType<String>())
-                : const <String>[],
+            legacyValues:
+                rawLegacy is List
+                    ? List<String>.unmodifiable(rawLegacy.whereType<String>())
+                    : const <String>[],
+            aliases:
+                rawAliases is List
+                    ? List<String>.unmodifiable(rawAliases.whereType<String>())
+                    : const <String>[],
           ),
         );
       });
@@ -213,6 +227,10 @@ class DslSpecLoader {
       description: description,
       profile: profile,
       since: since,
+      aliases:
+          rawWidgetAliases is List
+              ? List<String>.unmodifiable(rawWidgetAliases.whereType<String>())
+              : const <String>[],
       properties: props,
       examples: examples,
     );
@@ -270,7 +288,8 @@ class DslSpecLoader {
     WidgetPropSpec(
       key: 'value',
       type: 'any',
-      description: 'One-way initial/display value, used when `binding` is not '
+      description:
+          'One-way initial/display value, used when `binding` is not '
           'set (§2.6.0).',
     ),
     WidgetPropSpec(
@@ -326,9 +345,10 @@ List<String> documentedEnumValues(String description) {
     text = text.substring(colon + 1).trim();
   }
   if (text.endsWith('.')) text = text.substring(0, text.length - 1).trim();
-  if (!RegExp(r'^`[A-Za-z][A-Za-z0-9_]*`'
-          r'(\s*,\s*`[A-Za-z][A-Za-z0-9_]*`)+$')
-      .hasMatch(text)) {
+  if (!RegExp(
+    r'^`[A-Za-z][A-Za-z0-9_]*`'
+    r'(\s*,\s*`[A-Za-z][A-Za-z0-9_]*`)+$',
+  ).hasMatch(text)) {
     return const <String>[];
   }
   return List<String>.unmodifiable(<String>[

@@ -12,7 +12,7 @@ class ButtonWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract button properties.
-    // Canonical key is `label` per spec 17_Naming §17.3.2; `text` is a legacy
+    // Canonical key is `label`; `text` is a legacy
     // alias on the button widget.
     final label = context.resolve<String>(
         properties[core.PropertyKeys.label] ??
@@ -23,7 +23,7 @@ class ButtonWidgetFactory extends WidgetFactory {
     final iconPosValue = properties['iconPosition'];
     final iconPosition = iconPosValue is String ? iconPosValue : 'start';
 
-    // Canonical `variant` (spec v1.0); §17.3.2 legacy alias `style`.
+    // Canonical `variant` (spec v1.0); legacy alias `style`.
     final variantValue = readEnum(properties['variant'] ?? properties['style'], context);
     final variant = variantValue is String ? variantValue : 'elevated';
 
@@ -265,8 +265,7 @@ class ButtonWidgetFactory extends WidgetFactory {
                 ? BorderSide(
                     color: borderColor != null
                         ? parseColor(borderColor, context)!
-                        : (context.themeManager.getColorValue('outlineVariant') ??
-                            Colors.grey),
+                        : (context.themeManager.colorOr('outlineVariant', Colors.grey)),
                     width: borderWidth?.toDouble() ?? 1.0,
                   )
                 : null,

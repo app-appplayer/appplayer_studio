@@ -22,7 +22,7 @@ class StorageActionExecutor {
     Map<String, dynamic> action,
     RenderContext context,
   ) async {
-    // Storage is scoped to the subtree's origin (spec §7.10.1: an embedded
+    // Storage is scoped to the subtree's origin (an embedded
     // definition has its own storage identity). Without this a screen showing
     // two devices has them sharing one key space, so the second device to
     // write "config" silently overwrites the first — and each reads the

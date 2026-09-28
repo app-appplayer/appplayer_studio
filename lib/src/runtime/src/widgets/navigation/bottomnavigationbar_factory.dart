@@ -9,7 +9,7 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.8.2 canonical `selectedIndex`; `currentIndex` kept as legacy
+    // Canonical `selectedIndex`; `currentIndex` kept as legacy
     // Flutter-style alias.
     // Tolerant read: a bound path whose state holds the wrong shape used to
     // throw a cast error out of `resolve<num?>`, and the renderer painted a red
@@ -18,12 +18,12 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
     final rawIndex = numberOf(
             properties['selectedIndex'] ?? properties['currentIndex'], context) ??
         0;
-    final elevation = parseDimension(properties['elevation']);
+    final elevation = dimensionOf(properties['elevation'], context);
     final type = _parseBottomNavigationBarType(properties['type']);
     final fixedColor = parseColor(context.resolve(properties['fixedColor']), context);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
-    final iconSize = parseDimension(properties['iconSize']) ?? 24.0;
+    final iconSize = dimensionOf(properties['iconSize'], context) ?? 24.0;
     final selectedItemColor =
         parseColor(context.resolve(properties['selectedItemColor']), context);
     final unselectedItemColor =
@@ -32,9 +32,9 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
         _parseIconThemeData(properties['selectedIconTheme'], context);
     final unselectedIconTheme =
         _parseIconThemeData(properties['unselectedIconTheme'], context);
-    final selectedFontSize = parseDimension(properties['selectedFontSize']) ?? 14.0;
+    final selectedFontSize = dimensionOf(properties['selectedFontSize'], context) ?? 14.0;
     final unselectedFontSize =
-        parseDimension(properties['unselectedFontSize']) ?? 12.0;
+        dimensionOf(properties['unselectedFontSize'], context) ?? 12.0;
     final selectedLabelStyle =
         _parseTextStyle(properties['selectedLabelStyle'], context);
     final unselectedLabelStyle =
@@ -44,7 +44,9 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
     final enableFeedback = boolOf(properties['enableFeedback'], context);
 
     // Extract items
-    final itemsData = properties['items'] as List<dynamic>? ?? [];
+    // Tolerant read — see `tabBar`: a wrong-shaped binding drew an error box
+    // over the navigation bar instead of an empty one.
+    final itemsData = listOf(properties['items'], context) ?? const [];
     final items = itemsData.map<BottomNavigationBarItem>((item) {
       if (item is Map<String, dynamic>) {
         return BottomNavigationBarItem(
@@ -52,7 +54,7 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
           activeIcon: item['activeIcon'] != null
               ? _buildIcon(item['activeIcon'], context)
               : null,
-          // §17.3.2: canonical 'label', legacy alias 'title'.
+          // Canonical 'label', legacy alias 'title'.
           label: (item['label'] ?? item['title']) as String?,
           tooltip: item['tooltip'] as String?,
           backgroundColor: parseColor(context.resolve(item['backgroundColor']), context),
@@ -66,6 +68,15 @@ class BottomNavigationBarWidgetFactory extends WidgetFactory {
 
     // on + PascalCase optimal, legacy short names as fallback
     final onTap = actionOf(properties['onChange'] ?? properties['onTap'] ?? properties['change'] ?? properties['click'], context);
+
+    // Flutter asserts a bottom bar has at least two items, so an empty list is
+    // a crash rather than an empty bar. A document whose `items` binding has
+    // not arrived yet (or holds the wrong shape) draws nothing here — which is
+    // what "no data" looks like everywhere else — instead of taking the page
+    // down or covering it with a cast error.
+    if (items.length < 2) {
+      return applyCommonWrappers(const SizedBox.shrink(), properties, context);
+    }
 
     Widget bottomBar = BottomNavigationBar(
       items: items,

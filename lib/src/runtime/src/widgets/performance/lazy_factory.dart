@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../actions/dispatch_origin.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
@@ -10,7 +11,7 @@ class LazyWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final placeholder = properties['placeholder'] as Map<String, dynamic>?;
-    // Spec §10.21 canonical `child`; `content` kept as legacy alias.
+    // Canonical `child`; `content` kept as legacy alias.
     final child = (properties['child'] ?? properties['content'])
         as Map<String, dynamic>?;
     final trigger = context.resolve<String>(properties['trigger'] ?? 'visible');
@@ -91,28 +92,31 @@ class _LazyWidgetState extends State<_LazyWidget> {
             .renderWidget(_materialize(definition), widget.context);
       }
     });
-    // §10.22: fired after `content` is materialized. It was read and then
+    // Fired after `content` is materialized. It was read and then
     // silenced with an `unused_local_variable` ignore, so a document that
     // declared it waited for something that never came.
     final onLoad = widget.onLoad;
     if (onLoad != null) {
-      widget.context.actionHandler.execute(
-        onLoad,
-        widget.context.createChildContext(
-          variables: <String, dynamic>{
-            'event': <String, dynamic>{'type': 'load'},
-          },
+      DispatchOrigin.run(
+        DispatchOrigin.runtime,
+        () => widget.context.actionHandler.execute(
+          onLoad,
+          widget.context.createChildContext(
+            variables: <String, dynamic>{
+              'event': <String, dynamic>{'type': 'load'},
+            },
+          ),
         ),
       );
     }
   }
 
-  /// §10.22 gives `content` two forms: an inline widget, or
+  /// `content` has two forms: an inline widget, or
   /// `{ source: "ui://..." }` naming a fragment to fetch. Only the first was
   /// implemented — the second was handed to the renderer as-is, which
   /// answered `Widget type is required`, because a source is not a widget.
   ///
-  /// Resolution is `view`'s job (§2.13.1) and is not rebuilt here: `lazy`
+  /// Resolution is `view`'s job and is not rebuilt here: `lazy`
   /// decides *when* a subtree is built, `view` decides *what* a source
   /// resolves to. Delegating also carries `placeholder` and `onError`
   /// through to the surfaces that already implement them.

@@ -56,7 +56,7 @@ class ChannelManager {
   /// Track channel IDs that have autoDispose enabled
   final Set<String> _autoDisposeChannels = {};
 
-  /// Flow control configs per channel (spec §2277-2302)
+  /// Flow control configs per channel
   final Map<String, FlowControlConfig> _flowControlConfigs = {};
 
   /// Inbound rate limiters per channel
@@ -75,11 +75,11 @@ class ChannelManager {
   void Function(String channelId, dynamic error)? onError;
 
   /// Callback fired when a channel transitions to `connected`
-  /// (spec § 8.6.4 onConnect).
+  /// (`onConnect`).
   void Function(String channelId)? onConnect;
 
   /// Callback fired when a channel transitions to `disconnected`
-  /// (spec § 8.6.4 onDisconnect — graceful or error-driven stop).
+  /// (`onDisconnect` — graceful or error-driven stop).
   void Function(String channelId)? onDisconnect;
 
   /// Resolves a `client.mcpStream` channel's `uri`/`params` to a live source
@@ -97,7 +97,7 @@ class ChannelManager {
     }
   }
 
-  /// Subscribe to channel data updates with a callback (per 12-channels.md §8.1).
+  /// Subscribe to channel data updates with a callback.
   ///
   /// Returns a [StreamSubscription] that can be used with [unsubscribe].
   StreamSubscription? subscribe(String channelName, void Function(dynamic data) onData) {
@@ -106,7 +106,7 @@ class ChannelManager {
     return controller.stream.listen(onData);
   }
 
-  /// Unsubscribe a previously registered subscription (per 12-channels.md §8.1).
+  /// Unsubscribe a previously registered subscription.
   void unsubscribeListener(StreamSubscription subscription) {
     subscription.cancel();
   }
@@ -136,14 +136,14 @@ class ChannelManager {
 
     _channels[channelId] = channel;
 
-    // Track autoDispose flag (default true per spec §Channel Lifecycle)
+    // Track autoDispose flag (default true)
     if (config.autoDispose) {
       _autoDisposeChannels.add(channelId);
     } else {
       _autoDisposeChannels.remove(channelId);
     }
 
-    // Parse flow control config if present (spec §2277-2302)
+    // Parse flow control config if present
     final flowControlJson = config.params?['flowControl'] as Map<String, dynamic>?;
     if (flowControlJson != null) {
       final flowControl = FlowControlConfig.fromJson(flowControlJson);
@@ -198,7 +198,7 @@ class ChannelManager {
   /// Dispose all channels that have autoDispose enabled.
   ///
   /// Called during page lifecycle onDestroy to clean up channels that were
-  /// declared with autoDispose: true (the default per spec §Channel Lifecycle).
+  /// declared with autoDispose: true (the default).
   Future<void> disposeAutoChannels() async {
     final toDispose = _autoDisposeChannels.toList();
     for (final channelId in toDispose) {
@@ -281,7 +281,7 @@ class ChannelManager {
       throw StateError('Channel not found: $channelId');
     }
 
-    // Apply outbound rate limiting if configured (spec §2277-2302)
+    // Apply outbound rate limiting if configured
     final outboundLimiter = _outboundChannelRateLimiters[channelId];
     if (outboundLimiter != null && !outboundLimiter.tryEmit(data)) {
       _logger.debug('Channel $channelId outbound rate limit exceeded');
@@ -290,7 +290,7 @@ class ChannelManager {
 
     final config = _channelConfigs[channelId];
 
-    // Wrap in ChannelMessage protocol (spec §2160-2187)
+    // Wrap in ChannelMessage protocol
     final seq = _sequenceCounters[channelId] ?? 0;
     _sequenceCounters[channelId] = seq + 1;
     final message = ChannelMessage.outbound(channelId, data, sequence: seq);
@@ -466,7 +466,7 @@ class ChannelManager {
         strategy = BackpressureStrategy.buffer;
     }
 
-    // highWaterMark is treated as bufferSize (spec §Backpressure Control)
+    // highWaterMark is treated as bufferSize
     final bufferSize = bpConfig['bufferSize'] as int? ??
         bpConfig['highWaterMark'] as int? ??
         100;
@@ -499,14 +499,14 @@ class ChannelManager {
       final restartOnError = config?.params?['restartOnError'] as bool? ?? false;
       final maxRestarts = config?.params?['maxRestarts'] as int? ?? 3;
 
-      // Apply backpressure if configured (spec §Backpressure Control)
+      // Apply backpressure if configured
       final bpController =
           _buildBackpressureController(config?.backpressure);
       Stream<dynamic> dataStream = bpController != null
           ? bpController.apply(channel.stream)
           : channel.stream;
 
-      // Apply inbound rate limiting if configured (spec §2277-2302)
+      // Apply inbound rate limiting if configured
       final inboundLimiter = _inboundChannelRateLimiters[channelId];
       if (inboundLimiter != null) {
         dataStream = inboundLimiter.applyToStream(dataStream);
@@ -514,7 +514,7 @@ class ChannelManager {
 
       final subscription = dataStream.listen(
         (data) {
-          // Wrap raw data in ChannelMessage protocol (spec §2160-2187)
+          // Wrap raw data in ChannelMessage protocol
           final seq = _sequenceCounters[channelId] ?? 0;
           _sequenceCounters[channelId] = seq + 1;
           final message = ChannelMessage.inbound(
@@ -706,7 +706,13 @@ class BackpressureController {
             latest = data;
             if (!scheduled) {
               scheduled = true;
-              Future.microtask(() {
+              // Deferred to the next event-loop turn, not to a microtask.
+              // Stream events are themselves delivered one per microtask, so a
+              // microtask scheduled here always ran BEFORE the next event
+              // arrived — nothing was ever collapsed and `latest` behaved
+              // exactly like `buffer`. A document asking for "only the current
+              // reading" was handed every reading instead.
+              Timer.run(() {
                 scheduled = false;
                 controller.add(latest);
               });

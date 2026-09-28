@@ -12,13 +12,34 @@ class WidgetCache {
 
   WidgetCache._internal();
 
+  /// A cache belonging to ONE renderer.
+  ///
+  /// A cached widget is not a pure function of its definition: the event
+  /// closures inside it capture the `RenderContext` that built it — its state
+  /// manager, its action handler, its engine. Sharing one map across renderers
+  /// therefore hands the second document a widget wired to the FIRST
+  /// document's state, and a `binding` write lands in the wrong place with
+  /// nothing on screen to say so. `MCPUIRuntime.destroy` used to paper over
+  /// the sequential half of this by clearing the singleton; two runtimes ALIVE
+  /// at once — a dashboard tile beside an open app — had no such protection.
+  ///
+  /// Storage is per instance; the on/off switch stays global, because it is a
+  /// host policy rather than a property of one document.
+  WidgetCache.isolated();
+
   final Map<String, Widget> _cache = {};
   final Map<String, int> _hitCount = {};
   final Map<String, DateTime> _lastAccessed = {};
   final MCPLogger _logger = MCPLogger('WidgetCache');
 
   static const int _maxCacheSize = 100;
-  static const Duration _maxAge = Duration(minutes: 30);
+  /// How long an entry stays fresh.
+  ///
+  /// Settable because a fixed thirty minutes means the expiry path can only
+  /// be seen by waiting half an hour — the code was there, and whether it
+  /// removed the right entries was nobody's knowledge. A host may also shorten
+  /// it for a screen whose widgets go stale sooner.
+  static Duration maxAge = const Duration(minutes: 30);
 
   /// Generate cache key from widget definition
   String _generateKey(
@@ -84,7 +105,7 @@ class WidgetCache {
     final lastAccessed = _lastAccessed[key];
     if (lastAccessed == null) return true;
 
-    return DateTime.now().difference(lastAccessed) > _maxAge;
+    return DateTime.now().difference(lastAccessed) > maxAge;
   }
 
   /// Remove a cache entry
@@ -130,7 +151,7 @@ class WidgetCache {
     final expiredKeys = <String>[];
 
     for (final entry in _lastAccessed.entries) {
-      if (now.difference(entry.value) > _maxAge) {
+      if (now.difference(entry.value) > maxAge) {
         expiredKeys.add(entry.key);
       }
     }
@@ -161,7 +182,7 @@ class WidgetCache {
   }
 
   /// Enable or disable caching globally
-  bool _enabled = true;
+  static bool _enabled = true;
   bool get enabled => _enabled;
 
   void enable() {

@@ -13,7 +13,7 @@ class SegmentedControlFactory extends WidgetFactory {
     final binding = stringOf(properties['binding'], context);
     final options = properties['options'] as List<dynamic>? ?? [];
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
-    // Spec §2.6.19 — the three variants render differently. They used to all
+    // The three variants render differently. They used to all
     // resolve to SegmentedButton, so a document declaring `tabs` or `buttons`
     // got the same control and the declaration meant nothing.
     final variant = context.resolve<String?>(properties['variant']) ?? 'segmented';
@@ -127,7 +127,7 @@ class SegmentedControlFactory extends WidgetFactory {
               .toList(),
           selected: selectedValue != null ? {selectedValue} : {},
           // A document may bind the selection to state that has no value yet
-          // — §2.6.0 does not require an initial one. Without this
+          // — binding does not require an initial one. Without this
           // `SegmentedButton` asserts and the whole page fails to draw.
           emptySelectionAllowed: selectedValue == null,
           onSelectionChanged: enabled

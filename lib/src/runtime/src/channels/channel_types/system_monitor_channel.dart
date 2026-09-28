@@ -4,8 +4,8 @@
 library system_monitor_channel;
 
 import 'dart:async';
-import 'dart:io';
 
+import '../../platform/host_platform.dart';
 import '../channel_manager.dart';
 
 /// Channel that streams system metrics at regular intervals
@@ -42,13 +42,25 @@ class SystemMonitorChannel implements Channel {
       (_) => _collectMetrics(),
     );
 
-    // Emit initial reading immediately
-    _collectMetrics();
+    // Emit the initial reading on the next turn, not synchronously.
+    //
+    // The controller is a broadcast one and it is created HERE, so a caller
+    // cannot listen before `start` — `stream` answers `Stream.empty()` until
+    // then. A reading emitted inside `start` therefore reached nobody: every
+    // consumer does `await start(); stream.listen(...)`, and a broadcast
+    // controller drops what it emits with no listeners. The dashboard sat
+    // empty for a whole interval and then filled in, which reads as a slow
+    // backend rather than as a reading that was thrown away.
+    _initialReading = Timer(Duration.zero, _collectMetrics);
   }
+
+  Timer? _initialReading;
 
   @override
   Future<void> stop() async {
     _isActive = false;
+    _initialReading?.cancel();
+    _initialReading = null;
     _timer?.cancel();
     _timer = null;
     await _controller?.close();
@@ -79,9 +91,9 @@ class SystemMonitorChannel implements Channel {
 
       if (metrics.contains('platform')) {
         data['platform'] = {
-          'os': Platform.operatingSystem,
-          'version': Platform.operatingSystemVersion,
-          'numberOfProcessors': Platform.numberOfProcessors,
+          'os': HostPlatform.name,
+          'version': HostPlatform.osVersion,
+          'numberOfProcessors': HostPlatform.processorCount,
         };
       }
 
@@ -94,15 +106,16 @@ class SystemMonitorChannel implements Channel {
   Map<String, dynamic> _getMemoryMetrics() {
     // Dart doesn't expose detailed memory metrics directly,
     // but ProcessInfo provides RSS
+    final memory = HostPlatform.memory;
     return {
-      'rss': ProcessInfo.currentRss,
-      'maxRss': ProcessInfo.maxRss,
+      'rss': memory.rss,
+      'maxRss': memory.maxRss,
     };
   }
 
   Map<String, dynamic> _getCpuMetrics() {
     return {
-      'processors': Platform.numberOfProcessors,
+      'processors': HostPlatform.processorCount,
     };
   }
 }

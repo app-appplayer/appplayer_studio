@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
+import '../../../base/settings/llm_key_store.dart';
 import '../infra/ws_paths.dart' show systemWorkspaceSlot;
 import 'ops_error.dart';
 
 /// Root configuration for makemind Ops.
 ///
 /// Loaded from `~/.makemind-ops/config.yaml` (or platform appSupportDirectory).
+final Logger _log = Logger('OpsConfig');
+
 class OpsConfig {
   OpsConfig({
     required this.version,
@@ -124,8 +129,66 @@ class OpsConfig {
     );
 
     cfg._validate();
-    return cfg;
+    return _withStoredKeys(cfg, yaml['llm'], resolved);
   }
+
+  /// Keychain scope of the config file at [path].
+  static String _keyScope(String path) => 'ops:${p.basename(p.dirname(path))}';
+
+  /// LLM provider keys live in the keychain ([LlmKeyStore]), never in the
+  /// YAML. Keys still in an older plaintext file are moved into the keychain
+  /// (the keychain wins where both hold one) and the file is rewritten
+  /// without them. A keychain that cannot be read leaves the file untouched.
+  static Future<OpsConfig> _withStoredKeys(
+    OpsConfig cfg,
+    Object? rawLlm,
+    String path,
+  ) async {
+    final LlmKeys stored;
+    try {
+      stored = await LlmKeyStore.read(_keyScope(path));
+    } catch (e) {
+      _log.warning('LLM keys unavailable from the keychain: $e');
+      return cfg;
+    }
+    final plaintext = <String, String>{
+      for (final e in cfg.llm.providers.entries)
+        if (e.value.apiKey.isNotEmpty) e.key: e.value.apiKey,
+    };
+    final keys = <String, String>{...plaintext, ...stored.providers};
+    final withKeys = cfg._copyWithLlm(
+      LlmSettings(
+        defaultProvider: cfg.llm.defaultProvider,
+        timeoutSeconds: cfg.llm.timeoutSeconds,
+        providers: <String, LlmProviderSettings>{
+          for (final e in cfg.llm.providers.entries)
+            e.key: LlmProviderSettings(
+              apiKey: keys[e.key] ?? '',
+              model: e.value.model,
+              maxTokens: e.value.maxTokens,
+            ),
+        },
+      ),
+    );
+    if (plaintext.isNotEmpty) await withKeys.save(path: path);
+    return withKeys;
+  }
+
+  OpsConfig _copyWithLlm(LlmSettings llm) => OpsConfig(
+    version: version,
+    appName: appName,
+    activeWorkspace: activeWorkspace,
+    workspacesRoot: workspacesRoot,
+    llm: llm,
+    mcp: mcp,
+    browser: browser,
+    storage: storage,
+    channel: channel,
+    security: security,
+    systemAgent: systemAgent,
+    themeMode: themeMode,
+    loadedFromDisk: loadedFromDisk,
+  );
 
   static String _coerceThemeMode(Object? raw) {
     final s = (raw as String?)?.trim().toLowerCase();
@@ -187,11 +250,19 @@ class OpsConfig {
 
   String toJsonString() => const JsonEncoder.withIndent('  ').convert(toJson());
 
-  /// Serialize to YAML and write atomically. Secrets referenced via
-  /// `${ENV}` / `kc:alias` / `file:path` are preserved verbatim — actual
-  /// values live in keychain / encrypted files, not this config.
+  /// Serialize to YAML and write atomically. LLM provider keys go to the
+  /// keychain ([LlmKeyStore]); the YAML never carries them.
   Future<void> save({String? path}) async {
     final resolved = path ?? _defaultPath();
+    await LlmKeyStore.write(
+      _keyScope(resolved),
+      LlmKeys(
+        providers: <String, String>{
+          for (final e in llm.providers.entries)
+            if (e.value.apiKey.isNotEmpty) e.key: e.value.apiKey,
+        },
+      ),
+    );
     final file = File(resolved);
     await file.parent.create(recursive: true);
     final yaml = _toYaml(toJson(), indent: 0);
@@ -308,8 +379,11 @@ class LlmProviderSettings {
     );
   }
 
+  /// Never carries the key itself — only whether one is set. This map is
+  /// what the config file, `config_get` / `config_reload` and the diagnostic
+  /// export are built from.
   Map<String, dynamic> toJson() => {
-    'apiKey': apiKey,
+    'hasApiKey': apiKey.isNotEmpty,
     'model': model,
     'maxTokens': maxTokens,
   };

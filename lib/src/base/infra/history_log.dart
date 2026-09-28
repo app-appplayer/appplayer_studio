@@ -17,6 +17,21 @@ class VibeHistoryLog {
 
   final String _path;
 
+  /// Writes run one at a time. The log follows the canonical's change
+  /// stream, so a burst of patches appends several lines at once; two
+  /// appends in flight both write at the old end of the file and the
+  /// shorter line overwrites the start of the longer one.
+  Future<void> _writes = Future<void>.value();
+
+  Future<void> _serial(Future<void> Function() write) {
+    final next = _writes.then((_) => write());
+    _writes = next.catchError((_) {});
+    return next;
+  }
+
+  /// Completes once every write started so far has finished.
+  Future<void> flush() => _writes;
+
   static const String fileName = 'history.jsonl';
 
   /// Open (or create) the history log inside [projectPath].
@@ -50,7 +65,7 @@ class VibeHistoryLog {
 
   /// Append one change. Best-effort — write failures are swallowed.
   /// We never let an audit-log hiccup interrupt the editing experience.
-  Future<void> append(CanonicalChange change) async {
+  Future<void> append(CanonicalChange change) => _serial(() async {
     try {
       final file = File(_path);
       await file.parent.create(recursive: true);
@@ -62,17 +77,17 @@ class VibeHistoryLog {
     } catch (_) {
       /* ignore */
     }
-  }
+  });
 
   /// Drop the entire log. Used by tests + any future "fresh start" UI.
-  Future<void> clear() async {
+  Future<void> clear() => _serial(() async {
     try {
       final file = File(_path);
       if (await file.exists()) await file.delete();
     } catch (_) {
       /* ignore */
     }
-  }
+  });
 
   static Map<String, dynamic> _changeToJson(CanonicalChange c) {
     // Kernel's [CanonicalChange.originator] is `Object?`. App_builder

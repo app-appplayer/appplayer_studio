@@ -13,8 +13,9 @@ class TimeFieldFactory extends WidgetFactory {
     final binding = stringOf(properties['binding'], context);
     final errorText = context.resolve(properties['errorText']) as String?;
     final enabled = context.resolve(properties['enabled'] ?? true) as bool;
-    final use24HourFormat = boolOf(properties['use24HourFormat'], context) ?? false;
-    // Spec §2.6.14: `format` controls displayed string (HH:mm default);
+    final use24HourFormat =
+        boolOf(properties['use24HourFormat'], context) ?? false;
+    // `format` controls displayed string (HH:mm default);
     // `mode` switches picker style.
     final formatStr = readEnum(properties['format'], context) ?? 'HH:mm';
     final modeStr = readEnum(properties['mode'], context) ?? 'spinner';
@@ -28,63 +29,70 @@ class TimeFieldFactory extends WidgetFactory {
 
     final controller = TextEditingController(text: currentValue ?? '');
 
-    Widget timeField = GestureDetector(
-      onTap: enabled
-          ? () async {
-              // Parse current time
-              TimeOfDay? initialTime;
-              if (currentValue != null && currentValue.isNotEmpty) {
-                try {
-                  final parts = currentValue.split(':');
-                  if (parts.length >= 2) {
-                    final hour = int.parse(parts[0]);
-                    final minute = int.parse(parts[1]);
-                    initialTime = TimeOfDay(hour: hour, minute: minute);
+    // The picker opens from the widget's OWN build context, not from the
+    // render context's stored one: that field is nullable, so asserting it
+    // made the tap throw wherever it was unset, and where it was set it could
+    // belong to a different subtree than the one the user tapped — which is
+    // the Navigator the dialog would have been pushed onto.
+    Widget timeField = Builder(
+      builder: (buildContext) => GestureDetector(
+        onTap: enabled
+            ? () async {
+                // Parse current time
+                TimeOfDay? initialTime;
+                if (currentValue != null && currentValue.isNotEmpty) {
+                  try {
+                    final parts = currentValue.split(':');
+                    if (parts.length >= 2) {
+                      final hour = int.parse(parts[0]);
+                      final minute = int.parse(parts[1]);
+                      initialTime = TimeOfDay(hour: hour, minute: minute);
+                    }
+                  } catch (e) {
+                    // Invalid time
                   }
-                } catch (e) {
-                  // Invalid time
+                }
+                initialTime ??= TimeOfDay.now();
+
+                final pickedTime = await showTimePicker(
+                  context: buildContext,
+                  initialTime: initialTime,
+                  // `spinner` and `dial` are the same Material surface (the
+                  // clock face); `input` is the keyboard entry form. Named
+                  // rather than left as an else-branch so the declared value
+                  // is visible in the implementation.
+                  initialEntryMode: switch (modeStr) {
+                    'input' => TimePickerEntryMode.input,
+                    'dial' => TimePickerEntryMode.dial,
+                    _ => TimePickerEntryMode.dial,
+                  },
+                  builder: (pickerContext, child) {
+                    if (!use24HourFormat) return child!;
+
+                    return MediaQuery(
+                      data: MediaQuery.of(pickerContext)
+                          .copyWith(alwaysUse24HourFormat: true),
+                      child: child!,
+                    );
+                  },
+                );
+
+                if (pickedTime != null && binding != null) {
+                  final formattedTime = _applyTimeFormat(formatStr, pickedTime);
+                  context.setValue(binding, formattedTime);
+                  controller.text = formattedTime;
                 }
               }
-              initialTime ??= TimeOfDay.now();
-
-              final pickedTime = await showTimePicker(
-                context: context.buildContext!,
-                initialTime: initialTime,
-                // `spinner` and `dial` are the same Material surface (the
-                // clock face); `input` is the keyboard entry form. Named
-                // rather than left as an else-branch so the declared value
-                // is visible in the implementation.
-                initialEntryMode: switch (modeStr) {
-                  'input' => TimePickerEntryMode.input,
-                  'dial' => TimePickerEntryMode.dial,
-                  _ => TimePickerEntryMode.dial,
-                },
-                builder: (context, child) {
-                  if (!use24HourFormat) return child!;
-
-                  return MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(alwaysUse24HourFormat: true),
-                    child: child!,
-                  );
-                },
-              );
-
-              if (pickedTime != null && binding != null) {
-                final formattedTime = _applyTimeFormat(formatStr, pickedTime);
-                context.setValue(binding, formattedTime);
-                controller.text = formattedTime;
-              }
-            }
-          : null,
-      child: AbsorbPointer(
-        child: TextField(
-          controller: controller,
-          enabled: enabled,
-          decoration: InputDecoration(
-            labelText: label,
-            errorText: errorText,
-            suffixIcon: const Icon(Icons.access_time),
+            : null,
+        child: AbsorbPointer(
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            decoration: InputDecoration(
+              labelText: label,
+              errorText: errorText,
+              suffixIcon: const Icon(Icons.access_time),
+            ),
           ),
         ),
       ),

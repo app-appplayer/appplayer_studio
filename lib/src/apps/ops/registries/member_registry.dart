@@ -593,7 +593,8 @@ class MemberRegistry {
       skillIds: (y['skillIds'] as List?)?.cast<String>() ?? const [],
       philosophyRef: (y['philosophyRef'] as String?) ?? '',
       model: model,
-      role: AgentRole.values.asNameMap()[y['role'] as String? ?? ''] ??
+      role:
+          AgentRole.values.asNameMap()[y['role'] as String? ?? ''] ??
           AgentRole.worker,
       authProfiles: authProfiles,
       tags:

@@ -6,7 +6,7 @@ import '../../renderer/render_context.dart';
 class DragTargetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
-    // Canonical `builder` per spec §2.10.4; `child` accepted as legacy alias.
+    // Canonical `builder`; `child` accepted as legacy alias.
     // The registry also documents `children` — multiple widgets wrapped into
     // a linear column — which this factory used to reject, so a document
     // written the way the registry describes it threw.

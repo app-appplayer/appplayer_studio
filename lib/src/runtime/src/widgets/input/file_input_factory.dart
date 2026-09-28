@@ -8,7 +8,7 @@ import '../../assets/asset_resolver.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `fileInput` (spec §2.6.24).
+/// Factory for `fileInput`.
 ///
 /// Core, and the reason is a boundary rather than a feature. Reading a path
 /// the *document* names reaches into the host's filesystem and belongs behind
@@ -33,7 +33,7 @@ class FileInputFactory extends WidgetFactory {
     final maxBytes = context.resolve<num?>(properties['maxBytes'])?.toInt();
     final maxFiles = context.resolve<num?>(properties['maxFiles'])?.toInt();
     final accept =
-        (context.resolve<List<dynamic>?>(properties['accept']) ?? const [])
+        (listOf(properties['accept'], context) ?? const [])
             .map((e) => e.toString())
             .toList();
     final onChange = actionOf(properties['onChange'], context);
@@ -75,7 +75,7 @@ class FileInputFactory extends WidgetFactory {
         final descriptors = <Map<String, dynamic>>[];
         for (final f in files) {
           if (maxBytes != null && f.size > maxBytes) {
-            // Oversized files surface rather than vanishing (spec §2.6.24).
+            // Oversized files surface rather than vanishing.
             emit(onError, {
               'type': 'error',
               'code': 'maxBytes',
@@ -187,7 +187,7 @@ class _SelectedFile extends StatelessWidget {
             SizedBox(
               width: 40,
               height: 40,
-              // Through the one asset path (§6.12) — a data: URI is a valid
+              // Through the one asset path — a data: URI is a valid
               // AssetRef, and Image.network would not decode it on any
               // platform.
               child: Builder(builder: (_) {

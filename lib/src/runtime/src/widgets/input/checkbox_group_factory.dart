@@ -16,7 +16,7 @@ class CheckboxGroupFactory extends WidgetFactory {
         readEnum(properties['direction'] ?? properties['orientation'], context) ??
             'vertical';
 
-    // Spec §2.6.0 / §2.6.7: top-level `binding` holds an array of selected values.
+    // Top-level `binding` holds an array of selected values.
     // Legacy: per-option `binding` (boolean state per option) remains supported.
     final groupBinding = stringOf(properties['binding'], context);
     final onChange =

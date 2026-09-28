@@ -1,8 +1,8 @@
-/// Holds the entry and identity a runtime was opened under (MCP UI DSL §8.9).
+/// Holds the entry and identity a runtime was opened under.
 ///
 /// The host owns the facts; this only stores them, publishes them where the
 /// binding engine can read them, and rebuilds bound widgets when identity
-/// changes mid-session (§8.9.4).
+/// changes mid-session.
 library entry_session;
 
 import '../state/state_manager.dart';
@@ -12,13 +12,11 @@ import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
 /// Reserved state keys the session publishes under. Documents read them
 /// through `entry.*` / `identity.*` bindings and MUST NOT write them — the
 /// state action executor rejects writes to these roots.
-class EntryStateKeys {
-  EntryStateKeys._();
-
+abstract final class EntryStateKeys {
   static const String entry = 'entry';
   static const String identity = 'identity';
 
-  /// Roots a document may never assign to (§8.9.2 "All read-only").
+  /// Roots a document may never assign to.
   static const Set<String> readOnlyRoots = <String>{entry, identity};
 
   /// Whether [path] targets a read-only entry/identity root.
@@ -63,7 +61,7 @@ class EntrySession {
   IdentityContext get identity => _identity;
 
   /// Whether the host wired anything at all. A runtime with no host support
-  /// resolves every §8.9 binding to `null` (§8.9.6).
+  /// resolves every `entry.*` and `identity.*` binding to `null`.
   bool get hasHostSupport => _entry != null || _promoter != null;
 
   /// Seed the entry. Called once by the host as it opens the definition —
@@ -74,7 +72,7 @@ class EntrySession {
   }
 
   /// Seed or replace the current principal. Publishing through the state
-  /// manager is what re-evaluates bound expressions in place (§8.9.4) — the
+  /// manager is what re-evaluates bound expressions in place — the
   /// document is not rebuilt and its state is not discarded.
   void adoptIdentity(IdentityContext identity) {
     if (_identity == identity) return;
@@ -84,7 +82,7 @@ class EntrySession {
 
   /// Wire the host's promotion handlers. Absent handlers make
   /// `identity.promote` / `identity.release` unsupported rather than failing
-  /// (§8.9.6).
+  /// outright.
   void registerPromotion({
     IdentityPromoter? onPromote,
     IdentityPromoter? onRelease,

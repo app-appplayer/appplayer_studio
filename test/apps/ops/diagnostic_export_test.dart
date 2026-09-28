@@ -6,18 +6,16 @@
 ///
 ///   _countBySeverity — public-seam test via observable summary behaviour
 ///   _redactConfig    — public-seam test via observable JSON output
-///   _maskKey         — inlined equivalent (same logic, white-box)
 ///
 /// Scenarios:
-///   de1  _maskKey — empty string → '<empty>'
-///   de2  _maskKey — short key (≤8 chars) → '****'
-///   de3  _maskKey — long key → 4-char prefix + '…' + 4-char suffix
 ///   de4  _countBySeverity — counts each severity bucket correctly
 ///   de5  _countBySeverity — all buckets present even when zero
-///   de6  _redactConfig — API key in llm.providers is masked
+///   de6  config JSON carries no LLM key value — only `hasApiKey`
 ///   de7  _redactConfig — config shape is preserved (keys still present)
 ///   de8  _redactConfig — 'key'/'secret'/'token' fields in security redacted
 library;
+
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/src/apps/ops/config/ops_config.dart';
@@ -26,12 +24,6 @@ import 'package:appplayer_studio/src/apps/ops/observability/activity_event.dart'
 // ---------------------------------------------------------------------------
 // Pure-logic helpers cloned from diagnostic_export.dart
 // ---------------------------------------------------------------------------
-
-String _maskKey(String key) {
-  if (key.isEmpty) return '<empty>';
-  if (key.length <= 8) return '****';
-  return '${key.substring(0, 4)}…${key.substring(key.length - 4)}';
-}
 
 Map<String, int> _countBySeverity(List<ActivityEvent> events) {
   final out = <String, int>{
@@ -47,18 +39,6 @@ Map<String, int> _countBySeverity(List<ActivityEvent> events) {
 
 Map<String, Object?> _redactConfig(OpsConfig cfg) {
   final j = cfg.toJson();
-  final llm = j['llm'];
-  if (llm is Map) {
-    final providers = llm['providers'];
-    if (providers is Map) {
-      for (final entry in providers.entries) {
-        final v = entry.value;
-        if (v is Map && v['apiKey'] is String) {
-          v['apiKey'] = _maskKey(v['apiKey'] as String);
-        }
-      }
-    }
-  }
   final security = j['security'];
   if (security is Map) {
     for (final k in security.keys.toList()) {
@@ -102,40 +82,6 @@ OpsConfig _cfgWithKey(String apiKey) => OpsConfig(
 
 void main() {
   // -------------------------------------------------------------------------
-  // _maskKey
-  // -------------------------------------------------------------------------
-  group('_maskKey', () {
-    test('de1 empty string → <empty>', () {
-      expect(_maskKey(''), '<empty>');
-    });
-
-    test('de2 8-char key → ****', () {
-      expect(_maskKey('abcdefgh'), '****');
-    });
-
-    test('de2b 4-char key → ****', () {
-      expect(_maskKey('1234'), '****');
-    });
-
-    test('de3 long key → 4-char prefix + ellipsis + 4-char suffix', () {
-      // 'sk-test123456789' has length 17
-      const key = 'sk-test123456789';
-      final masked = _maskKey(key);
-      expect(masked.startsWith('sk-t'), isTrue);
-      expect(masked.endsWith('6789'), isTrue);
-      expect(masked, contains('…')); // ellipsis character
-    });
-
-    test('de3b 9-char key is masked', () {
-      const key = '123456789';
-      final masked = _maskKey(key);
-      // > 8 chars, so masked
-      expect(masked, startsWith('1234'));
-      expect(masked, endsWith('6789'));
-    });
-  });
-
-  // -------------------------------------------------------------------------
   // _countBySeverity
   // -------------------------------------------------------------------------
   group('_countBySeverity', () {
@@ -169,16 +115,17 @@ void main() {
   // _redactConfig
   // -------------------------------------------------------------------------
   group('_redactConfig', () {
-    test('de6 API key in llm.providers is masked', () {
+    test('de6 config JSON carries no LLM key value — only hasApiKey', () {
       final cfg = _cfgWithKey('sk-real-secret-key-1234567890');
       final redacted = _redactConfig(cfg);
-      final llm = redacted['llm'] as Map;
-      final providers = llm['providers'] as Map;
-      final claude = providers['claude'] as Map;
-      final maskedKey = claude['apiKey'] as String;
-      // Original key must not appear
-      expect(maskedKey, isNot(contains('sk-real-secret-key-1234567890')));
-      expect(maskedKey, contains('…'));
+      final claude =
+          ((redacted['llm'] as Map)['providers'] as Map)['claude'] as Map;
+      expect(claude.containsKey('apiKey'), isFalse);
+      expect(claude['hasApiKey'], isTrue);
+      expect(
+        jsonEncode(cfg.toJson()),
+        isNot(contains('sk-real-secret-key-1234567890')),
+      );
     });
 
     test(

@@ -17,9 +17,8 @@ import 'capability_recipes/capability_recipes.dart';
 List<String> registerSecretVault(
   mk.HostToolRegistry registry, {
   SecureStorage? store,
-}) =>
-    registerCapabilityTools(
-      registry,
-      capabilityId: secretCapabilityId,
-      tools: secretCapabilityTools(store ?? FlutterSecureStorageBackend()),
-    );
+}) => registerCapabilityTools(
+  registry,
+  capabilityId: secretCapabilityId,
+  tools: secretCapabilityTools(store ?? FlutterSecureStorageBackend()),
+);

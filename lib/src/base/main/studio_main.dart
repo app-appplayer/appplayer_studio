@@ -26,6 +26,8 @@ library;
 
 import 'dart:io';
 
+import 'package:appplayer_secure/appplayer_secure.dart'
+    show FlutterSecureStorageBackend;
 import 'package:args/args.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -38,6 +40,8 @@ import 'package:appplayer_studio/ui.dart' as ui;
 
 import '../boot/studio_boot.dart';
 import '../chat/chat_controller.dart';
+import '../settings/llm_key_store.dart';
+import '../settings/third_party_licenses.dart';
 import '../settings/vibe_settings.dart';
 import '../shell/app_theme.dart';
 import 'bundle_install_surface.dart';
@@ -101,6 +105,20 @@ class StudioMain {
       stderr.writeln(
         '${app.toolId}: flutter error — ${details.exceptionAsString()}',
       );
+      // Framework assertions raised inside a widget's build carry no stack
+      // in the default dump; name the studio frames so the owning widget
+      // can be found from the log alone.
+      final stack = details.stack;
+      if (stack != null) {
+        final own = stack
+            .toString()
+            .split('\n')
+            .where((l) => l.contains('package:appplayer_studio/'))
+            .take(3);
+        for (final line in own) {
+          stderr.writeln('${app.toolId}:   at ${line.trim()}');
+        }
+      }
       prevFlutterOnError?.call(details);
     };
 
@@ -128,6 +146,10 @@ class StudioMain {
     final configRootName = instanceConfigRootName(baseConfigRootName, instance);
     final configRoot = p.join(_homeDir(), '.config', configRootName);
     final settingsPath = p.join(configRoot, 'settings.json');
+    // Native libraries and bundled fonts join the Dart package licenses.
+    registerThirdPartyLicenses();
+    // LLM keys are read from and written to the OS keychain.
+    LlmKeyStore.storage ??= FlutterSecureStorageBackend();
     final settings = await VibeSettings.load(settingsPath);
     // Hint the host app at the config root before the first
     // `agentProfiles` read — host_agents.json sits there and must be

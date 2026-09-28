@@ -1,6 +1,6 @@
 /// [ImageProvider] for the asynchronous `AssetRef` forms.
 ///
-/// Spec §6.12.5: `bundle://`, `client://`, and origin-served references are
+/// `bundle://`, `client://`, and origin-served references are
 /// read asynchronously, and a runtime whose asset path is synchronous can only
 /// support the forms needing no I/O — while appearing to implement the whole
 /// contract. Flutter's [ImageProvider] is already an asynchronous loader, so

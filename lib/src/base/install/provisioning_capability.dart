@@ -38,8 +38,7 @@ import 'package:brain_kernel/brain_kernel.dart' show HostToolRegistry;
 import '../bridge/ble_provisioning/ble_provisioning.dart';
 import '../bridge/ble_stack.dart' show studioBleStack;
 import '../bridge/serial_provisioning/serial_provisioning.dart' as serial;
-import '../bridge/smartconfig_provisioning/smartconfig_provisioning.dart'
-    as sc;
+import '../bridge/smartconfig_provisioning/smartconfig_provisioning.dart' as sc;
 import '../bridge/softap_provisioning/softap_provisioning.dart' as softap;
 import 'capability_recipes/capability_recipes.dart'
     show CapabilityTool, registerCapabilityTools;
@@ -55,7 +54,8 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
     tools: <CapabilityTool>[
       CapabilityTool(
         verb: 'candidates',
-        description: 'Scan for BLE devices currently in provisioning mode '
+        description:
+            'Scan for BLE devices currently in provisioning mode '
             '(advertising the provisioning service). On-demand fresh 3s scan — '
             'call it (Refresh) after Bluetooth is ready; a boot-time scan is '
             'empty because CoreBluetooth is not yet up.',
@@ -67,7 +67,8 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
       ),
       CapabilityTool(
         verb: 'commission',
-        description: 'Send Wi-Fi credentials to a provisioning-mode BLE device '
+        description:
+            'Send Wi-Fi credentials to a provisioning-mode BLE device '
             '(deviceId from provision.candidates) and await the terminal join '
             'result — `connected` with the obtained ip, or `failed`. Tolerates '
             'the BLE link dropping mid-join (Wi-Fi/BT coex): re-probes the '
@@ -81,15 +82,17 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
           },
           'required': <String>['deviceId', 'ssid', 'password'],
         },
-        invoke: (args) => commissionViaNotify(
-          deviceId: args['deviceId'] as String,
-          ssid: args['ssid'] as String,
-          password: (args['password'] as String?) ?? '',
-        ),
+        invoke:
+            (args) => commissionViaNotify(
+              deviceId: args['deviceId'] as String,
+              ssid: args['ssid'] as String,
+              password: (args['password'] as String?) ?? '',
+            ),
       ),
       CapabilityTool(
         verb: 'softap_commission',
-        description: 'Commission a device in SoftAP provisioning mode over its '
+        description:
+            'Commission a device in SoftAP provisioning mode over its '
             'portal HTTP API. The host must ALREADY be joined to the device\'s '
             'AP (e.g. mcp-prov-XXXX) so the portal (default http://192.168.4.1) '
             'is reachable — joining the AP is the operator\'s step on desktop. '
@@ -106,16 +109,18 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
           },
           'required': <String>['ssid', 'password'],
         },
-        invoke: (args) => softApCommission(
-          ssid: args['ssid'] as String,
-          password: (args['password'] as String?) ?? '',
-          portalBase:
-              (args['portalBase'] as String?) ?? 'http://192.168.4.1',
-        ),
+        invoke:
+            (args) => softApCommission(
+              ssid: args['ssid'] as String,
+              password: (args['password'] as String?) ?? '',
+              portalBase:
+                  (args['portalBase'] as String?) ?? 'http://192.168.4.1',
+            ),
       ),
       CapabilityTool(
         verb: 'serial_ports',
-        description: 'List local serial port device paths a node console could '
+        description:
+            'List local serial port device paths a node console could '
             'be attached to (macOS/Linux: /dev/cu.* and /dev/ttyUSB* / '
             '/dev/ttyACM*).',
         inputSchema: const <String, dynamic>{
@@ -126,7 +131,8 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
       ),
       CapabilityTool(
         verb: 'console',
-        description: 'Drive a node\'s provisioning console over a local serial '
+        description:
+            'Drive a node\'s provisioning console over a local serial '
             'port (`#PROV ` line contract). op: scan (APs the device sees) | '
             'commission (send creds, await terminal join) | forget (clear '
             'stored creds; device re-enters provisioning mode on reset) | '
@@ -151,18 +157,21 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
           },
           'required': <String>['port', 'op'],
         },
-        invoke: (args) => provisioningConsole(
-          port: args['port'] as String,
-          op: args['op'] as String,
-          ssid: args['ssid'] as String?,
-          password: args['password'] as String?,
-          baud: (args['baud'] as num?)?.toInt() ?? 115200,
-          bootDelaySeconds: (args['bootDelaySeconds'] as num?)?.toInt() ?? 9,
-        ),
+        invoke:
+            (args) => provisioningConsole(
+              port: args['port'] as String,
+              op: args['op'] as String,
+              ssid: args['ssid'] as String?,
+              password: args['password'] as String?,
+              baud: (args['baud'] as num?)?.toInt() ?? 115200,
+              bootDelaySeconds:
+                  (args['bootDelaySeconds'] as num?)?.toInt() ?? 9,
+            ),
       ),
       CapabilityTool(
         verb: 'smartconfig',
-        description: 'Broadcast Wi-Fi credentials to a device in SmartConfig '
+        description:
+            'Broadcast Wi-Fi credentials to a device in SmartConfig '
             '(ESP-Touch v1) listening mode and await its ACK (mac + ip). The '
             'host must be ON THE 2.4 GHz BAND of the target network — a device '
             'cannot sniff a 5 GHz sender. bssid narrows the AP match '
@@ -177,13 +186,15 @@ List<String> registerProvisioningCapability(HostToolRegistry registry) {
           },
           'required': <String>['ssid', 'password'],
         },
-        invoke: (args) => smartConfigProvision(
-          ssid: args['ssid'] as String,
-          password: (args['password'] as String?) ?? '',
-          bssid: (args['bssid'] as String?) ?? '',
-          timeout: Duration(
-              seconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 45),
-        ),
+        invoke:
+            (args) => smartConfigProvision(
+              ssid: args['ssid'] as String,
+              password: (args['password'] as String?) ?? '',
+              bssid: (args['bssid'] as String?) ?? '',
+              timeout: Duration(
+                seconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 45,
+              ),
+            ),
       ),
     ],
   );
@@ -217,11 +228,14 @@ Future<Map<String, Object?>> provisioningCandidates({
 }) async {
   final source = observe ?? studioBleStack.provisioningCandidates;
   final seen = <String, Map<String, Object?>>{};
-  final sub = source().listen((c) => seen[c.deviceId] = <String, Object?>{
-        'deviceId': c.deviceId,
-        'name': c.name,
-        'rssi': c.rssi,
-      });
+  final sub = source().listen(
+    (c) =>
+        seen[c.deviceId] = <String, Object?>{
+          'deviceId': c.deviceId,
+          'name': c.name,
+          'rssi': c.rssi,
+        },
+  );
   await Future<void>.delayed(window);
   await sub.cancel();
   return <String, Object?>{'candidates': seen.values.toList()};
@@ -242,10 +256,15 @@ Future<Map<String, Object?>> commissionViaNotify({
   try {
     // Subscribe to the terminal status BEFORE writing credentials so the
     // connecting/connected notifications are not missed.
-    final terminal = link.status.firstWhere((s) => s.isTerminal).timeout(
+    final terminal = link.status
+        .firstWhere((s) => s.isTerminal)
+        .timeout(
           timeout,
-          onTimeout: () => const ProvisioningStatus(
-              state: ProvisioningState.failed, error: 'timeout'),
+          onTimeout:
+              () => const ProvisioningStatus(
+                state: ProvisioningState.failed,
+                error: 'timeout',
+              ),
         );
     await link.sendCredentials(ssid, password);
     credentialsSent = true;
@@ -406,10 +425,17 @@ Future<Map<String, Object?>> _consoleWorker(Map<String, Object?> args) async {
     // a subsequent fresh open would lose raw/115200 and garble the exchange.
     // `min 0 time 1`: readSync returns after ≤0.1s with whatever bytes are
     // available (0 allowed), so the poll loop never blocks on an idle port.
-    final stty = await Process.run(
-      'stty',
-      <String>['-f', port, 'raw', '-echo', '$baud', 'min', '0', 'time', '1'],
-    );
+    final stty = await Process.run('stty', <String>[
+      '-f',
+      port,
+      'raw',
+      '-echo',
+      '$baud',
+      'min',
+      '0',
+      'time',
+      '1',
+    ]);
     if (stty.exitCode != 0) {
       return <String, Object?>{
         'ok': false,
@@ -472,12 +498,9 @@ Future<Map<String, Object?>> smartConfigProvision({
 }) async {
   final transport = await sc.UdpSmartConfigTransport.bind();
   try {
-    final result = await sc.SmartConfigSender(transport: transport).provision(
-      ssid: ssid,
-      password: password,
-      bssid: bssid,
-      timeout: timeout,
-    );
+    final result = await sc.SmartConfigSender(
+      transport: transport,
+    ).provision(ssid: ssid, password: password, bssid: bssid, timeout: timeout);
     return <String, Object?>{
       'state': 'connected',
       'mac': result.mac,

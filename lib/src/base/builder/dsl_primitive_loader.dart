@@ -106,7 +106,6 @@ class DslPrimitive {
     ];
     return '$name — ${parts.join(' · ')}';
   }
-
 }
 
 /// Whether [value] is a binding expression (`"{{…}}"`).
@@ -255,9 +254,10 @@ class DslPrimitiveLoader {
 
     return DslPrimitive(
       name: name,
-      requiredKeys: objectBranches == 1
-          ? List<String>.unmodifiable(requiredKeys)
-          : const <String>[],
+      requiredKeys:
+          objectBranches == 1
+              ? List<String>.unmodifiable(requiredKeys)
+              : const <String>[],
       patterns: patterns,
       enumValues: enums,
       acceptsBinding: binding,

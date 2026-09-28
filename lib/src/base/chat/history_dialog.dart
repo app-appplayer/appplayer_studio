@@ -11,7 +11,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../shell/app_theme.dart';
-import '../shell/inspect_tag.dart';
+import '../../ui/inspect_tag.dart';
 import '../shell/tokens.dart';
 
 class HistoryLevel {
@@ -319,7 +319,7 @@ class _TurnListState extends State<_TurnList> {
         }
         return ListView.separated(
           itemCount: entries.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
           itemBuilder: (_, i) {
             final e = entries[i];
             final role = (e['role'] as String?) ?? '';

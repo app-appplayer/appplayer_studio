@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 
-/// Spec § RouteTransition.style — six canonical styles. Resolves to
+/// `RouteTransition.style` — six canonical styles. Resolves to
 /// a `Route<dynamic> Function(RouteSettings, Widget)` builder. The
 /// `cube`, `sharedAxis`, and `fadeThrough` styles fall back to
 /// `slide` until the M3 motion package wraps in.
@@ -28,7 +28,7 @@ RouteFactory? resolveRouteTransition(Map<String, dynamic> spec) {
   return null;
 }
 
-/// Spec § Span.alignment (WidgetSpan) — six placement modes.
+/// `Span.alignment` (WidgetSpan) — six placement modes.
 /// `aboveBaseline` / `belowBaseline` route to Flutter's
 /// `PlaceholderAlignment.aboveBaseline` / `belowBaseline`; the
 /// other four follow the standard mapping. Used by `richText` to
@@ -51,7 +51,7 @@ PlaceholderAlignment resolveWidgetSpanAlignment(String? value) {
   }
 }
 
-/// Spec § carousel.transition — four animation styles. The
+/// `carousel.transition` — four animation styles. The
 /// `coverflow` and `depth` styles need a perspective-aware
 /// compositor; until that ships they fall back to `slide`. `fade`
 /// is implemented inline in the factory.
@@ -69,7 +69,7 @@ String resolveCarouselTransition(String? value) {
   }
 }
 
-/// Spec § ThemePreset — five curated content-app theme bundles.
+/// `ThemePreset` — five curated content-app theme bundles.
 /// Resolves the preset name to a tuple of base color/typography/
 /// spacing settings. Full preset bundles (palette + scale + density)
 /// ship with the theme runtime; this stub recognises every preset

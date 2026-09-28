@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  ffmpeg_kit_flutter_new_full
   file_selector_windows
   flutter_js
   flutter_secure_storage_windows

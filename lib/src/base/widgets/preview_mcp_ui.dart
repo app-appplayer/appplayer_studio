@@ -259,14 +259,13 @@ class McpUiRuntimePort implements UiRuntimePort {
   final RenderInspector? inspector;
 
   /// Optional tool-call callback wired into the rendered runtime as
-  /// the `default` executor. Vibe's editor preview leaves this null —
-  /// canonical-source previews dispatch tool actions through their
-  /// per-tool specific executors. The Inspector port supplies a
-  /// callback that forwards to the connected MCP client and folds
-  /// the response into runtime state. The runtime
-  /// reference lets the callback `mergeState` directly into the
-  /// surface that fired the action.
-  final Future<void> Function(
+  /// the `default` executor — at `initialize` (a definition-level `onInit`
+  /// fires there) and at `buildUI`. What it returns is the tool response the
+  /// runtime auto-merges or binds (UI DSL 1.4 §4.4). The editor preview
+  /// supplies the project bundle's tools; the Inspector port forwards to the
+  /// connected MCP client. The runtime reference lets a callback that folds
+  /// the response itself `mergeState` into the surface that fired the action.
+  final Future<dynamic> Function(
     String tool,
     Map<String, dynamic> params,
     MCPUIRuntime runtime,
@@ -304,6 +303,10 @@ class McpUiRuntimePort implements UiRuntimePort {
         pageLoader:
             pageLoader ??
             (canonical == null ? null : _pageLoaderFor(canonical!)),
+        onToolCall:
+            onToolCall == null
+                ? null
+                : (tool, params) => onToolCall!(tool, params, runtime),
       );
       onRuntimeReady?.call(snapshot.target, runtime);
       // Resolve the brightness the rendered runtime should operate under.
@@ -438,14 +441,10 @@ class McpUiRuntimePort implements UiRuntimePort {
         final tpl = templates is Map ? templates[id] : null;
         final body = tpl is Map ? tpl['content'] : null;
         if (body is Map) {
-          return <String, dynamic>{
+          return revealPageForDesign(<String, dynamic>{
             'type': 'page',
-            'content': revealConditionalsForDesign(
-              body is Map<String, dynamic>
-                  ? body
-                  : Map<String, dynamic>.from(body),
-            ),
-          };
+            'content': body,
+          });
         }
         throw StateError(
           'mcp_ui pageLoader: component template missing for "$uri"',
@@ -458,14 +457,10 @@ class McpUiRuntimePort implements UiRuntimePort {
         final dash = ui is Map ? ui['dashboard'] : null;
         final content = dash is Map ? dash['content'] : null;
         if (content is Map) {
-          return <String, dynamic>{
+          return revealPageForDesign(<String, dynamic>{
             'type': 'page',
-            'content': revealConditionalsForDesign(
-              content is Map<String, dynamic>
-                  ? content
-                  : Map<String, dynamic>.from(content),
-            ),
-          };
+            'content': content,
+          });
         }
         throw StateError('mcp_ui pageLoader: dashboard content missing');
       }
@@ -483,11 +478,9 @@ class McpUiRuntimePort implements UiRuntimePort {
       final pages = ui is Map ? ui['pages'] : null;
       final page = pages is Map ? pages[id] : null;
       if (page is Map) {
-        return revealConditionalsForDesign(
-          page is Map<String, dynamic>
-              ? page
-              : Map<String, dynamic>.from(page),
-        ) as Map<String, dynamic>;
+        return revealPageForDesign(
+          page is Map<String, dynamic> ? page : Map<String, dynamic>.from(page),
+        );
       }
       throw StateError('mcp_ui pageLoader: page not found for "$uri"');
     };
@@ -497,7 +490,6 @@ class McpUiRuntimePort implements UiRuntimePort {
   Future<void> dispose() async {}
 }
 
-
 /// DESIGN-canvas transform: authored content that the RUNTIME would hide
 /// must still be VISIBLE and CLICK-SELECTABLE in the editor preview — a
 /// canvas that hides it can neither show nor select it for editing.
@@ -506,18 +498,50 @@ class McpUiRuntimePort implements UiRuntimePort {
 ///    `then` branch shows. The node itself stays in the rendered chain
 ///    (shallow copy, original `then` subtree identity), so tap-select
 ///    resolves the real canonical path (`…/then/…`).
-///  * `list` with a BINDING `items` (e.g. `"{{items}}"`) — state is
-///    empty at design time, so zero rows would render. A single SAMPLE
-///    item is injected whose fields echo the bindings referenced by the
-///    `itemTemplate` (`{{item.name}}` → `name`), making one template row
-///    visible and selectable. The original `itemTemplate` identity is
-///    kept for path resolution.
+///  * `list` with a BINDING `items` (e.g. `"{{items}}"`) — zero rows would
+///    render until something fills the binding, so one SAMPLE item whose
+///    fields echo the bindings referenced by the `itemTemplate`
+///    (`{{item.name}}` → `name`) is shown instead. The original
+///    `itemTemplate` identity is kept for path resolution. Through
+///    [revealPageForDesign] a plain state path keeps its binding and the
+///    sample becomes that path's initial value, so the preview's tool
+///    responses replace it with real rows; anywhere else (a list inside
+///    an item template, an expression) the sample replaces `items`.
 ///
 /// Debug/inspector rendering does NOT go through this (it uses the
 /// session's served resources), so runtime behaviour stays real there.
 /// Containers are shallow-copied; every untouched submap keeps its
 /// ORIGINAL identity so the inspect-select chain still resolves.
-dynamic revealConditionalsForDesign(dynamic node) {
+dynamic revealConditionalsForDesign(dynamic node) =>
+    _revealForDesign(node, null);
+
+/// [revealConditionalsForDesign] for a whole page: a list bound to a plain
+/// state path (`{{live.roster}}`) keeps its binding and its sample row is
+/// written to `state.initial` at that path — unless the page already starts
+/// that path with rows. The page passed in is never modified.
+Map<String, dynamic> revealPageForDesign(Map<String, dynamic> page) {
+  final seeds = <String, List<dynamic>>{};
+  final out = _revealForDesign(page, seeds) as Map<String, dynamic>;
+  if (seeds.isEmpty) return out;
+  final state =
+      out['state'] is Map
+          ? Map<String, dynamic>.from(out['state'] as Map)
+          : <String, dynamic>{};
+  final initial =
+      state['initial'] is Map
+          ? Map<String, dynamic>.from(state['initial'] as Map)
+          : <String, dynamic>{};
+  var seeded = false;
+  seeds.forEach((path, sample) {
+    if (_seedInitial(initial, path.split('.'), sample)) seeded = true;
+  });
+  if (!seeded) return out;
+  state['initial'] = initial;
+  final result = identical(out, page) ? Map<String, dynamic>.from(page) : out;
+  return result..['state'] = state;
+}
+
+dynamic _revealForDesign(dynamic node, Map<String, List<dynamic>>? seeds) {
   if (node is Map) {
     Map<String, dynamic>? copy;
     void put(String key, Object? value) {
@@ -531,17 +555,25 @@ dynamic revealConditionalsForDesign(dynamic node) {
     if (node['type'] == 'list' &&
         node['items'] is String &&
         node['itemTemplate'] is Map) {
-      put('items', <dynamic>[
-        _sampleItemFor(node['itemTemplate'] as Map),
-      ]);
+      final sample = <dynamic>[_sampleItemFor(node['itemTemplate'] as Map)];
+      final path = seeds == null ? null : _statePathOf(node['items'] as String);
+      if (path != null) {
+        seeds!.putIfAbsent(path, () => sample);
+      } else {
+        put('items', sample);
+      }
     }
     node.forEach((key, value) {
       // The forced-true condition / sample items are design values —
       // do not descend into the keys we just replaced.
-      if (copy != null && identical(copy![key], value) == false && (key == 'condition' || key == 'items')) {
+      if (copy != null &&
+          !identical(copy![key], value) &&
+          (key == 'condition' || key == 'items')) {
         return;
       }
-      final transformed = revealConditionalsForDesign(value);
+      // Bindings inside an item template read the row, not page state.
+      final inner = key == 'itemTemplate' || key == 'template' ? null : seeds;
+      final transformed = _revealForDesign(value, inner);
       if (!identical(transformed, value)) put(key as String, transformed);
     });
     return copy ?? node;
@@ -549,7 +581,7 @@ dynamic revealConditionalsForDesign(dynamic node) {
   if (node is List) {
     List<dynamic>? copy;
     for (var i = 0; i < node.length; i++) {
-      final transformed = revealConditionalsForDesign(node[i]);
+      final transformed = _revealForDesign(node[i], seeds);
       if (!identical(transformed, node[i])) {
         copy ??= List<dynamic>.from(node);
         copy[i] = transformed;
@@ -560,14 +592,54 @@ dynamic revealConditionalsForDesign(dynamic node) {
   return node;
 }
 
+final _plainStatePath = RegExp(
+  r'^\{\{\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\}\}$',
+);
+
+/// The state path of a binding that is only a path (`{{live.roster}}`),
+/// else null. Row-scoped names are not page state.
+String? _statePathOf(String binding) {
+  final path = _plainStatePath.firstMatch(binding)?.group(1);
+  if (path == null) return null;
+  final head = path.split('.').first;
+  return head == 'item' || head == 'index' ? null : path;
+}
+
+/// Writes [sample] at [segments] in [map], copying each map on the way so
+/// no shared map is modified. A path that already holds rows, or passes
+/// through a value that is not a map, is left as authored.
+bool _seedInitial(
+  Map<String, dynamic> map,
+  List<String> segments,
+  List<dynamic> sample,
+) {
+  final head = segments.first;
+  final current = map[head];
+  if (segments.length == 1) {
+    if (current != null && (current is! List || current.isNotEmpty)) {
+      return false;
+    }
+    map[head] = sample;
+    return true;
+  }
+  if (current != null && current is! Map) return false;
+  final child =
+      current == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(current as Map);
+  if (!_seedInitial(child, segments.sublist(1), sample)) return false;
+  map[head] = child;
+  return true;
+}
+
 /// Build a sample item for a design-time list row: every `{{item.<f>}}`
 /// binding the template references resolves to its own field name, so
 /// the row reads like a labelled placeholder ("name · amount") instead
 /// of collapsing to zero-height empty texts.
 Map<String, dynamic> _sampleItemFor(Map itemTemplate) {
-  final refs = RegExp(r'\{\{item\.([A-Za-z0-9_]+)').allMatches(
-    jsonEncode(itemTemplate),
-  );
+  final refs = RegExp(
+    r'\{\{item\.([A-Za-z0-9_]+)',
+  ).allMatches(jsonEncode(itemTemplate));
   final sample = <String, dynamic>{};
   for (final m in refs) {
     final f = m.group(1)!;
@@ -723,6 +795,7 @@ class PreviewMcpUi extends StatefulWidget {
     this.inspectRoot,
     this.selectedWidgetPath,
     this.onSelectWidget,
+    this.onToolCall,
   });
 
   final WorkspaceCanonical canonical;
@@ -745,6 +818,11 @@ class PreviewMcpUi extends StatefulWidget {
 
   final WidgetPath? selectedWidgetPath;
   final ValueChanged<WidgetPath>? onSelectWidget;
+
+  /// Runs the document's `tool` actions and answers the tool response.
+  /// Null → the preview has no tool executor and a tool action fails.
+  final Future<dynamic> Function(String tool, Map<String, dynamic> params)?
+  onToolCall;
 
   /// True when an inspect tree is available — drives the runtime build
   /// path and the highlight overlay.
@@ -991,6 +1069,17 @@ class _PreviewMcpUiState extends State<PreviewMcpUi> {
         canonical: widget.canonical,
         inspector: widget.inspectMode ? _inspectorWrapper : null,
         hostBrightnessOf: () => _hostBrightness,
+        // Read at call time: the registry outlives widget updates, and the
+        // executor behind the preview can change with its bundle.
+        onToolCall: (tool, params, _) {
+          final run = widget.onToolCall;
+          if (run == null) {
+            throw StateError(
+              'no tool named "$tool": this preview has no tool executor',
+            );
+          }
+          return run(tool, params);
+        },
       ),
     );
   }

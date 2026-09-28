@@ -12,6 +12,14 @@ class DialogService extends RuntimeService {
   final List<OverlayEntry> _overlays = [];
   bool _isShowingDialog = false;
 
+  /// Whether a dialog raised through [show] is currently on screen.
+  ///
+  /// [show] refuses a second dialog and answers `null`, which is the same
+  /// answer a dismissed dialog gives. Callers that need to tell those apart —
+  /// the `dialog` action does, because it has to report to the document
+  /// whether the dialog was shown at all — read this first.
+  bool get isShowing => _isShowingDialog;
+
   // Use the same navigator key as NavigationActionExecutor
   static GlobalKey<NavigatorState> get navigatorKey =>
       NavigationActionExecutor.navigatorKey;

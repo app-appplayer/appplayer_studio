@@ -37,10 +37,10 @@ class EventDelegate {
   /// evaluation. Event-specific data is merged in before evaluation.
   final RenderContext? _renderContext;
 
-  /// The event name this delegate handles (per 07-events.md §9).
+  /// The event name this delegate handles.
   final String? eventName;
 
-  /// The handler callback for delegated events (per 07-events.md §9).
+  /// The handler callback for delegated events.
   final void Function(dynamic eventData)? handler;
 
   /// The parent widget definition this delegate is attached to.

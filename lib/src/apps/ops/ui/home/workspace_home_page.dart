@@ -238,10 +238,7 @@ class _WorkspaceSelector extends ConsumerWidget {
                       const SizedBox(width: 6),
                       Text(
                         'staff',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: OpsColors.text3,
-                        ),
+                        style: TextStyle(fontSize: 9, color: OpsColors.text3),
                       ),
                     ],
                     Text(
@@ -326,9 +323,7 @@ class _KpiRow extends StatelessWidget {
         return Wrap(
           spacing: gap,
           runSpacing: gap,
-          children: [
-            for (final t in tiles) SizedBox(width: tileW, child: t),
-          ],
+          children: [for (final t in tiles) SizedBox(width: tileW, child: t)],
         );
       },
     );

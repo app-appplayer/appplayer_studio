@@ -14,6 +14,17 @@ class OpsLog {
 
   static File? _file;
 
+  /// Points every record at [file] instead of `~/.makemind-ops/boot.log`.
+  /// The test harness routes a suite's records to a temp file with this, so a
+  /// test run never writes the real log of the machine it runs on.
+  static void redirectTo(File file) {
+    file.parent.createSync(recursive: true);
+    _file = file;
+  }
+
+  /// The file records are appended to.
+  static File get logFile => _logFile();
+
   static File _logFile() {
     final cached = _file;
     if (cached != null) return cached;

@@ -29,9 +29,8 @@ class VbuFileEntry {
 }
 
 /// Loads a file's content (text for text kinds, bytes for images).
-typedef VbuLoadFile = Future<({String? text, Uint8List? bytes})> Function(
-  VbuFileEntry entry,
-);
+typedef VbuLoadFile =
+    Future<({String? text, Uint8List? bytes})> Function(VbuFileEntry entry);
 
 class VbuDocumentPanel extends StatefulWidget {
   const VbuDocumentPanel({
@@ -168,22 +167,23 @@ class _VbuDocumentPanelState extends State<VbuDocumentPanel> {
             ),
           ),
           Expanded(
-            child: widget.entries.isEmpty
-                ? Center(
-                    child: Text(
-                      'empty',
-                      style: TextStyle(
-                        fontFamily: VbuTokens.fontMono,
-                        fontSize: 11,
-                        color: c.textTertiary,
+            child:
+                widget.entries.isEmpty
+                    ? Center(
+                      child: Text(
+                        'empty',
+                        style: TextStyle(
+                          fontFamily: VbuTokens.fontMono,
+                          fontSize: 11,
+                          color: c.textTertiary,
+                        ),
                       ),
+                    )
+                    : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: widget.entries.length,
+                      itemBuilder: (_, i) => _row(c, widget.entries[i]),
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: widget.entries.length,
-                    itemBuilder: (_, i) => _row(c, widget.entries[i]),
-                  ),
           ),
         ],
       ),
@@ -193,8 +193,7 @@ class _VbuDocumentPanelState extends State<VbuDocumentPanel> {
   Widget _row(VbuPalette c, VbuFileEntry e) {
     final selected = !e.isDir && _selected?.path == e.path;
     return InkWell(
-      onTap: () =>
-          e.isDir ? widget.onEnterDir?.call(e) : _open(e),
+      onTap: () => e.isDir ? widget.onEnterDir?.call(e) : _open(e),
       child: Container(
         color: selected ? c.surface3 : null,
         padding: const EdgeInsets.symmetric(
@@ -204,9 +203,7 @@ class _VbuDocumentPanelState extends State<VbuDocumentPanel> {
         child: Row(
           children: <Widget>[
             Icon(
-              e.isDir
-                  ? Icons.folder_outlined
-                  : _fileIcon(e.name),
+              e.isDir ? Icons.folder_outlined : _fileIcon(e.name),
               size: 14,
               color: e.isDir ? c.amber : c.textTertiary,
             ),
@@ -248,9 +245,7 @@ class _VbuDocumentPanelState extends State<VbuDocumentPanel> {
       text: _text,
       bytes: _bytes,
       editable: widget.onSave != null,
-      onSave: widget.onSave == null
-          ? null
-          : (t) => widget.onSave!(sel, t),
+      onSave: widget.onSave == null ? null : (t) => widget.onSave!(sel, t),
     );
   }
 

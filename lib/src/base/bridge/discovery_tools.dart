@@ -60,12 +60,13 @@ const int kDiscoverSerialBaudRate = 115200;
 typedef SerialPortCandidate = ({String portName, String description});
 
 /// Probe seam — [probeCandidate] signature, injectable for tests.
-typedef ProbeFn = Future<BoardIdentity?> Function({
-  required FutureOr<ClientTransport> Function() buildTransport,
-  Duration timeout,
-  String clientName,
-  String clientVersion,
-});
+typedef ProbeFn =
+    Future<BoardIdentity?> Function({
+      required FutureOr<ClientTransport> Function() buildTransport,
+      Duration timeout,
+      String clientName,
+      String clientVersion,
+    });
 
 /// Manifest trust seam ([ManifestTrustEvaluator.evaluate]).
 /// Null = trust verification not wired (candidates carry no `trust` field and
@@ -111,12 +112,11 @@ StudioDiscovery registerDiscoveryTools(
     mdns: mdnsScanner ?? MdnsBoardScanner(),
     ble: bleScan ?? studioBleStack.boardScan,
     directory: directoryScanner ?? DirectoryBoardScanner(),
-    enumeratePorts: enumerateSerialPorts ??
+    enumeratePorts:
+        enumerateSerialPorts ??
         () => csp
             .listSerialPorts()
-            .map(
-              (info) => (portName: info.name, description: info.description),
-            )
+            .map((info) => (portName: info.name, description: info.description))
             .toList(growable: false),
     directoryConfig: directoryConfig ?? () => null,
     probe: probe ?? probeCandidate,
@@ -194,15 +194,15 @@ class StudioDiscovery {
     BleLink Function(String deviceId)? bleLinkFor,
     TrustEvidenceFn? trustEvaluator,
     FutureOr<bool> Function()? enforceSignature,
-  })  : _mdns = mdns,
-        _ble = ble,
-        _directory = directory,
-        _enumeratePorts = enumeratePorts,
-        _directoryConfig = directoryConfig,
-        _probe = probe,
-        _bleLinkFor = bleLinkFor,
-        _trustEvaluator = trustEvaluator,
-        _enforceSignature = enforceSignature;
+  }) : _mdns = mdns,
+       _ble = ble,
+       _directory = directory,
+       _enumeratePorts = enumeratePorts,
+       _directoryConfig = directoryConfig,
+       _probe = probe,
+       _bleLinkFor = bleLinkFor,
+       _trustEvaluator = trustEvaluator,
+       _enforceSignature = enforceSignature;
 
   final KernelClientHost? clientHost;
   final MdnsBoardScanner _mdns;
@@ -228,13 +228,14 @@ class StudioDiscovery {
     final evaluator = _trustEvaluator;
     if (evaluator == null) return;
     final evidence = await evaluator(identity);
-    candidate['trust'] = evidence == null
-        ? const <String, dynamic>{'signed': false, 'verified': false}
-        : <String, dynamic>{
-            'signed': true,
-            'verified': evidence.signatureValid,
-            'partnerChainValid': evidence.partnerChainValid,
-          };
+    candidate['trust'] =
+        evidence == null
+            ? const <String, dynamic>{'signed': false, 'verified': false}
+            : <String, dynamic>{
+              'signed': true,
+              'verified': evidence.signatureValid,
+              'partnerChainValid': evidence.partnerChainValid,
+            };
   }
 
   /// Whether [candidate] may be connected under the current signature policy.
@@ -254,17 +255,16 @@ class StudioDiscovery {
   /// `mcp.connect_ble_board`).
   List<String> get toolNames => List<String>.unmodifiable(_toolNames);
 
-  Future<BoardIdentity?> _probeTcp(String host, int port) =>
-      _probe(
-        buildTransport: () async {
-          final t = TcpProbeTransport(host: host, port: port);
-          await t.start();
-          return t;
-        },
-        timeout: kDiscoverProbeTimeout,
-        clientName: 'studio.discover',
-        clientVersion: '0.1.0',
-      );
+  Future<BoardIdentity?> _probeTcp(String host, int port) => _probe(
+    buildTransport: () async {
+      final t = TcpProbeTransport(host: host, port: port);
+      await t.start();
+      return t;
+    },
+    timeout: kDiscoverProbeTimeout,
+    clientName: 'studio.discover',
+    clientVersion: '0.1.0',
+  );
 
   /// One scan window over [source]; returns the tool-shaped result map.
   Future<Map<String, dynamic>> discover(
@@ -503,16 +503,16 @@ class StudioDiscovery {
           blocked.add(id);
           continue;
         }
-        final existing = clientHost?.connections
-            .where((conn) => conn.id == id && conn.isConnected)
-            .firstOrNull;
+        final existing =
+            clientHost?.connections
+                .where((conn) => conn.id == id && conn.isConnected)
+                .firstOrNull;
         if (existing != null) {
           skipped.add(id); // already live — the sweep never reconnects
           continue;
         }
         try {
-          final options =
-              (hint['options'] as Map).cast<String, dynamic>();
+          final options = (hint['options'] as Map).cast<String, dynamic>();
           final ClientTransport transport;
           switch (hint['transport']) {
             case 'tcp':
@@ -580,8 +580,9 @@ class StudioDiscovery {
       if (deviceId == null || deviceId.isEmpty) {
         throw StateError('ble candidate has no deviceId');
       }
-      final result =
-          await _connectBleTool(<String, dynamic>{'deviceId': deviceId});
+      final result = await _connectBleTool(<String, dynamic>{
+        'deviceId': deviceId,
+      });
       if (result['ok'] != true) {
         throw StateError('ble connect failed: ${result['error']}');
       }
@@ -592,9 +593,10 @@ class StudioDiscovery {
       final options =
           (hint['options'] as Map?)?.cast<String, dynamic>() ??
           const <String, dynamic>{};
-      final id = manifestId is String && manifestId.isNotEmpty
-          ? 'board:$manifestId'
-          : 'board:${options['host'] ?? options['port'] ?? 'device'}';
+      final id =
+          manifestId is String && manifestId.isNotEmpty
+              ? 'board:$manifestId'
+              : 'board:${options['host'] ?? options['port'] ?? 'device'}';
       final ClientTransport transport;
       switch (hint['transport']) {
         case 'tcp':
@@ -610,8 +612,11 @@ class StudioDiscovery {
             'unsupported extension transport: ${hint['transport']}',
           );
       }
-      final conn =
-          await connectExtension(clientHost, id: id, transport: transport);
+      final conn = await connectExtension(
+        clientHost,
+        id: id,
+        transport: transport,
+      );
       return conn.id;
     }
     throw StateError('unknown connectHint tool: $tool');
@@ -621,9 +626,10 @@ class StudioDiscovery {
     final timeoutSec = (args['timeoutSeconds'] as num?)?.toDouble();
     return discover(
       (args['source'] as String?) ?? '',
-      timeout: timeoutSec == null
-          ? kDiscoverScanTimeout
-          : Duration(milliseconds: (timeoutSec * 1000).round()),
+      timeout:
+          timeoutSec == null
+              ? kDiscoverScanTimeout
+              : Duration(milliseconds: (timeoutSec * 1000).round()),
     );
   }
 
@@ -642,7 +648,8 @@ class StudioDiscovery {
     // private scan's stop is process-global and would silence whatever else is
     // observing (a bundle holding `ble://scan`, the provisioning sweep) with no
     // notice to its owner, so it never restarts.
-    final link = _bleLinkFor?.call(deviceId) ??
+    final link =
+        _bleLinkFor?.call(deviceId) ??
         UniversalBleLink(deviceId: deviceId, locate: studioBleStack.locate);
     final transport = BleClientTransport(link: link);
     try {

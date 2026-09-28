@@ -11,13 +11,12 @@ class PlaceholderWidgetFactory extends WidgetFactory {
 
     // Extract properties
     final color = parseColor(context.resolve(properties['color']), context) ??
-        context.themeManager.getColorValue('onSurface') ??
-        const Color(0xFF455A64); // Theme-aware grey stroke
-    final strokeWidth = parseDimension(properties['strokeWidth']) ?? 2.0;
-    final fallbackWidth = parseDimension(properties['fallbackWidth']) ?? 400.0;
-    final fallbackHeight = parseDimension(properties['fallbackHeight']) ?? 400.0;
+        context.themeManager.colorOr('onSurface', const Color(0xFF455A64)); // Theme-aware grey stroke
+    final strokeWidth = dimensionOf(properties['strokeWidth'], context) ?? 2.0;
+    final fallbackWidth = dimensionOf(properties['fallbackWidth'], context) ?? 400.0;
+    final fallbackHeight = dimensionOf(properties['fallbackHeight'], context) ?? 400.0;
 
-    // Spec §2.5.12 canonical `child`. Accept legacy `children[0]`.
+    // Canonical `child`. Accept legacy `children[0]`.
     final childDef = (properties['child'] ?? definition['child'])
         as Map<String, dynamic>?;
     Widget? child;

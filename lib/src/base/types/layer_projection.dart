@@ -161,7 +161,7 @@ class _LayerProjectionFactory implements LayerProjection {
 
   @override
   ComponentSet get components {
-    // Reusable widget definitions under `ui.templates` (mcp_ui DSL 1.3
+    // Reusable widget definitions under `ui.templates` (mcp_ui DSL 1.4
     // canonical). vibe does not honour the mcp_bundle UiSection alias
     // (`ui.widgets`) — the bundle storage layer isn't used here.
     final ui = _uiMap();

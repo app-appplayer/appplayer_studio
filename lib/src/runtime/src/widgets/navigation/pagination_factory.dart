@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `pagination` (spec §2.8.12).
+/// Factory for `pagination`.
 ///
 /// The composed version is where off-by-one bugs live: first/last bounds, the
 /// ellipsis window, and disabling prev/next at the ends get re-derived by
@@ -22,7 +22,7 @@ class PaginationFactory extends WidgetFactory {
     final showSizeChanger =
         context.resolve<bool?>(properties['showSizeChanger']) ?? false;
     final sizeOptions =
-        context.resolve<List<dynamic>?>(properties['pageSizeOptions']) ?? const [10, 20, 50];
+        listOf(properties['pageSizeOptions'], context) ?? const [10, 20, 50];
     final onChange = actionOf(properties['onChange'], context);
 
     final pageCount = pageSize <= 0 ? 1 : (total / pageSize).ceil().clamp(1, 1 << 30);

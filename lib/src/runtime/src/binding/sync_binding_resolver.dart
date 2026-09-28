@@ -55,7 +55,12 @@ class SyncBindingResolver {
         return manager.status == SyncStatus.syncing;
       case 'saving':
         return manager.status == SyncStatus.syncing;
+      // `lastSyncTime` is the spelling the interpolated path already
+      // answered, so `'Last: {{sync.lastSyncTime}}'` printed a timestamp
+      // while the same binding on its own printed nothing. One namespace
+      // cannot mean two things depending on whether text sits beside it.
       case 'lastSyncAt':
+      case 'lastSyncTime':
         return manager.lastSyncTime?.toIso8601String();
       case 'syncedCount':
         return manager.syncedCount;

@@ -30,10 +30,27 @@ export 'src/base/chat/model_option.dart';
 export 'src/base/chat/noop_llm.dart';
 
 // Phase β6a/β6b exports — settings (data class + dialog UI).
+export 'src/base/settings/llm_key_store.dart';
+export 'src/base/settings/third_party_licenses.dart';
 export 'src/base/settings/manifest_field_inheritance.dart';
 export 'src/base/settings/manifest_sections_reader.dart';
 export 'src/base/settings/settings_dialog.dart';
 export 'src/base/settings/vibe_settings.dart';
+// Account storage (platform spec 20) — the surface, the taste document, the
+// device profile, bundle `kb` records on the account, and the join/part
+// controller a tier with an account binds.
+export 'src/base/account/account_storage.dart';
+export 'src/base/account/account_sync_prefs.dart';
+export 'src/base/account/http_account_storage.dart';
+export 'src/base/account/in_memory_account_storage.dart';
+export 'src/base/account/kb_account_records.dart';
+export 'src/base/account/studio_account_sync.dart';
+export 'src/base/account/studio_cloud_sync.dart';
+export 'src/base/account/studio_sync_runner.dart';
+export 'src/base/account/sync_settings_section.dart';
+export 'src/base/account/synced_document.dart';
+export 'src/base/account/synced_settings.dart';
+export 'src/base/account/transfer_transport.dart';
 export 'src/base/boot/studio_backbone.dart';
 export 'src/base/boot/studio_boot.dart';
 export 'src/base/boot/tool_definitions_reader.dart';
@@ -120,7 +137,7 @@ export 'src/base/install/vibe_growth_recorder.dart';
 export 'src/base/chat/history_dialog.dart';
 export 'src/base/shell/activity_bar.dart';
 export 'src/base/shell/app_theme.dart';
-export 'src/base/shell/inspect_tag.dart';
+export 'src/ui/inspect_tag.dart';
 export 'src/base/shell/key_shortcuts.dart';
 export 'src/base/shell/package_welcome_panel.dart';
 export 'src/base/shell/project_header.dart';

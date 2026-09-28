@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `multiSelect` (spec §2.6.25).
+/// Factory for `multiSelect`.
 ///
 /// Kept separate from `select` rather than a `multiple` flag on it: the bound
 /// value changes shape — scalar to array — and a flag that silently changes
@@ -15,7 +15,7 @@ class MultiSelectFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     final binding = stringOf(properties['binding'], context);
-    final options = context.resolve<List<dynamic>?>(properties['options']) ?? const [];
+    final options = listOf(properties['options'], context) ?? const [];
     final placeholder = context.resolve<String?>(properties['placeholder']);
     final label = context.resolve<String?>(properties['label']);
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
@@ -130,7 +130,7 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
       next.remove(option.value);
     } else {
       // Reaching the ceiling disables unselected rows rather than dropping a
-      // pick the user made (spec §2.6.25).
+      // pick the user made.
       if (_atCeiling) return;
       next.add(option.value);
     }

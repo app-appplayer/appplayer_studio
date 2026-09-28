@@ -96,16 +96,16 @@ class _SceneShellState extends State<SceneShell> {
   @override
   void dispose() {
     // Release the project lifecycle slots if we still own them.
-    if (identical(widget.chromeBridge.openProjectInActive, _adoptProject)) {
+    if (widget.chromeBridge.openProjectInActive == _adoptProject) {
       widget.chromeBridge.openProjectInActive = null;
     }
-    if (identical(widget.chromeBridge.activeProjectInfo, _reportProjectInfo)) {
+    if (widget.chromeBridge.activeProjectInfo == _reportProjectInfo) {
       widget.chromeBridge.activeProjectInfo = null;
     }
-    if (identical(widget.chromeBridge.newProjectInActive, _newSceneProject)) {
+    if (widget.chromeBridge.newProjectInActive == _newSceneProject) {
       widget.chromeBridge.newProjectInActive = null;
     }
-    if (identical(widget.chromeBridge.closeProjectInActive, _closeProject)) {
+    if (widget.chromeBridge.closeProjectInActive == _closeProject) {
       widget.chromeBridge.closeProjectInActive = null;
     }
     // Release the shared chat override if it's still ours — dispose-while-active
@@ -165,20 +165,26 @@ class _SceneShellState extends State<SceneShell> {
       // multiple scene tabs open, last-opened wins instead of the active tab.
       final cp = _currentProject;
       if (cp != null && cp.isNotEmpty) SceneProjectScope.activePath = cp;
+      // Sync the host tab record to what this tab has open (slot rule 2 —
+      // an inactive mount does not write it, so it is re-synced on
+      // activation). Without this a scene project recorded by an earlier
+      // session stayed in `tabs.json` while the tab showed "No scene open".
+      // Post-frame: this runs during the parent's build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_isActiveTab) return;
+        widget.chromeBridge.setActiveTabProject?.call(_currentProject);
+      });
     } else {
-      if (identical(widget.chromeBridge.openProjectInActive, _adoptProject)) {
+      if (widget.chromeBridge.openProjectInActive == _adoptProject) {
         widget.chromeBridge.openProjectInActive = null;
       }
-      if (identical(
-        widget.chromeBridge.activeProjectInfo,
-        _reportProjectInfo,
-      )) {
+      if (widget.chromeBridge.activeProjectInfo == _reportProjectInfo) {
         widget.chromeBridge.activeProjectInfo = null;
       }
-      if (identical(widget.chromeBridge.newProjectInActive, _newSceneProject)) {
+      if (widget.chromeBridge.newProjectInActive == _newSceneProject) {
         widget.chromeBridge.newProjectInActive = null;
       }
-      if (identical(widget.chromeBridge.closeProjectInActive, _closeProject)) {
+      if (widget.chromeBridge.closeProjectInActive == _closeProject) {
         widget.chromeBridge.closeProjectInActive = null;
       }
     }

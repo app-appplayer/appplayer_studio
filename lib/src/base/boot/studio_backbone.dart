@@ -6,7 +6,7 @@
 /// `bundleRegistry` / `knowledgeEngine` are forwarded from the embedded
 /// `KernelApp`. The legacy `flowbrain` (`FlowBrainWiring`) field is
 /// retired — code reaches the KnowledgeSystem through `backbone.app.system`
-/// per cherry's wiring-getter reply (2026-05-24). One mutation site —
+/// through the kernel's wiring getters. One mutation site —
 /// Ops's multi-provider LLM pool merge — uses the new
 /// `AgentLlmSessions.addAll(Map)` helper instead of the old unmodifiable
 /// `flowbrain.llmProviders` map.
@@ -39,7 +39,13 @@ class StudioBackbone {
     this.claudeCodeModelId,
     this.claudeCodeExecutable,
     this.defaultAgentModel,
+    this.kvStorage,
   });
+
+  /// The kernel's key/value store — the same instance the booted [app]
+  /// persists into. `host.kb` records live here (`app/<appId>/kb/<key>`).
+  /// Null only for a backbone assembled without one (tests).
+  final fb.KvStoragePort? kvStorage;
 
   /// Inherited default model for agents created without an explicit
   /// ModelSpec (e.g. a worker the manager spawns via `member_create_agent`).
@@ -55,7 +61,7 @@ class StudioBackbone {
   /// `'claude-code'`). Used by [upgradeClaudeCodeForKernel] to swap the
   /// initial subscription-only `ClaudeCodeInteractiveProvider` for the
   /// `forKernel(app, ...)` variant once `app.hostMcpServerSpec` is
-  /// available (cherry 2026-05-27 cascade — gives the CLI access to
+  /// available (gives the CLI access to
   /// the host's MCP tool catalog via `--mcp-config`).
   final String? claudeCodeModelId;
 
@@ -120,9 +126,9 @@ class StudioBackbone {
       stderr.writeln('upgradeClaudeCodeForKernel: SKIP (modelId=null)');
       return;
     }
-    // `hostMcpServerSpec` is now a method (cherry 2026-05-27 r2 —
-    // multi-endpoint hosts must name the endpoint they wire onto Claude
-    // Code's `--mcp-config`). vibe_studio's host MCP endpoint label
+    // `hostMcpServerSpec` is a method: multi-endpoint hosts must name the
+    // endpoint they wire onto Claude Code's `--mcp-config`. The host MCP
+    // endpoint label
     // (see `vibe_studio_host_app.buildServer` — `addEndpoint(label:
     // 'studio')`) is the right key here; domain-spawned narrow links
     // attach under `'narrow:<host>_<port>'` labels and aren't the
@@ -137,8 +143,7 @@ class StudioBackbone {
     stderr.writeln(
       'upgradeClaudeCodeForKernel: swap modelId=$modelId spec.url=${spec.url}',
     );
-    // Cherry r3 (2026-05-27) — `ServerBootstrap.startStreamableHttp`
-    // now config-sources the spec URL from the transport's `endpoint`
+    // `ServerBootstrap.startStreamableHttp` config-sources the spec URL from the transport's `endpoint`
     // setting (default `/mcp`), so `spec.url` already carries the full
     // listening path. No host-side rewrite needed.
     // `_buildArgs` already injects `-p` (line 443 default) — passing it
@@ -151,13 +156,15 @@ class StudioBackbone {
     // Claude Code's CLI default prompts the user before each tool call
     // (`bk.agent.list` → permission dialog → subprocess waits for
     // approval that never arrives in headless / GUI-host context).
-    // Cherry's verifier case 8 / 10 / 11 use the same value to keep the
+    // The kernel's own verifier uses the same value to keep the
     // subprocess flowing through tool calls without the host needing
     // to surface the prompts back through chrome.
     final provider = ClaudeCodeInteractiveProvider.forKernel(
       app,
       name: modelId,
-      runner: ProcessClaudeRunner(executable: resolveClaudeCli(claudeCodeExecutable)),
+      runner: ProcessClaudeRunner(
+        executable: resolveClaudeCli(claudeCodeExecutable),
+      ),
     );
     final adapter = fb.LlmPortAdapter.fromInterface(
       modelId: modelId,

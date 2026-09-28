@@ -109,8 +109,7 @@ class Opspack {
     final archive = ZipDecoder().decodeBytes(packBytes);
     final entry = archive.findFile(_factGraphEntry);
     if (entry == null) return null;
-    final decoded =
-        json.decode(utf8.decode(entry.content as List<int>)) as Map;
+    final decoded = json.decode(utf8.decode(entry.content as List<int>)) as Map;
     return <String, List<Map<String, dynamic>>>{
       for (final e in decoded.entries)
         e.key as String: <Map<String, dynamic>>[

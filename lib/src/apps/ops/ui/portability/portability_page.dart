@@ -74,8 +74,9 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
                   'are passphrase-sealed into the pack so they move with it.',
                 ),
                 value: _includeSecrets,
-                onChanged: (v) =>
-                    setState(() => _includeSecrets = v ?? _includeSecrets),
+                onChanged:
+                    (v) =>
+                        setState(() => _includeSecrets = v ?? _includeSecrets),
               ),
               if (_includeSecrets) ...[
                 const SizedBox(height: 4),
@@ -210,13 +211,15 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
         return;
       }
       final sealedCount = r['sealedCredentialCount'] ?? 0;
-      final secretsNote = (r['includeSecrets'] == true)
-          ? ' · $sealedCount credential(s) sealed'
-          : '';
+      final secretsNote =
+          (r['includeSecrets'] == true)
+              ? ' · $sealedCount credential(s) sealed'
+              : '';
       setState(
-        () => _statusOk =
-            'Exported $wsId · ${r['fileCount']} files → ${saveLocation.path}'
-            '$secretsNote',
+        () =>
+            _statusOk =
+                'Exported $wsId · ${r['fileCount']} files → ${saveLocation.path}'
+                '$secretsNote',
       );
     } catch (e) {
       setState(() => _statusErr = 'Export failed: $e');
@@ -290,14 +293,17 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
                   Text(
                     'Includes FactGraph: ${preview.manifest.includeFacts ? "yes" : "no"}',
                   ),
-                  Text('Includes credentials: ${hasSecrets ? "yes (encrypted)" : "no"}'),
+                  Text(
+                    'Includes credentials: ${hasSecrets ? "yes (encrypted)" : "no"}',
+                  ),
                   if (hasSecrets) ...[
                     const SizedBox(height: 8),
                     TextField(
                       controller: importPass,
                       obscureText: true,
                       decoration: const InputDecoration(
-                        labelText: 'Passphrase to restore credentials (optional)',
+                        labelText:
+                            'Passphrase to restore credentials (optional)',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
@@ -346,13 +352,17 @@ class _PortabilityPageState extends ConsumerState<PortabilityPage> {
       }
       final id = r['workspaceId'];
       final restored = (r['credentialsRestored'] as List?)?.length;
-      final credNote = restored != null
-          ? ' · $restored credential(s) restored'
-          : (r['credentials'] != null ? ' · credentials: ${r['credentials']}' : '');
+      final credNote =
+          restored != null
+              ? ' · $restored credential(s) restored'
+              : (r['credentials'] != null
+                  ? ' · credentials: ${r['credentials']}'
+                  : '');
       setState(
-        () => _statusOk =
-            'Imported as "$id" — restart the app or switch workspace to load it.'
-            '$credNote',
+        () =>
+            _statusOk =
+                'Imported as "$id" — restart the app or switch workspace to load it.'
+                '$credNote',
       );
     } catch (e) {
       setState(() => _statusErr = 'Import failed: $e');

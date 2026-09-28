@@ -11,9 +11,9 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart';
-import 'package:path/path.dart' as p;
 
 import '../config/ops_config.dart';
+import '../util/log.dart';
 import 'activity_event.dart';
 import 'observability_module.dart';
 
@@ -107,10 +107,8 @@ class DiagnosticExport {
     return DiagnosticBundle(bytes: encoded, summary: summary);
   }
 
-  static File _bootLogFile() {
-    final home = Platform.environment['HOME'] ?? '.';
-    return File(p.join(home, '.makemind-ops', 'boot.log'));
-  }
+  /// The file `OpsLog` writes — the same one, redirected or not.
+  static File _bootLogFile() => OpsLog.logFile;
 
   static Map<String, int> _countBySeverity(List<ActivityEvent> events) {
     final out = <String, int>{
@@ -126,21 +124,10 @@ class DiagnosticExport {
 
   /// Scrub secrets from the OpsConfig before serialization. We keep the
   /// shape so support staff can see what's configured without seeing the
-  /// raw values.
+  /// raw values. LLM keys are already absent — `OpsConfig.toJson` carries
+  /// only `hasApiKey`.
   static Map<String, Object?> _redactConfig(OpsConfig cfg) {
     final j = cfg.toJson();
-    final llm = j['llm'];
-    if (llm is Map) {
-      final providers = llm['providers'];
-      if (providers is Map) {
-        for (final entry in providers.entries) {
-          final v = entry.value;
-          if (v is Map && v['apiKey'] is String) {
-            v['apiKey'] = _maskKey(v['apiKey'] as String);
-          }
-        }
-      }
-    }
     final security = j['security'];
     if (security is Map) {
       for (final k in security.keys.toList()) {
@@ -152,11 +139,5 @@ class DiagnosticExport {
       }
     }
     return j;
-  }
-
-  static String _maskKey(String key) {
-    if (key.isEmpty) return '<empty>';
-    if (key.length <= 8) return '****';
-    return '${key.substring(0, 4)}…${key.substring(key.length - 4)}';
   }
 }

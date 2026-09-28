@@ -154,7 +154,7 @@ class PageTransitionBuilder {
   /// Build a physics-based page transition
   ///
   /// Supports spring, friction, and gravity physics simulations.
-  /// Build a physics-based transition widget (per 16-animations.md §8).
+  /// Build a physics-based transition widget.
   ///
   /// Returns a [Widget] applying spring or gravity physics to [child]
   /// driven by the given [animation].

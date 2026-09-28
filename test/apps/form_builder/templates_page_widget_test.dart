@@ -1,5 +1,6 @@
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
+import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -72,10 +73,12 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 40));
     }
-    expect(ready(), isTrue,
-        reason: 'condition never held within $maxRounds pump rounds');
+    expect(
+      ready(),
+      isTrue,
+      reason: 'condition never held within $maxRounds pump rounds',
+    );
   }
-
 
   Future<void> unmount(WidgetTester tester) async {
     // Dispose the page (cancels the version-poll timer) before the test
@@ -88,8 +91,7 @@ void main() {
     final out = await h.server.callTool('form.get_template', {
       'templateId': id,
     });
-    final text =
-        out.content.map((c) => (c as dynamic).text as String).join();
+    final text = out.content.map((c) => (c as dynamic).text as String).join();
     final decoded = jsonDecode(text);
     return (decoded as Map).cast<String, dynamic>();
   }
@@ -124,7 +126,10 @@ void main() {
   ) async {
     await pumpPage(tester);
     await tester.tap(find.byTooltip('New template'));
-    await settleUntil(tester, () => find.text('New template').evaluate().isNotEmpty);
+    await settleUntil(
+      tester,
+      () => find.text('New template').evaluate().isNotEmpty,
+    );
     expect(find.text('New template'), findsWidgets);
     // Create disabled while the name is empty.
     final createBtn = tester.widget<FilledButton>(
@@ -139,8 +144,13 @@ void main() {
     // Auto-slug + enabled now.
     expect(find.text('widget-made'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
-    await settle(tester, 14);
-    final tpl = await tester.runAsync(() => serverTemplate('widget-made'));
+    // Wait for the write itself — a fixed frame count raced the save under
+    // a loaded parallel run.
+    final tpl = await serverUntil(
+      tester,
+      'widget-made',
+      (t) => t['template']?['name'] == 'Widget Made',
+    );
     expect(tpl!['template']?['name'], 'Widget Made');
     // Post-create the list refreshes and the panel auto-selects.
     await settle(tester, 6);
@@ -148,50 +158,51 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets(
-    'inspector edit → Save vNEXT persists exactly that change',
-    (tester) async {
-      await tester.runAsync(
-        () => h.server.callTool('form.save_template', {
-          'template': harnessTemplate(),
-        }),
-      );
-      await pumpPage(tester);
-      await tester.tap(find.text('Harness Quote'));
-      await settle(tester);
-      // Tap the heading block on the sheet → inspector.
-      await tester.tap(find.text('Quotation'));
-      await tester.pump();
-      expect(find.text('CONTENT'), findsOneWidget);
-      // Edit the content property.
-      final contentField = find.descendant(
-        of: find.byType(TextField),
-        matching: find.text('Quotation'),
-      );
-      await tester.enterText(
-        contentField.evaluate().isEmpty
-            ? find.widgetWithText(TextField, 'Quotation')
-            : contentField,
-        'Edited title',
-      );
-      await tester.pump();
-      // Sheet re-rendered + Save armed.
-      expect(find.text('Edited title'), findsWidgets);
-      final save = find.widgetWithText(FilledButton, 'Save v1.0.1');
-      expect(save, findsOneWidget);
-      await tester.tap(save);
-      await settle(tester);
-      final tpl = await serverUntil(tester, 'harness-quote',
-          (t) => t['template']['version'] == '1.0.1');
-      final blocks =
-          (tpl!['template']['defaultSections'] as List).first['blocks']
-              as List;
-      final title = blocks.firstWhere((b) => b['blockId'] == 'title');
-      expect(tpl['template']['version'], '1.0.1');
-      expect(title['content'], 'Edited title');
-      await unmount(tester);
-    },
-  );
+  testWidgets('inspector edit → Save vNEXT persists exactly that change', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => h.server.callTool('form.save_template', {
+        'template': harnessTemplate(),
+      }),
+    );
+    await pumpPage(tester);
+    await tester.tap(find.text('Harness Quote'));
+    await settle(tester);
+    // Tap the heading block on the sheet → inspector.
+    await tester.tap(find.text('Quotation'));
+    await tester.pump();
+    expect(find.text('CONTENT'), findsOneWidget);
+    // Edit the content property.
+    final contentField = find.descendant(
+      of: find.byType(TextField),
+      matching: find.text('Quotation'),
+    );
+    await tester.enterText(
+      contentField.evaluate().isEmpty
+          ? find.widgetWithText(TextField, 'Quotation')
+          : contentField,
+      'Edited title',
+    );
+    await tester.pump();
+    // Sheet re-rendered + Save armed.
+    expect(find.text('Edited title'), findsWidgets);
+    final save = find.widgetWithText(FilledButton, 'Save v1.0.1');
+    expect(save, findsOneWidget);
+    await tester.tap(save);
+    await settle(tester);
+    final tpl = await serverUntil(
+      tester,
+      'harness-quote',
+      (t) => t['template']['version'] == '1.0.1',
+    );
+    final blocks =
+        (tpl!['template']['defaultSections'] as List).first['blocks'] as List;
+    final title = blocks.firstWhere((b) => b['blockId'] == 'title');
+    expect(tpl['template']['version'], '1.0.1');
+    expect(title['content'], 'Edited title');
+    await unmount(tester);
+  });
 
   testWidgets('add block + delete block persist through Save vNEXT', (
     tester,
@@ -210,17 +221,25 @@ void main() {
     await tester.tap(find.text('Image (logo / seal)'));
     // Wait for the block to reach the page, not for a fixed number of frames:
     // Save must not fire before the add has landed.
-    await settleUntil(tester, () => find.byTooltip('Add block').evaluate().isNotEmpty
-        && find.text('Image (logo / seal)').evaluate().isEmpty);
+    await settleUntil(
+      tester,
+      () =>
+          find.byTooltip('Add block').evaluate().isNotEmpty &&
+          find.text('Image (logo / seal)').evaluate().isEmpty,
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Save v1.0.1'));
     await settle(tester);
-    var tpl = await serverUntil(tester, 'harness-quote', (t) =>
-        ((t['template']['defaultSections'] as List).first['blocks'] as List)
-            .any((b) => b['type'] == 'image'));
-    var types = ((tpl!['template']['defaultSections'] as List)
-            .first['blocks'] as List)
-        .map((b) => b['type'])
-        .toList();
+    var tpl = await serverUntil(
+      tester,
+      'harness-quote',
+      (t) =>
+          ((t['template']['defaultSections'] as List).first['blocks'] as List)
+              .any((b) => b['type'] == 'image'),
+    );
+    var types =
+        ((tpl!['template']['defaultSections'] as List).first['blocks'] as List)
+            .map((b) => b['type'])
+            .toList();
     expect(types, contains('image'));
     // Delete the heading block via its inspector.
     await tester.tap(find.text('Quotation'));
@@ -229,15 +248,70 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save v1.0.2'));
     await settle(tester);
-    tpl = await tester.runAsync(() => serverTemplate('harness-quote'));
-    final ids = ((tpl!['template']['defaultSections'] as List)
-            .first['blocks'] as List)
-        .map((b) => b['blockId'])
-        .toList();
+    // Wait for the save to land, as for v1.0.1 above — a fixed settle read
+    // the template before the write under full-suite load.
+    tpl = await serverUntil(
+      tester,
+      'harness-quote',
+      (t) => t['template']['version'] == '1.0.2',
+    );
+    final ids =
+        ((tpl!['template']['defaultSections'] as List).first['blocks'] as List)
+            .map((b) => b['blockId'])
+            .toList();
     expect(ids, isNot(contains('title')));
     expect(tpl['template']['version'], '1.0.2');
     await unmount(tester);
   });
+
+  testWidgets(
+    'editing a stored template whose sections do not parse shows why',
+    (tester) async {
+      // A template saved before the capability checked shape: the real
+      // `get_template` answer with one block's index broken.
+      await tester.runAsync(
+        () => h.server.callTool('form.save_template', {
+          'template': harnessTemplate(),
+        }),
+      );
+      final real = await tester.runAsync(
+        () => h.server.callTool('form.get_template', {
+          'templateId': 'harness-quote',
+        }),
+      );
+      final body =
+          jsonDecode((real!.content.first as mk.KernelTextContent).text)
+              as Map<String, dynamic>;
+      final blocks =
+          ((body['template']['defaultSections'] as List).first as Map)['blocks']
+              as List;
+      (blocks.first as Map)['index'] = 'zero';
+      h.server.removeTool('form.get_template');
+      h.server.addTool(
+        name: 'form.get_template',
+        description: 'legacy template',
+        inputSchema: const <String, dynamic>{'type': 'object'},
+        handler:
+            (_) async => mk.KernelToolResult(
+              content: <mk.KernelContent>[
+                mk.KernelTextContent(text: jsonEncode(body)),
+              ],
+            ),
+      );
+
+      await pumpPage(tester);
+      await tester.tap(find.text('Harness Quote'));
+      await settle(tester);
+      // An edit re-assembles the preview from the broken sections.
+      await tester.tap(find.byTooltip('Add block'));
+      await tester.pump();
+      await tester.tap(find.text('Image (logo / seal)'));
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('Preview failed:'), findsOneWidget);
+      await unmount(tester);
+    },
+  );
 
   testWidgets('metrics toggle shows page-size label and rulers', (
     tester,
@@ -288,11 +362,9 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save v1.0.1'));
     await settle(tester);
-    final saved = await tester.runAsync(
-      () => serverTemplate('harness-quote'),
-    );
-    final blocks = (saved!['template']['defaultSections'] as List)
-        .first['blocks'] as List;
+    final saved = await tester.runAsync(() => serverTemplate('harness-quote'));
+    final blocks =
+        (saved!['template']['defaultSections'] as List).first['blocks'] as List;
     final seal = blocks.firstWhere((b) => b['blockId'] == 'seal');
     expect(seal['style']?['placement']?['anchor'], 'bottom-left');
     expect(seal['style']?['placement']?['x'], 20);
@@ -300,33 +372,32 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets(
-    'inspector survives an unknown anchor value (LLM-authored)',
-    (tester) async {
-      final tpl = harnessTemplate();
-      ((tpl['defaultSections'] as List).first['blocks'] as List).add({
-        'blockId': 'company',
-        'type': 'text',
-        'index': 3,
-        'content': 'Makemind Inc.',
-        'style': {
-          'placement': {'anchor': 'bottom-center', 'y': 24},
-        },
-      });
-      await tester.runAsync(
-        () => h.server.callTool('form.save_template', {'template': tpl}),
-      );
-      await pumpPage(tester);
-      await tester.tap(find.text('Harness Quote'));
-      await settle(tester);
-      // Tapping the LLM-placed block must open the inspector, not crash
-      // the dropdown (live crash 2026-07-03: bottom-center had no item).
-      await tester.tap(find.text('Makemind Inc.'));
-      await tester.pump();
-      expect(tester.takeException(), isNull);
-      expect(find.text('bottom-center'), findsWidgets);
-    },
-  );
+  testWidgets('inspector survives an unknown anchor value (LLM-authored)', (
+    tester,
+  ) async {
+    final tpl = harnessTemplate();
+    ((tpl['defaultSections'] as List).first['blocks'] as List).add({
+      'blockId': 'company',
+      'type': 'text',
+      'index': 3,
+      'content': 'Makemind Inc.',
+      'style': {
+        'placement': {'anchor': 'bottom-center', 'y': 24},
+      },
+    });
+    await tester.runAsync(
+      () => h.server.callTool('form.save_template', {'template': tpl}),
+    );
+    await pumpPage(tester);
+    await tester.tap(find.text('Harness Quote'));
+    await settle(tester);
+    // Tapping the LLM-placed block must open the inspector, not crash
+    // the dropdown (live crash 2026-07-03: bottom-center had no item).
+    await tester.tap(find.text('Makemind Inc.'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('bottom-center'), findsWidgets);
+  });
 
   testWidgets(
     'save_template REJECTS out-of-spec values with the allowed list',
@@ -345,9 +416,8 @@ void main() {
         () => h.server.callTool('form.save_template', {'template': tpl}),
       );
       expect(result!.isError, isTrue);
-      final text = result.content
-          .map((c) => (c as dynamic).text as String)
-          .join();
+      final text =
+          result.content.map((c) => (c as dynamic).text as String).join();
       // The feedback an LLM corrects itself with: the bad value AND the
       // allowed vocabulary, plus a stable error code.
       expect(text, contains('form.spec_violation'));
@@ -411,14 +481,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await settle(tester);
-    final out = await tester.runAsync(
-      () async {
-        final r = await h.server.callTool('form.get_template', {
-          'templateId': 'harness-quote',
-        });
-        return r.isError == true;
-      },
-    );
+    final out = await tester.runAsync(() async {
+      final r = await h.server.callTool('form.get_template', {
+        'templateId': 'harness-quote',
+      });
+      return r.isError == true;
+    });
     expect(out, isTrue);
     await unmount(tester);
   });

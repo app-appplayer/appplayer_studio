@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import '../renderer/render_context.dart';
 import 'widget_factory.dart';
 
-/// Spec § imageFilter (since v1.3).
+/// `imageFilter` (since v1.3).
 class ImageFilterWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -147,7 +147,7 @@ class ImageFilterWidgetFactory extends WidgetFactory {
   }
 }
 
-/// Spec § kenBurnsImage (since v1.3) — slow zoom-and-pan.
+/// `kenBurnsImage` (since v1.3) — slow zoom-and-pan.
 /// Uses `TweenAnimationBuilder` and re-triggers via `setState` for loop.
 class KenBurnsImageWidgetFactory extends WidgetFactory {
   @override
@@ -276,7 +276,7 @@ class _KenBurnsRunnerState extends State<_KenBurnsRunner>
   }
 }
 
-/// Spec § carousel (since v1.3) — partial-viewport horizontal browser.
+/// `carousel` (since v1.3) — partial-viewport horizontal browser.
 /// First-cut implementation maps `viewportFraction` and `loop` onto
 /// `PageView`. Cover-flow / depth transitions fall back to `slide`.
 class CarouselWidgetFactory extends WidgetFactory {
@@ -341,7 +341,7 @@ class CarouselWidgetFactory extends WidgetFactory {
   }
 }
 
-/// Spec § staggeredGrid (since v1.3) — Pinterest-style masonry.
+/// `staggeredGrid` (since v1.3) — Pinterest-style masonry.
 /// First-cut implementation distributes items into `columns` columns
 /// by appending each next item to the shortest column. Final paint
 /// is a `CustomMultiChildLayout`-style approximation using nested
@@ -351,7 +351,7 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    // §: `columns` is `number | object`. The object form is the per-form-factor
+    // `columns` is `number | object`. The object form is the per-form-factor
     // override map (`{ default: 2, md: 3, lg: 4 }`), which is the shape the
     // spec's own example uses. Responsive resolution is opt-in per
     // `RenderContext.pickResponsive`, so it has to be asked for here.
@@ -449,7 +449,7 @@ class StaggeredGridWidgetFactory extends WidgetFactory {
   }
 }
 
-/// Spec § lightbox (since v1.3) — full-screen image viewer.
+/// `lightbox` (since v1.3) — full-screen image viewer.
 class LightboxWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -509,7 +509,7 @@ class LightboxWidgetFactory extends WidgetFactory {
   }
 }
 
-/// Spec § scrollAnimated (since v1.3) — placeholder factory.
+/// `scrollAnimated` (since v1.3) — placeholder factory.
 /// First-cut renders the child unwrapped; the scroll-driven binding
 /// engine ships in a subsequent runtime cycle.
 class ScrollAnimatedWidgetFactory extends WidgetFactory {
@@ -522,7 +522,7 @@ class ScrollAnimatedWidgetFactory extends WidgetFactory {
   }
 }
 
-/// Spec § rive (since v1.3) — placeholder factory.
+/// `rive` (since v1.3) — placeholder factory.
 /// Full Rive playback ships in a subsequent runtime cycle once the
 /// `rive` package is wired into core deps. For now renders a sized
 /// placeholder so layouts referencing this widget keep their shape.

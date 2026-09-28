@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:appplayer_studio/src/base/capture/recorder/h264_encoder.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/recorder_models.dart';
 
 void main() {
@@ -39,7 +40,7 @@ void main() {
       final hint = rec.ffmpegHint();
       expect(hint, contains('-framerate 24'));
       expect(hint, contains('frame_%06d.png'));
-      expect(hint, contains('libx264'));
+      expect(hint, contains(h264EncoderFor()));
       expect(hint, contains('yuv420p'));
       expect(hint, contains('out.mp4'));
     });

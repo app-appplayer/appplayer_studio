@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../renderer/render_context.dart';
+import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
 /// Factory for ListTile widgets
@@ -142,19 +143,9 @@ class ListTileWidgetFactory extends WidgetFactory {
     }
   }
 
-  IconData _parseIconData(String iconName) {
-    // Basic icon mapping - can be expanded
-    switch (iconName) {
-      case 'arrow_forward':
-        return Icons.arrow_forward_ios;
-      case 'arrow_back':
-        return Icons.arrow_back_ios;
-      case 'check':
-        return Icons.check;
-      case 'close':
-        return Icons.close;
-      default:
-        return Icons.arrow_forward_ios;
-    }
-  }
+  // Through the shared resolver, like every other icon in the runtime: the
+  // local table below knew four names and answered a forward chevron for
+  // everything else, so `leading: "home"` drew an arrow — a plausible wrong
+  // icon, which is harder to notice than a missing one.
+  IconData _parseIconData(String iconName) => resolveIconData(iconName);
 }

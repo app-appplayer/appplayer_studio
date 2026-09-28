@@ -21,12 +21,10 @@ class GaugeWidgetFactory extends WidgetFactory {
     // dark surfaces).
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey[300]!;
+            context.themeManager.colorOr('outlineVariant', Colors.grey[300]!);
     final valueColor =
         parseColor(context.resolve(properties['valueColor']), context) ??
-            context.themeManager.getColorValue('primary') ??
-            Colors.blue;
+            context.themeManager.colorOr('primary', Colors.blue);
     final showLabel = boolOf(properties['showLabel'], context) ?? true;
     final labelFormat = stringOf(properties['labelFormat'], context) ?? '{value}%';
     final startAngle = numberOf(properties['startAngle'], context) ?? -220.0;

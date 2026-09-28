@@ -116,7 +116,7 @@ class VibeTitlebar extends StatelessWidget {
               if (chromeBridge != null)
                 ValueListenableBuilder<String>(
                   valueListenable: chromeBridge!.activeMcpUrl,
-                  builder: (_, activeUrl, __) {
+                  builder: (_, activeUrl, _) {
                     // Empty (Home / no-domain) → system URL fallback.
                     final effective =
                         activeUrl.isEmpty
@@ -135,7 +135,7 @@ class VibeTitlebar extends StatelessWidget {
               ValueListenableBuilder<String>(
                 valueListenable: chromeBridge!.bundleVersion,
                 builder:
-                    (_, ver, __) =>
+                    (_, ver, _) =>
                         _VersionLabel(version: ver.isEmpty ? specVersion : ver),
               )
             else
@@ -143,7 +143,7 @@ class VibeTitlebar extends StatelessWidget {
             if (chromeBridge != null) ...<Widget>[
               ValueListenableBuilder<String>(
                 valueListenable: chromeBridge!.titlebarText,
-                builder: (_, txt, __) {
+                builder: (_, txt, _) {
                   if (txt.isEmpty) return const SizedBox.shrink();
                   return Padding(
                     padding: const EdgeInsets.only(left: VibeTokens.space2),
@@ -195,12 +195,12 @@ class _TabBarToggle extends StatelessWidget {
     final c = VibeTokens.colorOf(context);
     return ValueListenableBuilder<bool>(
       valueListenable: bridge.hasTabStrip,
-      builder: (_, hasStrip, __) {
+      builder: (_, hasStrip, _) {
         if (!hasStrip) return const SizedBox.shrink();
         return ValueListenableBuilder<bool>(
           valueListenable: bridge.tabBarVisible,
           builder:
-              (_, visible, __) => Tooltip(
+              (_, visible, _) => Tooltip(
                 message: visible ? 'Hide tab bar' : 'Show tab bar',
                 child: InkWell(
                   onTap: () => bridge.tabBarVisible.value = !visible,

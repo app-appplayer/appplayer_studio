@@ -14,6 +14,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/src/base/settings/settings_dialog.dart'
     show promptForNewProject;
@@ -29,7 +30,10 @@ import 'ops_builtin.dart' show OpsBootResult, OpsBuiltInApp;
 import 'package:appplayer_studio/src/apps/ops/registries/member_registry.dart'
     show AgentMember;
 import 'package:appplayer_studio/src/apps/ops/ui/about/about_page.dart';
-import 'package:appplayer_studio/src/apps/ops/ui/audit/audit_placeholder_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/audit/audit_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/connector/connector_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/observability/diagnostics_page.dart';
+import 'package:appplayer_studio/src/apps/ops/ui/portability/portability_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/bundle/bundles_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/home/workspace_home_page.dart';
 import 'package:appplayer_studio/src/apps/ops/ui/inbox/inbox_page.dart';
@@ -389,6 +393,7 @@ class _OpsShellState extends State<OpsShell> {
               }
               final result = snap.data!;
               return ProviderScope(
+                retry: opsNoRetry,
                 overrides: <Override>[
                   opsConfigProvider.overrideWith((ref) => result.cfg),
                   opsThemeModeProvider.overrideWith(
@@ -490,32 +495,38 @@ class _OpsShellState extends State<OpsShell> {
       widget.chromeBridge.newProjectInActive = _newProject;
       widget.chromeBridge.openProjectInActive = _openProject;
       widget.chromeBridge.closeProjectInActive = _closeProject;
-      // Re-apply the cached per-workspace override on tab re-activation;
-      // release-if-mine happens in the inactive branch.
-      if (_scopedManagerId != null) {
-        widget.chromeBridge.chatManagerOverride.value = _scopedManagerId;
-      }
-      // Republish this tab's agent roster on re-activation (a sibling tab may
-      // have cleared it).
-      _publishChatRoster();
-      // Push the lifecycle snapshot when this tab becomes active so the
-      // chrome's ProjectHeader picks up the current `projectName` (or
-      // "No project open") without waiting for a `_bindProject` /
-      // `_closeProject` to fire. Needed because the host's
-      // `lifecycleStateProvider` walk only re-runs when the active
-      // built-in flips — without this republish a re-launch into a
-      // sibling tab can show a stale projectName.
-      //
-      // Deferred to post-frame: didChangeDependencies can run while the
-      // parent (WorkspaceTabActiveScope) is still building, and publishing
-      // synchronously sets a ValueNotifier whose ValueListenableBuilder
-      // would then markNeedsBuild mid-build (setState-during-build assert).
+      // Every chrome ValueNotifier write below is deferred to post-frame:
+      // didChangeDependencies can run while the parent
+      // (WorkspaceTabActiveScope) is still building, and a synchronous set
+      // makes that notifier's ValueListenableBuilder markNeedsBuild
+      // mid-build (setState-during-build assert). The roster and the
+      // manager override feed the chat chip the same way the lifecycle
+      // snapshot feeds the ProjectHeader.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        // Re-apply the cached per-workspace override on tab re-activation;
+        // release-if-mine happens in the inactive branch.
+        if (_scopedManagerId != null) {
+          widget.chromeBridge.chatManagerOverride.value = _scopedManagerId;
+        }
+        // Republish this tab's agent roster on re-activation (a sibling tab
+        // may have cleared it).
+        _publishChatRoster();
+        // The project bound while this tab was inactive (restore) was not
+        // synced to the host then; sync now that the slot addresses us.
+        // No-op when the host already holds the same project.
+        widget.chromeBridge.setActiveTabProject?.call(_currentProject);
+        // Push the lifecycle snapshot when this tab becomes active so the
+        // chrome's ProjectHeader picks up the current `projectName` (or
+        // "No project open") without waiting for a `_bindProject` /
+        // `_closeProject` to fire. Needed because the host's
+        // `lifecycleStateProvider` walk only re-runs when the active
+        // built-in flips — without this republish a re-launch into a
+        // sibling tab can show a stale projectName.
         _publishLifecycleState();
       });
     } else {
-      _releaseSlotsIfMine();
+      _releaseSlotsIfMine(deferChatSlots: true);
     }
   }
 
@@ -572,7 +583,14 @@ class _OpsShellState extends State<OpsShell> {
   /// Clear each lifecycle slot only when this state's own handler is
   /// still installed — a sibling built-in mount may have taken the
   /// slot since we wired it, and we don't want to strand that tab.
-  void _releaseSlotsIfMine() {
+  ///
+  /// [deferChatSlots] moves the two chat notifier writes to post-frame.
+  /// From didChangeDependencies this runs during the parent's build, and
+  /// a synchronous set makes the chat chip's ValueListenableBuilder
+  /// markNeedsBuild mid-build; dispose runs after the build phase, so the
+  /// synchronous release there is both allowed and needed (a closing tab
+  /// must not leave its roster on the chip).
+  void _releaseSlotsIfMine({bool deferChatSlots = false}) {
     if (widget.chromeBridge.newProjectInActive == _newProject) {
       widget.chromeBridge.newProjectInActive = null;
     }
@@ -582,16 +600,25 @@ class _OpsShellState extends State<OpsShell> {
     if (widget.chromeBridge.closeProjectInActive == _closeProject) {
       widget.chromeBridge.closeProjectInActive = null;
     }
-    // Release the shared chat override only when it's still ours — a sibling
-    // tab's active override must not be clobbered.
-    if (_scopedManagerId != null &&
-        widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
-      widget.chromeBridge.chatManagerOverride.value = null;
+    void releaseChatSlots() {
+      // Release the shared chat override only when it's still ours — a
+      // sibling tab's active override must not be clobbered.
+      if (_scopedManagerId != null &&
+          widget.chromeBridge.chatManagerOverride.value == _scopedManagerId) {
+        widget.chromeBridge.chatManagerOverride.value = null;
+      }
+      // Drop the agent roster so a sibling tab's chat chip doesn't surface
+      // this Ops project's agents. The next active built-in republishes its
+      // own.
+      widget.chromeBridge.chatAgentRoster.value =
+          const <({String id, String displayName, String? modelId})>[];
     }
-    // Drop the agent roster so a sibling tab's chat chip doesn't surface this
-    // Ops project's agents. The next active built-in republishes its own.
-    widget.chromeBridge.chatAgentRoster.value =
-        const <({String id, String displayName, String? modelId})>[];
+
+    if (deferChatSlots) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => releaseChatSlots());
+    } else {
+      releaseChatSlots();
+    }
   }
 
   Future<Map<String, dynamic>> _newProject({
@@ -640,19 +667,19 @@ class _OpsShellState extends State<OpsShell> {
       final kind = _foreignProjectKind(path);
       return <String, dynamic>{
         'ok': false,
-        'error':
-            'Not an Ops project (missing project.opsproj marker): $path',
+        'error': 'Not an Ops project (missing project.opsproj marker): $path',
         'reason': 'wrongActiveTab',
         if (kind != null) 'projectKind': kind,
-        'suggestion': kind == null
-            ? 'studio.project.open opens into the ACTIVE package tab, which is '
-                  'Ops. Select the tab that owns this project first '
-                  '(studio.chrome.select_tab), or pass the bundle directly '
-                  'via `mbdPath` on the builder tools.'
-            : 'This looks like a $kind project. `studio.project.open` opens '
-                  'into the ACTIVE package tab, which is Ops — select the '
-                  '$kind tab first (studio.chrome.select_tab), or pass the '
-                  'bundle directly via `mbdPath` on the builder tools.',
+        'suggestion':
+            kind == null
+                ? 'studio.project.open opens into the ACTIVE package tab, which is '
+                    'Ops. Select the tab that owns this project first '
+                    '(studio.chrome.select_tab), or pass the bundle directly '
+                    'via `mbdPath` on the builder tools.'
+                : 'This looks like a $kind project. `studio.project.open` opens '
+                    'into the ACTIVE package tab, which is Ops — select the '
+                    '$kind tab first (studio.chrome.select_tab), or pass the '
+                    'bundle directly via `mbdPath` on the builder tools.',
       };
     }
     return _bindProject(path);
@@ -685,7 +712,7 @@ class _OpsShellState extends State<OpsShell> {
     widget.chromeBridge.chatAgentRoster.value =
         const <({String id, String displayName, String? modelId})>[];
     // Return the host tab + chat to the no-project (tab-level) state.
-    widget.chromeBridge.setActiveTabProject?.call(null);
+    if (_isActiveTab) widget.chromeBridge.setActiveTabProject?.call(null);
     return <String, dynamic>{'ok': true, 'closed': true};
   }
 
@@ -711,10 +738,10 @@ class _OpsShellState extends State<OpsShell> {
     // ignore: unawaited_futures
     () async {
       try {
-        final path = _hostSettingsPath;
-        final s = await VibeSettings.load(path);
-        s.domainLastProject[widget.app.id] = dir;
-        await s.save(path);
+        await VibeSettings.mutate(
+          _hostSettingsPath,
+          (s) => s.domainLastProject[widget.app.id] = dir,
+        );
       } catch (_) {
         /* best-effort persistence */
       }
@@ -722,8 +749,11 @@ class _OpsShellState extends State<OpsShell> {
     // Sync the host tab model + re-key the chat to this project (the host's
     // manifest-domain open flow does this for free; built-ins that own their
     // own bind must call it explicitly, else the previous project's chat
-    // lingers).
-    widget.chromeBridge.setActiveTabProject?.call(dir);
+    // lingers). The slot addresses the ACTIVE tab, so only an active mount
+    // may call it: a restore that runs while a sibling tab is active would
+    // re-key the sibling's chat to this project. An inactive mount syncs
+    // on its next activation instead.
+    if (_isActiveTab) widget.chromeBridge.setActiveTabProject?.call(dir);
     // Subscribe to the booted project's workspace registry so the chat
     // manager override tracks the active workspace (the operational unit).
     // ignore: unawaited_futures
@@ -893,6 +923,7 @@ class _OpsShellState extends State<OpsShell> {
         }
         final result = snap.data!;
         return ProviderScope(
+          retry: opsNoRetry,
           overrides: <Override>[
             opsConfigProvider.overrideWith((ref) => result.cfg),
             opsThemeModeProvider.overrideWith(
@@ -973,7 +1004,7 @@ class _OpsShellBody extends ConsumerWidget {
     final active = _routeFromName(routeName);
     // `UiDebugBridge.captureKey` anchors the `ui_capture` MCP tool's
     // RepaintBoundary. Wrapping the Ops shell here gives external
-    // LLMs / diora's self-verification path a working screenshot
+    // LLMs and self-verification runs a working screenshot
     // surface for every Ops page (Members / Tasks / Skills / …)
     // without modifying the host's MaterialApp.builder.
     return RepaintBoundary(
@@ -988,7 +1019,17 @@ class _OpsShellBody extends ConsumerWidget {
                     ref.read(shellRouteProvider.notifier).state = _routeName(r),
           ),
           Container(width: 1, color: c.borderSubtle),
-          Expanded(child: _routeBodyFor(routeName)),
+          // Pages paint on the shell's coloured ground; a transparent
+          // Material here gives their ListTiles a Material ancestor below
+          // that ground so ink and tile colours are not hidden by it
+          // (Flutter's "background color or ink splashes may be
+          // invisible" check).
+          Expanded(
+            child: Material(
+              type: MaterialType.transparency,
+              child: _routeBodyFor(routeName),
+            ),
+          ),
         ],
       ),
     );
@@ -1029,7 +1070,14 @@ class _OpsShellBody extends ConsumerWidget {
       case 'channels':
         return const ChannelsPage();
       case 'audit':
-        return const AuditPlaceholderPage();
+        return const AuditPage();
+      // Reached from About's Diagnostics buttons, not from the sidebar.
+      case 'diagnostics':
+        return const DiagnosticsPage();
+      case 'connector':
+        return const ConnectorPage();
+      case 'portability':
+        return const PortabilityPage();
       case 'home':
       default:
         return const WorkspaceHomePage();
@@ -1041,6 +1089,13 @@ class _OpsShellBody extends ConsumerWidget {
   OpsRoute _routeFromName(String name) {
     for (final r in OpsRoute.values) {
       if (r.name == name) return r;
+    }
+    // Pages reached from About have no tile of their own; About stays lit.
+    switch (name) {
+      case 'diagnostics':
+      case 'connector':
+      case 'portability':
+        return OpsRoute.about;
     }
     return OpsRoute.home;
   }

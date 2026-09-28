@@ -4,7 +4,29 @@ import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 import 'platform/speech.dart';
 
-/// Factory for `voiceInput` (spec §2.6.29, Client Profile).
+/// Test seams for the platform split.
+///
+/// `platform/speech.dart` resolves to a no-op stub anywhere but a browser, so
+/// off the web `_start` could only ever take its "not available" branch. What
+/// sits below that branch — the session lifecycle, the transcript reaching
+/// its binding, the live-capture indicator, the maximum-duration cut-off — is
+/// ordinary Flutter and not browser code at all, and nothing on any platform
+/// verified it. These let a test supply a session; production reads the
+/// platform.
+@visibleForTesting
+bool? debugSpeechSupported;
+
+@visibleForTesting
+SpeechSession? Function({
+  required String? language,
+  required bool continuous,
+  required bool interimResults,
+  required void Function(String text, bool isFinal) onResult,
+  required void Function(String message) onError,
+  required void Function() onEnd,
+})? debugStartSpeech;
+
+/// Factory for `voiceInput`.
 ///
 /// Client Profile rather than Core, and the line is worth restating: picking a
 /// file is one act of choosing and the choosing is the consent, while a
@@ -93,13 +115,13 @@ class _VoiceInputState extends State<_VoiceInput> {
   }
 
   void _start() {
-    if (!speechSupported) {
+    if (!(debugSpeechSupported ?? speechSupported)) {
       // Declared, not silent: a control that renders and does nothing is worse
       // than one that says it cannot run.
       widget.onError('Speech capture is not available on this platform');
       return;
     }
-    final session = startSpeech(
+    final session = (debugStartSpeech ?? startSpeech)(
       language: widget.language,
       continuous: widget.continuous,
       interimResults: widget.interimResults,

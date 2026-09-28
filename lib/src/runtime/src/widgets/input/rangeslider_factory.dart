@@ -9,7 +9,7 @@ class RangeSliderWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.6.0: binding shorthand — read from state path if set.
+    // Binding shorthand — read from state path if set.
     final binding = (stringOf(properties['binding'], context)) ??
         (stringOf(properties['bindTo'], context));
     final dynamic rawValue = binding != null
@@ -40,7 +40,7 @@ class RangeSliderWidgetFactory extends WidgetFactory {
       labels: labels,
       activeColor: activeColor,
       inactiveColor: inactiveColor,
-      // Spec §2.6.0: when `binding` is set, the runtime performs two-way
+      // When `binding` is set, the runtime performs two-way
       // binding (read + write) automatically. `onChange` is optional; the
       // handler must be wired when either `binding` or an explicit
       // `onChange` action is present so the RangeSlider is interactive.

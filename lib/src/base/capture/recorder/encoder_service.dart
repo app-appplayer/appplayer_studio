@@ -1,4 +1,4 @@
-/// In-app encoder — wraps `ffmpeg_kit_flutter_new` to turn a PNG
+/// In-app encoder — wraps `ffmpeg_kit_flutter_new_full` to turn a PNG
 /// sequence (the recorder's output) into an MP4. Runs async via
 /// `FFmpegKit.executeAsync` so the UI thread stays free; the studio's
 /// core tool work is never delayed by encoding progress (the
@@ -13,11 +13,13 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import 'ffmpeg_kit_setup.dart';
+import 'h264_encoder.dart';
 import 'recorder_models.dart';
 
 class EncodingProgress {
@@ -82,33 +84,41 @@ String buildEncodeCommand({
   required String pattern,
   required int fps,
   required String out,
-  String codec = 'libx264',
+  String? codec,
   String pixelFormat = 'yuv420p',
   int? crf,
   String? concatManifest,
   double? concatDurationSec,
   List<Map<String, dynamic>> audioTracks = const <Map<String, dynamic>>[],
 }) {
-  final crfArg = crf == null ? '' : '-crf $crf ';
+  final video = h264VideoArgs(
+    crf: crf,
+    encoder: codec,
+    pixelFormat: pixelFormat,
+  );
   const pad = 'pad=ceil(iw/2)*2:ceil(ih/2)*2';
   // Concat demuxer carries real per-frame durations; resample to CFR fps on
   // output so the result plays as an ordinary constant-fps MP4.
-  final videoInput = concatManifest == null
-      ? '-framerate $fps -i "$pattern"'
-      : '-f concat -safe 0 -i "$concatManifest"';
-  final vChain = concatManifest == null ? pad : '$pad,fps=$fps';
+  final videoInput =
+      concatManifest == null
+          ? '-framerate $fps -i "$pattern"'
+          : '-f concat -safe 0 -i "$concatManifest"';
+  final vChain =
+      concatManifest == null
+          ? '$pad,$kRgbToBt709Filter'
+          : '$pad,fps=$fps,$kRgbToBt709Filter';
   // Pin the output to the real recording span (concat path only) — trims the
   // final frame's over-hold to the exact duration.
-  final tArg = (concatManifest != null && concatDurationSec != null)
-      ? '-t ${concatDurationSec.toStringAsFixed(3)} '
-      : '';
+  final tArg =
+      (concatManifest != null && concatDurationSec != null)
+          ? '-t ${concatDurationSec.toStringAsFixed(3)} '
+          : '';
   final tracks = audioTracks
       .where((t) => (t['path']?.toString() ?? '').isNotEmpty)
       .toList(growable: false);
   if (tracks.isEmpty) {
     // Unchanged simple-filter path — keep the proven behavior.
-    return '-y $videoInput -c:v $codec '
-        '-pix_fmt $pixelFormat $crfArg-vf "$vChain" $tArg"$out"';
+    return '-y $videoInput $video $kBt709Tags -vf "$vChain" $tArg"$out"';
   }
   final inputs = StringBuffer('-y $videoInput');
   for (final t in tracks) {
@@ -135,7 +145,7 @@ String buildEncodeCommand({
     audioOut = 'aout';
   }
   return '$inputs -filter_complex "$graph" -map "[v]" -map "[$audioOut]" '
-      '-c:v $codec -pix_fmt $pixelFormat $crfArg-c:a aac -shortest $tArg"$out"';
+      '$video $kBt709Tags -c:a aac -shortest $tArg"$out"';
 }
 
 class EncoderService {
@@ -155,7 +165,7 @@ class EncoderService {
   Future<EncodingProgress?> encode(
     Recording rec, {
     String? outputPath,
-    String codec = 'libx264',
+    String? codec,
     String pixelFormat = 'yuv420p',
     int? crf,
     List<Map<String, dynamic>> audioTracks = const <Map<String, dynamic>>[],
@@ -189,7 +199,7 @@ class EncoderService {
       }
     }
     // `pad=ceil(iw/2)*2:ceil(ih/2)*2` (inside the builder) ensures even
-    // dimensions — libx264 + yuv420p require it. Overwrites output;
+    // dimensions — H.264 + yuv420p require it. Overwrites output;
     // muxes any `audioTracks` (narration / music) into an AAC stream.
     final cmd = buildEncodeCommand(
       pattern: pattern,
@@ -203,6 +213,7 @@ class EncoderService {
       audioTracks: audioTracks,
     );
     try {
+      await prepareFfmpegKit();
       await FFmpegKit.executeAsync(cmd, (session) async {
         final code = await session.getReturnCode();
         prog.completedAt = DateTime.now();

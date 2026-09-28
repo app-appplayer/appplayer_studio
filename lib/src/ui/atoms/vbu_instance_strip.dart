@@ -134,7 +134,7 @@ class VbuInstanceStrip extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 itemCount: items.length + (addLabel != null ? 1 : 0),
                 separatorBuilder:
-                    (_, __) => const SizedBox(height: VbuTokens.space1),
+                    (_, _) => const SizedBox(height: VbuTokens.space1),
                 itemBuilder: (context, i) {
                   if (i >= items.length) {
                     return _AddCard(
@@ -171,7 +171,7 @@ class VbuInstanceStrip extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: items.length + (addLabel != null ? 1 : 0),
-        separatorBuilder: (_, __) => const SizedBox(width: VbuTokens.space2),
+        separatorBuilder: (_, _) => const SizedBox(width: VbuTokens.space2),
         itemBuilder: (context, i) {
           if (i >= items.length) {
             return _AddCard(label: addLabel!, onTap: onAdd, width: 107);

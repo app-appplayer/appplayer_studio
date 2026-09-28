@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `menu` (spec §2.8.9).
+/// Factory for `menu`.
 ///
 /// Standing navigation, unlike `popupMenuButton` which is a trigger opening a
 /// transient list. `navigationRail` covers the icon-rail form with a flat item
@@ -14,16 +14,21 @@ class MenuFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final items = context.resolve<List<dynamic>?>(properties['items']) ?? const [];
+    final items = listOf(properties['items'], context) ?? const [];
     final mode = context.resolve<String?>(properties['mode']) ?? 'vertical';
     final collapsed = context.resolve<bool?>(properties['collapsed']) ?? false;
     final selectedBinding = stringOf(properties['selectedKey'], context);
     final openBinding = stringOf(properties['openKeys'], context);
     final onSelect = actionOf(properties['onSelect'], context);
 
-    final selectedKey = selectedBinding != null
-        ? context.getState(selectedBinding)?.toString()
-        : context.resolve<String?>(properties['selectedKey']);
+    // `selectedKey` is `string | binding`. A bare string is
+    // indistinguishable from a state path, so the path is read first and the
+    // literal is the fallback — otherwise a document naming the active item
+    // directly could never mark one, and the branch below it was unreachable.
+    final selectedKey = (selectedBinding != null
+            ? context.getState(selectedBinding)?.toString()
+            : null) ??
+        context.resolve<String?>(properties['selectedKey']);
 
     final openKeys = <String>{
       if (openBinding != null)
@@ -77,8 +82,16 @@ class MenuFactory extends WidgetFactory {
           ),
     ];
 
+    // A `ListTile` in an unbounded Row forces an infinite width and the page
+    // fails to lay out — so `mode: "horizontal"` took the whole screen down.
+    // Each entry is sized to its own content instead.
     return mode == 'horizontal'
-        ? Row(mainAxisSize: MainAxisSize.min, children: rendered)
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final entry in rendered) IntrinsicWidth(child: entry),
+            ],
+          )
         : Column(mainAxisSize: MainAxisSize.min, children: rendered);
   }
 }

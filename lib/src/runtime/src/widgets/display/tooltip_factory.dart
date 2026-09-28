@@ -15,10 +15,10 @@ class TooltipWidgetFactory extends WidgetFactory {
     final richMessage = properties['richMessage'] != null
         ? _buildInlineSpan(properties['richMessage'], context)
         : null;
-    final height = parseDimension(properties['height']);
+    final height = dimensionOf(properties['height'], context);
     final padding = edgeInsetsOf(properties['padding'], context);
     final margin = edgeInsetsOf(properties['margin'], context);
-    final verticalOffset = parseDimension(properties['verticalOffset']);
+    final verticalOffset = dimensionOf(properties['verticalOffset'], context);
     final preferBelow = boolOf(properties['preferBelow'], context);
     final excludeFromSemantics = boolOf(properties['excludeFromSemantics'], context);
     final decoration = _parseDecoration(properties['decoration'], context);
@@ -41,7 +41,11 @@ class TooltipWidgetFactory extends WidgetFactory {
     }
 
     Widget tooltip = Tooltip(
-      message: richMessage != null ? '' : message,
+      // Null, not empty: `Tooltip` asserts that at most one of `message` and
+      // `richMessage` is given, and an empty string is still given. Declaring
+      // a `richMessage` used to trip that assertion, so the tooltip failed to
+      // build at all and the child was replaced by an error box.
+      message: richMessage != null ? null : message,
       richMessage: richMessage,
       constraints: height != null ? BoxConstraints(minHeight: height) : null,
       padding: padding,

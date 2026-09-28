@@ -106,7 +106,7 @@ class VbuHistoryViewer extends StatelessWidget {
                     padding: padding,
                     itemCount: entries.length,
                     separatorBuilder:
-                        (_, __) => const SizedBox(height: VbuTokens.space1),
+                        (_, _) => const SizedBox(height: VbuTokens.space1),
                     itemBuilder: (_, i) => _Row(entry: entries[i]),
                   ),
         ),

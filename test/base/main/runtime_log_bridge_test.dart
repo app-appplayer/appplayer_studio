@@ -11,6 +11,7 @@
 library;
 
 import 'package:appplayer_studio/runtime.dart' as studio_rt;
+import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart' as pkg_rt;
 import 'package:appplayer_studio/src/base/main/runtime_log_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart' as logging;
@@ -35,6 +36,23 @@ void main() {
   test('nothing is installed until the bridge is', () {
     expect(studio_rt.MCPLogger.onRecord, isNull,
         reason: 'the studio used to ship in exactly this state');
+    expect(pkg_rt.MCPLogger.onRecord, isNull);
+  });
+
+  test('the package runtime (App Builder preview) reaches the log too',
+      () async {
+    // The preview renders with `package:flutter_mcp_ui_runtime`, a separate
+    // copy with its own static sink. A bridge on the fork alone left the main
+    // authoring surface silent: an unknown widget drew its error card and
+    // logged nothing.
+    installRuntimeLogBridge();
+    pkg_rt.MCPLogger('Renderer').error('Unknown widget type: qaNoSuchWidget');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(seen, hasLength(1), reason: 'the preview runtime went nowhere');
+    expect(seen.single.level, logging.Level.SEVERE);
+    expect(seen.single.message, contains('[Renderer]'));
+    expect(seen.single.message, contains('qaNoSuchWidget'));
   });
 
   test('a runtime message reaches the studio log', () async {

@@ -361,4 +361,4 @@ class OfflineQueue {
 }
 
 // ConflictStrategy, ConflictResolver, and ConflictResult are defined in
-// conflict_resolver.dart (single source of truth per feat-runtime/08-offline-sync.md).
+// conflict_resolver.dart (single source of truth).

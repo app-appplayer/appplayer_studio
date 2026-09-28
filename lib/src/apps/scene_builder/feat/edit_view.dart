@@ -52,8 +52,13 @@ class _EditViewState extends State<EditView> {
     super.didUpdateWidget(old);
     if (widget.scenarioId != null && widget.scenarioId != _loadedId) {
       _load(widget.scenarioId!);
-    } else if (widget.scenarioId == null && _loadedId != null) {
-      // Reset to blank-create mode.
+    } else if (widget.scenarioId == null &&
+        old.scenarioId != null &&
+        _loadedId != null) {
+      // The parent switched from a scenario to "new": reset to blank-create.
+      // A rebuild with an unchanged null id (the parent re-rendering for an
+      // unrelated reason, e.g. the snackbar after Save) keeps the scenario
+      // that was just created here — its id is not the parent's yet.
       setState(() {
         _scenario = null;
         _source = null;
@@ -159,10 +164,13 @@ class _EditViewState extends State<EditView> {
   }
 
   Future<void> _save() async {
-    if (_resolvedMbdPath == null) {
-      _snack('mbdPath not resolved yet');
-      return;
-    }
+    // A scenario shipped inside a bundle is written back into that bundle;
+    // everything else — a new scenario, one loaded from the user scope —
+    // goes to the user scope (`studio.scenario.save`: the open scene
+    // project's `scenarios/`, else `<configRoot>/scenarios/`). The host's
+    // own seed tree is never the target: it is the app's asset, and the
+    // seed is filtered out of `studio.bundle.list` for that reason.
+    final toBundle = _source == 'bundle' && _resolvedMbdPath != null;
     Map<String, dynamic> parsed;
     try {
       final decoded = jsonDecode(_jsonCtrl.text);
@@ -181,10 +189,15 @@ class _EditViewState extends State<EditView> {
       return;
     }
     setState(() => _saving = true);
-    final result = await _call(
-      'studio.builder.writeScenario',
-      <String, dynamic>{'mbdPath': _resolvedMbdPath, 'scenario': parsed},
-    );
+    final result =
+        toBundle
+            ? await _call('studio.builder.writeScenario', <String, dynamic>{
+              'mbdPath': _resolvedMbdPath,
+              'scenario': parsed,
+            })
+            : await _call('studio.scenario.save', <String, dynamic>{
+              'scenario': parsed,
+            });
     if (!mounted) return;
     setState(() => _saving = false);
     final body = _unwrap(result) ?? result;
@@ -195,6 +208,11 @@ class _EditViewState extends State<EditView> {
     setState(() {
       _scenario = parsed;
       _loadedId = id;
+      if (!toBundle) {
+        _source = 'user';
+        final savedPath = body['path'];
+        if (savedPath is String && savedPath.isNotEmpty) _path = savedPath;
+      }
       _dirty = false;
     });
     _snack('Saved · $id');
@@ -285,7 +303,8 @@ class _EditViewState extends State<EditView> {
             const SizedBox(height: VbuTokens.space1),
             Text(
               'Enter a kebab-case id; the file will be saved as '
-              '<id>.json under the scene_builder seed bundle.',
+              '<id>.json under scenarios/ of the open scene project, '
+              'or of the studio config folder when none is open.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: VbuTokens.fontMono,
@@ -449,7 +468,7 @@ class _EditViewState extends State<EditView> {
         vertical: VbuTokens.space2,
       ),
       itemCount: steps.length + 1, // +1 for trailing Add row
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (_, i) {
         if (i == steps.length) return _addStepRow();
         final step = steps[i];

@@ -113,10 +113,7 @@ class ManifestTrustEvaluator {
 
   TrustEvidence _failed(String roleId, String cause) {
     _secure.audit.record(AppSignatureFailed(roleId: roleId, cause: cause));
-    return const TrustEvidence(
-      partnerChainValid: false,
-      signatureValid: false,
-    );
+    return const TrustEvidence(partnerChainValid: false, signatureValid: false);
   }
 }
 

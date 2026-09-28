@@ -275,7 +275,8 @@ abstract class OrgChartMetrics {
   static const double cardPad = 18; // inner padding around the step grid
   static const double headerH = 36; // title + trigger badge strip
   static const double stepBandGap = 12; // header strip → first step row
-  static const double cardGapX = 88; // between event-level columns (event arrow)
+  static const double cardGapX =
+      88; // between event-level columns (event arrow)
   static const double cardGapY = 32; // between stacked cards in one level
 
   // Steps inside a card.
@@ -549,7 +550,8 @@ OrgChartModel buildOrgChartModel(
       id: 'ws:${w.id}',
       kind: OrgNodeKind.workspace,
       label: w.title,
-      sublabel: '${w.type} · ${w.agents.length} agents · '
+      sublabel:
+          '${w.type} · ${w.agents.length} agents · '
           '${w.processes.length} processes',
       wsId: w.id,
       rect: Rect.fromLTWH(
@@ -563,7 +565,11 @@ OrgChartModel buildOrgChartModel(
     wsNodeById[w.id] = wsNode;
     if (pid != null && wsNodeById.containsKey(pid)) {
       edges.add(
-        OrgEdge(fromId: 'ws:$pid', toId: wsNode.id, kind: OrgEdgeKind.hierarchy),
+        OrgEdge(
+          fromId: 'ws:$pid',
+          toId: wsNode.id,
+          kind: OrgEdgeKind.hierarchy,
+        ),
       );
     }
 
@@ -583,9 +589,10 @@ OrgChartModel buildOrgChartModel(
           assignedInProcess,
         );
         // Roster — agents not used by any process step (matched by member id).
-        final roster = w.agents
-            .where((a) => !assignedInProcess.contains(a.memberKey))
-            .toList();
+        final roster =
+            w.agents
+                .where((a) => !assignedInProcess.contains(a.memberKey))
+                .toList();
         var rb = pband.bottom;
         var rr = pband.right;
         if (roster.isNotEmpty) {
@@ -610,7 +617,8 @@ OrgChartModel buildOrgChartModel(
               ),
             );
           }
-          rb += roster.length *
+          rb +=
+              roster.length *
               (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY);
           final rosterRight = laneX0 + OrgChartMetrics.stepW;
           if (rosterRight > rr) rr = rosterRight;
@@ -625,7 +633,9 @@ OrgChartModel buildOrgChartModel(
     final y = band.bottom;
 
     runningY =
-        (y > runningY + OrgChartMetrics.boxH ? y : runningY + OrgChartMetrics.boxH) +
+        (y > runningY + OrgChartMetrics.boxH
+            ? y
+            : runningY + OrgChartMetrics.boxH) +
         OrgChartMetrics.bandGapY;
   }
 
@@ -673,14 +683,17 @@ OrgChartModel buildOrgChartModel(
   }
 
   // Pre-compute each card's size from its step DAG.
-  final sizeById = <String,
-      ({
-    double w,
-    double h,
-    Map<String, ({int lvl, int lane})> pos,
-    int levels,
-    List<double> xOff,
-  })>{};
+  final sizeById =
+      <
+        String,
+        ({
+          double w,
+          double h,
+          Map<String, ({int lvl, int lane})> pos,
+          int levels,
+          List<double> xOff,
+        })
+      >{};
   for (final p in procs) {
     sizeById[p.id] = _cardSize(p);
   }
@@ -759,15 +772,15 @@ OrgChartModel buildOrgChartModel(
   Map<String, ({int lvl, int lane})> pos,
   int levels,
   List<double> xOff,
-}) _cardSize(OrgProcessInput p) {
+})
+_cardSize(OrgProcessInput p) {
   final stepIds = [for (final s in p.steps) s.stepId];
   final idx = {for (var i = 0; i < p.steps.length; i++) p.steps[i].stepId: i};
   final effDeps = <String, List<String>>{};
   for (var i = 0; i < p.steps.length; i++) {
     final s = p.steps[i];
     if (s.dependsOn.isNotEmpty) {
-      effDeps[s.stepId] =
-          s.dependsOn.where((d) => idx.containsKey(d)).toList();
+      effDeps[s.stepId] = s.dependsOn.where((d) => idx.containsKey(d)).toList();
     } else {
       effDeps[s.stepId] = i > 0 ? [p.steps[i - 1].stepId] : const [];
     }
@@ -806,7 +819,8 @@ OrgChartModel buildOrgChartModel(
     }
     if (col.length > maxLane) maxLane = col.length;
   }
-  final numLevels = byLvl.isEmpty ? 1 : (byLvl.keys.reduce((a, b) => a > b ? a : b) + 1);
+  final numLevels =
+      byLvl.isEmpty ? 1 : (byLvl.keys.reduce((a, b) => a > b ? a : b) + 1);
   final lanes = maxLane == 0 ? 1 : maxLane;
   // Levels whose steps carry an approval gate get an inline sign-off slot
   // on the flow line after them — the x offsets absorb it so only gated
@@ -818,7 +832,8 @@ OrgChartModel buildOrgChartModel(
   };
   final xOff = List<double>.filled(numLevels + 1, 0);
   for (var l = 0; l < numLevels; l++) {
-    xOff[l + 1] = xOff[l] +
+    xOff[l + 1] =
+        xOff[l] +
         OrgChartMetrics.stepW +
         (gatedLevels.contains(l)
             ? OrgChartMetrics.stepGapX + OrgChartMetrics.gateChipW
@@ -826,9 +841,11 @@ OrgChartModel buildOrgChartModel(
         OrgChartMetrics.stepGapX;
   }
   final innerW = xOff[numLevels] - OrgChartMetrics.stepGapX;
-  final innerH = lanes * OrgChartMetrics.stepH + (lanes - 1) * OrgChartMetrics.stepGapY;
+  final innerH =
+      lanes * OrgChartMetrics.stepH + (lanes - 1) * OrgChartMetrics.stepGapY;
   final w = OrgChartMetrics.cardPad * 2 + innerW;
-  final h = OrgChartMetrics.headerH +
+  final h =
+      OrgChartMetrics.headerH +
       OrgChartMetrics.stepBandGap +
       innerH +
       OrgChartMetrics.cardPad;
@@ -855,7 +872,8 @@ void _placeSteps(
   Rect cellOf(String stepId) {
     final c = pos[stepId] ?? (lvl: 0, lane: 0);
     final x = stepsX + (c.lvl < xOff.length ? xOff[c.lvl] : 0);
-    final y = stepsY + c.lane * (OrgChartMetrics.stepH + OrgChartMetrics.stepGapY);
+    final y =
+        stepsY + c.lane * (OrgChartMetrics.stepH + OrgChartMetrics.stepGapY);
     return Rect.fromLTWH(x, y, OrgChartMetrics.stepW, OrgChartMetrics.stepH);
   }
 
@@ -900,9 +918,10 @@ void _placeSteps(
   // Dependency edges (effective deps: explicit else previous step).
   for (var i = 0; i < p.steps.length; i++) {
     final s = p.steps[i];
-    final deps = s.dependsOn.isNotEmpty
-        ? s.dependsOn.where((d) => idx.containsKey(d))
-        : (i > 0 ? [p.steps[i - 1].stepId] : const <String>[]);
+    final deps =
+        s.dependsOn.isNotEmpty
+            ? s.dependsOn.where((d) => idx.containsKey(d))
+            : (i > 0 ? [p.steps[i - 1].stepId] : const <String>[]);
     for (final d in deps) {
       if (approvalGated.contains(d)) {
         feedGate(d);
@@ -991,28 +1010,28 @@ void _placeSteps(
 ) {
   if (w.agents.isEmpty) return (right: laneX0, bottom: top);
 
-    // A member's role = their PROFILE (the persona axis; profile IS the role).
-    // Falls back to the free-text role tag, then 'member'.
-    String roleOf(OrgAgentInput a) {
-      final pr = a.profileRef;
-      if (pr != null && pr.isNotEmpty && pr != 'profiles/default') {
-        return pr.replaceFirst('profiles/', '');
-      }
-      return a.role.isEmpty ? 'member' : a.role;
+  // A member's role = their PROFILE (the persona axis; profile IS the role).
+  // Falls back to the free-text role tag, then 'member'.
+  String roleOf(OrgAgentInput a) {
+    final pr = a.profileRef;
+    if (pr != null && pr.isNotEmpty && pr != 'profiles/default') {
+      return pr.replaceFirst('profiles/', '');
     }
+    return a.role.isEmpty ? 'member' : a.role;
+  }
 
-    OrgNode chip(OrgAgentInput a, Rect rect, {bool isLead = false}) => OrgNode(
-          id: 'ag:${w.id}:${a.agentId}',
-          kind: OrgNodeKind.agent,
-          label: a.displayName,
-          // Role = profile (shown under every member; 'lead' prefix on the head).
-          sublabel: isLead ? 'lead · ${roleOf(a)}' : roleOf(a),
-          wsId: w.id,
-          agentId: a.agentId,
-          isAgent: a.isAgent,
-          isLead: isLead,
-          rect: rect,
-        );
+  OrgNode chip(OrgAgentInput a, Rect rect, {bool isLead = false}) => OrgNode(
+    id: 'ag:${w.id}:${a.agentId}',
+    kind: OrgNodeKind.agent,
+    label: a.displayName,
+    // Role = profile (shown under every member; 'lead' prefix on the head).
+    sublabel: isLead ? 'lead · ${roleOf(a)}' : roleOf(a),
+    wsId: w.id,
+    agentId: a.agentId,
+    isAgent: a.isAgent,
+    isLead: isLead,
+    rect: rect,
+  );
 
   OrgAgentInput? lead;
   if (w.leadMemberId != null && w.leadMemberId!.isNotEmpty) {
@@ -1031,15 +1050,23 @@ void _placeSteps(
     double gridTop,
     String? leadId,
   ) {
-    final sorted = [...members]..sort((a, b) => a.memberKey.compareTo(b.memberKey));
+    final sorted = [...members]
+      ..sort((a, b) => a.memberKey.compareTo(b.memberKey));
     var maxRight = laneX0;
     for (var i = 0; i < sorted.length; i++) {
       final a = sorted[i];
       final col = i % OrgChartMetrics.chipsPerRow;
       final row = i ~/ OrgChartMetrics.chipsPerRow;
-      final x = laneX0 + col * (OrgChartMetrics.stepW + OrgChartMetrics.chipGapX);
-      final cy = gridTop + row * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY);
-      final rect = Rect.fromLTWH(x, cy, OrgChartMetrics.stepW, OrgChartMetrics.chipH);
+      final x =
+          laneX0 + col * (OrgChartMetrics.stepW + OrgChartMetrics.chipGapX);
+      final cy =
+          gridTop + row * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY);
+      final rect = Rect.fromLTWH(
+        x,
+        cy,
+        OrgChartMetrics.stepW,
+        OrgChartMetrics.chipH,
+      );
       nodes.add(chip(a, rect));
       if (leadId != null) {
         edges.add(
@@ -1050,10 +1077,17 @@ void _placeSteps(
           ),
         );
       }
-      if (x + OrgChartMetrics.stepW > maxRight) maxRight = x + OrgChartMetrics.stepW;
+      if (x + OrgChartMetrics.stepW > maxRight)
+        maxRight = x + OrgChartMetrics.stepW;
     }
-    final rows = (sorted.length + OrgChartMetrics.chipsPerRow - 1) ~/ OrgChartMetrics.chipsPerRow;
-    return (right: maxRight, bottom: gridTop + rows * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY));
+    final rows =
+        (sorted.length + OrgChartMetrics.chipsPerRow - 1) ~/
+        OrgChartMetrics.chipsPerRow;
+    return (
+      right: maxRight,
+      bottom:
+          gridTop + rows * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY),
+    );
   }
 
   if (lead != null) {
@@ -1068,29 +1102,50 @@ void _placeSteps(
         w.agents.where((a) => a.memberKey != leadV.memberKey).toList()
           ..sort((a, b) => a.memberKey.compareTo(b.memberKey));
     final n = others.length;
-    final rowW = n <= 0
-        ? OrgChartMetrics.stepW
-        : n * OrgChartMetrics.stepW + (n - 1) * OrgChartMetrics.chipGapX;
+    final rowW =
+        n <= 0
+            ? OrgChartMetrics.stepW
+            : n * OrgChartMetrics.stepW + (n - 1) * OrgChartMetrics.chipGapX;
     // Lead centered over the row.
     final leadX = laneX0 + (rowW - OrgChartMetrics.stepW) / 2;
-    nodes.add(chip(
-      leadV,
-      Rect.fromLTWH(leadX > laneX0 ? leadX : laneX0, top, OrgChartMetrics.stepW, OrgChartMetrics.chipH),
-      isLead: true,
-    ));
+    nodes.add(
+      chip(
+        leadV,
+        Rect.fromLTWH(
+          leadX > laneX0 ? leadX : laneX0,
+          top,
+          OrgChartMetrics.stepW,
+          OrgChartMetrics.chipH,
+        ),
+        isLead: true,
+      ),
+    );
     final rowTop = top + OrgChartMetrics.chipH + OrgChartMetrics.roleGapY;
     final leadId = 'ag:${w.id}:${leadV.agentId}';
     var maxRight = laneX0 + OrgChartMetrics.stepW;
     for (var i = 0; i < n; i++) {
       final a = others[i];
       final x = laneX0 + i * (OrgChartMetrics.stepW + OrgChartMetrics.chipGapX);
-      nodes.add(chip(a, Rect.fromLTWH(x, rowTop, OrgChartMetrics.stepW, OrgChartMetrics.chipH)));
-      edges.add(OrgEdge(
-        fromId: leadId,
-        toId: 'ag:${w.id}:${a.agentId}',
-        kind: OrgEdgeKind.reports,
-      ));
-      if (x + OrgChartMetrics.stepW > maxRight) maxRight = x + OrgChartMetrics.stepW;
+      nodes.add(
+        chip(
+          a,
+          Rect.fromLTWH(
+            x,
+            rowTop,
+            OrgChartMetrics.stepW,
+            OrgChartMetrics.chipH,
+          ),
+        ),
+      );
+      edges.add(
+        OrgEdge(
+          fromId: leadId,
+          toId: 'ag:${w.id}:${a.agentId}',
+          kind: OrgEdgeKind.reports,
+        ),
+      );
+      if (x + OrgChartMetrics.stepW > maxRight)
+        maxRight = x + OrgChartMetrics.stepW;
     }
     final right = maxRight > laneX0 + rowW ? maxRight : laneX0 + rowW;
     return (right: right, bottom: rowTop + OrgChartMetrics.chipH);
@@ -1113,7 +1168,12 @@ void _placeSteps(
         label: role,
         sublabel: '${members.length}',
         wsId: w.id,
-        rect: Rect.fromLTWH(laneX0, y, OrgChartMetrics.stepW, OrgChartMetrics.roleHeaderH),
+        rect: Rect.fromLTWH(
+          laneX0,
+          y,
+          OrgChartMetrics.stepW,
+          OrgChartMetrics.roleHeaderH,
+        ),
       ),
     );
     y += OrgChartMetrics.roleHeaderH + OrgChartMetrics.roleHeaderGap;
@@ -1135,7 +1195,8 @@ void _placeSteps(
   List<OrgEdge> edges,
 ) {
   if (w.agents.isEmpty) return (right: laneX0, bottom: top);
-  final members = [...w.agents]..sort((a, b) => a.memberKey.compareTo(b.memberKey));
+  final members = [...w.agents]
+    ..sort((a, b) => a.memberKey.compareTo(b.memberKey));
 
   // Distinct knowledge nodes, deterministic order: axis then label.
   final refs = <({String axis, String label})>{};
@@ -1150,12 +1211,13 @@ void _placeSteps(
       refs.add((axis: 'philosophy', label: a.philosophyRef!));
     }
   }
-  final knowledge = refs.toList()
-    ..sort((a, b) {
-      final c = a.axis.compareTo(b.axis);
-      return c != 0 ? c : a.label.compareTo(b.label);
-    });
-  String knId(({String axis, String label}) k) => 'kn:${w.id}:${k.axis}:${k.label}';
+  final knowledge =
+      refs.toList()..sort((a, b) {
+        final c = a.axis.compareTo(b.axis);
+        return c != 0 ? c : a.label.compareTo(b.label);
+      });
+  String knId(({String axis, String label}) k) =>
+      'kn:${w.id}:${k.axis}:${k.label}';
 
   final knX = laneX0 + OrgChartMetrics.stepW + OrgChartMetrics.knowledgeColGapX;
   final knRect = <String, Rect>{};
@@ -1219,7 +1281,9 @@ void _placeSteps(
     }
   }
 
-  final rows = members.length > knowledge.length ? members.length : knowledge.length;
-  final bottom = top + rows * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY);
+  final rows =
+      members.length > knowledge.length ? members.length : knowledge.length;
+  final bottom =
+      top + rows * (OrgChartMetrics.chipH + OrgChartMetrics.chipGapY);
   return (right: knX + OrgChartMetrics.knowledgeW, bottom: bottom);
 }

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `otpInput` (spec §2.6.27).
+/// Factory for `otpInput`.
 ///
 /// Exists because the composed version is reliably broken. A row of
 /// `textInput`s loses paste distribution (a pasted code lands entirely in the
@@ -23,7 +23,7 @@ class OtpInputFactory extends WidgetFactory {
     final masked = context.resolve<bool?>(properties['masked']) ?? false;
     final enabled = context.resolve<bool?>(properties['enabled']) ?? true;
     final autofill = context.resolve<bool?>(properties['autofill']) ?? true;
-    // §17.1.4 canonical `onComplete`; `autoSubmit` is the older spelling and
+    // Canonical `onComplete`; `autoSubmit` is the older spelling and
     // still works.
     final autoSubmit = actionOf(
         properties['onComplete'] ?? properties['autoSubmit'], context);
@@ -170,7 +170,14 @@ class _OtpFieldState extends State<_OtpField> {
                 enabled: widget.enabled,
                 obscureText: widget.masked,
                 textAlign: TextAlign.center,
-                maxLength: 1,
+                // No `maxLength`: the limiting formatter truncates a pasted
+                // or autofilled code to one character BEFORE `onChanged`
+                // runs, so the whole code landed in the first cell and the
+                // rest were never filled — the one behaviour a composed row
+                // of text inputs cannot have, lost to the field that was
+                // meant to keep the cell to one digit. `_distribute` does
+                // that instead: whatever arrives is spread one character per
+                // cell.
                 keyboardType: widget.numeric
                     ? TextInputType.number
                     : TextInputType.text,

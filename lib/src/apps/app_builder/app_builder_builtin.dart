@@ -534,14 +534,13 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
     final hostToolId = widget.backbone?.toolId;
     if (hostToolId == null) return;
     try {
-      final path = VibeSettings.defaultPath(hostToolId);
-      final hs = await VibeSettings.load(path);
-      if (projectPath == null || projectPath.isEmpty) {
-        hs.domainLastProject.remove(widget.app.id);
-      } else {
-        hs.domainLastProject[widget.app.id] = projectPath;
-      }
-      await hs.save(path);
+      await VibeSettings.mutate(VibeSettings.defaultPath(hostToolId), (hs) {
+        if (projectPath == null || projectPath.isEmpty) {
+          hs.domainLastProject.remove(widget.app.id);
+        } else {
+          hs.domainLastProject[widget.app.id] = projectPath;
+        }
+      });
     } catch (_) {
       /* best-effort persistence */
     }
@@ -573,10 +572,12 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
       // host-agnostic and would let one host inherit another's binding
       // (cross-host leak, mirrors the ops rule). Standalone (no host backbone)
       // legitimately uses its own sidecar.
-      final boundProject = hostToolId != null
-          ? (await VibeSettings.load(VibeSettings.defaultPath(hostToolId)))
-              .domainLastProject[widget.app.id]
-          : own.lastProjectPath;
+      final boundProject =
+          hostToolId != null
+              ? (await VibeSettings.load(
+                VibeSettings.defaultPath(hostToolId),
+              )).domainLastProject[widget.app.id]
+              : own.lastProjectPath;
       final inh = widget.inheritedSettings;
       final settings = VibeSettings(
         // Workspace folder: the DOMAIN override (Domain Settings →
@@ -584,7 +585,8 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
         // studio-wide value — previously the field was shown + saved but
         // never consumed, so per-domain project locations silently fell
         // back to the studio dir (display-only trap, fixed 2026-07-03).
-        workspaceDir: effectiveWorkspaceDir(
+        workspaceDir:
+            effectiveWorkspaceDir(
               inherited: inh,
               overridesFile: widget.overridesFile,
             ) ??
@@ -971,6 +973,7 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
       canRedo: state.canRedo,
       canCompareChannels: state.canCompareChannels,
       projectName: state.projectName,
+      recentProjects: state.recentProjects,
     );
   }
 

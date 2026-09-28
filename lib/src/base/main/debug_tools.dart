@@ -21,6 +21,7 @@ import '../install/bundle_history.dart';
 import '../settings/vibe_settings.dart';
 import 'bundle_install_surface.dart';
 import 'chrome_bridge.dart';
+import '../infra/arg_redaction.dart';
 
 /// Register the 4 `studio.debug.*` tools onto [boot]:
 ///
@@ -122,6 +123,7 @@ void registerDebugTools(
         'newProjectInActive': b.newProjectInActive != null,
         'openProjectInActive': b.openProjectInActive != null,
         'closeProjectInActive': b.closeProjectInActive != null,
+        'runSlashCommandInActive': b.runSlashCommandInActive != null,
         'activatePackage': b.activatePackage != null,
         'activeProjectInfo': b.activeProjectInfo != null,
         'debugConfig': b.debugConfig != null,
@@ -420,6 +422,15 @@ void registerDebugTools(
       if (entries.length > limit) {
         entries = entries.sublist(entries.length - limit);
       }
+      // The kernel logs arguments verbatim; secret values never leave here.
+      entries = <Map<String, Object?>>[
+        for (final e in entries)
+          <String, Object?>{
+            ...e,
+            if (e.containsKey('args'))
+              'args': redactToolArgs('${e['tool']}', e['args']),
+          },
+      ];
       return mk.KernelToolResult(
         content: <mk.KernelContent>[
           mk.KernelTextContent(
@@ -1200,32 +1211,29 @@ void registerDebugTools(
         );
       }
       final entries = <Map<String, dynamic>>[];
-      final scanRoots = <Directory>[
-        dir,
-        if (extraLegacy != null) extraLegacy,
-      ];
+      final scanRoots = <Directory>[dir, if (extraLegacy != null) extraLegacy];
       for (final root in scanRoots) {
-      await for (final entity in root.list()) {
-        if (entity is! Directory) continue;
-        final id = p.basename(entity.path);
-        // Snapshot id format: `<UTC-ISO no millis>-<label>`. Split on
-        // the LAST '-' so labels containing dashes still parse.
-        final dashIdx = id.lastIndexOf('-');
-        final ts = dashIdx > 0 ? id.substring(0, dashIdx) : id;
-        final label = dashIdx > 0 ? id.substring(dashIdx + 1) : '';
-        final files = <String>[];
-        await for (final f in entity.list(recursive: true)) {
-          if (f is File) {
-            files.add(p.relative(f.path, from: entity.path));
+        await for (final entity in root.list()) {
+          if (entity is! Directory) continue;
+          final id = p.basename(entity.path);
+          // Snapshot id format: `<UTC-ISO no millis>-<label>`. Split on
+          // the LAST '-' so labels containing dashes still parse.
+          final dashIdx = id.lastIndexOf('-');
+          final ts = dashIdx > 0 ? id.substring(0, dashIdx) : id;
+          final label = dashIdx > 0 ? id.substring(dashIdx + 1) : '';
+          final files = <String>[];
+          await for (final f in entity.list(recursive: true)) {
+            if (f is File) {
+              files.add(p.relative(f.path, from: entity.path));
+            }
           }
+          entries.add(<String, dynamic>{
+            'id': id,
+            'ts': ts,
+            'label': label,
+            'files': files,
+          });
         }
-        entries.add(<String, dynamic>{
-          'id': id,
-          'ts': ts,
-          'label': label,
-          'files': files,
-        });
-      }
       }
       entries.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
       return mk.KernelToolResult(

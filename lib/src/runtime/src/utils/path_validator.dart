@@ -1,7 +1,7 @@
 /// Path security validation for client resource URIs.
 ///
 /// Provides path traversal detection, normalization, and symlink validation
-/// as specified in the design doc (§Path Resolution Rules).
+/// before any file is read.
 library path_validator;
 
 import 'dart:io';
@@ -24,9 +24,7 @@ class PathSecurityException implements Exception {
 /// 1. Path traversal rejection - rejects paths containing `..` segments
 /// 2. Path normalization - removes redundant slashes and `.` segments
 /// 3. Symlink resolution - validates resolved paths stay within allowed directories
-class PathValidator {
-  PathValidator._();
-
+abstract final class PathValidator {
   /// Validates and normalizes a resource path.
   ///
   /// Throws [PathSecurityException] if a path traversal attempt is detected.

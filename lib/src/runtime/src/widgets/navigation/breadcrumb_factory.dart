@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `breadcrumb` (spec §2.8.11).
+/// Factory for `breadcrumb`.
 class BreadcrumbFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final items = context.resolve<List<dynamic>?>(properties['items']) ?? const [];
+    final items = listOf(properties['items'], context) ?? const [];
     final separator = context.resolve<String?>(properties['separator']) ?? '/';
     final maxItems = context.resolve<num?>(properties['maxItems'])?.toInt();
     final onClick = actionOf(properties['onClick'], context);

@@ -65,9 +65,16 @@ class ConvertResult {
     required this.outDir,
     required this.canonicalHash,
     required this.writtenFiles,
+    this.notGenerated = const <String>[],
   });
 
   final String outDir;
   final String canonicalHash;
   final List<String> writtenFiles;
+
+  /// What a starter scaffold leaves to the author. Empty when the output is
+  /// complete; otherwise every item names a part that was not generated.
+  final List<String> notGenerated;
+
+  bool get isScaffold => notGenerated.isNotEmpty;
 }

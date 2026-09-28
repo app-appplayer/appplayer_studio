@@ -1,7 +1,7 @@
 /// Batch resource loading for MCP UI DSL v1.1
 ///
 /// Supports loading multiple resources in a single declaration with
-/// configurable load strategy and failure policy (spec §Batch Resource Loading).
+/// configurable load strategy and failure policy.
 library batch_resource_loader;
 
 import 'client_resource_resolver.dart';
@@ -81,7 +81,7 @@ class BatchResourceResult {
 /// Loads multiple client resources in a single operation.
 ///
 /// Supports parallel and sequential load strategies with configurable
-/// failure policies per spec §Batch Resource Loading.
+/// failure policies.
 class BatchResourceLoader {
   final ClientResourceResolver _resolver;
 

@@ -40,11 +40,7 @@ class _FilesPageState extends ConsumerState<FilesPage> {
       for (final e in Directory(dir).listSync(followLinks: false)) {
         final name = p.basename(e.path);
         if (name.startsWith('.')) continue; // hide dotfiles
-        out.add(VbuFileEntry(
-          name: name,
-          path: e.path,
-          isDir: e is Directory,
-        ));
+        out.add(VbuFileEntry(name: name, path: e.path, isDir: e is Directory));
       }
     } catch (_) {
       /* unreadable dir → empty */
@@ -68,8 +64,12 @@ class _FilesPageState extends ConsumerState<FilesPage> {
       case VbuDocKind.code:
         return (text: await file.readAsString(), bytes: null);
       case VbuDocKind.pdf:
-      case VbuDocKind.binary:
         return (text: null, bytes: null);
+      case VbuDocKind.binary:
+        // An extension the table does not know is not proof of a binary:
+        // hand the bytes over so the viewer can tell text (a tool's own
+        // project file) from a real blob.
+        return (text: null, bytes: await file.readAsBytes());
     }
   }
 
@@ -108,12 +108,11 @@ class _FilesPageState extends ConsumerState<FilesPage> {
           const SizedBox(height: 4),
           Text(
             'Browse and edit this project\'s documents — Markdown renders, '
-            'text / code / data are editable and saved in place, images preview. '
-            'PDF preview is on the way.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: OpsColors.text2),
+            'text / code / data are editable and saved in place, images and PDFs '
+            'preview.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: OpsColors.text2),
           ),
           const SizedBox(height: 12),
           Expanded(

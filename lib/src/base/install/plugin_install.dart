@@ -27,7 +27,8 @@ const String pluginCapabilityId = 'plugin';
 /// Activate a `bundle` plugin in plugin mode (no UI mount) and return its
 /// registered tool raw names. The host supplies this (it owns bundle
 /// activation); null leaves bundle plugins unwired.
-typedef ActivateBundlePlugin = Future<List<String>> Function(PluginSource source);
+typedef ActivateBundlePlugin =
+    Future<List<String>> Function(PluginSource source);
 
 /// Tear a `bundle` plugin's activation fully down (tools + resources + isolate).
 typedef DeactivateBundlePlugin = Future<void> Function(String id);
@@ -150,16 +151,17 @@ List<String> registerPluginTools(
           'type': 'object',
           'properties': <String, dynamic>{},
         },
-        invoke: (args) async => <String, Object?>{
-          'plugins': <Map<String, Object?>>[
-            for (final reg in host.plugins)
-              <String, Object?>{
-                'id': reg.source.id,
-                'kind': reg.source.kind.name,
-                'tools': reg.exposedNames,
-              },
-          ],
-        },
+        invoke:
+            (args) async => <String, Object?>{
+              'plugins': <Map<String, Object?>>[
+                for (final reg in host.plugins)
+                  <String, Object?>{
+                    'id': reg.source.id,
+                    'kind': reg.source.kind.name,
+                    'tools': reg.exposedNames,
+                  },
+              ],
+            },
       ),
     ],
   );
@@ -204,10 +206,12 @@ PluginSource _sourceFromArgs(Map<String, dynamic> args) {
   final id = _req(args, 'id');
   final kind = PluginKind.values.firstWhere(
     (k) => k.name == args['kind'],
-    orElse: () => throw CapabilityToolError(
-      code: 'plugin.bad_input',
-      message: 'kind must be server | hub | bundle',
-    ),
+    orElse:
+        () =>
+            throw CapabilityToolError(
+              code: 'plugin.bad_input',
+              message: 'kind must be server | hub | bundle',
+            ),
   );
   return PluginSource(
     id: id,
@@ -248,7 +252,9 @@ String _req(Map<String, dynamic> args, String field) {
 /// the endpoint, bundle re-activates from its local `.mbd` path on boot.
 String _defaultStorePath() {
   final home =
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+      Platform.environment['HOME'] ??
+      Platform.environment['USERPROFILE'] ??
+      '.';
   return p.join(home, '.config', 'appplayer', 'plugins.json');
 }
 
@@ -272,8 +278,8 @@ class _PluginStore {
   }
 
   Future<void> put(PluginSource source) async {
-    final all = (await load()).where((s) => s.id != source.id).toList()
-      ..add(source);
+    final all =
+        (await load()).where((s) => s.id != source.id).toList()..add(source);
     await _save(all);
   }
 
@@ -286,32 +292,32 @@ class _PluginStore {
     final f = File(path);
     await f.parent.create(recursive: true);
     await f.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(
-        <Map<String, Object?>>[for (final s in sources) _toJson(s)],
-      ),
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(<Map<String, Object?>>[for (final s in sources) _toJson(s)]),
     );
   }
 
   static Map<String, Object?> _toJson(PluginSource s) => <String, Object?>{
-        'id': s.id,
-        'kind': s.kind.name,
-        'name': s.name,
-        'description': s.description,
-        if (s.transport != null) 'transport': s.transport!.name,
-        if (s.endpoint != null) 'endpoint': s.endpoint,
-        if (s.options != null) 'options': s.options,
-      };
+    'id': s.id,
+    'kind': s.kind.name,
+    'name': s.name,
+    'description': s.description,
+    if (s.transport != null) 'transport': s.transport!.name,
+    if (s.endpoint != null) 'endpoint': s.endpoint,
+    if (s.options != null) 'options': s.options,
+  };
 
   static PluginSource _fromJson(Map<String, dynamic> j) => PluginSource(
-        id: j['id'] as String,
-        kind: PluginKind.values.firstWhere(
-          (k) => k.name == j['kind'],
-          orElse: () => PluginKind.server,
-        ),
-        name: (j['name'] as String?) ?? '',
-        description: (j['description'] as String?) ?? '',
-        transport: _transportFromName(j['transport'] as String?),
-        endpoint: j['endpoint'] as String?,
-        options: (j['options'] as Map?)?.cast<String, dynamic>(),
-      );
+    id: j['id'] as String,
+    kind: PluginKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => PluginKind.server,
+    ),
+    name: (j['name'] as String?) ?? '',
+    description: (j['description'] as String?) ?? '',
+    transport: _transportFromName(j['transport'] as String?),
+    endpoint: j['endpoint'] as String?,
+    options: (j['options'] as Map?)?.cast<String, dynamic>(),
+  );
 }

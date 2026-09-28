@@ -26,12 +26,12 @@ class AppBarWidgetFactory extends WidgetFactory {
         parseColor(context.resolve(properties['backgroundColor']), context);
     final foregroundColor =
         parseColor(context.resolve(properties['foregroundColor']), context);
-    final elevation = parseDimension(properties['elevation']);
+    final elevation = dimensionOf(properties['elevation'], context);
     final shadowColor = parseColor(context.resolve(properties['shadowColor']), context);
     final shape = _parseShapeBorder(properties['shape']);
-    final toolbarHeight = parseDimension(properties['toolbarHeight']);
-    final toolbarOpacity = parseDimension(properties['toolbarOpacity']) ?? 1.0;
-    final bottomOpacity = parseDimension(properties['bottomOpacity']) ?? 1.0;
+    final toolbarHeight = dimensionOf(properties['toolbarHeight'], context);
+    final toolbarOpacity = dimensionOf(properties['toolbarOpacity'], context) ?? 1.0;
+    final bottomOpacity = dimensionOf(properties['bottomOpacity'], context) ?? 1.0;
 
     // Build leading widget
     Widget? leading;
@@ -50,7 +50,7 @@ class AppBarWidgetFactory extends WidgetFactory {
           .toList();
     }
 
-    // Spec §2.8.1 / §4.3.2: append host close button on the root route when
+    // Append host close button on the root route when
     // `onExit` is registered and `exitButton != false`.
     final exitButtonConfig = properties['exitButton'];
     final exitButtonSuppressed = exitButtonConfig == false;
@@ -82,7 +82,7 @@ class AppBarWidgetFactory extends WidgetFactory {
       if (bottomWidget != null) {
         bottom = PreferredSize(
           preferredSize:
-              Size.fromHeight(parseDimension(properties['bottomHeight']) ?? 48.0),
+              Size.fromHeight(dimensionOf(properties['bottomHeight'], context) ?? 48.0),
           child: bottomWidget,
         );
       }

@@ -3,11 +3,13 @@ import 'dart:io';
 
 // Builtin = OS-level app — uses host wrapper API.
 // Direct `package:brain_kernel` import removed (cleanup Phase 2 — 2026-05-28).
-import 'package:appplayer_studio/builtin_api.dart' as mk
+import 'package:appplayer_studio/builtin_api.dart'
+    as mk
     show BundleActivation, BundleActivationRegistry;
 import 'package:appplayer_studio/builtin_api.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
-import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart' as kops
+import 'package:mcp_knowledge_ops/mcp_knowledge_ops.dart'
+    as kops
     show KvStateStore;
 // Concrete decision/expression engines + the Decision port adapter — not
 // surfaced by builtin_api's flowbrain_core re-export (which brings only the
@@ -134,7 +136,7 @@ class KnowledgeInit {
   /// Null in unbound / test boots. Charter tools (`workspace_set_charter`)
   /// write + activate the org charter through this so it governs the
   /// per-project system: the process philosophy gate (`philosophy_check`) and
-  /// opted-in agents both read this store's active ethos. (cherry-confirmed:
+  /// opted-in agents both read this store's active ethos. (By design:
   /// governance routes through the per-project active ethos, not the global
   /// `bk.philosophy.*`.)
   final EthosStorePort? ethosStore;
@@ -231,7 +233,7 @@ class KnowledgeInit {
   /// `KvStoragePortAdapter` (A.3 done — workspace-scoped via `workspaceId`).
   /// Browser / form / ingest are host capabilities (`browser.*` / `form.*`
   /// / `ingest.*`) — built-ins wire them; those ops adapter forks were removed.
-  /// LLM / channel still Ops-owned pending cherry's capability decision
+  /// LLM / channel are still Ops-owned until they move to host capabilities
   /// (llm → host service + kernel inject; channel → host `channel.*`).
   /// [sharedLlmProviders] — the host's global agent LLM session pool
   /// (`KernelApp.agentLlmSessions.providers`). When a project is bound,
@@ -302,12 +304,13 @@ class KnowledgeInit {
     final bool projectBound =
         config.workspacesRoot.isNotEmpty &&
         config.workspacesRoot != './workspaces';
-    final factGraph = projectBound
-        ? await assemblePersistentFactGraph(
-            rootDir: factGraphDirFor(config.workspacesRoot),
-            defaultWorkspaceId: factWorkspaceId,
-          )
-        : FactGraphRuntime.inMemory(defaultWorkspaceId: factWorkspaceId);
+    final factGraph =
+        projectBound
+            ? await assemblePersistentFactGraph(
+              rootDir: factGraphDirFor(config.workspacesRoot),
+              defaultWorkspaceId: factWorkspaceId,
+            )
+            : FactGraphRuntime.inMemory(defaultWorkspaceId: factWorkspaceId);
 
     // 7. L1 SkillRuntime — flowbrain-native runtime for Bridge events.
     //    YAML-defined skills live in the app-level [AppSkillRegistry]; the
@@ -338,7 +341,7 @@ class KnowledgeInit {
     // stub engine — the real `AppraisalEnginePort` bridge over the appraisal
     // engine is the one piece that does NOT yet exist in mcp_profile (only
     // Stub + a caching decorator), so wiring it now would gain nothing; it is
-    // returned to cherry as its own ticket. Workspace yaml seeds populate the
+    // left for a kernel-side change. Workspace yaml seeds populate the
     // registry via [WorkspaceLoader].
     final profileRegistry = ProfileRegistry();
     final profileRuntime = ProfileRuntime(
@@ -424,14 +427,15 @@ class KnowledgeInit {
           // still shadows the fallback with its own recorded port. A new map —
           // the host's own pool is not mutated.
           final rec = observability;
-          mb.LlmPort wrap(String name, mb.LlmPort inner) => rec == null
-              ? inner
-              : RecordingLlmPort(
-                  inner: inner,
-                  provider: name,
-                  bus: rec.bus,
-                  telemetry: rec.telemetry,
-                );
+          mb.LlmPort wrap(String name, mb.LlmPort inner) =>
+              rec == null
+                  ? inner
+                  : RecordingLlmPort(
+                    inner: inner,
+                    provider: name,
+                    bus: rec.bus,
+                    telemetry: rec.telemetry,
+                  );
           final merged = <String, mb.LlmPort>{
             if (sharedLlmProviders != null)
               for (final e in sharedLlmProviders.entries)
@@ -466,7 +470,7 @@ class KnowledgeInit {
       //     `opsRuntime == null` and bundle activation throws "OpsRuntime not
       //     configured" on process_start (task_run / the scheduler are
       //     unaffected — they don't route through the process executor).
-      // judgment-determinism handoff (cherry-confirmed) — replace the
+      // judgment-determinism handoff — replace the
       // crash-guard stubs with the REAL ports that the host already owns,
       // so a bound project's process gates judge for real instead of the
       // stub's always-`proceed` (0.5). All per-project (no global routing):
@@ -475,7 +479,7 @@ class KnowledgeInit {
       //   decision — adapts THIS project's ProfileRuntime (real Default
       //     decision engine wired above) via the published mcp_profile
       //     `DecisionPortAdapter`.
-      // Still stub (returned to cherry / out of scope): appraisal (real
+      // Still stub (out of scope here): appraisal (real
       //   AppraisalEnginePort bridge missing in mcp_profile), skill / metrics
       //   / mcp / llm / philosophy (separate seams).
       final opsRuntime = OpsRuntime.fromConsumedPorts(
@@ -629,8 +633,8 @@ class KnowledgeInit {
     // writes to the ORG-level KV (runs span workspaces); the registry's scoped
     // `kv` cannot see those keys, so hand it the org-level reader here where
     // `orgKv` is in scope.
-    registries.process.readOrgKv = (key) async =>
-        (await orgKv.get(key)) as String?;
+    registries.process.readOrgKv =
+        (key) async => (await orgKv.get(key)) as String?;
 
     // Agent-completion trigger bus (R1/R2). The
     // bus fans a completion to subscribers / the live chat; its action seams
@@ -684,6 +688,17 @@ class KnowledgeInit {
         /* root missing — boot still proceeds, activations stay empty */
       }
       mbdNames.sort();
+      // Process runs resolve `<project>.project.<id>` from the shared bundle,
+      // so a project without one fails every run with "behavior not found".
+      // Say so at boot, where a ported project is first seen.
+      if (!mbdNames.contains('project.mbd')) {
+        OpsLog.boot(
+          'init',
+          'no project.mbd under ${config.workspacesRoot} — process runs '
+              'resolve their behaviors from it and will fail with '
+              '"behavior not found"',
+        );
+      }
       for (final mbdName in mbdNames) {
         final mbdPath = p.join(config.workspacesRoot, mbdName);
         if (!Directory(mbdPath).existsSync()) continue;
@@ -802,8 +817,8 @@ class KnowledgeInit {
       );
       backgroundLoad = loader.loadAll().then(
         (_) => OpsLog.boot('init', 'wsload background complete'),
-        onError: (Object e) =>
-            OpsLog.warn('init', 'background wsload failed: $e'),
+        onError:
+            (Object e) => OpsLog.warn('init', 'background wsload failed: $e'),
       );
       // 12b retired — boot used to seed 5 `workspace_insight` sample
       // facts (vendor_terms · q2_clusters · gate_outcome · avg_confidence
@@ -842,6 +857,9 @@ class KnowledgeInit {
       activations: activations,
       observability: observability,
     );
+    // Behaviors are exposed under the project bundle's manifest id, not the
+    // folder name the project happens to sit in.
+    registries.process.projectBundleIdOf = () => init.sharedPoolBundleId;
     init.workspacesReady = backgroundLoad;
     return init;
   }
@@ -918,8 +936,8 @@ class KnowledgeInit {
   /// `<projectName>.project.<id>`; this registers the same exposed id live.
   /// No-op when the project bundle activation isn't found.
   void registerProjectBehavior(mb.BehaviorDefinition def) {
-    final projName = projectRoot.split(Platform.pathSeparator).last;
-    final wantBundleId = '$projName.project';
+    final wantBundleId = sharedPoolBundleId;
+    if (wantBundleId == null) return;
     for (final a in _activations) {
       if (a.activation.bundleId == wantBundleId) {
         a.activation.registerBehavior(def);

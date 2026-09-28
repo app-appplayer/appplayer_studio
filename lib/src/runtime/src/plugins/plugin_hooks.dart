@@ -23,7 +23,13 @@ enum PluginHookType {
   /// Fired before/after a widget is rendered
   onRender,
 
-  /// Fired when an error occurs during plugin or runtime operations
+  /// Fired when an error occurs during plugin or runtime operations.
+  ///
+  /// One failure is one report, and every report carries the same keys:
+  /// - `source` — `'renderer'` or `'actionHandler'`;
+  /// - `message` — the human-readable reason, always a non-empty string;
+  /// - `widgetType` (renderer) or `actionType` (action handler) — always
+  ///   present, `null` when the definition named no type.
   onError,
 }
 

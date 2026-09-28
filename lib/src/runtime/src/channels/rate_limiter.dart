@@ -1,7 +1,7 @@
 /// Rate limiting for MCP UI DSL v1.1 channel flow control
 ///
 /// Implements configurable rate limiting with maxRate/window and
-/// drop/queue overflow policies per spec §2277-2302.
+/// drop/queue overflow policies.
 library rate_limiter;
 
 import 'dart:async';

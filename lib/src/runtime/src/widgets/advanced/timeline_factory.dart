@@ -12,15 +12,14 @@ class TimelineWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final items = context.resolve<List<dynamic>?>(properties['items'] ?? []) ??
+    final items = listOf(properties['items'] ?? [], context) ??
         [];
     final orientation = readEnum(properties['orientation'], context) ?? 'vertical';
     final lineColor =
         parseColor(context.resolve(properties['lineColor']), context) ??
-            context.themeManager.getColorValue('outlineVariant') ??
-            Colors.grey;
+            context.themeManager.colorOr('outlineVariant', Colors.grey);
     final onSurface =
-        context.themeManager.getColorValue('onSurface') ?? Colors.black87;
+        context.themeManager.colorOr('onSurface', Colors.black87);
     final lineWidth = numberOf(properties['lineWidth'], context) ?? 2.0;
     final nodeSize = numberOf(properties['nodeSize'], context) ?? 20.0;
     final spacing = numberOf(properties['spacing'], context) ?? 20.0;

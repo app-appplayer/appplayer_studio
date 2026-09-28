@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:appplayer_studio/src/base/capture/recorder/h264_encoder.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/recorder_models.dart';
 
 Recording _recording({
@@ -36,11 +37,11 @@ void main() {
 
   group('Recording.ffmpegHint()', () {
     // r1 — png format produces a png pattern in the hint.
-    test('r1: png format includes frame_%06d.png and libx264', () {
+    test('r1: png format includes frame_%06d.png and the H.264 encoder', () {
       final hint = _recording(format: 'png', fps: 24).ffmpegHint();
       expect(hint, contains('frame_%06d.png'));
       expect(hint, contains('-framerate 24'));
-      expect(hint, contains('libx264'));
+      expect(hint, contains(h264EncoderFor()));
     });
 
     // r2 — jpg format substitutes jpg in the hint.
@@ -172,10 +173,7 @@ void main() {
       expect(manifest, contains("file 'frame_000000.png'\nduration 5.000"));
       expect(manifest, contains("file 'frame_000001.png'\nduration 3.000"));
       // Concat demuxer drops the last duration → the final frame is repeated.
-      expect(
-        'file \'frame_000001.png\''.allMatches(manifest).length,
-        2,
-      );
+      expect('file \'frame_000001.png\''.allMatches(manifest).length, 2);
     });
 
     // r6 — the D3 core: a single static frame keeps the FULL span (was ~0.04s).

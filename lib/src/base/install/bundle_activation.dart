@@ -11,8 +11,8 @@
 ///
 /// **Step 3 of bundle-fork absorption** — the canonical bundle types
 /// (`McpBundle` / `ToolEntry` / `AgentDefinition`) come from
-/// `package:mcp_bundle`. The host no longer carries fork classes
-/// (memory `feedback_bundle_no_fork_extend`).
+/// `package:mcp_bundle`. The host carries no fork classes — bundle types
+/// are extended in the package, never copied here.
 ///
 /// The host owns the lifetime — domains must NOT cache the context
 /// across activations. Calling any register* method on a context

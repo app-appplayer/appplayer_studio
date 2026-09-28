@@ -415,9 +415,10 @@ class TaskRegistry {
       ),
       createdAt:
           DateTime.tryParse(y['createdAt'] as String? ?? '') ?? DateTime.now(),
-      lastFiredAt: y['lastFiredAt'] is String
-          ? DateTime.tryParse(y['lastFiredAt'] as String)
-          : null,
+      lastFiredAt:
+          y['lastFiredAt'] is String
+              ? DateTime.tryParse(y['lastFiredAt'] as String)
+              : null,
     );
   }
 
@@ -425,8 +426,10 @@ class TaskRegistry {
     final buf = StringBuffer();
     buf.writeln('id: ${t.id}');
     buf.writeln('kind: ${t.kind.name}');
-    buf.writeln('title: ${t.title}');
-    if (t.description != null) buf.writeln('description: ${t.description}');
+    buf.writeln('title: ${_quoted(t.title)}');
+    if (t.description != null) {
+      buf.writeln('description: ${_quoted(t.description!)}');
+    }
     buf.writeln('assigneeIds:');
     for (final a in t.assigneeIds) buf.writeln('  - $a');
     buf.writeln('skillIds:');
@@ -452,7 +455,36 @@ class TaskRegistry {
 
   String _scalar(Object? v) {
     if (v == null) return 'null';
-    if (v is String) return '"$v"';
+    if (v is String) return _quoted(v);
     return v.toString();
+  }
+
+  /// A YAML double-quoted scalar for [s]. Free text (a delegated message, a
+  /// title) carries newlines, `: `, `#`, quotes and leading `- `; written bare
+  /// it stops being one scalar and the task file no longer loads.
+  String _quoted(String s) {
+    final out = StringBuffer('"');
+    for (final r in s.runes) {
+      switch (r) {
+        case 0x5C:
+          out.write(r'\\');
+        case 0x22:
+          out.write(r'\"');
+        case 0x0A:
+          out.write(r'\n');
+        case 0x0D:
+          out.write(r'\r');
+        case 0x09:
+          out.write(r'\t');
+        default:
+          if (r < 0x20) {
+            out.write('\\u${r.toRadixString(16).padLeft(4, '0')}');
+          } else {
+            out.writeCharCode(r);
+          }
+      }
+    }
+    out.write('"');
+    return out.toString();
   }
 }

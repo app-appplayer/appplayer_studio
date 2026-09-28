@@ -19,7 +19,7 @@ class GridViewWidgetFactory extends WidgetFactory {
     // Grid specific properties
     // Support both 'columns' (MCP UI DSL v1.0) and 'crossAxisCount' (Flutter
     // style). `columns` is `number | object`: the object form is a responsive
-    // override keyed by form factor (§14.1.1), which `pickResponsive` picks
+    // override keyed by form factor, which `pickResponsive` picks
     // from. Reading it as `int?` threw on that form and on a bound value —
     // both of which the schema allows.
     final rawColumns = properties['columns'] ?? properties['crossAxisCount'];
@@ -31,11 +31,11 @@ class GridViewWidgetFactory extends WidgetFactory {
         : (resolvedColumns is String
             ? int.tryParse(resolvedColumns)
             : null);
-    final maxCrossAxisExtent = parseDimension(properties['maxCrossAxisExtent']);
-    // Spec §2.7.2 canonical `rowGap` / `columnGap`; legacy
+    final maxCrossAxisExtent = dimensionOf(properties['maxCrossAxisExtent'], context);
+    // Canonical `rowGap` / `columnGap`; legacy
     // `mainAxisSpacing` / `crossAxisSpacing` (Flutter field names) and
     // `spacing` (shared shorthand) accepted.
-    final spacing = parseDimension(properties['spacing']);
+    final spacing = dimensionOf(properties['spacing'], context);
     final mainAxisSpacing =
         parseDimension(properties['rowGap'] ?? properties['mainAxisSpacing']) ??
             spacing ??
@@ -44,12 +44,12 @@ class GridViewWidgetFactory extends WidgetFactory {
             properties['columnGap'] ?? properties['crossAxisSpacing']) ??
         spacing ??
         0.0;
-    // Spec §2.7.2 canonical `itemAspectRatio`; `childAspectRatio` kept as
+    // Canonical `itemAspectRatio`; `childAspectRatio` kept as
     // legacy Flutter-style alias.
     final childAspectRatio = parseDimension(
             properties['itemAspectRatio'] ?? properties['childAspectRatio']) ??
         1.0;
-    final mainAxisExtent = parseDimension(properties['mainAxisExtent']);
+    final mainAxisExtent = dimensionOf(properties['mainAxisExtent'], context);
 
     // Get data source
     final staticChildren = definition['children'] as List<dynamic>?;
@@ -94,7 +94,7 @@ class GridViewWidgetFactory extends WidgetFactory {
     if ((itemsPath != null || directItems != null) && itemTemplate != null) {
       // Dynamic grid with data binding
       final items = itemsPath != null
-          ? context.resolve<List<dynamic>?>(itemsPath) ?? []
+          ? listOf(itemsPath, context) ?? []
           : directItems ?? [];
 
       gridView = GridView.builder(

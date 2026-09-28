@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'mcp_logger.dart';
 
-/// One reading of MCP UI DSL §5.3.4 `Color`, for every surface that takes one.
+/// One reading of the DSL `Color` type, for every surface that takes one.
 ///
 /// Four parsers used to answer this question and no two agreed: widget
 /// properties took hex, the ten basic names and the scheme slots; the page
@@ -11,23 +11,21 @@ import 'mcp_logger.dart';
 /// painted transparent. A document was therefore legal or not depending on
 /// which slot it landed in, which is not a spec.
 ///
-/// Accepted, per §5.3.4:
+/// Accepted:
 ///
-/// * **Scheme slot** — a role name from §5.3.1, resolved through
+/// * **Scheme slot** — a theme color role name, resolved through
 ///   [slotResolver]. Preferred: it is the only spelling that follows light /
 ///   dark mode.
 /// * **Hex** — `#RGB`, `#RRGGBB`, `#AARRGGBB` (alpha first).
-/// * **CSS basic name** — the ten §5.3.4 names, case-insensitive.
+/// * **CSS basic name** — the ten basic names, case-insensitive.
 /// * **Functional** — `rgb(r, g, b)` / `rgba(r, g, b, a)`; SHOULD, below hex.
 ///
 /// Anything else resolves to null *and says so*. Silence is the failure this
 /// exists to stop: an unresolvable name paints nothing, and a screen that
 /// paints nothing looks like a design decision.
-class DslColor {
-  const DslColor._();
-
-  /// Canonical M3 scheme slots (§5.3.1) — 28 roles, the three semantic pairs
-  /// this spec adds, and the four legacy spellings §5.3.1 keeps.
+abstract final class DslColor {
+  /// Canonical M3 scheme slots — 28 roles, the three semantic pairs
+  /// this spec adds, and the four legacy spellings still accepted.
   static const Set<String> schemeSlots = <String>{
     'primary', 'onPrimary', 'primaryContainer', 'onPrimaryContainer',
     'secondary', 'onSecondary', 'secondaryContainer', 'onSecondaryContainer',
@@ -49,11 +47,11 @@ class DslColor {
 
   /// Pre-M3 slot names that documents in the field still carry.
   ///
-  /// They were the vocabulary before §5.3.1's roles, and a document written
+  /// They were the vocabulary before the current roles, and a document written
   /// then names them in `penColor`, a border, a divider. Refusing them stops
   /// the whole document at load (validation runs before the first frame) and
   /// resolving them to nothing paints an invisible line — so they map onto the
-  /// role each one meant. Not advertised: §5.3.1 lists the canonical roles,
+  /// role each one meant. Not advertised: only the canonical roles are listed,
   /// and these resolve without appearing in a completion list.
   static const Map<String, String> legacyAliases = <String, String>{
     'divider': 'outlineVariant',
@@ -97,7 +95,7 @@ class DslColor {
     String where = 'color',
   }) {
     if (value == null) return null;
-    // §5.3.4 is a string vocabulary. An int or a map is not a color in this
+    // `Color` is a string vocabulary. An int or a map is not a color in this
     // DSL, and taking one here would let a document that no validator accepts
     // render anyway.
     if (value is! String) return null;
@@ -155,7 +153,7 @@ class DslColor {
       '(red, blue, green, yellow, orange, '
       'purple, black, white, grey/gray), rgb()/rgba(), or a Material 3 scheme '
       'slot such as `primary` — the only spelling that follows light / dark '
-      'mode. CSS keyword colors beyond those ten are not accepted (§5.3.4)',
+      'mode. CSS keyword colors beyond those ten are not accepted',
     );
     return null;
   }

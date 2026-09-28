@@ -13,7 +13,7 @@ export 'src/models/app_metadata.dart';
 // Routing exports
 export 'src/routing/route_manager.dart';
 
-// Entry & identity (MCP UI DSL 8.9)
+// Entry & identity
 export 'src/entry/entry_context.dart';
 export 'src/entry/entry_session.dart';
 export 'src/routing/page_state_scope.dart';
@@ -21,7 +21,7 @@ export 'src/routing/page_state_scope.dart';
 // Runtime exports
 export 'src/runtime/runtime_engine.dart';
 
-// Host-wired capabilities (spec §6.13) and the asset types their APIs speak.
+// Host-wired capabilities and the asset types their APIs speak.
 // Exported because a port that cannot be constructed outside this package
 // cannot be wired by the host that owns the platform power — the seam would
 // exist and be unreachable, which is how `AssetResolver` sat unused.
@@ -46,7 +46,7 @@ export 'src/theme/theme_manager.dart';
 
 // State management exports
 // `StateChangeEvent` is exported alongside the manager: a host that bridges
-// two runtimes (a dashboard slot mirroring its device, §3.5.5) has to name the
+// two runtimes (a dashboard slot mirroring its device) has to name the
 // type it receives from `StateManager.stream`.
 export 'src/state/state_manager.dart' show StateManager, StateChangeEvent;
 export 'src/state/state_watcher.dart';
@@ -67,6 +67,9 @@ export 'src/actions/action_handler.dart'
         NavigationActionExecutor,
         ChannelActionExecutor;
 export 'src/actions/action_result.dart' show ActionResult;
+// A host that dispatches on its own initiative marks the origin, so an action
+// that answers only to a person's act can tell.
+export 'src/actions/dispatch_origin.dart' show DispatchOrigin;
 
 // v1.1 exports
 export 'src/core/constants/client_action_types.dart';
@@ -110,6 +113,12 @@ export 'src/core/service_locator.dart';
 
 // Plugin system exports
 export 'src/plugins/plugin_system.dart';
+// The hook types are part of the plugin contract, not an internal detail:
+// `MCPPlugin.hooks` is declared in them, and a failed widget is reported
+// through `onError` rather than drawn. `plugin_system.dart` only
+// imports this library, and an import is not a re-export — without this line
+// a host cannot write down the type it is being asked to handle.
+export 'src/plugins/plugin_hooks.dart';
 
 // Error boundary exports
 export 'src/core/error_boundary.dart';

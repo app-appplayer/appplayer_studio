@@ -78,9 +78,10 @@ mk.KernelClientConnection liveServiceConnection(
   mk.KernelClientHost clientHost,
   String connectionId,
 ) {
-  final conn = clientHost.connections
-      .where((c) => c.id == connectionId && c.isConnected)
-      .firstOrNull;
+  final conn =
+      clientHost.connections
+          .where((c) => c.id == connectionId && c.isConnected)
+          .firstOrNull;
   if (conn == null) {
     throw StateError(
       'Service connection "$connectionId" is not live — reconnect it.',
@@ -219,8 +220,9 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
     });
   }
 
-  bool _isLive() => widget.clientHost.connections
-      .any((c) => c.id == widget.connectionId && c.isConnected);
+  bool _isLive() => widget.clientHost.connections.any(
+    (c) => c.id == widget.connectionId && c.isConnected,
+  );
 
   /// The watch reports a change. Re-render on the dead→live EDGE only: that is
   /// the moment the error screen has something new to show, and rebuilding on

@@ -13,8 +13,13 @@ class AnimatedContainerWidgetFactory extends WidgetFactory {
     final duration =
         Duration(milliseconds: dimensionOf(properties['duration'], context)?.toInt() ?? 300);
     final curve = _parseCurve(stringOf(properties['curve'], context));
-    final width = parseDimension(properties['width']);
-    final height = parseDimension(properties['height']);
+    // Resolved, not cast. `parseDimension` does not read a binding, so
+    // `"width": "{{w}}"` came back null and the box had no size to animate
+    // BETWEEN — which is the one thing this widget exists to do. A size that
+    // changes comes from state; reading it as a literal only made the
+    // constant case work, and that case does not need an animated container.
+    final width = dimensionOf(properties['width'], context);
+    final height = dimensionOf(properties['height'], context);
     final padding = edgeInsetsOf(properties['padding'], context);
     final margin = edgeInsetsOf(properties['margin'], context);
     final alignment = parseAlignment(properties['alignment']);

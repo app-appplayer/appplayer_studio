@@ -479,10 +479,23 @@ class TransformationEngine {
     sorted.sort((a, b) {
       final aVal = a is Map ? a[by] : null;
       final bVal = b is Map ? b[by] : null;
-      final comparison = Comparable.compare(
-        aVal as Comparable? ?? '',
-        bVal as Comparable? ?? '',
-      );
+
+      // A missing field sorts to one end rather than being compared as an
+      // empty string: substituting `''` for a null next to a number threw a
+      // type error out of the comparator, and ONE row without the field took
+      // the whole list — and the resource fetch around it — down.
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return order == 'desc' ? 1 : -1;
+      if (bVal == null) return order == 'desc' ? -1 : 1;
+
+      // Mixed types compare as text, for the same reason: a list whose field
+      // is a number in some rows and a string in others is ordinary, and an
+      // exception is not an ordering.
+      final comparison =
+          (aVal is Comparable && bVal is Comparable &&
+                  aVal.runtimeType == bVal.runtimeType)
+              ? aVal.compareTo(bVal)
+              : aVal.toString().compareTo(bVal.toString());
       return order == 'desc' ? -comparison : comparison;
     });
     return sorted;
@@ -575,7 +588,15 @@ class ClientResourceManager {
 
       switch (config.strategy) {
         case CachingStrategy.cacheFirst:
-          if (cached.isUsable) {
+          // Only a FRESH entry short-circuits. `isUsable` is true for `stale`
+          // as well, and testing it here meant an expired entry was served
+          // again and again: `ttlSeconds` never caused a refetch under the
+          // default strategy, so a document declaring a 60-second ttl could
+          // show an hour-old value for the life of the process. Serving stale
+          // data on purpose is what `staleWhileRevalidate` is for; here the
+          // stale entry falls through to the network, and if that fails
+          // `fallback.useLastKnown` hands the old value back.
+          if (cached.state == ResourceLifecycleState.ready) {
             return cached.data;
           }
           break;

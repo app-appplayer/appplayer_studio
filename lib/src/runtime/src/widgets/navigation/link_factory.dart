@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
-/// Factory for `link` (spec §2.8.13). Alias: `navLink`.
+/// Factory for `link`. Alias: `navLink`.
 ///
 /// The `inkWell` + `text` + action composition most documents use today loses
 /// the link role — assistive technology announces "button" — along with the

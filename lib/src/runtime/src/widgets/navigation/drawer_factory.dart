@@ -11,8 +11,8 @@ class DrawerWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract properties
-    final width = parseDimension(properties['width']);
-    final elevation = parseDimension(properties['elevation']) ?? 16.0;
+    final width = dimensionOf(properties['width'], context);
+    final elevation = dimensionOf(properties['elevation'], context) ?? 16.0;
     final shadowColor = parseColor(context.resolve(properties['shadowColor']), context);
     final surfaceTintColor =
         parseColor(context.resolve(properties['surfaceTintColor']), context);
@@ -21,7 +21,7 @@ class DrawerWidgetFactory extends WidgetFactory {
     final shape = _parseShapeBorder(properties['shape']);
     final semanticLabel = context.resolve<String?>(properties['semanticLabel']);
 
-    // Spec §2.8.5: when used standalone, render `header` + `items` (each with
+    // When used standalone, render `header` + `items` (each with
     // icon/label/route) and fire `onSelect` when an item is tapped.
     final items = (properties['items'] as List<dynamic>?) ??
         (definition['items'] as List<dynamic>?);
@@ -44,7 +44,7 @@ class DrawerWidgetFactory extends WidgetFactory {
       for (final raw in items) {
         if (raw is! Map<String, dynamic>) continue;
         final iconName = raw['icon'] as String?;
-        // §17.3.2: canonical 'label', legacy alias 'title'.
+        // Canonical 'label', legacy alias 'title'.
         final label = (raw['label'] ?? raw['title'])?.toString() ?? '';
         final route = raw['route'] as String?;
         listChildren.add(ListTile(
@@ -86,37 +86,43 @@ class DrawerWidgetFactory extends WidgetFactory {
       }
     }
 
-    // Default drawer structure if no child provided. Header uses
-    // `onPrimary` for the text so it contrasts against the primary
-    // swatch correctly in both light and dark modes.
-    final cs = Theme.of(context.buildContext!).colorScheme;
-    child ??= Column(
-      children: [
-        DrawerHeader(
-          decoration: BoxDecoration(color: cs.primary),
-          child: Text(
-            'Menu',
-            style: TextStyle(
-              color: cs.onPrimary,
-              fontSize: 24,
-            ),
-          ),
-        ),
-      ],
+    // The theme comes from the drawer's own build context. Reading it through
+    // `context.buildContext!` asserted on a render context that has none —
+    // and it ran for EVERY drawer, not only the ones falling back to the
+    // default header below, so a declared drawer threw before it could draw
+    // its own children.
+    return Builder(
+      builder: (buildContext) {
+        // Default drawer structure if no child provided. Header uses
+        // `onPrimary` for the text so it contrasts against the primary
+        // swatch correctly in both light and dark modes.
+        final cs = Theme.of(buildContext).colorScheme;
+        return Drawer(
+          width: width,
+          elevation: elevation,
+          shadowColor: shadowColor,
+          surfaceTintColor: surfaceTintColor,
+          backgroundColor: backgroundColor,
+          shape: shape,
+          semanticLabel: semanticLabel,
+          child: child ??
+              Column(
+                children: [
+                  DrawerHeader(
+                    decoration: BoxDecoration(color: cs.primary),
+                    child: Text(
+                      'Menu',
+                      style: TextStyle(
+                        color: cs.onPrimary,
+                        fontSize: 24,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+        );
+      },
     );
-
-    Widget drawer = Drawer(
-      width: width,
-      elevation: elevation,
-      shadowColor: shadowColor,
-      surfaceTintColor: surfaceTintColor,
-      backgroundColor: backgroundColor,
-      shape: shape,
-      semanticLabel: semanticLabel,
-      child: child,
-    );
-
-    return drawer;
   }
 
   IconData _iconFromName(String name) => resolveIconData(name);

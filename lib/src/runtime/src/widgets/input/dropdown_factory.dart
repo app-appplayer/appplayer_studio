@@ -30,7 +30,7 @@ class DropdownWidgetFactory extends WidgetFactory {
                 .resolve<List<dynamic>>(properties['options'] ?? properties['items'])
             as List<dynamic>?) ??
         [];
-    // Spec §2.6.5 canonical `placeholder`; `hint` kept as legacy alias.
+    // Canonical `placeholder`; `hint` kept as legacy alias.
     final hint = (properties['placeholder'] ?? properties['hint']) as String?;
     final disabledHint = stringOf(properties['disabledHint'], context);
     final isExpanded = boolOf(properties['isExpanded'], context) ?? false;
@@ -43,7 +43,7 @@ class DropdownWidgetFactory extends WidgetFactory {
     // Resolve compact menu tokens. Spec-bound dropdown props are
     // `{type, binding, value, options, items, placeholder, onChange,
     // enabled}` — visual fine-tuning happens through
-    // `theme.component.menu.*` (free-form component tokens, spec §5.12)
+    // `theme.component.menu.*` (free-form component tokens)
     // and the runtime's compact defaults. No widget-level non-spec
     // props are read here.
     final tokens = MenuTokens.resolve(
@@ -210,7 +210,7 @@ class DropdownWidgetFactory extends WidgetFactory {
       fontStyle: style['italic'] == true ? FontStyle.italic : FontStyle.normal,
       letterSpacing: style['letterSpacing']?.toDouble(),
       wordSpacing: style['wordSpacing']?.toDouble(),
-      height: style['height']?.toDouble(),
+      height: readLineHeight(style, context),
     );
   }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/base.dart';
@@ -127,143 +128,123 @@ void main() {
   });
 
   group('KbAtom', () {
-    KbAtom buildAtom() => KbAtom(
-      engine: _StubKnowledgeEngine(),
-      storage: _StubDomainStorage(),
-      namespace: 'com.test.kb',
+    late Directory tmp;
+    late mk.KvStoragePortAdapter kv;
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('vibe_kb_atom_');
+      kv = mk.KvStoragePortAdapter(rootDir: tmp.path);
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    KbAtom atomFor(String appId, {mk.KbRecordStore? records}) => KbAtom(
+      mk.BundleKbStore(appId: appId, records: records ?? mk.KvKbRecordStore(kv)),
     );
 
-    test('throws on unknown verb', () async {
-      // We can construct without a real engine for the unknown-verb
-      // path because KbAtom doesn't touch the engine before verb
-      // dispatch. Use a no-op stand-in.
+    test('put / get / list / delete answer the kernel contract', () async {
+      final atom = atomFor('bundle:com.test.kb');
+      expect(await atom.dispatch('put', [
+        'a',
+        {'n': 1},
+      ]), {'ok': true});
+      expect(await atom.dispatch('get', ['a']), {'n': 1});
+      expect(await atom.dispatch('list', ['']), [
+        {
+          'key': 'a',
+          'value': {'n': 1},
+        },
+      ]);
+      expect(await atom.dispatch('delete', ['a']), {'removed': true});
+      expect(await atom.dispatch('get', ['a']), isNull);
+    });
+
+    test('records live in the kernel kv under app/<appId>/kb/', () async {
+      final atom = atomFor('bundle:com.test.kb');
+      await atom.dispatch('put', ['recent/x', 'v']);
+      final keys = await kv.keys(prefix: 'app/');
+      expect(keys, isNotEmpty);
       expect(
-        () => buildAtom().dispatch('unknown', const []),
-        throwsArgumentError,
+        keys.every((k) => k.startsWith('app/bundle%3Acom.test.kb/kb/')),
+        isTrue,
+        reason: 'got $keys',
       );
     });
 
-    test('query requires text arg', () async {
-      final atom = buildAtom();
-      expect(() => atom.dispatch('query', const []), throwsArgumentError);
-      expect(() => atom.dispatch('query', [42]), throwsArgumentError);
-    });
-
-    test('put / get / list / delete round-trip via storage', () async {
-      final atom = buildAtom();
-      // put — returns ok:true.
-      expect(await atom.dispatch('put', ['greeting', 'hello']), {'ok': true});
-      // get — returns the stored value.
-      expect(await atom.dispatch('get', ['greeting']), 'hello');
-      // list — returns [{key, value}] entries.
-      final list = await atom.dispatch('list', const []) as List;
-      expect(list.length, 1);
-      expect((list.single as Map)['key'], 'greeting');
-      // delete — removed:true on first call, false on second.
-      expect(await atom.dispatch('delete', ['greeting']), {'removed': true});
-      expect(await atom.dispatch('delete', ['greeting']), {'removed': false});
-      expect(await atom.dispatch('get', ['greeting']), isNull);
-    });
-
     test('list with prefix filters keys', () async {
-      final atom = buildAtom();
+      final atom = atomFor('bundle:com.test.kb');
       await atom.dispatch('put', ['recent/a', 1]);
       await atom.dispatch('put', ['recent/b', 2]);
       await atom.dispatch('put', ['pin/c', 3]);
       final recents = await atom.dispatch('list', const ['recent/']) as List;
-      expect(recents.length, 2);
-      expect((recents.map((e) => (e as Map)['key']).toSet()), {
+      expect(recents.map((e) => (e as Map)['key']).toList(), [
         'recent/a',
         'recent/b',
-      });
+      ]);
     });
 
-    test('put requires non-empty string key', () async {
-      final atom = buildAtom();
-      expect(() => atom.dispatch('put', ['', 'v']), throwsArgumentError);
-      expect(() => atom.dispatch('put', [42, 'v']), throwsArgumentError);
+    test('an invalid key is KB_INVALID_KEY', () async {
+      final atom = atomFor('bundle:com.test.kb');
+      for (final key in <Object?>['../x', '', '/abs', 'a//b', 42]) {
+        await expectLater(
+          atom.dispatch('put', [key, 1]),
+          throwsA(
+            isA<mk.KbError>().having(
+              (e) => e.code,
+              'code',
+              mk.KbError.invalidKey,
+            ),
+          ),
+          reason: 'key $key',
+        );
+      }
     });
 
-    test(
-      'namespace pin is honoured — never leaks to storage callers',
-      () async {
-        final storage = _StubDomainStorage();
-        final a = KbAtom(
-          engine: _StubKnowledgeEngine(),
-          storage: storage,
-          namespace: 'com.a',
-        );
-        final b = KbAtom(
-          engine: _StubKnowledgeEngine(),
-          storage: storage,
-          namespace: 'com.b',
-        );
-        await a.dispatch('put', ['k', 'A']);
-        await b.dispatch('put', ['k', 'B']);
-        expect(await a.dispatch('get', ['k']), 'A');
-        expect(await b.dispatch('get', ['k']), 'B');
-      },
-    );
+    test('a value JSON cannot carry is KB_INVALID_VALUE', () async {
+      final atom = atomFor('bundle:com.test.kb');
+      await expectLater(
+        atom.dispatch('put', ['a', Object()]),
+        throwsA(
+          isA<mk.KbError>().having(
+            (e) => e.code,
+            'code',
+            mk.KbError.invalidValue,
+          ),
+        ),
+      );
+    });
+
+    test('app identities never see each other', () async {
+      final records = mk.KvKbRecordStore(kv);
+      final a = atomFor('bundle:com.a', records: records);
+      final b = atomFor('listing:L1', records: records);
+      await a.dispatch('put', ['k', 'A']);
+      await b.dispatch('put', ['k', 'B']);
+      expect(await a.dispatch('get', ['k']), 'A');
+      expect(await b.dispatch('get', ['k']), 'B');
+    });
+
+    test('a write on a stale version is a conflict, force overwrites', () async {
+      final records = mk.KvKbRecordStore(kv);
+      final first = atomFor('bundle:com.test.kb', records: records);
+      final second = atomFor('bundle:com.test.kb', records: records);
+      await first.dispatch('put', ['k', 1]);
+      expect(await second.dispatch('get', ['k']), 1);
+      await second.dispatch('put', ['k', 2]);
+      final stale = await first.dispatch('put', ['k', 3]) as Map;
+      expect(stale['ok'], isFalse);
+      expect((stale['conflict'] as Map)['value'], 2);
+      expect(await first.dispatch('put', [
+        'k',
+        3,
+        {'force': true},
+      ]), {'ok': true});
+    });
+
+    test('throws on unknown verb', () async {
+      expect(
+        () => atomFor('bundle:x').dispatch('unknown', const []),
+        throwsArgumentError,
+      );
+    });
   });
-}
-
-/// Minimal stand-in — only the surface KbAtom touches in error paths.
-/// We avoid testing the happy query path here since it depends on the
-/// engine's internal index which is exercised by mcp_bundle's own
-/// tests; the goal here is only to verify the atom-level argument
-/// guards.
-class _StubKnowledgeEngine implements mk.KnowledgeQueryEngine {
-  @override
-  noSuchMethod(Invocation invocation) {
-    throw UnimplementedError(
-      'stub: ${invocation.memberName} not expected during error-path tests',
-    );
-  }
-}
-
-/// In-memory DomainStorage stand-in for atom-level tests — exercises
-/// the same namespace-scoping contract as JsonFileDomainStorage but
-/// without touching disk.
-class _StubDomainStorage implements mk.DomainStorage {
-  final Map<String, Map<String, mk.DomainValue>> _data =
-      <String, Map<String, mk.DomainValue>>{};
-
-  Map<String, mk.DomainValue> _ns(String namespace) =>
-      _data.putIfAbsent(namespace, () => <String, mk.DomainValue>{});
-
-  @override
-  Future<void> put(String namespace, String key, mk.DomainValue value) async {
-    _ns(namespace)[key] = value;
-  }
-
-  @override
-  Future<mk.DomainValue> get(String namespace, String key) async {
-    return _ns(namespace)[key];
-  }
-
-  @override
-  Future<List<mk.DomainEntry>> list(
-    String namespace, {
-    String prefix = '',
-  }) async {
-    final ns = _ns(namespace);
-    return <mk.DomainEntry>[
-      for (final e in ns.entries)
-        if (prefix.isEmpty || e.key.startsWith(prefix))
-          mk.DomainEntry(key: e.key, value: e.value),
-    ];
-  }
-
-  @override
-  Future<bool> delete(String namespace, String key) async {
-    final ns = _ns(namespace);
-    if (!ns.containsKey(key)) return false;
-    ns.remove(key);
-    return true;
-  }
-
-  @override
-  Future<void> clearNamespace(String namespace) async {
-    _data.remove(namespace);
-  }
 }

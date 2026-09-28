@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
-/// Factory for `spreadsheet` (spec §10.32).
+/// Factory for `spreadsheet`.
 ///
 /// Distinct from `dataTable`, which presents records: a table's unit is a row
 /// with typed fields, a spreadsheet's unit is a **cell with a coordinate**.
 /// Selection, editing and paste all address different things, which is why one
 /// cannot be a mode of the other.
 ///
-/// Formulas evaluate through the runtime's own binding engine — the §7.1
+/// Formulas evaluate through the runtime's own binding engine — the expression
 /// sandbox — or not at all. A cell that runs arbitrary text is the one place
 /// this widget could become an injection surface, so `formulas` is off by
 /// default and an unevaluable formula renders its last value rather than being
@@ -20,9 +20,9 @@ class SpreadsheetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final rows = context.resolve<List<dynamic>?>(properties['data']) ?? const [];
+    final rows = listOf(properties['data'], context) ?? const [];
     final columnDefs =
-        context.resolve<List<dynamic>?>(properties['columns']) ?? const [];
+        listOf(properties['columns'], context) ?? const [];
     final editable = context.resolve<bool?>(properties['editable']) ?? true;
     final formulas = context.resolve<bool?>(properties['formulas']) ?? false;
     final rowHeaders = context.resolve<bool?>(properties['rowHeaders']) ?? true;

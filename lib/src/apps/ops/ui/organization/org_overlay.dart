@@ -200,8 +200,8 @@ OrgChartOverlay resolveOrgOverlay(
     final from = inUnit['${r.wsId}|${r.fromId}'] ?? global[r.fromId];
     final to = inUnit['${r.wsId}|${r.toId}'] ?? global[r.toId];
     if (from == null || to == null || from == to) continue;
-    final age = at.difference(r.at).inMilliseconds /
-        kOrgRouteWindow.inMilliseconds;
+    final age =
+        at.difference(r.at).inMilliseconds / kOrgRouteWindow.inMilliseconds;
     edges.add(
       OrgRouteEdge(
         fromNodeId: from,

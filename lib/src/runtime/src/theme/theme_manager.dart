@@ -6,7 +6,7 @@ import '../utils/mcp_logger.dart';
 import '../state/state_manager.dart';
 import 'theme_builder.dart';
 
-/// Theme manager for MCP UI DSL 1.3 — `specs/mcp_ui_dsl/05_Theme.md`.
+/// Theme manager for the DSL theme block.
 ///
 /// Holds a strongly-typed [ThemeDefinition] (M3 14-domain — color, typography,
 /// spacing, shape, elevation, motion, density, breakpoints, border, opacity,
@@ -53,7 +53,7 @@ class ThemeManager with ChangeNotifier {
   /// Cached derived [ColorScheme] for each brightness, populated lazily
   /// in [_ensureColorScheme]. Used by [getColorValue] to fall back to a
   /// fromSeed-derived M3 28-role palette when a slot is absent from the
-  /// bundle's raw `theme.color` map (spec §5.3 — bundles may declare
+  /// bundle's raw `theme.color` map (bundles may declare
   /// only `seed` and a few overrides; the missing roles must derive).
   /// Invalidated on every [setThemeDefinition] / [resetTheme] / [reset]
   /// / [applyOverride] restore so the cache never out-runs the active
@@ -77,7 +77,7 @@ class ThemeManager with ChangeNotifier {
   String get effectiveMode => _resolveEffectiveMode();
 
   /// Flutter [ThemeMode] equivalent for routing into `MaterialApp`.
-  /// Honours a `theme.mode` state override (spec §5.2).
+  /// Honours a `theme.mode` state override.
   ///
   /// `mode: 'system'` resolves against the embedder's brightness override
   /// (`setHostBrightness`) when present — AppPlayer-class hosts are
@@ -148,7 +148,7 @@ class ThemeManager with ChangeNotifier {
     setThemeDefinition(def);
   }
 
-  /// Roles §5.3.1 keeps readable but no longer stores.
+  /// Legacy roles still readable but no longer stored.
   ///
   /// Material 3 folded these into the surface family, so
   /// `ColorSchemeDefinition` has no field for them: a value written here is
@@ -168,7 +168,7 @@ class ThemeManager with ChangeNotifier {
     for (final entry in _retiredRoles.entries) {
       if (!color.containsKey(entry.key)) continue;
       _logger.warning(
-        'theme.color.${entry.key} is a legacy role (spec §5.3.1): the value '
+        'theme.color.${entry.key} is a legacy role: the value '
         'declared here is not applied — the role resolves as '
         '${entry.value}. Declare ${entry.value} instead.',
       );
@@ -243,7 +243,7 @@ class ThemeManager with ChangeNotifier {
     _invalidateSchemeCache();
   }
 
-  /// Apply a page-level override (spec §5.7 — deep merge) and return a
+  /// Apply a page-level override (deep merge) and return a
   /// restore callback.
   VoidCallback applyOverride(Map<String, dynamic> override) {
     final previousDef = _definition;
@@ -264,14 +264,14 @@ class ThemeManager with ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Bindings (spec §5.6)
+  // Bindings
   // ---------------------------------------------------------------------------
 
   /// Resolve a value via dotted path — e.g. `color.primary`,
   /// `typography.bodyLarge.fontSize`, `spacing.md`, `shape.medium.uniform`,
   /// `elevation.level3.shadow`, `motion.duration.medium2`.
   ///
-  /// Spec §5.6 — bindings resolve against the active mode's effective
+  /// Bindings resolve against the active mode's effective
   /// definition. `theme.mode` is special: state-manager overrides win.
   dynamic getThemeValue(String path) {
     if (path == 'mode') {
@@ -290,7 +290,7 @@ class ThemeManager with ChangeNotifier {
       if (stateValue != null) return stateValue;
     }
 
-    // Spec §5.7 — mode-specific override (`theme.light` / `theme.dark`)
+    // Mode-specific override (`theme.light` / `theme.dark`)
     // wins over the base section for the active mode. Resolve the path
     // against the override first; on miss, fall back to the base.
     final mode = _resolveEffectiveMode();
@@ -302,7 +302,7 @@ class ThemeManager with ChangeNotifier {
     final hit = _resolvePath(_themeData, path);
     if (hit != null) return hit;
 
-    // §5.3.1 legacy colour roles. Material 3 folded the background family
+    // Legacy colour roles. Material 3 folded the background family
     // into the surface family, so `ColorSchemeDefinition` carries no
     // `background` / `onBackground` field and a theme map never contains
     // them. `parseColor` resolves the names through the scheme, but a
@@ -315,9 +315,9 @@ class ThemeManager with ChangeNotifier {
     // `ColorSchemeDefinition.toJson` emits what the bundle wrote, and the
     // rest derive. `getColorValue` knew that; `getThemeValue` did not, so a
     // colour property resolved a role and `{{theme.color.<role>}}` came back
-    // empty for the same role. §5.3.1 says the missing roles derive — that
+    // empty for the same role. The missing roles derive — that
     // has to be true from both positions or the theme means two things.
-    // `_colorFromScheme` already answers the §5.3.1 legacy spellings, so the
+    // `_colorFromScheme` already answers the legacy spellings, so the
     // slot name goes there unchanged — mapping it twice would be a second
     // register of the same fact.
     final derived = _colorFromScheme(
@@ -349,7 +349,7 @@ class ThemeManager with ChangeNotifier {
 
   /// Resolved [Color] for a color slot.
   ///
-  /// Resolution order (spec §5.3):
+  /// Resolution order:
   ///   1. Bundle-declared raw value at `theme.color.<slot>` (mode override
   ///      first, then base) — preserves explicit author intent.
   ///   2. fromSeed-derived M3 28-role palette for the active brightness —
@@ -367,6 +367,19 @@ class ThemeManager with ChangeNotifier {
     final scheme = _ensureColorScheme(_resolveEffectiveMode() == 'dark');
     return _colorFromScheme(scheme, slot);
   }
+
+  /// The colour for [slot], or [fallback] when the theme has none.
+  ///
+  /// The nullable [getColorValue] is the truthful API — a semantic slot
+  /// (`success` / `warning` / `info` and their `on*` counterparts) is not part
+  /// of Flutter's [ColorScheme], so the DSL leaves it to the bundle and null is
+  /// the right answer. Widgets, though, need a colour to paint with, and every
+  /// one of them wrote the same `?? someDefault` beside the call: seventeen
+  /// copies of one decision, none of which could be exercised because the
+  /// slots they name are standard roles that always resolve.
+  ///
+  /// One copy, here, exercised on both sides.
+  Color colorOr(String slot, Color fallback) => getColorValue(slot) ?? fallback;
 
   /// Raw text-style map for an M3 typography role
   /// (e.g. `bodyLarge` / `titleMedium`).
@@ -474,7 +487,7 @@ class ThemeManager with ChangeNotifier {
   /// (`success` / `warning` / `info` and their `on*` variants).
   static Color? _colorFromScheme(ColorScheme s, String slot) {
     switch (slot) {
-      // §5.3.1 legacy spellings. Material 3 folded the background family into
+      // Legacy spellings. Material 3 folded the background family into
       // the surface family and retired `surfaceVariant`; the spec keeps the
       // old names resolving so documents written against earlier drafts do
       // not silently lose their colours. `inverseOnSurface` is the earlier
@@ -606,18 +619,19 @@ class ThemeManager with ChangeNotifier {
   TextStyle? _buildTextStyle(dynamic data) {
     if (data is! Map<String, dynamic>) return null;
     final size = (data['fontSize'] as num?)?.toDouble();
-    final lineH = (data['lineHeight'] as num?)?.toDouble();
     return TextStyle(
       fontSize: size,
       fontWeight: _parseFontWeight(data['fontWeight']),
       letterSpacing: (data['letterSpacing'] as num?)?.toDouble(),
-      height: (size != null && lineH != null && size > 0)
-          ? lineH / size
-          : null,
+      height: lineHeightMultiplier(
+        lineHeight: data['lineHeight'] as num?,
+        height: data['height'] as num?,
+        fontSize: size,
+      ),
     );
   }
 
-  /// Theme literals through the one §5.3.4 parser.
+  /// Theme literals through the one color parser.
   ///
   /// No slot resolver here on purpose: this is what [getColorValue] calls to
   /// read a raw theme value, so resolving a slot from inside it would ask the
@@ -629,11 +643,13 @@ class ThemeManager with ChangeNotifier {
 
   FontWeight? _parseFontWeight(dynamic value) {
     if (value is num) {
-      final w = value.toInt();
-      return FontWeight.values.firstWhere(
-        (fw) => fw.value == ((w ~/ 100) * 100).clamp(100, 900),
-        orElse: () => FontWeight.w400,
-      );
+      // Snap to the step at or below the declared number, then clamp to the
+      // scale. `FontWeight.values` runs w100..w900 in order, so the step is
+      // an index rather than a search — a search would need an `orElse` arm
+      // that can never be taken, which reads as "some weights fall back to
+      // normal" when none do.
+      final step = ((value.toInt() ~/ 100) * 100).clamp(100, 900);
+      return FontWeight.values[(step ~/ 100) - 1];
     }
     if (value is! String) return null;
     switch (value) {

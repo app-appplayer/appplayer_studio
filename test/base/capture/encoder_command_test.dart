@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:appplayer_studio/src/base/capture/recorder/h264_encoder.dart';
 import 'package:appplayer_studio/src/base/capture/recorder/encoder_service.dart';
 
 void main() {
@@ -15,7 +16,11 @@ void main() {
       final cmd = buildEncodeCommand(pattern: pattern, fps: 24, out: out);
       expect(cmd, contains('-framerate 24'));
       expect(cmd, contains('-i "$pattern"'));
-      expect(cmd, contains('-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2"'));
+      expect(
+        cmd,
+        contains('-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,$kRgbToBt709Filter"'),
+      );
+      expect(cmd, contains(kBt709Tags));
       expect(cmd, contains('"$out"'));
       expect(cmd, isNot(contains('-filter_complex')));
       expect(cmd, isNot(contains('-c:a')));
@@ -29,7 +34,7 @@ void main() {
         out: out,
         crf: 20,
       );
-      expect(cmd, contains('-crf 20'));
+      expect(cmd, contains(h264VideoArgs(crf: 20)));
     });
 
     test('empty-path tracks are dropped → falls back to video-only', () {
@@ -49,23 +54,30 @@ void main() {
   group('buildEncodeCommand — concat manifest (D3 duration preservation)', () {
     const manifest = '/rec/frames.txt';
 
-    test('video only → concat demuxer input + fps resample + -t, no -framerate',
-        () {
-      final cmd = buildEncodeCommand(
-        pattern: pattern,
-        fps: 24,
-        out: out,
-        concatManifest: manifest,
-        concatDurationSec: 20.0,
-      );
-      expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
-      expect(cmd, isNot(contains('-framerate')));
-      expect(cmd, isNot(contains('-i "$pattern"')));
-      // Resampled to CFR fps on output so the real span plays as a normal MP4.
-      expect(cmd, contains('-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=24"'));
-      // Pinned to the real span — trims the concat last-frame over-hold.
-      expect(cmd, contains('-t 20.000'));
-    });
+    test(
+      'video only → concat demuxer input + fps resample + -t, no -framerate',
+      () {
+        final cmd = buildEncodeCommand(
+          pattern: pattern,
+          fps: 24,
+          out: out,
+          concatManifest: manifest,
+          concatDurationSec: 20.0,
+        );
+        expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
+        expect(cmd, isNot(contains('-framerate')));
+        expect(cmd, isNot(contains('-i "$pattern"')));
+        // Resampled to CFR fps on output so the real span plays as a normal MP4.
+        expect(
+          cmd,
+          contains(
+            '-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=24,$kRgbToBt709Filter"',
+          ),
+        );
+        // Pinned to the real span — trims the concat last-frame over-hold.
+        expect(cmd, contains('-t 20.000'));
+      },
+    );
 
     test('with audio → fps resample + -t ride the filter_complex path', () {
       final cmd = buildEncodeCommand(
@@ -79,7 +91,12 @@ void main() {
         ],
       );
       expect(cmd, contains('-f concat -safe 0 -i "$manifest"'));
-      expect(cmd, contains('[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30[v]'));
+      expect(
+        cmd,
+        contains(
+          '[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30,$kRgbToBt709Filter[v]',
+        ),
+      );
       expect(cmd, isNot(contains('-framerate')));
       expect(cmd, contains('-shortest'));
       expect(cmd, contains('-t 12.500'));
@@ -116,7 +133,11 @@ void main() {
       );
       expect(cmd, contains('-i "/a/narration.m4a"'));
       expect(cmd, contains('-filter_complex'));
-      expect(cmd, contains('[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2[v]'));
+      expect(
+        cmd,
+        contains('[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,$kRgbToBt709Filter[v]'),
+      );
+      expect(cmd, contains(kBt709Tags));
       expect(cmd, contains('[1:a]adelay=0:all=1,volume=1.0[a0]'));
       expect(cmd, contains('-map "[v]"'));
       expect(cmd, contains('-map "[a0]"'));

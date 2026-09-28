@@ -77,9 +77,21 @@ class FormUiHarness {
   static final List<Map<String, dynamic>> notifications =
       <Map<String, dynamic>>[];
 
+  /// Removes the temp project. A page under test can still be finishing a
+  /// save it started without awaiting — the persistence layer writes a
+  /// `.tmp` file and renames it — so a recursive delete can meet an entry
+  /// that vanished mid-walk. Retry until the directory is gone; one that
+  /// still cannot be removed after the retries fails the test.
   Future<void> dispose() async {
-    if (await projectRoot.exists()) {
-      await projectRoot.delete(recursive: true);
+    for (var attempt = 0; ; attempt++) {
+      if (!await projectRoot.exists()) return;
+      try {
+        await projectRoot.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        if (attempt >= 4) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
     }
   }
 

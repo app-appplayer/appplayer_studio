@@ -31,10 +31,10 @@ class UIDefinition {
   final Map<String, dynamic>? navigation;
   final Map<String, dynamic>? lifecycle;
 
-  /// Parsed definition-level hooks, read from BOTH placements §1.5.3 allows —
+  /// Parsed definition-level hooks, read from BOTH allowed placements —
   /// top-level fields on the definition and a grouped `lifecycle` object.
   /// [lifecycle] above is the raw grouped map only, kept for callers that
-  /// still read it; it cannot see the top-level placement §6.8.1 shows.
+  /// still read it; it cannot see the top-level placement.
   final LifecycleDefinition? lifecycleHooks;
 
   /// Hooks to use. Prefers the merged set parsed from the whole definition;
@@ -98,7 +98,7 @@ class UIDefinition {
         properties['initialRoute'] = json['initialRoute'];
       }
       if (json['theme'] != null) properties['theme'] = json['theme'];
-      // Spec §11 bundle metadata + §11.9 dashboard + §9 templates —
+      // Bundle metadata + dashboard + templates —
       // passed through verbatim so ApplicationDefinition can materialise
       // DslAppMetadata / DashboardConfig snapshots.
       const passthroughKeys = <String>[
@@ -212,17 +212,17 @@ class ApplicationDefinition extends core.ApplicationConfig {
   final LifecycleDefinition? lifecycleDef;
   final ServicesDefinition? servicesDef;
 
-  /// Bundle metadata (spec §11): icon, description, publisher, etc.
-  /// Parsed from the DSL root — null when none of the optional §11
+  /// Bundle metadata: icon, description, publisher, etc.
+  /// Parsed from the DSL root — null when none of the optional metadata
   /// fields are present.
   final DslAppMetadata? metadata;
 
-  /// Spec §11.9 dashboard rendering configuration. Null when the app
+  /// Dashboard rendering configuration. Null when the app
   /// does not declare a compact dashboard view; embedders should fall
   /// back to a default card from [metadata].
   final core.DashboardConfig? dashboard;
 
-  /// Templates declared at the application root (spec §9 / §11.9.4)
+  /// Templates declared at the application root
   /// kept as raw JSON so the renderer's template resolver can read them
   /// during both full and dashboard rendering modes.
   final Map<String, dynamic>? templates;
@@ -291,7 +291,7 @@ class ApplicationDefinition extends core.ApplicationConfig {
     );
   }
 
-  /// Picks the §11 metadata fields off the DSL root. Returns null when
+  /// Picks the bundle metadata fields off the DSL root. Returns null when
   /// no metadata-bearing field is present so embedders can distinguish
   /// "no metadata declared" from "empty metadata".
   static DslAppMetadata? _parseMetadata(Map<String, dynamic> props) {
@@ -328,7 +328,7 @@ class ApplicationDefinition extends core.ApplicationConfig {
 class PageDefinition extends core.PageConfig {
   final LifecycleDefinition? lifecycleDef;
 
-  /// Channels declared at page scope (spec §4.13 + §Channel Lifecycle).
+  /// Channels declared at page scope.
   /// Populated by [fromUIDefinition]; registered into the runtime's
   /// channel manager when the page becomes active and disposed when it
   /// unmounts (if `autoDispose` is true).
@@ -441,25 +441,25 @@ class NavigationItem {
 }
 
 /// Lifecycle definition
-/// Definition-level lifecycle hooks (spec §1.5, §6.8).
+/// Definition-level lifecycle hooks.
 ///
-/// Canonical hook names are the seven of §1.5.1: `onInit`, `onMount`,
+/// Canonical hook names are these seven: `onInit`, `onMount`,
 /// `onReady`, `onPause`, `onResume`, `onUnmount`, `onDestroy`.
 ///
 /// Two things this parser accepts that the spec allows and the previous one
 /// silently dropped — each was a hook that never ran, with nothing in any log
 /// to say so:
 ///
-///  - **Both placements.** §1.5.3: hooks may be top-level fields on the
+///  - **Both placements.** Hooks may be top-level fields on the
 ///    definition OR grouped under `lifecycle`, and the two sets merge. Only the
-///    grouped form used to be read, so a page written the way §6.8.1 shows it
+///    grouped form used to be read, so a page written the documented way
 ///    parsed as a page with no hooks at all.
-///  - **A single Action.** §1.5.1: a hook value is "a single Action or an
+///  - **A single Action.** A hook value is "a single Action or an
 ///    Action array". Only arrays used to be read.
 ///
 /// Aliases are accepted for one release and warned about (see [aliasWarnings]):
 /// `onInitialize` → `onInit`, and the route-only `onEnter` / `onLeave` →
-/// `onMount` / `onUnmount`. `onEnter`/`onLeave` are not spec hooks; §6.8.3
+/// `onMount` / `onUnmount`. `onEnter`/`onLeave` are not DSL hooks; navigation
 /// already routes a page through `onMount`/`onUnmount` on navigation, so they
 /// name a moment that already has a name.
 class LifecycleDefinition {
@@ -472,9 +472,9 @@ class LifecycleDefinition {
   final List<Map<String, dynamic>>? onPause;
 
   /// Non-fatal problems found while parsing — deprecated aliases, and a hook
-  /// named in both placements. Surfaced so a host can log them; §1.5.3 makes
-  /// the duplicate case an error, which becomes a rejection in 0.6.0 alongside
-  /// the other removals already announced for that release.
+  /// named in both placements. Surfaced so a host can log them; the DSL makes
+  /// the duplicate case an error, which becomes a rejection in a future
+  /// breaking release alongside the other announced removals.
   final List<String> aliasWarnings;
 
   const LifecycleDefinition({
@@ -488,9 +488,9 @@ class LifecycleDefinition {
     this.aliasWarnings = const <String>[],
   });
 
-  /// DEPRECATED — the spec name is `onInit` (§1.5.1). Kept so existing callers
-  /// keep compiling; removed in 0.6.0.
-  @Deprecated('Use onInit — the spec hook name. Removed in 0.6.0.')
+  /// DEPRECATED — the spec name is `onInit`. Kept so existing callers
+  /// keep compiling; removed in a future breaking release.
+  @Deprecated('Use onInit — the spec hook name. Will be removed in a future breaking release.')
   List<Map<String, dynamic>>? get onInitialize => onInit;
 
   /// Canonical entry point: reads the WHOLE definition, so top-level hook
@@ -504,8 +504,8 @@ class LifecycleDefinition {
 
     List<Map<String, dynamic>>? pick(String canonical, List<String> aliases) {
       final names = <String>[canonical, ...aliases];
-      // Grouped placement is canonical when a name appears in both (§1.5.3
-      // makes that an error; until 0.6.0 it is a warning and the grouped value
+      // Grouped placement is canonical when a name appears in both (the DSL
+      // makes that an error; for now it is a warning and the grouped value
       // wins, so a document that used to load still loads).
       final seen = <String>[];
       dynamic value;
@@ -524,13 +524,12 @@ class LifecycleDefinition {
       if (seen.length > 1) {
         warnings.add(
             'lifecycle hook "$canonical" declared more than once (${seen.join(", ")}); '
-            'using ${seen.first}. This becomes an error in 0.6.0 (spec §1.5.3).');
+            'using ${seen.first}.');
       }
       for (final n in names.skip(1)) {
         if (groupedMap[n] != null || definition[n] != null) {
           warnings.add(
-              'lifecycle hook "$n" is deprecated; use "$canonical" (spec §1.5.1). '
-              'Removed in 0.6.0.');
+              'lifecycle hook "$n" is deprecated; use "$canonical".');
         }
       }
       return _parseActions(value);
@@ -549,13 +548,13 @@ class LifecycleDefinition {
   }
 
   /// DEPRECATED — reads only the grouped `lifecycle` object, so it cannot see
-  /// the top-level placement §1.5.3 allows. Use [fromDefinition]. Removed in
-  /// 0.6.0.
-  @Deprecated('Use LifecycleDefinition.fromDefinition. Removed in 0.6.0.')
+  /// the top-level placement. Use [fromDefinition]. Removed in
+  /// a future breaking release.
+  @Deprecated('Use LifecycleDefinition.fromDefinition. Will be removed in a future breaking release.')
   factory LifecycleDefinition.fromJson(Map<String, dynamic> json) =>
       LifecycleDefinition.fromDefinition(<String, dynamic>{'lifecycle': json});
 
-  /// A hook value is "a single Action or an Action array" (§1.5.1). A bare
+  /// A hook value is "a single Action or an Action array". A bare
   /// Action used to return null here, which is a hook that never runs.
   static List<Map<String, dynamic>>? _parseActions(dynamic actions) {
     if (actions == null) return null;
@@ -670,7 +669,7 @@ class BackgroundServiceDefinition {
 
   factory BackgroundServiceDefinition.fromJson(
       String id, Map<String, dynamic> json) {
-    // Spec § 1.2.1 ServiceDefinition uses `kind` with values
+    // ServiceDefinition uses `kind` with values
     // `polling` / `subscription`. The runtime keeps its richer
     // `type` enum (`periodic` / `scheduled` / `continuous` /
     // `event` / `oneoff`) and accepts either field — kind takes
@@ -962,18 +961,18 @@ class ChannelConfig {
   final Map<String, dynamic>? params;
 
   /// Action to execute when the channel emits a payload
-  /// (spec § 8.6.4 canonical name; legacy bundles emitted `onData`).
+  /// (canonical name; legacy bundles emitted `onData`).
   final Map<String, dynamic>? onMessage;
 
   /// Action to execute on error
   final Map<String, dynamic>? onError;
 
   /// Action to execute when the channel transitions to `connected`
-  /// (spec § 8.6.4).
+  /// (`onConnect`).
   final Map<String, dynamic>? onConnect;
 
   /// Action to execute when the channel transitions to `disconnected`
-  /// (spec § 8.6.4 — graceful or error-driven).
+  /// (graceful or error-driven).
   final Map<String, dynamic>? onDisconnect;
 
   /// Legacy alias of [onMessage]. Older bundles emitted `onData`; new
@@ -1011,7 +1010,7 @@ class ChannelConfig {
   });
 
   factory ChannelConfig.fromJson(Map<String, dynamic> json) {
-    // Support both flat format and lifecycle sub-object format (spec §Channel Lifecycle)
+    // Support both flat format and lifecycle sub-object format
     final lifecycle = json['lifecycle'] as Map<String, dynamic>?;
     final autoStart =
         lifecycle?['autoStart'] as bool? ?? json['autoStart'] as bool? ?? false;
@@ -1027,7 +1026,7 @@ class ChannelConfig {
     return ChannelConfig(
       type: json['type'] as String,
       params: params,
-      // Spec § 8.6.4 canonical is `onMessage`. Older bundles use `onData`.
+      // Canonical is `onMessage`. Older bundles use `onData`.
       onMessage: (json['onMessage'] ?? json['onData']) as Map<String, dynamic>?,
       onError: json['onError'] as Map<String, dynamic>?,
       onConnect: json['onConnect'] as Map<String, dynamic>?,

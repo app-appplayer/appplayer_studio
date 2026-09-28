@@ -945,7 +945,7 @@ class _FeedState extends State<_Feed> {
         vertical: VibeTokens.space2,
       ),
       itemCount: itemCount,
-      separatorBuilder: (_, __) => const SizedBox(height: VibeTokens.space2),
+      separatorBuilder: (_, _) => const SizedBox(height: VibeTokens.space2),
       itemBuilder: (context, i) {
         if (i >= widget.turns.length) return const _BusyIndicator();
         final t = widget.turns[i];
@@ -1210,6 +1210,9 @@ class _PatchCard extends StatelessWidget {
     final layerColor = layerColorBuilder(turn.layer);
     final layerLabel =
         turn.layer == null ? null : layerLabelBuilder(turn.layer!);
+    // Only a turn that carried a patch reads "patched". A plain answer
+    // (role `assistant`, no op count) shares this card but is a reply.
+    final isPatch = turn.role == 'assistant.patch' || turn.fileCount != null;
     return _CopyOnHover(
       text: turn.text,
       onDelete: onDelete,
@@ -1238,7 +1241,9 @@ class _PatchCard extends StatelessWidget {
                       Row(
                         children: <Widget>[
                           Text(
-                            layerLabel == null
+                            !isPatch
+                                ? 'reply'
+                                : layerLabel == null
                                 ? 'patched'
                                 : '$layerLabel · patched',
                             style: Theme.of(context).textTheme.labelSmall
@@ -1347,11 +1352,7 @@ class _SystemNote extends StatelessWidget {
                 if (isError) ...<Widget>[
                   Padding(
                     padding: const EdgeInsets.only(top: 1, right: 6),
-                    child: Icon(
-                      Icons.error_outline,
-                      size: 13,
-                      color: accent,
-                    ),
+                    child: Icon(Icons.error_outline, size: 13, color: accent),
                   ),
                 ],
                 Expanded(

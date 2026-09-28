@@ -13,6 +13,7 @@ import 'widget_registry.dart';
 import 'default_widgets.dart';
 import '../binding/binding_engine.dart';
 import '../actions/action_handler.dart';
+import '../actions/dispatch_origin.dart';
 import '../state/state_manager.dart';
 import '../entry/entry_context.dart';
 import '../entry/entry_session.dart';
@@ -98,7 +99,7 @@ class RuntimeEngine with ChangeNotifier {
   late final EntrySession _entrySession;
 
   /// Page an in-app open asked for, without the arrival an entry implies
-  /// (MCP UI DSL §8.9.1). Held across `_initializeV1Format`, which is where
+  /// (so `entry.*` stays absent). Held across `_initializeV1Format`, which is where
   /// the route table finally exists.
   String? _launchRoute;
   late final Renderer _renderer;
@@ -116,7 +117,7 @@ class RuntimeEngine with ChangeNotifier {
   Renderer get renderer => _renderer;
   StateManager get stateManager => _stateManager;
 
-  /// Entry and identity this runtime was opened under (MCP UI DSL §8.9).
+  /// Entry and identity this runtime was opened under.
   /// Always present; empty until a host adopts an entry or an identity.
   EntrySession get entrySession => _entrySession;
   CacheManager get cacheManager => _cacheManager;
@@ -151,7 +152,7 @@ class RuntimeEngine with ChangeNotifier {
   RouteManager? _routeManager;
   Function(String)? _pageLoader;
 
-  // App metadata (spec §11): cached snapshot exposed as a ValueListenable.
+  // App metadata: cached snapshot exposed as a ValueListenable.
   // Populated during `initialize` from the parsed ApplicationDefinition
   // and replaced when `ui://app/info` notifies a change.
   final ValueNotifier<DslAppMetadata?> _appMetadataNotifier =
@@ -161,7 +162,7 @@ class RuntimeEngine with ChangeNotifier {
   Function(String, String)? _onResourceSubscribe;
   Function(String)? _onResourceUnsubscribe;
 
-  // Spec §4.5: separate one-shot `read` / `list` callbacks. Optional;
+  // Separate one-shot `read` / `list` callbacks. Optional;
   // when null, the runtime falls back to `_onResourceSubscribe` for
   // backward compatibility with existing host implementations.
   Function(String, String)? _onResourceRead;
@@ -188,7 +189,7 @@ class RuntimeEngine with ChangeNotifier {
   WidgetRegistry get widgetRegistry => _widgetRegistry;
 
   /// Observable snapshot of the current application metadata
-  /// (spec §11). `value` is null before `initialize` completes and
+  /// (bundle metadata). `value` is null before `initialize` completes and
   /// whenever the runtime holds a non-application (page-only) DSL.
   /// Listeners fire whenever the cache is replaced — for example
   /// when `ui://app/info` emits a resource-update notification.
@@ -198,20 +199,20 @@ class RuntimeEngine with ChangeNotifier {
   Function(String, String)? get onResourceSubscribe => _onResourceSubscribe;
   Function(String)? get onResourceUnsubscribe => _onResourceUnsubscribe;
 
-  /// Optional one-shot `read` callback (spec §4.5). Null when the host did
+  /// Optional one-shot `read` callback. Null when the host did
   /// not register one; callers fall back to `onResourceSubscribe`.
   Function(String, String)? get onResourceRead => _onResourceRead;
 
-  /// Asset resolution for every slot typed `AssetRef` (spec §6.12).
+  /// Asset resolution for every slot typed `AssetRef`.
   ///
   /// Defaults to [AssetResolver.builtin], which serves the forms needing no
   /// injected capability, so a host that wires nothing keeps the behaviour it
   /// had before this seam existed. A host wires `bundle://`, `client://`, and
   /// origin-served assets by supplying readers — and only then may the
-  /// runtime declare those forms (§18.2.12).
+  /// runtime declare those forms.
   AssetResolver assetResolver = AssetResolver.builtin;
 
-  /// Behaviours this runtime can actually perform (spec §6.13): sound, media
+  /// Behaviours this runtime can actually perform: sound, media
   /// decoding, a web engine, a tile source. Wired by the host exactly as
   /// [assetResolver] is. The default is [RuntimeCapabilities.none] — a runtime
   /// that performs none of them and says so, which is conformant; drawing a
@@ -219,11 +220,11 @@ class RuntimeEngine with ChangeNotifier {
   RuntimeCapabilities capabilities = RuntimeCapabilities.none;
 
   /// Mounted media players, addressed by the `id` their document gave them
-  /// (§4.9b). Lives on the engine because a media action runs from the action
+  /// for media actions. Lives on the engine because a media action runs from the action
   /// handler, which has no widget to search from.
   final MediaRegistry mediaRegistry = MediaRegistry();
 
-  /// Optional one-shot `list` callback (spec §4.5). Null when the host did
+  /// Optional one-shot `list` callback. Null when the host did
   /// not register one; callers fall back to `onResourceSubscribe`.
   Function(String, String)? get onResourceList => _onResourceList;
 
@@ -259,12 +260,12 @@ class RuntimeEngine with ChangeNotifier {
     return _resourceSubscriptions[uri];
   }
 
-  // Handle resource notification from MCP (spec §4.5).
+  // Handle resource notification from MCP.
   //
   // The raw `content` payload is stored verbatim at the subscribed binding.
   // The previous heuristic that unwrapped `content[binding]` when the
   // content happened to contain a field matching the binding name was
-  // outside spec §4.5 — it conflated authored payload shape with binding
+  // outside the resource contract — it conflated authored payload shape with binding
   // path semantics. Hosts must shape the resource payload so the runtime
   // can store it as-is at the declared binding path.
   void handleResourceNotification(String uri, Map<String, dynamic> data) {
@@ -277,7 +278,7 @@ class RuntimeEngine with ChangeNotifier {
     _logger.debug('Binding found: $binding');
 
     if (binding != null) {
-      // Spec §4.5: store the raw content at the subscribed binding.
+      // Store the raw content at the subscribed binding.
       final content = data['content'];
 
       if (content != null) {
@@ -333,6 +334,15 @@ class RuntimeEngine with ChangeNotifier {
 
       // Initialize with the definition
       await _initializeWithDefinition(finalDefinition, context);
+
+      // The cached state goes on TOP of the definition's initial state: what
+      // the definition declares is where a first run starts, what the cache
+      // holds is where this user actually was.
+      final pending = _pendingCachedState;
+      _pendingCachedState = null;
+      if (pending != null) {
+        pending.forEach(_stateManager.set);
+      }
 
       // Cache the app after successful initialization
       if (useCache) {
@@ -415,7 +425,7 @@ class RuntimeEngine with ChangeNotifier {
     // outer `AnimatedBuilder(animation: engine)` in `MCPRuntimeWidget`
     // rebuilds whenever `setTheme` / `setThemeDefinition` /
     // `setThemeMode` / `setHostBrightness` / `applyOverride` fire.
-    // Spec `mcp_ui_dsl/spec/1.3/05_Theme.md` §L56 mandates re-render on
+    // The document must re-render on
     // theme change; this wire is the engine's contribution. Hosts that
     // want to suppress / gate the propagation can do so on their own
     // side (e.g. active-tab gate in the host shell) — the package
@@ -426,11 +436,11 @@ class RuntimeEngine with ChangeNotifier {
     // an unreleased listener would outlive a destroyed engine and
     // fire `notifyListeners` on a disposed receiver. The cross-tab
     // render thrash that motivated a brief disable
-    // (`cherry/inbox/navigation-service-singleton-multi-instance-2026-05-21.md`)
+    // earlier
     // is rooted in `NavigationService` singleton + multi-instance
     // `MaterialApp(navigatorKey: …)` collision — a separate refactor
-    // track (`cherry/tracks/runtime-singleton-removal-plan-2026-05-20.md`
-    // Phase 1). Suppressing this forwarder is the wrong fix; doing so
+    // (removing the runtime singletons,
+    // not this forwarder). Suppressing this forwarder is the wrong fix; doing so
     // breaks `setHostBrightness` mode toggles (host bridge alone has
     // no path to engine.notifyListeners), which is far more critical
     // than a tab-swap thrash window.
@@ -514,7 +524,8 @@ class RuntimeEngine with ChangeNotifier {
           'data': data,
           'channelId': channelId,
         });
-        _actionHandler.execute(channelConfig.onData!, rootContext);
+        DispatchOrigin.run(DispatchOrigin.runtime,
+            () => _actionHandler.execute(channelConfig.onData!, rootContext));
       }
     };
 
@@ -528,11 +539,12 @@ class RuntimeEngine with ChangeNotifier {
           'error': error.toString(),
           'channelId': channelId,
         });
-        _actionHandler.execute(channelConfig!.onError!, rootContext);
+        DispatchOrigin.run(DispatchOrigin.runtime,
+            () => _actionHandler.execute(channelConfig!.onError!, rootContext));
       }
     };
 
-    // Spec § 8.6.4 onConnect / onDisconnect — fired when the channel
+    // onConnect / onDisconnect — fired when the channel
     // transitions to `connected` / `disconnected`. ChannelManager owns
     // the state machine; the engine routes through to the per-channel
     // callbacks declared on ChannelDefinition.
@@ -542,7 +554,8 @@ class RuntimeEngine with ChangeNotifier {
         final rootContext = _renderer
             .createRootContext(null)
             .createChildContext(variables: {'channelId': channelId});
-        _actionHandler.execute(channelConfig!.onConnect!, rootContext);
+        DispatchOrigin.run(DispatchOrigin.runtime,
+            () => _actionHandler.execute(channelConfig!.onConnect!, rootContext));
       }
     };
     _channelManager.onDisconnect = (channelId) {
@@ -551,7 +564,10 @@ class RuntimeEngine with ChangeNotifier {
         final rootContext = _renderer
             .createRootContext(null)
             .createChildContext(variables: {'channelId': channelId});
-        _actionHandler.execute(channelConfig!.onDisconnect!, rootContext);
+        DispatchOrigin.run(
+            DispatchOrigin.runtime,
+            () => _actionHandler.execute(
+                channelConfig!.onDisconnect!, rootContext));
       }
     };
 
@@ -572,7 +588,7 @@ class RuntimeEngine with ChangeNotifier {
       _applicationDefinition =
           ApplicationDefinition.fromUIDefinition(_parsedUIDefinition!);
 
-      // Seed the metadata cache from the DSL root (spec §11).
+      // Seed the metadata cache from the DSL root.
       if (_applicationDefinition!.metadata != null) {
         _appMetadataNotifier.value = _applicationDefinition!.metadata;
       }
@@ -796,7 +812,7 @@ class RuntimeEngine with ChangeNotifier {
     // Forward to notification manager for additional processing
     // Notification manager is initialized during runtime setup
 
-    // Update state based on notification (spec §3.11 source = 'subscription').
+    // Update state based on notification (source = 'subscription').
     final binding = data['binding'] as String?;
     if (binding != null) {
       final value = data['value'];
@@ -821,7 +837,7 @@ class RuntimeEngine with ChangeNotifier {
     }
 
     // Well-known `ui://app/info` updates feed the appMetadata cache
-    // (spec §11.6). Handled independently of DSL-declared bindings so
+    // (same shape as the metadata block). Handled independently of DSL-declared bindings so
     // embedders see new icon / publisher / timestamps without the
     // author having to declare the resource in the page.
     if (uri == 'ui://app/info') {
@@ -839,10 +855,10 @@ class RuntimeEngine with ChangeNotifier {
 
     _logger.debug('Binding found: $binding');
 
-    // Spec §4.5: store the resource payload at the subscribed binding as-is.
+    // Store the resource payload at the subscribed binding as-is.
     // The previous heuristic that unwrapped `content[binding]` when the
     // content happened to contain a field matching the binding name was
-    // outside spec §4.5. Hosts must shape the resource payload so the
+    // outside the resource contract. Hosts must shape the resource payload so the
     // runtime can store it as-is at the declared binding path.
 
     // Check if content is included (extended mode)
@@ -918,8 +934,8 @@ class RuntimeEngine with ChangeNotifier {
   /// Handle `notifications/resources/updated` for `ui://app/info`.
   ///
   /// Supports both Standard mode (URI only → runtime re-reads) and
-  /// Extended mode (content included in the notification payload) per
-  /// spec §6.4. New metadata is published through the [appMetadata]
+  /// Extended mode (content included in the notification payload).
+  /// New metadata is published through the [appMetadata]
   /// notifier; equal snapshots are suppressed to avoid needless
   /// listener churn.
   Future<void> _refreshDslAppMetadataFromNotification(
@@ -998,7 +1014,7 @@ class RuntimeEngine with ChangeNotifier {
                 .lifecycleDefinition
             : null);
 
-    // §1.5.2 order is onInit → onMount → onReady. onInit ran at initialize;
+    // The order is onInit → onMount → onReady. onInit ran at initialize;
     // onMount used to be skipped entirely on this path, so an application that
     // declared it saw the hook silently ignored.
     if (lifecycle != null && lifecycle.onMount != null) {
@@ -1011,12 +1027,6 @@ class RuntimeEngine with ChangeNotifier {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.ready,
         lifecycle.onReady!,
-      );
-    } else if (_runtimeConfig?['lifecycle']?['onReady'] != null) {
-      // Fallback to runtime config for legacy format
-      await _lifecycleManager.executeLifecycleHooks(
-        LifecycleEvent.ready,
-        _runtimeConfig!['lifecycle']['onReady'] as List<dynamic>,
       );
     }
 
@@ -1042,11 +1052,6 @@ class RuntimeEngine with ChangeNotifier {
         LifecycleEvent.pause,
         pauseHooks,
       );
-    } else if (_runtimeConfig?['lifecycle']?['onPause'] != null) {
-      await _lifecycleManager.executeLifecycleHooks(
-        LifecycleEvent.pause,
-        _runtimeConfig!['lifecycle']['onPause'] as List<dynamic>,
-      );
     }
   }
 
@@ -1064,11 +1069,6 @@ class RuntimeEngine with ChangeNotifier {
       await _lifecycleManager.executeLifecycleHooks(
         LifecycleEvent.resume,
         resumeHooks,
-      );
-    } else if (_runtimeConfig?['lifecycle']?['onResume'] != null) {
-      await _lifecycleManager.executeLifecycleHooks(
-        LifecycleEvent.resume,
-        _runtimeConfig!['lifecycle']['onResume'] as List<dynamic>,
       );
     }
   }
@@ -1171,6 +1171,10 @@ class RuntimeEngine with ChangeNotifier {
     );
   }
 
+  /// State recovered from the cache, applied once the definition has been
+  /// initialised (see [initialize]).
+  Map<String, dynamic>? _pendingCachedState;
+
   /// Tries to load app from cache
   Future<Map<String, dynamic>?> _tryLoadFromCache(
       Map<String, dynamic> definition) async {
@@ -1202,9 +1206,14 @@ class RuntimeEngine with ChangeNotifier {
           await _cacheManager.loadPersistedState(appKey);
           final cachedState = _cacheManager.getCachedState(appKey);
           if (cachedState != null) {
-            // Merge cached state into StateManager
-            _stateManager.setState(cachedState);
-            _logger.debug('Loaded cached state into StateManager');
+            // Held, not applied. This used to write the cached state here —
+            // BEFORE the definition was initialised — and initialising a
+            // definition replaces the whole state map, so every cached value
+            // was discarded a moment after being loaded. A host priming the
+            // cache to resume where the user left off got nothing, with a
+            // debug line saying the state had been loaded.
+            _pendingCachedState = cachedState;
+            _logger.debug('Cached state held for after initialization');
           }
 
           return cachedApp.definition;
@@ -1281,11 +1290,11 @@ class RuntimeEngine with ChangeNotifier {
       final key = entry.key;
       final raw = entry.value;
 
-      // §3.8 writes a computed value as the expression itself
+      // A computed value is written as the expression itself
       // (`"total": "{{a + b}}"`); the older services block wrapped it in
       // `{expression, dependencies}`. Both are read, and dependencies are
       // detected from the expression when they are not listed — which is what
-      // §3.8 says happens ("Dependencies are detected automatically").
+      // the DSL promises ("Dependencies are detected automatically").
       final String? expression =
           raw is String ? raw : (raw is Map ? raw['expression'] as String? : null);
       final declared = raw is Map ? (raw['dependencies'] as List?) : null;
@@ -1306,7 +1315,7 @@ class RuntimeEngine with ChangeNotifier {
     }
   }
 
-  /// Wire `state.computed` (§3.8) and `state.watchers` (§3.9) from a page or
+  /// Wire `state.computed` and `state.watchers` from a page or
   /// application definition.
   ///
   /// Both sections were implemented and reachable only from a runtime
@@ -1374,7 +1383,8 @@ class RuntimeEngine with ChangeNotifier {
 
                 // Execute each action in the list
                 for (final action in actionsList) {
-                  _actionHandler.execute(action, watchContext);
+                  DispatchOrigin.run(DispatchOrigin.binding,
+                      () => _actionHandler.execute(action, watchContext));
                 }
               },
               immediate: immediate,
@@ -1428,6 +1438,14 @@ class RuntimeEngine with ChangeNotifier {
     _connectivityManager = ConnectivityManager();
     _offlineQueue = OfflineQueue();
     _syncManager = SyncManager(_offlineQueue, _connectivityManager);
+    // `{{sync.*}}` (offline sync status, read-only) is intercepted by
+    // `SyncBindingResolver` BEFORE the binding engine's own path handling, and
+    // that resolver holds its own SyncManager reference. Nothing ever set it,
+    // so every sync binding answered null and the engine-backed fallback
+    // further down was unreachable: an offline badge bound to
+    // `{{sync.pendingCount}}` rendered empty, which reads as "nothing
+    // pending" — the opposite of what it was there to say.
+    _bindingEngine.syncBindingResolver.setSyncManager(_syncManager);
     _pluginManager = PluginManager.instance;
     _animationService = AnimationService();
 

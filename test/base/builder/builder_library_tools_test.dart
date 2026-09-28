@@ -11,6 +11,8 @@
 ///   - `_resolveMbdPath`'s two paths: explicit `mbdPath` arg wins,
 ///     falling back to `resolveActiveMbdPath` when omitted; both
 ///     absent -> `noActiveProject`.
+///   - `render` — resolved entry + bundle theme reach the host renderer,
+///     PNG comes back as image content; no renderer → `renderUnavailable`.
 ///   - `list` / `read` / `create` / `delete` / `rename` / `render`
 ///     each surface `missingRequired` for absent required args and
 ///     translate `BuilderLibraryService`'s `FormatException` messages
@@ -32,6 +34,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:flutter_test/flutter_test.dart';
@@ -130,9 +133,7 @@ void main() {
   Future<void> writeUiApp(Object root) async {
     final uiDir = Directory(p.join(mbdPath, 'ui'));
     await uiDir.create(recursive: true);
-    await File(
-      p.join(uiDir.path, 'app.json'),
-    ).writeAsString(jsonEncode(root));
+    await File(p.join(uiDir.path, 'app.json')).writeAsString(jsonEncode(root));
   }
 
   test('registers all 8 studio.builder.lib.* tools', () {
@@ -160,31 +161,39 @@ void main() {
       expect(out['code'], 'noActiveProject');
     });
 
-    test('resolveActiveMbdPath supplies mbdPath when the arg is omitted',
-        () async {
-      final resolvedHost =
-          mk.InProcessKernelServerHost(name: 'lib-resolver-test', version: '0.0.0');
-      registerLibraryTools(
-        resolvedHost,
-        library: BuilderLibraryService(),
-        writer: BuilderUiWriteService(),
-        validator: SchemaValidator(_FakeCatalogService()),
-        resolveActiveMbdPath: () => mbdPath,
-      );
-      await seedLibraryEntry('fromResolver', <String, dynamic>{'type': 'box'});
-      final out = await _call(resolvedHost, 'studio.builder.lib.list', {});
-      // `lib.list`'s success payload is `{ids: [...]}` — no top-level
-      // `ok` key (unlike most other tools in this file); absence of
-      // `code` is the success signal here.
-      expect(out['code'], isNull);
-      expect(out['ids'], contains('fromResolver'));
-    });
+    test(
+      'resolveActiveMbdPath supplies mbdPath when the arg is omitted',
+      () async {
+        final resolvedHost = mk.InProcessKernelServerHost(
+          name: 'lib-resolver-test',
+          version: '0.0.0',
+        );
+        registerLibraryTools(
+          resolvedHost,
+          library: BuilderLibraryService(),
+          writer: BuilderUiWriteService(),
+          validator: SchemaValidator(_FakeCatalogService()),
+          resolveActiveMbdPath: () => mbdPath,
+        );
+        await seedLibraryEntry('fromResolver', <String, dynamic>{
+          'type': 'box',
+        });
+        final out = await _call(resolvedHost, 'studio.builder.lib.list', {});
+        // `lib.list`'s success payload is `{ids: [...]}` — no top-level
+        // `ok` key (unlike most other tools in this file); absence of
+        // `code` is the success signal here.
+        expect(out['code'], isNull);
+        expect(out['ids'], contains('fromResolver'));
+      },
+    );
 
     test('explicit mbdPath arg wins over the resolver', () async {
       final otherMbd = Directory(p.join(projectDir, 'other.mbd'));
       await otherMbd.create(recursive: true);
-      final resolvedHost =
-          mk.InProcessKernelServerHost(name: 'lib-resolver-test2', version: '0.0.0');
+      final resolvedHost = mk.InProcessKernelServerHost(
+        name: 'lib-resolver-test2',
+        version: '0.0.0',
+      );
       registerLibraryTools(
         resolvedHost,
         library: BuilderLibraryService(),
@@ -211,7 +220,10 @@ void main() {
 
     test('returns every stored id', () async {
       await seedLibraryEntry('a', <String, dynamic>{'type': 'box'});
-      await seedLibraryEntry('b', <String, dynamic>{'type': 'text', 'text': 'hi'});
+      await seedLibraryEntry('b', <String, dynamic>{
+        'type': 'text',
+        'text': 'hi',
+      });
       final out = await _call(host, 'studio.builder.lib.list', {
         'mbdPath': mbdPath,
       });
@@ -285,7 +297,9 @@ void main() {
       });
       expect(out['ok'], isTrue);
       final file = File(p.join(projectDir, 'library', 'fresh.json'));
-      expect(jsonDecode(await file.readAsString()), <String, dynamic>{'type': 'box'});
+      expect(jsonDecode(await file.readAsString()), <String, dynamic>{
+        'type': 'box',
+      });
     });
 
     test('omitted tree creates an empty stub', () async {
@@ -419,15 +433,123 @@ void main() {
       expect(out['code'], 'pathNotFound');
     });
 
-    test('known id returns the pending-hookup TODO marker', () async {
+    test('no render surface → renderUnavailable, never a fake ok', () async {
       await seedLibraryEntry('card', <String, dynamic>{'type': 'box'});
       final out = await _call(host, 'studio.builder.lib.render', {
         'mbdPath': mbdPath,
         'id': 'card',
       });
-      expect(out['ok'], isTrue);
-      expect(out['id'], 'card');
-      expect(out['todo'], isNotEmpty);
+      expect(out['ok'], isFalse);
+      expect(out['code'], 'renderUnavailable');
+    });
+
+    test(
+      'renders the resolved entry with the bundle theme as a PNG image',
+      () async {
+        await seedLibraryEntry('card', <String, dynamic>{
+          'type': 'text',
+          'text': '{{label}}',
+          'color': '{{theme.color.primary}}',
+        });
+        await Directory(p.join(mbdPath, 'ui')).create(recursive: true);
+        await File(p.join(mbdPath, 'ui', 'app.json')).writeAsString(
+          jsonEncode(<String, dynamic>{
+            'theme': <String, dynamic>{
+              'color': <String, dynamic>{'primary': '#112233'},
+            },
+          }),
+        );
+        Map<String, dynamic>? seen;
+        double? seenW, seenH, seenRatio;
+        final h = mk.InProcessKernelServerHost(name: 'r', version: '0');
+        registerLibraryTools(
+          h,
+          library: BuilderLibraryService(),
+          writer: BuilderUiWriteService(),
+          validator: SchemaValidator(_FakeCatalogService()),
+          renderer: (
+            def, {
+            required width,
+            required height,
+            required pixelRatio,
+          }) async {
+            seen = def;
+            seenW = width;
+            seenH = height;
+            seenRatio = pixelRatio;
+            return Uint8List.fromList(<int>[1, 2, 3]);
+          },
+        );
+        final result = await h.callTool('studio.builder.lib.render', {
+          'mbdPath': mbdPath,
+          'id': 'card',
+          'params': <String, dynamic>{'label': 'Hello'},
+          'width': 200,
+          'height': 100,
+          'pixelRatio': 2,
+        });
+        final meta =
+            jsonDecode((result.content.first as mk.KernelTextContent).text)
+                as Map<String, dynamic>;
+        expect(meta['ok'], isTrue);
+        expect(meta['id'], 'card');
+        final image = result.content[1] as mk.KernelImageContent;
+        expect(image.mimeType, 'image/png');
+        expect(base64Decode(image.data), <int>[1, 2, 3]);
+        expect(seen!['type'], 'page');
+        expect(seen!['content'], <String, dynamic>{
+          'type': 'text',
+          'text': 'Hello',
+          // Dotted bindings are not params — they reach the runtime intact.
+          'color': '{{theme.color.primary}}',
+        });
+        expect(seen!['theme'], <String, dynamic>{
+          'color': <String, dynamic>{'primary': '#112233'},
+        });
+        expect([seenW, seenH, seenRatio], <double>[200, 100, 2]);
+      },
+    );
+
+    test('a renderer failure surfaces as renderFailed', () async {
+      await seedLibraryEntry('card', <String, dynamic>{'type': 'box'});
+      final h = mk.InProcessKernelServerHost(name: 'r', version: '0');
+      registerLibraryTools(
+        h,
+        library: BuilderLibraryService(),
+        writer: BuilderUiWriteService(),
+        validator: SchemaValidator(_FakeCatalogService()),
+        renderer:
+            (def, {required width, required height, required pixelRatio}) =>
+                throw StateError('surface gone'),
+      );
+      final out = await _call(h, 'studio.builder.lib.render', {
+        'mbdPath': mbdPath,
+        'id': 'card',
+      });
+      expect(out['ok'], isFalse);
+      expect(out['code'], 'renderFailed');
+      expect(out['message'], contains('surface gone'));
+    });
+
+    test('an empty entry is rejected before rendering', () async {
+      await seedLibraryEntry('blank', <String, dynamic>{});
+      final out = await _call(host, 'studio.builder.lib.render', {
+        'mbdPath': mbdPath,
+        'id': 'blank',
+      });
+      expect(out['ok'], isFalse);
+      expect(out['code'], 'emptyEntry');
+    });
+
+    test('non-positive size is rejected', () async {
+      await seedLibraryEntry('card', <String, dynamic>{'type': 'box'});
+      final out = await _call(host, 'studio.builder.lib.render', {
+        'mbdPath': mbdPath,
+        'id': 'card',
+        'width': 0,
+      });
+      expect(out['ok'], isFalse);
+      expect(out['code'], 'invalidArgument');
     });
   });
 
@@ -478,18 +600,20 @@ void main() {
       expect((app as Map)['content'], isNull);
     });
 
-    test('addNode failure (unresolvable parentPath) maps to pathNotFound',
-        () async {
-      await seedLibraryEntry('box1', <String, dynamic>{'type': 'box'});
-      await writeUiApp(<String, dynamic>{'type': 'page', 'content': null});
-      final out = await _call(host, 'studio.builder.lib.placeInline', {
-        'mbdPath': mbdPath,
-        'parentPath': '/content/99',
-        'libId': 'box1',
-      });
-      expect(out['ok'], isFalse);
-      expect(out['code'], 'pathNotFound');
-    });
+    test(
+      'addNode failure (unresolvable parentPath) maps to pathNotFound',
+      () async {
+        await seedLibraryEntry('box1', <String, dynamic>{'type': 'box'});
+        await writeUiApp(<String, dynamic>{'type': 'page', 'content': null});
+        final out = await _call(host, 'studio.builder.lib.placeInline', {
+          'mbdPath': mbdPath,
+          'parentPath': '/content/99',
+          'libId': 'box1',
+        });
+        expect(out['ok'], isFalse);
+        expect(out['code'], 'pathNotFound');
+      },
+    );
 
     test('resolves {{param}} substitution, validates, and addNodes into '
         'ui/app.json', () async {
@@ -639,9 +763,11 @@ void main() {
       expect(out['templateName'], 'badge');
       expect(out['templateRegistered'], isTrue);
       expect(out['templateReplaced'], isFalse);
-      final app = jsonDecode(
-        await File(p.join(mbdPath, 'ui', 'app.json')).readAsString(),
-      ) as Map;
+      final app =
+          jsonDecode(
+                await File(p.join(mbdPath, 'ui', 'app.json')).readAsString(),
+              )
+              as Map;
       expect(app['templates'], <String, dynamic>{
         'badge': <String, dynamic>{'type': 'text', 'text': 'v1'},
       });
@@ -652,27 +778,28 @@ void main() {
       });
     });
 
-    test('re-registering the same body is idempotent (no-op registration)',
-        () async {
-      await seedLibraryEntry('idem', <String, dynamic>{'type': 'box'});
-      await writeUiApp(<String, dynamic>{'type': 'page', 'content': null});
-      await _call(host, 'studio.builder.lib.placeAsTemplate', {
-        'mbdPath': mbdPath,
-        'parentPath': '/content',
-        'libId': 'idem',
-      });
-      final out = await _call(host, 'studio.builder.lib.placeAsTemplate', {
-        'mbdPath': mbdPath,
-        'parentPath': '/content',
-        'libId': 'idem',
-      });
-      expect(out['ok'], isTrue);
-      expect(out['templateRegistered'], isFalse);
-      expect(out['templateReplaced'], isFalse);
-    });
+    test(
+      're-registering the same body is idempotent (no-op registration)',
+      () async {
+        await seedLibraryEntry('idem', <String, dynamic>{'type': 'box'});
+        await writeUiApp(<String, dynamic>{'type': 'page', 'content': null});
+        await _call(host, 'studio.builder.lib.placeAsTemplate', {
+          'mbdPath': mbdPath,
+          'parentPath': '/content',
+          'libId': 'idem',
+        });
+        final out = await _call(host, 'studio.builder.lib.placeAsTemplate', {
+          'mbdPath': mbdPath,
+          'parentPath': '/content',
+          'libId': 'idem',
+        });
+        expect(out['ok'], isTrue);
+        expect(out['templateRegistered'], isFalse);
+        expect(out['templateReplaced'], isFalse);
+      },
+    );
 
-    test('conflicting body without force rejects with alreadyExists',
-        () async {
+    test('conflicting body without force rejects with alreadyExists', () async {
       await seedLibraryEntry('conf', <String, dynamic>{'type': 'box'});
       await writeUiApp(<String, dynamic>{'type': 'page', 'content': null});
       await _call(host, 'studio.builder.lib.placeAsTemplate', {
@@ -682,7 +809,10 @@ void main() {
         'templateName': 'shared',
       });
       // Different library entry registered under the SAME templateName.
-      await seedLibraryEntry('conf2', <String, dynamic>{'type': 'text', 'text': 'x'});
+      await seedLibraryEntry('conf2', <String, dynamic>{
+        'type': 'text',
+        'text': 'x',
+      });
       final out = await _call(host, 'studio.builder.lib.placeAsTemplate', {
         'mbdPath': mbdPath,
         'parentPath': '/content',
@@ -702,7 +832,10 @@ void main() {
         'libId': 'conf3',
         'templateName': 'sharedF',
       });
-      await seedLibraryEntry('conf4', <String, dynamic>{'type': 'text', 'text': 'x'});
+      await seedLibraryEntry('conf4', <String, dynamic>{
+        'type': 'text',
+        'text': 'x',
+      });
       final out = await _call(host, 'studio.builder.lib.placeAsTemplate', {
         'mbdPath': mbdPath,
         'parentPath': '/content',
@@ -726,9 +859,11 @@ void main() {
       });
       expect(out['ok'], isTrue);
       expect(out['dryRun'], isTrue);
-      final app = jsonDecode(
-        await File(p.join(mbdPath, 'ui', 'app.json')).readAsString(),
-      ) as Map;
+      final app =
+          jsonDecode(
+                await File(p.join(mbdPath, 'ui', 'app.json')).readAsString(),
+              )
+              as Map;
       expect(app.containsKey('templates'), isFalse);
       expect(app['content'], isNull);
     });

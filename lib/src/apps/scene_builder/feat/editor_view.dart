@@ -203,7 +203,7 @@ class _EditorViewState extends State<EditorView> {
                       : ListView.separated(
                         itemCount: _clips.length,
                         separatorBuilder:
-                            (_, __) => const SizedBox(height: VbuTokens.space2),
+                            (_, _) => const SizedBox(height: VbuTokens.space2),
                         itemBuilder: (_, i) => _clipCard(i, c),
                       ),
             ),

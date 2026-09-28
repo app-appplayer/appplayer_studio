@@ -14,7 +14,7 @@ class TextWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
 
     // Extract and resolve text value.
-    // Canonical key is `text` per spec 17_Naming §17.3.2; `content` and `value`
+    // Canonical key is `text`; `content` and `value`
     // are legacy aliases accepted for backward compatibility.
     final textValue = properties[core.PropertyKeys.text] ??
         properties[core.PropertyKeys.content] ??
@@ -47,7 +47,8 @@ class TextWidgetFactory extends WidgetFactory {
         context.resolve(properties['variant']) as String?;
     final variantStyle = _resolveVariantStyle(variantValue, context);
     final inlineStyle = _parseTextStyle(
-        properties[core.PropertyKeys.style], context);
+        properties[core.PropertyKeys.style], context,
+        fontSize: variantStyle?.fontSize);
     TextStyle? mergedStyle = variantStyle == null
         ? inlineStyle
         : (inlineStyle == null
@@ -68,7 +69,7 @@ class TextWidgetFactory extends WidgetFactory {
     // canonical text colour) breaks the ambient dependency: the colour
     // now follows the ThemeManager's effective mode directly, which is
     // host-override-pinned (see [_resolveEffectiveMode] / [flutterThemeMode]).
-    // Spec §5.4.2 deliberately omits a `color` field on typography
+    // The DSL deliberately omits a `color` field on typography
     // roles (Material 3 typography / colour separation), so this is a
     // resolved fallback applied at render time — author-supplied
     // `style.color` still wins via `merge` above.
@@ -91,7 +92,7 @@ class TextWidgetFactory extends WidgetFactory {
         ? BoxDecorationResolver.resolveGradient(shaderSpec, context, this)
         : null;
 
-    // Spec § DropCap — render the first character enlarged with the
+    // DropCap — render the first character enlarged with the
     // surrounding text indented for `lines` lines and continuing
     // full-width below. Mutually exclusive with `maxLines`.
     final dropCapSpec = properties['dropCap'];
@@ -161,13 +162,16 @@ class TextWidgetFactory extends WidgetFactory {
   ///
   /// Accepts the canonical M3 names (`displayLarge` … `labelSmall`) and
   /// returns `null` for unknown values so the caller can fall back to
-  /// the inline `style` block. Spec §5.4 + 1.3 widget table § 5.1.
+  /// the inline `style` block.
   TextStyle? _resolveVariantStyle(String? variant, RenderContext context) {
     if (variant == null || variant.isEmpty) return null;
     return context.themeManager.getTextStyleValue(variant);
   }
 
-  TextStyle? _parseTextStyle(dynamic style, RenderContext context) {
+  /// [fontSize] is the size under this style — a px `lineHeight` in a style
+  /// that sets no `fontSize` of its own is divided by it.
+  TextStyle? _parseTextStyle(dynamic style, RenderContext context,
+      {double? fontSize}) {
     if (style == null) return null;
 
     // String form — `style: "{{theme.typography.displayLarge}}"` is a
@@ -197,7 +201,7 @@ class TextWidgetFactory extends WidgetFactory {
         color: parsedColor,
         letterSpacing: parseDimension(context.resolve(style['letterSpacing'])),
         wordSpacing: parseDimension(context.resolve(style['wordSpacing'])),
-        height: parseDimension(context.resolve(style['height'])),
+        height: readLineHeight(style, context, fontSize: fontSize),
         decoration: _parseTextDecoration(context.resolve(style['decoration'])),
         decorationColor: parseColor(context.resolve(style['decorationColor']), context),
         decorationStyle: _parseTextDecorationStyle(

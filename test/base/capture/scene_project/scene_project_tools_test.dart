@@ -20,6 +20,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:appplayer_studio/src/base/capture/scene_project/scene_project_tools.dart';
 import 'package:appplayer_studio/src/base/main/chrome_bridge.dart';
+import 'package:appplayer_studio/src/base/install/builtin_app.dart';
+import 'package:appplayer_studio/src/apps/scene_builder/scene_builder_builtin.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,6 +52,8 @@ ChromeBridge _minimalBridge({
 // Tests
 // ---------------------------------------------------------------------------
 
+const _sceneBundle = '/qa/scene_builder_bundle';
+
 void main() {
   late Directory tmp;
 
@@ -57,8 +61,18 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('scene_proj_test_');
     // Reset process-global scope between tests so they are isolated.
     SceneProjectScope.activePath = null;
+    // The scene project tools act on the Scene Builder tab — make it the
+    // active built-in, as it is when a user drives them.
+    BuiltInAppRegistry.instance.mount(
+      _sceneBundle,
+      const SceneBuilderBuiltInApp(),
+      BuiltInAppContext(bundlePath: _sceneBundle, chromeBridge: ChromeBridge()),
+    );
+    BuiltInAppRegistry.instance.setActivePath(_sceneBundle);
   });
   tearDown(() async {
+    BuiltInAppRegistry.instance.setActivePath(null);
+    BuiltInAppRegistry.instance.unmount(_sceneBundle);
     SceneProjectScope.activePath = null;
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });
@@ -341,6 +355,76 @@ void main() {
       expect(info, isNotNull);
       expect(info!['projectPath'], result['projectPath']);
       expect(info['projectName'], p.basename(result['projectPath'] as String));
+    });
+  });
+
+  group('adopt targets the Scene Builder tab', () {
+    const otherBundle = '/qa/app_builder_bundle';
+
+    setUp(() {
+      // Another built-in is in front.
+      BuiltInAppRegistry.instance.mount(
+        otherBundle,
+        const SceneBuilderBuiltInApp(),
+        BuiltInAppContext(
+          bundlePath: otherBundle,
+          chromeBridge: ChromeBridge(),
+        ),
+      );
+      BuiltInAppRegistry.instance.setActivePath(null);
+    });
+    tearDown(() => BuiltInAppRegistry.instance.unmount(otherBundle));
+
+    test(
+      'from another tab, the Scene tab is focused before adopting',
+      () async {
+        final calls = <String>[];
+        final bridge = ChromeBridge();
+        bridge.setActiveTabProject = (path) => calls.add('tab:$path');
+        bridge.openProjectInActive = (path) async {
+          calls.add('other-slot');
+          return <String, dynamic>{'ok': false};
+        };
+        bridge.openSeed = (app) async {
+          expect(app, 'scene_builder');
+          BuiltInAppRegistry.instance.setActivePath(_sceneBundle);
+          return true;
+        };
+        // The Scene tab claims its slot on the frame the settle waits for.
+        bridge.settleTabSwitch = () async {
+          bridge.openProjectInActive = (path) async {
+            calls.add('scene-slot');
+            return <String, dynamic>{'ok': true};
+          };
+        };
+        final out = await createSceneProjectAt(
+          bridge: bridge,
+          name: 'focused',
+          parent: tmp.path,
+        );
+        expect(out['ok'], isTrue);
+        expect(calls, isNot(contains('other-slot')));
+        expect(calls, contains('scene-slot'));
+      },
+    );
+
+    test('when the Scene tab cannot be opened nothing is adopted', () async {
+      final calls = <String>[];
+      final bridge = ChromeBridge();
+      bridge.setActiveTabProject = (path) => calls.add('tab:$path');
+      bridge.openProjectInActive = (path) async {
+        calls.add('other-slot');
+        return <String, dynamic>{'ok': true};
+      };
+      final out = await createSceneProjectAt(
+        bridge: bridge,
+        name: 'unfocused',
+        parent: tmp.path,
+      );
+      expect(out['ok'], isFalse);
+      expect(calls, isEmpty);
+      expect(SceneProjectScope.activePath, isNull);
+      expect(Directory(p.join(tmp.path, 'unfocused')).existsSync(), isFalse);
     });
   });
 }

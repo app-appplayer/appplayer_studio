@@ -1,5 +1,4 @@
 import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart' as core;
-import 'dart:async';
 import 'dart:convert';
 
 import '../renderer/render_context.dart';
@@ -74,12 +73,11 @@ class BindingEngine {
       '`$path` reads the legacy namespaced tool mirror. It is deprecated and '
       'will be removed; a document that depends on it stops resolving when it '
       'goes. Use `bindResult` to name where the result lands, or read the '
-      "response's top-level keys, which auto-merge (spec §3.10).",
+      "response's top-level keys, which auto-merge.",
     );
   }
 
   final Map<String, Binding> _bindings = {};
-  final Map<String, StreamSubscription> _subscriptions = {};
   final Map<String, Function> _transforms = {};
   final MCPLogger _logger = MCPLogger('BindingEngine');
 
@@ -637,7 +635,7 @@ class BindingEngine {
     final body = lambdaExpr.left!;
 
     // Create a child context with the lambda parameter bound. The accumulator
-    // form `(acc, item) => …` (§3.6.3) binds both; `secondValue` is ignored
+    // form `(acc, item) => …` binds both; `secondValue` is ignored
     // when the lambda declares one parameter.
     final variables = <String, dynamic>{paramName: paramValue};
     final second = lambdaExpr.parameterName2;
@@ -684,9 +682,9 @@ class BindingEngine {
       return null;
     }
 
-    // Check for entry.* / identity.* prefixes (§8.9.2) - how this definition
+    // Check for entry.* / identity.* prefixes - how this definition
     // was entered, and who the viewer currently is. Both are read-only and
-    // both resolve to null on a host that wired neither (§8.9.6), which is
+    // both resolve to null on a host that wired neither, which is
     // why an unset root falls through to null rather than throwing.
     //
     // `entry.params` is deliberately NOT `route.params`: route parameters say
@@ -762,8 +760,14 @@ class BindingEngine {
 
     // Fall back to direct context.getValue (which checks state manager directly)
     final result = context.getValue(path);
-    _logger.debug(
-        '_evaluateSimple path: $path, result: $result, stateManager: ${context.stateManager.getState()}');
+    // The path only. `debug` takes a String, so this message is built on every
+    // simple binding of every frame whether or not logging is on — and it used
+    // to build the WHOLE state map into it. A document with a large list in
+    // state paid for that list on every `{{name}}` on the screen, which turns
+    // the size of the data into the speed of the app. It also called
+    // `toString()` on whatever a host had put in state, so an object that
+    // refuses to print took the binding down.
+    _logger.debug('_evaluateSimple path: $path');
     return result;
   }
 
@@ -782,6 +786,13 @@ class BindingEngine {
   }
 
   /// Resolve sync.* bindings from the sync manager
+  /// Name of an enum value reached through a dynamic receiver.
+  ///
+  /// Also accepts a plain string, so a host wiring its own sync object is
+  /// read the same way as the built-in one.
+  static String _enumName(dynamic value) =>
+      value is Enum ? value.name : value.toString();
+
   dynamic _resolveSyncBinding(String path, RenderContext context) {
     // Access the sync manager via the runtime engine if available
     final engine = context.engine;
@@ -799,11 +810,18 @@ class BindingEngine {
       }
 
       switch (path) {
+        // `.name` is an EXTENSION getter on `Enum`, and extensions do not
+        // resolve on a dynamic receiver — which `engine.syncManager` always
+        // is here, since the engine is held as `dynamic` to break the import
+        // cycle. So `syncManager.status.name` threw NoSuchMethodError, the
+        // catch below swallowed it, and every interpolated `{{sync.status}}`
+        // came back empty: a status line that says nothing at all rather
+        // than "syncing".
         case 'status':
-          return syncManager.status.name;
+          return _enumName(syncManager.status);
         case 'saving':
         case 'syncing':
-          return syncManager.status.name == 'syncing';
+          return _enumName(syncManager.status) == 'syncing';
         case 'pending':
           return syncManager.hasPending;
         case 'pendingCount':
@@ -969,8 +987,12 @@ class BindingEngine {
       return _evaluateFormatCall(expr.methodName!, args);
     }
 
-    // Get the object
-    final obj = _evaluateSimple(expr.path, context);
+    // Get the object. A receiver may be an expression rather than a path —
+    // `filter(items, 'ok').length` reads the result of the call, which is the
+    // form both an author and a server-fed document reach for.
+    final obj = expr.left != null
+        ? _evaluateExpression(expr.left!, context)
+        : _evaluateSimple(expr.path, context);
     if (obj == null) return null;
 
     // Evaluate arguments
@@ -1154,7 +1176,7 @@ class BindingEngine {
               return result != null;
             }).toList();
           }
-          // Property shorthand: items.filter('completed') — §3.6.2's truthy
+          // Property shorthand: items.filter('completed') — the truthy
           // form, in the method spelling.
           if (args.length == 1 && args[0] is String) {
             final prop = args[0] as String;
@@ -1170,18 +1192,11 @@ class BindingEngine {
               return false;
             }).toList();
           }
-          // Support object shorthand: items.filter({property: 'status', value: 'active'})
-          if (args.length == 1 && args[0] is Map) {
-            final filterConfig = args[0] as Map;
-            final prop = filterConfig['property']?.toString();
-            final value = filterConfig['value'];
-            if (prop != null) {
-              return capped.where((item) {
-                if (item is Map) return item[prop] == value;
-                return false;
-              }).toList();
-            }
-          }
+          // There are three shapes for `filter` — a lambda, `'prop'`, and
+          // `'prop', value` — and all three are above. An object-literal
+          // shorthand used to be accepted here as a fourth, but the
+          // expression parser cannot build a map in an argument position, so
+          // no document could ever reach it.
         }
         break;
 
@@ -1189,18 +1204,27 @@ class BindingEngine {
         if (obj is List) {
           final limit = sandbox.maxIterations;
           final capped = obj.length > limit ? obj.sublist(0, limit) : obj;
-          // Support lambda: items.reduce((acc, item) => acc + item.price, 0)
-          // For simplicity, lambda reduce uses single-param form that maps
-          // each item, then sums. Full two-param accumulator lambdas are
-          // complex to parse; use property reduction for accumulator patterns.
+          // Two shapes, both documented:
+          //
+          //   items.reduce((acc, item) => acc + item.price, 0)  accumulator
+          //   items.reduce((item) => item.price, 0)             map-then-sum
+          //
+          // The accumulator form is what the spec's own example writes, and it
+          // used to answer the initial value unchanged: every item was passed
+          // as the FIRST parameter — so `acc` inside the body resolved to the
+          // item, `acc + item` was not a number, and nothing accumulated. A
+          // total that silently equals its seed reads as "no data".
+          // `_evaluateLambdaBody` could already bind both names; nothing
+          // called it that way.
           if (expr.arguments != null && expr.arguments!.isNotEmpty &&
               expr.arguments![0].type == ExpressionType.lambda) {
             final lambdaExpr = expr.arguments![0];
-            num initialValue = 0;
-            if (args.length >= 2 && args[1] is num) {
-              initialValue = args[1] as num;
-            }
-            dynamic accumulator = initialValue;
+            final accumulatorForm = lambdaExpr.parameterName2 != null;
+            // The seed may be any type in the accumulator form (a string, a
+            // list); the map-then-sum form adds to it, so it stays numeric.
+            dynamic accumulator = accumulatorForm
+                ? (args.length >= 2 ? args[1] : 0)
+                : (args.length >= 2 && args[1] is num ? args[1] as num : 0);
             for (var i = 0; i < capped.length; i++) {
               // Periodic timeout check during iteration
               if (i % 100 == 0 && _evaluationStopwatch != null &&
@@ -1208,9 +1232,22 @@ class BindingEngine {
                 _logger.warning('Reduce iteration timeout exceeded');
                 break;
               }
-              final mapped = _evaluateLambdaBody(lambdaExpr, capped[i], context);
-              if (mapped is num) {
-                accumulator = (accumulator as num) + mapped;
+              if (accumulatorForm) {
+                final next = _evaluateLambdaBody(
+                  lambdaExpr,
+                  accumulator,
+                  context,
+                  secondValue: capped[i],
+                );
+                // A body that cannot be evaluated leaves the running total
+                // alone rather than resetting it to null.
+                if (next != null) accumulator = next;
+              } else {
+                final mapped =
+                    _evaluateLambdaBody(lambdaExpr, capped[i], context);
+                if (mapped is num) {
+                  accumulator = (accumulator as num) + mapped;
+                }
               }
             }
             return accumulator;
@@ -1265,7 +1302,7 @@ class BindingEngine {
     // Handle built-in functions
     switch (expr.methodName) {
       case 'min':
-        // §3.6.1 writes these as `min(a, b, ...)` — the smallest *argument*,
+        // These are written `min(a, b, ...)` — the smallest *argument*,
         // not the smaller of two. A third argument used to make the whole call
         // resolve to null, which reads as "no data" in whatever the document
         // was showing.
@@ -1457,9 +1494,9 @@ class BindingEngine {
             return result != null;
           }).toList();
         }
-        // filter(list, property) — §3.6.2: "filter items whose `active`
+        // filter(list, property) — documented as "filter items whose `active`
         // property is truthy". Only the 3-argument and lambda forms existed,
-        // so §3.6.1's own example `length(filter(items, 'completed'))` fell
+        // so the documented example `length(filter(items, 'completed'))` fell
         // through to null and answered 0 for every input — a count that reads
         // like real data.
         if (args.length == 2 && args[0] is List) {
@@ -1498,7 +1535,7 @@ class BindingEngine {
           dynamic accumulator = initialValue;
           // Two parameters means the lambda REDUCES: it is handed the running
           // accumulator and the item, and its result IS the next accumulator
-          // (§3.6.3's `(acc, i) => acc + i.price * i.qty`). One parameter keeps
+          // (`(acc, i) => acc + i.price * i.qty`). One parameter keeps
           // the mapper meaning: each result is summed.
           if (lambdaExpr.parameterName2 != null) {
             for (final item in capped) {
@@ -1666,15 +1703,34 @@ class BindingEngine {
   /// Format a number according to a pattern string
   /// Supports patterns like '#,##0.00', '#,##0', '0.00'
   String _formatNumber(num value, String pattern) {
-    // Determine decimal places from pattern
+    // Determine decimal places from pattern.
+    //
+    // `0` after the point is a required digit and `#` an optional one, which
+    // is the whole difference between `#,##0.00` (a price: always two) and
+    // `#,##0.##` (a quantity: at most two). Counting the characters treated
+    // them the same, so the default `decimal` style printed 1,234.50 for a
+    // value the pattern says should read 1,234.5.
     final dotIndex = pattern.indexOf('.');
     int decimals = 0;
+    int requiredDecimals = 0;
     if (dotIndex >= 0) {
-      decimals = pattern.length - dotIndex - 1;
+      final fraction = pattern.substring(dotIndex + 1);
+      decimals = fraction.length;
+      requiredDecimals = fraction.replaceAll('#', '').length;
     }
 
     // Format with specified decimal places
     String formatted = value.toStringAsFixed(decimals);
+
+    // Drop the optional digits the value does not need.
+    if (decimals > requiredDecimals && formatted.contains('.')) {
+      final parts = formatted.split('.');
+      var fraction = parts[1];
+      while (fraction.length > requiredDecimals && fraction.endsWith('0')) {
+        fraction = fraction.substring(0, fraction.length - 1);
+      }
+      formatted = fraction.isEmpty ? parts[0] : '${parts[0]}.$fraction';
+    }
 
     // Add thousands separator if pattern contains comma
     if (pattern.contains(',')) {
@@ -1737,10 +1793,6 @@ class BindingEngine {
 
   /// Dispose resources
   void dispose() {
-    for (final subscription in _subscriptions.values) {
-      subscription.cancel();
-    }
-    _subscriptions.clear();
     _bindings.clear();
 
     _transforms.clear();

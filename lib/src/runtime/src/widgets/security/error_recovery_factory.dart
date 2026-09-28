@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
 import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 
@@ -72,8 +74,11 @@ class _ErrorRecoveryWidgetState extends State<_ErrorRecoveryWidget> {
     // Try to render child
     if (widget.childDefinition != null) {
       try {
-        final child = widget.context.renderer
-            .renderWidget(widget.childDefinition!, widget.context);
+        // Rethrowing form: the renderer's own inline error card would satisfy
+        // the render and leave this catch — and with it `handlers`,
+        // `fallback` and `onError` — permanently unreachable.
+        final child = widget.context.renderer.renderWidgetRethrowingErrors(
+            widget.childDefinition!, widget.context);
         return widget.factory
             .applyCommonWrappers(child, widget.properties, widget.context);
       } catch (e, st) {
@@ -82,18 +87,28 @@ class _ErrorRecoveryWidgetState extends State<_ErrorRecoveryWidget> {
         _errorStack = st.toString();
         _hasError = true;
 
-        // Execute onError action with spec §2.13.12 canonical `event`
+        // Execute onError action with the canonical `event`
         // variable (`event.error` / `event.stack`).
+        //
+        // Deferred to after the frame: this runs inside build(), and almost
+        // every useful onError writes state — which marks a listening ancestor
+        // dirty mid-build and throws. Reporting the failure must not itself be
+        // a second failure.
         if (widget.onError != null) {
-          final eventContext = widget.context.createChildContext(
-            variables: {
-              'event': {
-                'error': _errorMessage,
-                'stack': _errorStack,
+          final message = _errorMessage;
+          final stack = _errorStack;
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final eventContext = widget.context.createChildContext(
+              variables: {
+                'event': {
+                  'error': message,
+                  'stack': stack,
+                },
               },
-            },
-          );
-          widget.context.actionHandler.execute(widget.onError!, eventContext);
+            );
+            widget.context.actionHandler.execute(widget.onError!, eventContext);
+          });
         }
 
         return _buildErrorUI();

@@ -707,10 +707,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // future multi-route case the runtime may invoke.
       base.registerToolWidgets(runtime);
       base.registerVbuWidgets(runtime);
-      await runtime.initialize(
-        mountDef,
-        pageLoader: loadPage,
-      );
+      await runtime.initialize(mountDef, pageLoader: loadPage);
       // Host stream sources for `client.mcpStream` channels (e.g. `ble://scan`
       // → shared BLE advertisement hub). Must run AFTER initialize —
       // registerStreamSource asserts an initialized runtime.
@@ -1142,7 +1139,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       if (bridge == null || myTabKey == null) return child;
       return ValueListenableBuilder<String?>(
         valueListenable: bridge.activeTabKey,
-        builder: (ctx, activeKey, __) {
+        builder: (ctx, activeKey, _) {
           final nowActive = activeKey == myTabKey;
           // Inactive → active edge — `MCPRuntimeWidget.dispose` on
           // the previous SizedBox.expand swap fired

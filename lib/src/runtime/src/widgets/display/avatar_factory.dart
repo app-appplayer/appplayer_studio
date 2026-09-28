@@ -12,9 +12,9 @@ class AvatarWidgetFactory extends WidgetFactory {
 
     // Extract properties - support both design doc keys and implementation keys
     // Design: size (diameter) → Implementation: radius
-    final sizeValue = parseDimension(properties['size']);
-    final radius = sizeValue != null ? sizeValue / 2 : (parseDimension(properties['radius']) ?? 20.0);
-    // Spec §2.5.10 canonical `color`; §17.3.2 legacy alias `backgroundColor`.
+    final sizeValue = dimensionOf(properties['size'], context);
+    final radius = sizeValue != null ? sizeValue / 2 : (dimensionOf(properties['radius'], context) ?? 20.0);
+    // Canonical `color`; legacy alias `backgroundColor`.
     final backgroundColor = parseColor(context.resolve(
         properties['color'] ?? properties['backgroundColor']), context);
     final foregroundColor =
@@ -43,7 +43,7 @@ class AvatarWidgetFactory extends WidgetFactory {
     }
 
     // Build background image
-    // §6.12 — one resolution path. This chain used to accept two schemes, so
+    // One resolution path. This chain used to accept two schemes, so
     // an avatar served as a `data:` URI or from the bundle silently fell back
     // to the label.
     final backgroundImageProvider = context.resolveAssetImage(backgroundImage);

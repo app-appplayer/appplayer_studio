@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 
 /// Factory for scrollbar widget.
 ///
-/// Per spec §2.9.3 the runtime must provide a shared scroll controller to the
+/// The runtime must provide a shared scroll controller to the
 /// Scrollbar and its scrollable child. This factory owns a [ScrollController]
 /// and exposes it to the subtree via [PrimaryScrollController] so that the
 /// child scroll view (ScrollView, SingleChildScrollView, ListView, etc.)
@@ -14,7 +14,7 @@ class ScrollbarWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.9.3: canonical single `child`. Legacy `children` array
+    // Canonical single `child`. Legacy `children` array
     // accepted — first element becomes the scrollable content.
     final childDef = properties['child'] ??
         ((definition['children'] as List<dynamic>?)?.isNotEmpty ?? false

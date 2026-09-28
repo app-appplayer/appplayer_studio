@@ -22,8 +22,14 @@ class DialogWidgetFactory extends WidgetFactory {
     final shape = _parseShapeBorder(properties['shape']);
     final alignment = parseAlignment(properties['alignment']);
 
-    // Extract dialog type
-    final type = stringOf(properties['type'], context) ?? 'custom';
+    // Extract dialog type. `type` is the WIDGET type key and is stripped by
+    // `extractProperties`, so the spec's `type: alert|simple|custom` property
+    // can never arrive under that name — `dialogType` is the spelling a
+    // document can actually reach, as `indicatorType` is for `progress` and
+    // `mediaType` for `mediaPlayer`.
+    final type = stringOf(properties['dialogType'], context) ??
+        stringOf(properties['type'], context) ??
+        'custom';
 
     Widget dialog;
 

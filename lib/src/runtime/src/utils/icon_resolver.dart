@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Central Material Icon name → [IconData] resolver used by every factory
-/// that accepts a string icon name (spec §2.5 `icon.icon`, navigation items,
+/// that accepts a string icon name (`icon.icon`, navigation items,
 /// timeline/tree/button leading, etc.).
 ///
 /// Naming is always snake_case, matching the names on

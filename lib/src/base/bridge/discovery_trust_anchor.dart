@@ -41,7 +41,7 @@ Future<String> _loadAnchorAsset() async {
 /// Load the root-CA anchor and return the discovery trust evaluator, or null if
 /// the anchor is missing / malformed (discovery then carries no evidence).
 Future<Future<TrustEvidence?> Function(BoardIdentity)?>
-    buildDiscoveryTrustEvaluator() async {
+buildDiscoveryTrustEvaluator() async {
   try {
     final raw = await _loadAnchorAsset();
     final spec = (jsonDecode(raw) as Map).cast<String, Object?>();
@@ -59,18 +59,15 @@ Future<Future<TrustEvidence?> Function(BoardIdentity)?>
   }
 }
 
-KeyMaterial _placeholderKey({required bool isPrivate}) => KeyMaterial(
-      raw: Uint8List(32),
-      algorithm: 'ed25519',
-      isPrivate: isPrivate,
-    );
+KeyMaterial _placeholderKey({required bool isPrivate}) =>
+    KeyMaterial(raw: Uint8List(32), algorithm: 'ed25519', isPrivate: isPrivate);
 
 Certificate _placeholderCert() => Certificate(
-      derBytes: Uint8List(32),
-      serial: 'studio-local-placeholder',
-      publicKey: _placeholderKey(isPrivate: false),
-      notBefore: DateTime.utc(2020),
-      notAfter: DateTime.utc(2100),
-      signatureAlgorithm: 'ed25519',
-      fingerprint: '',
-    );
+  derBytes: Uint8List(32),
+  serial: 'studio-local-placeholder',
+  publicKey: _placeholderKey(isPrivate: false),
+  notBefore: DateTime.utc(2020),
+  notAfter: DateTime.utc(2100),
+  signatureAlgorithm: 'ed25519',
+  fingerprint: '',
+);

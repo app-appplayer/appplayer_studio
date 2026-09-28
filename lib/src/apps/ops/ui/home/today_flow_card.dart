@@ -103,45 +103,46 @@ class TodayFlowCard extends ConsumerWidget {
         title: "Today's flow",
         sub: 'invocations · delegations · approvals · runs, by hour',
       ),
-      body: data.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'No activity yet today.',
-                style: TextStyle(color: OpsColors.text3),
+      body:
+          data.isEmpty
+              ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No activity yet today.',
+                  style: TextStyle(color: OpsColors.text3),
+                ),
+              )
+              : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Lane(
+                    label: 'invoked',
+                    color: OpsColors.success,
+                    counts: data.invoked,
+                    nowHour: nowHour,
+                  ),
+                  _Lane(
+                    label: 'delegated',
+                    color: OpsColors.io,
+                    counts: data.routed,
+                    nowHour: nowHour,
+                  ),
+                  _Lane(
+                    label: 'approvals',
+                    color: OpsColors.warn,
+                    counts: data.approvals,
+                    nowHour: nowHour,
+                  ),
+                  _Lane(
+                    label: 'runs',
+                    color: OpsColors.protocol,
+                    counts: data.runsStarted,
+                    nowHour: nowHour,
+                  ),
+                  const SizedBox(height: 4),
+                  _HourAxis(nowHour: nowHour),
+                ],
               ),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Lane(
-                  label: 'invoked',
-                  color: OpsColors.success,
-                  counts: data.invoked,
-                  nowHour: nowHour,
-                ),
-                _Lane(
-                  label: 'delegated',
-                  color: OpsColors.io,
-                  counts: data.routed,
-                  nowHour: nowHour,
-                ),
-                _Lane(
-                  label: 'approvals',
-                  color: OpsColors.warn,
-                  counts: data.approvals,
-                  nowHour: nowHour,
-                ),
-                _Lane(
-                  label: 'runs',
-                  color: OpsColors.protocol,
-                  counts: data.runsStarted,
-                  nowHour: nowHour,
-                ),
-                const SizedBox(height: 4),
-                _HourAxis(nowHour: nowHour),
-              ],
-            ),
     );
   }
 }
@@ -180,11 +181,7 @@ class _Lane extends StatelessWidget {
             child: Row(
               children: [
                 for (var h = 0; h <= nowHour; h++)
-                  Expanded(
-                    child: Center(
-                      child: _dot(counts[h] ?? 0),
-                    ),
-                  ),
+                  Expanded(child: Center(child: _dot(counts[h] ?? 0))),
                 // Future hours keep the axis to scale for the whole day.
                 for (var h = nowHour + 1; h < 24; h++)
                   const Expanded(child: SizedBox()),
@@ -237,19 +234,21 @@ class _HourAxis extends StatelessWidget {
             children: [
               for (var h = 0; h < 24; h++)
                 Expanded(
-                  child: h % 6 == 0 || h == nowHour
-                      ? Text(
-                          h == nowHour ? 'now' : '${h}h',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: OpsType.xs,
-                            fontFamily: OpsType.mono,
-                            color: h == nowHour
-                                ? OpsColors.text2
-                                : OpsColors.textMute,
-                          ),
-                        )
-                      : const SizedBox(),
+                  child:
+                      h % 6 == 0 || h == nowHour
+                          ? Text(
+                            h == nowHour ? 'now' : '${h}h',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: OpsType.xs,
+                              fontFamily: OpsType.mono,
+                              color:
+                                  h == nowHour
+                                      ? OpsColors.text2
+                                      : OpsColors.textMute,
+                            ),
+                          )
+                          : const SizedBox(),
                 ),
             ],
           ),

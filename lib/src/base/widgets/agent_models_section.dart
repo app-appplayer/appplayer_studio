@@ -216,7 +216,7 @@ class _AgentModelsSectionState extends State<AgentModelsSection> {
       child: ListView.separated(
         shrinkWrap: true,
         itemCount: _agents.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 3),
+        separatorBuilder: (_, _) => const SizedBox(height: 3),
         itemBuilder: (_, i) => _buildRow(i),
       ),
     );

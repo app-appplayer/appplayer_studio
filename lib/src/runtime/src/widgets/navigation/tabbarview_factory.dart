@@ -10,7 +10,7 @@ class TabBarViewWidgetFactory extends WidgetFactory {
     final properties = extractProperties(definition);
     final children = definition['children'] as List<dynamic>? ?? [];
 
-    // Spec §2.8.4: `selectedIndex` selects the initial active page.
+    // `selectedIndex` selects the initial active page.
     final selectedIndex = (properties['selectedIndex'] is int)
         ? properties['selectedIndex'] as int
         : 0;

@@ -9,7 +9,7 @@ class PageViewWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Spec §2.9.4 canonical `direction`; `scrollDirection` kept as legacy alias.
+    // Canonical `direction`; `scrollDirection` kept as legacy alias.
     final scrollDirection =
         _parseAxis(readEnum(properties['direction'] ?? properties['scrollDirection'], context)) ??
             Axis.horizontal;
@@ -21,7 +21,7 @@ class PageViewWidgetFactory extends WidgetFactory {
     final clipBehavior =
         _parseClip(properties['clipBehavior']) ?? Clip.hardEdge;
 
-    // Spec § pageView v1.3 — `initialPage`, `loop`, `scrollPhysics`.
+    // Since v1.3: `initialPage`, `loop`, `scrollPhysics`.
     final initialPage =
         (context.resolve(properties['initialPage']) as num?)?.toInt() ?? 0;
     final loop = context.resolve(properties['loop']) as bool? ?? false;
@@ -35,7 +35,7 @@ class PageViewWidgetFactory extends WidgetFactory {
             .toList() ??
         [];
 
-    // Spec §2.9.4 canonical `onPageChanged`. `onChange` accepted as alias.
+    // Canonical `onPageChanged`. `onChange` accepted as alias.
     final onPageChanged =
         actionOf(properties['onPageChanged'] ?? properties['onChange'], context);
 

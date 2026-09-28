@@ -7,8 +7,7 @@
 /// flowbrain ports (`bundle.LlmPort` pool + default), which a built-in then
 /// *consumes* when it wires the kernel (`InfraPorts.llmProviders` /
 /// `KnowledgePorts.llm` / `AgentLlmSessions`). The kernel already accepts
-/// these — no kernel change (cherry
-/// `llm-provider-composition-answer-from-cherry-2026-06-14`).
+/// these — no kernel change is needed.
 ///
 /// Not a tool surface: provider composition is boot-time port construction,
 /// not a runtime `callTool`. The seam is a direct host function the built-in

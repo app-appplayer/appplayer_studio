@@ -114,7 +114,7 @@ class _AttachButton extends ConsumerWidget {
     return members.when(
       loading: () => Icon(glyph, color: Colors.grey),
       error:
-          (_, __) => const Icon(Icons.error_outline, color: Colors.redAccent),
+          (_, _) => const Icon(Icons.error_outline, color: Colors.redAccent),
       data: (list) {
         final agents = list.where((m) => m.kind == MemberKind.agent).toList();
         if (agents.isEmpty) {

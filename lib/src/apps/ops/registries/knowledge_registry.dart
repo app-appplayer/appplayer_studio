@@ -129,7 +129,7 @@ class KnowledgeRegistry {
     // (despite the "writes to both FactFacade and KV" contract).
     await knowledgeSystem.facts.writeFacts(<bundle.FactRecord>[
       bundle.FactRecord(
-        id: 'fact/$category/$key',
+        id: graphFactId(category, key),
         workspaceId: wsId,
         type: 'fact',
         entityId: key,
@@ -190,12 +190,18 @@ class KnowledgeRegistry {
     // read only for a query scoped to that bound ws. A cross-workspace query
     // relies on the graph half alone, which already carries cross-ws facts by
     // their `workspaceId` tag (test2 #5).
-    final kvHits = wsScope == kv.workspaceId!
-        ? await listKvFacts(filter: question)
-        : const <KvFactEntry>[];
+    final kvHits =
+        wsScope == kv.workspaceId!
+            ? await listKvFacts(filter: question)
+            : const <KvFactEntry>[];
     final fromKv = <bundle.FactRecord>[];
     final wsId = wsScope;
-    for (final entry in kvHits.take(limit)) {
+    // [saveFact] writes a fact to the graph AND mirrors it to KV; the mirror
+    // of a fact the graph already returned is the same fact, not a second.
+    final inGraph = <String>{for (final f in fromGraph) f.id};
+    for (final entry in kvHits
+        .where((e) => !inGraph.contains(graphFactId(e.category, e.key)))
+        .take(limit)) {
       fromKv.add(
         bundle.FactRecord(
           id: entry.storageKey,
@@ -340,6 +346,10 @@ class KnowledgeFileEntry {
   final int size;
   final DateTime modifiedAt;
 }
+
+/// The graph id [KnowledgeRegistry.saveFact] gives a category/key fact —
+/// how its KV mirror is recognised as the same fact.
+String graphFactId(String category, String key) => 'fact/$category/$key';
 
 class KvFactEntry {
   KvFactEntry({

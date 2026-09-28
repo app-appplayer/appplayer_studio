@@ -60,31 +60,29 @@ class NotificationManager {
           'NotificationManager must be initialized before showing notifications');
     }
 
-    try {
-      // Store the notification
-      _activeNotifications[notification.id] = notification;
+    // No guard here. The three `_show*` methods are this layer's half — they
+    // report what was asked for; the platform integration belongs to a host,
+    // which receives it through a listener. `_notifyListeners` already
+    // contains a listener that throws. So there is nothing left in this block
+    // that can fail, and a guard that logs and rethrows would only add a line
+    // to the trace. It comes back with a real integration, if one lands here.
+    _activeNotifications[notification.id] = notification;
 
-      // Show based on type
-      switch (notification.type) {
-        case NotificationType.local:
-          await _showLocalNotification(notification);
-          break;
-        case NotificationType.system:
-          await _showSystemNotification(notification);
-          break;
-        case NotificationType.inApp:
-          await _showInAppNotification(notification);
-          break;
-      }
-
-      // Notify listeners
-      _notifyListeners(NotificationEvent.shown, notification);
-
-      _logger.debug('Showed notification "${notification.id}"');
-    } catch (error) {
-      _logger.error('Error showing notification "${notification.id}"', error);
-      rethrow;
+    switch (notification.type) {
+      case NotificationType.local:
+        await _showLocalNotification(notification);
+        break;
+      case NotificationType.system:
+        await _showSystemNotification(notification);
+        break;
+      case NotificationType.inApp:
+        await _showInAppNotification(notification);
+        break;
     }
+
+    _notifyListeners(NotificationEvent.shown, notification);
+
+    _logger.debug('Showed notification "${notification.id}"');
   }
 
   /// Schedules a notification for future delivery
@@ -97,38 +95,28 @@ class NotificationManager {
           'NotificationManager must be initialized before scheduling notifications');
     }
 
-    try {
-      // Store the notification with scheduled time
-      final scheduledNotification = notification.copyWith(
-        scheduledTime: scheduledTime,
-      );
-      _activeNotifications[notification.id] = scheduledNotification;
+    // See `showNotification`: the `_schedule*` methods are placeholders for a
+    // host integration, so there is nothing here that can fail.
+    final scheduledNotification = notification.copyWith(
+      scheduledTime: scheduledTime,
+    );
+    _activeNotifications[notification.id] = scheduledNotification;
 
-      // Schedule based on type
-      switch (notification.type) {
-        case NotificationType.local:
-        case NotificationType.system:
-          await _scheduleSystemNotification(scheduledNotification);
-          break;
-        case NotificationType.inApp:
-          // In-app notifications are handled differently
-          await _scheduleInAppNotification(scheduledNotification);
-          break;
-      }
+    switch (notification.type) {
+      case NotificationType.local:
+      case NotificationType.system:
+        await _scheduleSystemNotification(scheduledNotification);
+        break;
+      case NotificationType.inApp:
+        await _scheduleInAppNotification(scheduledNotification);
+        break;
+    }
 
-      // Notify listeners
-      _notifyListeners(NotificationEvent.scheduled, scheduledNotification);
+    _notifyListeners(NotificationEvent.scheduled, scheduledNotification);
 
-      if (enableDebugMode) {
-        _logger.debug(
-            'Scheduled notification "${notification.id}" for $scheduledTime');
-      }
-    } catch (error) {
-      if (enableDebugMode) {
-        _logger.error(
-            'Error scheduling notification "${notification.id}": $error');
-      }
-      rethrow;
+    if (enableDebugMode) {
+      _logger.debug(
+          'Scheduled notification "${notification.id}" for $scheduledTime');
     }
   }
 
@@ -136,21 +124,15 @@ class NotificationManager {
   Future<void> dismissNotification(String notificationId) async {
     final notification = _activeNotifications.remove(notificationId);
     if (notification != null) {
-      try {
-        await _dismissSystemNotification(notificationId);
+      // See `showNotification`. The guard that used to be here also SWALLOWED
+      // whatever it caught, so a dismissal that failed reported success — the
+      // shape the perform-or-report rule exists to stop.
+      await _dismissSystemNotification(notificationId);
 
-        // Notify listeners
-        _notifyListeners(NotificationEvent.dismissed, notification);
+      _notifyListeners(NotificationEvent.dismissed, notification);
 
-        if (enableDebugMode) {
-          _logger.debug(
-              'Dismissed notification "$notificationId"');
-        }
-      } catch (error) {
-        if (enableDebugMode) {
-          _logger.error(
-              'Error dismissing notification "$notificationId": $error');
-        }
+      if (enableDebugMode) {
+        _logger.debug('Dismissed notification "$notificationId"');
       }
     }
   }
@@ -259,19 +241,12 @@ class NotificationManager {
 
   /// Requests notification permissions from the system
   Future<bool> _requestPermissions() async {
-    try {
-      // This would integrate with actual permission APIs
-      // For now, return true as a placeholder
-      if (enableDebugMode) {
-        _logger.debug('Requested notification permissions');
-      }
-      return true;
-    } catch (error) {
-      if (enableDebugMode) {
-        _logger.error('Error requesting permissions: $error');
-      }
-      return false;
+    // A placeholder until a host wires real permission APIs; nothing here can
+    // fail, so there is nothing to guard.
+    if (enableDebugMode) {
+      _logger.debug('Requested notification permissions');
     }
+    return true;
   }
 
   /// Shows a local notification

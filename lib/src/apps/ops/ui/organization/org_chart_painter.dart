@@ -40,14 +40,13 @@ class OrgChartPainter extends CustomPainter {
     FontWeight? weight,
     bool mono = false,
     Color? color,
-  }) =>
-      TextStyle(
-        fontSize: size,
-        fontWeight: weight,
-        fontFamily: mono ? OpsType.mono : null,
-        letterSpacing: mono ? OpsType.mono06 : null,
-        color: color ?? OpsColors.text,
-      );
+  }) => TextStyle(
+    fontSize: size,
+    fontWeight: weight,
+    fontFamily: mono ? OpsType.mono : null,
+    letterSpacing: mono ? OpsType.mono06 : null,
+    color: color ?? OpsColors.text,
+  );
 
   /// The ONE rounded frame (fill + stroke) every card/box goes through.
   void _frame(
@@ -109,11 +108,20 @@ class OrgChartPainter extends CustomPainter {
         case OrgEdgeKind.event:
           _eventArrow(canvas, a.rect, b.rect);
         case OrgEdgeKind.dep:
-          _arrow(canvas, a.rect.centerRight, b.rect.centerLeft,
-              OpsColors.text2, 1.4);
+          _arrow(
+            canvas,
+            a.rect.centerRight,
+            b.rect.centerLeft,
+            OpsColors.text2,
+            1.4,
+          );
         case OrgEdgeKind.signoff:
-          _dashedArrow(canvas, a.rect.centerRight, b.rect.centerLeft,
-              OpsColors.warn.withValues(alpha: 0.85));
+          _dashedArrow(
+            canvas,
+            a.rect.centerRight,
+            b.rect.centerLeft,
+            OpsColors.warn.withValues(alpha: 0.85),
+          );
         case OrgEdgeKind.ownership:
           canvas.drawLine(
             a.rect.centerRight,
@@ -136,7 +144,8 @@ class OrgChartPainter extends CustomPainter {
         case OrgNodeKind.gate:
           _diamond(canvas, n);
         case OrgNodeKind.workspace:
-          if (!n.isContainer) _box(canvas, n, OpsColors.domain, isWorkspace: true);
+          if (!n.isContainer)
+            _box(canvas, n, OpsColors.domain, isWorkspace: true);
         case OrgNodeKind.signoff:
           _box(canvas, n, OpsColors.warn, dotted: false);
         case OrgNodeKind.step:
@@ -214,8 +223,10 @@ class OrgChartPainter extends CustomPainter {
     );
     final angle = math.atan2(end.dy - start.dy, end.dx - start.dx);
     const s = 7.0;
-    final tip1 = end - Offset(math.cos(angle - 0.45), math.sin(angle - 0.45)) * s;
-    final tip2 = end - Offset(math.cos(angle + 0.45), math.sin(angle + 0.45)) * s;
+    final tip1 =
+        end - Offset(math.cos(angle - 0.45), math.sin(angle - 0.45)) * s;
+    final tip2 =
+        end - Offset(math.cos(angle + 0.45), math.sin(angle + 0.45)) * s;
     canvas.drawPath(
       Path()
         ..moveTo(end.dx, end.dy)
@@ -289,7 +300,10 @@ class OrgChartPainter extends CustomPainter {
     // Trigger badge (top-right).
     final badge = n.badge ?? 'manual';
     final bp = TextPainter(
-      text: TextSpan(text: '▸ $badge', style: _ts(OpsType.xs, mono: true, color: accent)),
+      text: TextSpan(
+        text: '▸ $badge',
+        style: _ts(OpsType.xs, mono: true, color: accent),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     bp.paint(canvas, Offset(n.rect.right - bp.width - 12, n.rect.top + 10));
@@ -314,9 +328,10 @@ class OrgChartPainter extends CustomPainter {
       canvas,
       n.rect,
       fill: OpsColors.domain.withValues(alpha: 0.07),
-      stroke: pending > 0
-          ? OpsColors.warn.withValues(alpha: selected ? 1.0 : 0.9)
-          : OpsColors.domain.withValues(alpha: selected ? 1.0 : 0.7),
+      stroke:
+          pending > 0
+              ? OpsColors.warn.withValues(alpha: selected ? 1.0 : 0.9)
+              : OpsColors.domain.withValues(alpha: selected ? 1.0 : 0.7),
       radius: 12,
       strokeWidth: selected ? 2.0 : (pending > 0 ? 1.8 : 1.3),
     );
@@ -337,8 +352,7 @@ class OrgChartPainter extends CustomPainter {
     )..layout(maxWidth: n.rect.width - 24 - badgeReserve);
     title.paint(canvas, Offset(n.rect.left + 12, n.rect.top + 8));
     if (n.sublabel != null) {
-      final subMax =
-          n.rect.width - 24 - title.width - 8 - badgeReserve;
+      final subMax = n.rect.width - 24 - title.width - 8 - badgeReserve;
       final sub = TextPainter(
         text: TextSpan(
           text: n.sublabel,
@@ -399,7 +413,12 @@ class OrgChartPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: _ts(OpsType.xs, mono: true, weight: OpsType.semibold, color: color),
+        style: _ts(
+          OpsType.xs,
+          mono: true,
+          weight: OpsType.semibold,
+          color: color,
+        ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -414,8 +433,13 @@ class OrgChartPainter extends CustomPainter {
 
   // --- node boxes ---
 
-  void _box(Canvas canvas, OrgNode n, Color base,
-      {bool isWorkspace = false, bool dotted = false}) {
+  void _box(
+    Canvas canvas,
+    OrgNode n,
+    Color base, {
+    bool isWorkspace = false,
+    bool dotted = false,
+  }) {
     final selected = n.id == selectedId;
     _frame(
       canvas,
@@ -436,8 +460,13 @@ class OrgChartPainter extends CustomPainter {
       );
       if (n.isLead) {
         // Crown marker at the top-left corner for the unit lead.
-        _glyph(canvas, Icons.star, n.rect.topLeft + const Offset(7, 7),
-            OpsColors.domain, 11);
+        _glyph(
+          canvas,
+          Icons.star,
+          n.rect.topLeft + const Offset(7, 7),
+          OpsColors.domain,
+          11,
+        );
       }
     } else if (!isWorkspace && n.kind != OrgNodeKind.signoff) {
       canvas.drawCircle(
@@ -450,8 +479,13 @@ class OrgChartPainter extends CustomPainter {
   }
 
   /// Draw a material icon glyph centered at [center].
-  void _glyph(Canvas canvas, IconData icon, Offset center, Color color,
-      double size) {
+  void _glyph(
+    Canvas canvas,
+    IconData icon,
+    Offset center,
+    Color color,
+    double size,
+  ) {
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
@@ -470,12 +504,13 @@ class OrgChartPainter extends CustomPainter {
   void _diamond(Canvas canvas, OrgNode n) {
     final c = n.rect.center;
     final r = n.rect.width / 2;
-    final path = Path()
-      ..moveTo(c.dx, c.dy - r)
-      ..lineTo(c.dx + r, c.dy)
-      ..lineTo(c.dx, c.dy + r)
-      ..lineTo(c.dx - r, c.dy)
-      ..close();
+    final path =
+        Path()
+          ..moveTo(c.dx, c.dy - r)
+          ..lineTo(c.dx + r, c.dy)
+          ..lineTo(c.dx, c.dy + r)
+          ..lineTo(c.dx - r, c.dy)
+          ..close();
     canvas.drawPath(
       path,
       Paint()
@@ -494,13 +529,14 @@ class OrgChartPainter extends CustomPainter {
   void _label(Canvas canvas, OrgNode n, bool isWorkspace) {
     // Text inset clears the node's left marker: member icon (agent), dot
     // (step/knowledge/…), none (sign-off chip / workspace header).
-    final inset = isWorkspace
-        ? 14.0
-        : n.kind == OrgNodeKind.agent
+    final inset =
+        isWorkspace
+            ? 14.0
+            : n.kind == OrgNodeKind.agent
             ? 28.0
             : n.kind == OrgNodeKind.signoff
-                ? 12.0
-                : 22.0;
+            ? 12.0
+            : 22.0;
     final left = n.rect.left + inset;
     final maxW = n.rect.width - inset - 10;
     final title = TextPainter(
@@ -515,7 +551,8 @@ class OrgChartPainter extends CustomPainter {
       ellipsis: '…',
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: maxW);
-    final hasSub = n.sublabel != null &&
+    final hasSub =
+        n.sublabel != null &&
         (isWorkspace ||
             n.kind == OrgNodeKind.step ||
             n.kind == OrgNodeKind.agent ||
@@ -545,10 +582,11 @@ class OrgChartPainter extends CustomPainter {
   /// Side-lane elbow for the band-stacked lenses: down the parent's left
   /// margin, across into the child's left edge — never over band content.
   void _laneElbow(Canvas canvas, Rect parent, Rect child) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = OpsColors.domain.withValues(alpha: 0.7);
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = OpsColors.domain.withValues(alpha: 0.7);
     final sx = parent.left + 16;
     canvas.drawPath(
       Path()
@@ -566,12 +604,7 @@ class OrgChartPainter extends CustomPainter {
     // Staff (support) unit — same top-down drop as a line child, but drawn in
     // the muted support color to keep the staff/line distinction. The staff
     // tier sits directly below the parent, so this is a short clean elbow.
-    _drop(
-      canvas,
-      parent,
-      staff,
-      OpsColors.text2.withValues(alpha: 0.7),
-    );
+    _drop(canvas, parent, staff, OpsColors.text2.withValues(alpha: 0.7));
   }
 
   void _elbow(Canvas canvas, Rect parent, Rect child) {
@@ -584,10 +617,11 @@ class OrgChartPainter extends CustomPainter {
   /// unit has both a staff tier and a line tier, the line drop's bus clears
   /// the staff band above it. For a single tier the two are identical.
   void _drop(Canvas canvas, Rect parent, Rect child, Color color) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = color;
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = color;
     final busY = child.top - OrgChartMetrics.treeGapY / 2;
     canvas.drawPath(
       Path()
@@ -602,10 +636,11 @@ class OrgChartPainter extends CustomPainter {
   /// Reporting line — lead (unit head) down to a team member, drawn as an elbow
   /// (down from the lead's bottom, across, down into the member's top).
   void _reportLine(Canvas canvas, Rect lead, Rect member) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.3
-      ..color = OpsColors.domain.withValues(alpha: 0.6);
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3
+          ..color = OpsColors.domain.withValues(alpha: 0.6);
     final midY = (lead.bottom + member.top) / 2;
     canvas.drawPath(
       Path()
@@ -643,21 +678,18 @@ class OrgChartPainter extends CustomPainter {
   }
 
   void _dashedArrow(Canvas canvas, Offset a, Offset b, Color c) {
-    final paint = Paint()
-      ..color = c
-      ..strokeWidth = 1.3
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = c
+          ..strokeWidth = 1.3
+          ..style = PaintingStyle.stroke;
     const dash = 5.0, gap = 4.0;
     final total = (b - a).distance;
     if (total == 0) return;
     final dir = (b - a) / total;
     var d = 0.0;
     while (d < total) {
-      canvas.drawLine(
-        a + dir * d,
-        a + dir * math.min(d + dash, total),
-        paint,
-      );
+      canvas.drawLine(a + dir * d, a + dir * math.min(d + dash, total), paint);
       d += dash + gap;
     }
     _arrowHead(canvas, a, b, c);

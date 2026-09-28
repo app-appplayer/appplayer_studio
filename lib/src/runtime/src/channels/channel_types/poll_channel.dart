@@ -45,13 +45,27 @@ class PollChannel implements Channel {
 
     _isActive = true;
 
-    // Emit initial event immediately
-    _onPoll();
+    // Emit the first poll on the NEXT turn, not synchronously.
+    //
+    // The controller is a broadcast one and it is created HERE, so a caller
+    // cannot listen before `start` — `stream` answers `Stream.empty()` until
+    // then. An event emitted inside `start` therefore reached nobody: every
+    // consumer does `await start(); stream.listen(...)`, and a broadcast
+    // controller drops what it emits with no listeners. The first poll of
+    // every channel was lost, so a document refreshing on a 30-second poll
+    // waited the full interval before its first update — which reads as a
+    // slow server rather than a dropped event. Same shape as
+    // `SystemMonitorChannel`.
+    _firstPoll = Timer(Duration.zero, _onPoll);
   }
+
+  Timer? _firstPoll;
 
   @override
   Future<void> stop() async {
     _isActive = false;
+    _firstPoll?.cancel();
+    _firstPoll = null;
     _timer?.cancel();
     _timer = null;
     await _controller?.close();

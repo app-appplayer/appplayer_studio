@@ -34,8 +34,10 @@ import '../install/bundle_loading.dart';
 import '../runtime/vbu_widgets.dart' show resolveIconName;
 import 'bundle_install_surface.dart';
 import '../install/host_bundle_activation.dart';
+import '../install/preview_bundle_tools.dart';
+import '../install/studio_kb.dart';
 import '../settings/settings_dialog.dart';
-import '../shell/inspect_tag.dart';
+import '../../ui/inspect_tag.dart';
 import '../shell/package_welcome_panel.dart';
 import '../shell/project_header.dart';
 import 'chrome_bridge.dart';
@@ -151,7 +153,8 @@ class StudioWorkspace extends StatefulWidget {
     required this.chromeBridge,
     required this.configRoot,
     required this.boot,
-    required this.domainStorage,
+    this.kb,
+    this.clientHost,
     required this.onActiveContextChanged,
     required this.chatForKey,
     required this.bundleBodyBuilder,
@@ -170,10 +173,12 @@ class StudioWorkspace extends StatefulWidget {
   /// reaching back into the host.
   final mk.KernelServerHost boot;
 
-  /// Per-domain durable storage shared across every activation. Each
-  /// bundle's activation context wires its own `manifest.id` as the
-  /// namespace so domains can't see each other's state.
-  final mk.DomainStorage domainStorage;
+  /// `host.kb` wiring shared across every activation (kernel key/value
+  /// records keyed by app identity). Null → bundles get no `kb` atom.
+  final StudioKbWiring? kb;
+
+  /// The kernel's outbound MCP client host, for `kind: 'mcp'` bundle tools.
+  final mk.KernelClientHost? Function()? clientHost;
 
   /// Notified whenever the user switches tabs or opens / closes a
   /// project inside the active tab. Both args are null for the home
@@ -231,8 +236,9 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
   /// Extension-owned INSTALLED APPS tiles (see
   /// [StudioWorkspace.extensionInstalledTiles]) — refreshed together with
   /// [_entries] so install/remove state changes land in the same repaint.
-  Future<List<HomeInstalledTile>> _extTiles =
-      Future.value(const <HomeInstalledTile>[]);
+  Future<List<HomeInstalledTile>> _extTiles = Future.value(
+    const <HomeInstalledTile>[],
+  );
 
   Future<List<HomeInstalledTile>> _queryExtTiles() =>
       widget.extensionInstalledTiles?.call() ??
@@ -323,6 +329,22 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       if (i < 0 || i >= _tabs.length) return -1;
       _selectTab(i);
       return _active;
+    };
+    // Two frames: the switch builds the tabs (slot claims run in their
+    // didChangeDependencies), and post-frame work from that build settles in
+    // the next. Bounded so a window that is not producing frames cannot hang
+    // the caller.
+    widget.chromeBridge.settleTabSwitch = () async {
+      try {
+        await WidgetsBinding.instance.endOfFrame.timeout(
+          const Duration(seconds: 1),
+        );
+        await WidgetsBinding.instance.endOfFrame.timeout(
+          const Duration(seconds: 1),
+        );
+      } on TimeoutException {
+        /* no frames — proceed with whatever the slots hold */
+      }
     };
     widget.chromeBridge.closeTab = (i, {bool force = false}) {
       if (i < 0 || i >= _tabs.length) return -1;
@@ -443,11 +465,11 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
                 'currentProject': t.currentProject,
             },
         ];
-    widget.chromeBridge.newProjectInActive =
+    widget.chromeBridge.hostNewProjectInActive =
         ({required name, required parent}) =>
             _doNewProject(name: name, parent: parent);
-    widget.chromeBridge.openProjectInActive = _doOpenProject;
-    widget.chromeBridge.closeProjectInActive = _doCloseProject;
+    widget.chromeBridge.hostOpenProjectInActive = _doOpenProject;
+    widget.chromeBridge.hostCloseProjectInActive = _doCloseProject;
     widget.chromeBridge.openExtensionTab = ({
       required String key,
       required String label,
@@ -480,6 +502,13 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         'name': t.name,
       };
     };
+    widget.chromeBridge.openPreviewBundleTools =
+        (bundlePath) => PreviewBundleTools.open(
+          bundlePath: bundlePath,
+          kb: widget.kb,
+          clientHost: widget.clientHost,
+          chromeBridge: widget.chromeBridge,
+        );
     widget.chromeBridge.dispatchBundleTool = (mbdPath, toolShort, args) async {
       // Resolve the activated bundle's exposed namespace from our tab
       // model — bridges that bind tools (settings menu, future slash
@@ -515,7 +544,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
           'configRoot': widget.configRoot,
           'tabsFile': _tabsFile,
         };
-    widget.chromeBridge.activeProjectInfo = () {
+    widget.chromeBridge.hostActiveProjectInfo = () {
       final t = _tabs[_active];
       return <String, dynamic>{
         if (!t.isHome) ...<String, dynamic>{
@@ -808,6 +837,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     _installStatusTimer?.cancel();
     widget.chromeBridge.hasTabStrip.value = false;
     widget.chromeBridge.selectTab = null;
+    widget.chromeBridge.settleTabSwitch = null;
     widget.chromeBridge.closeTab = null;
     widget.chromeBridge.closeTabsByMbdPath = null;
     widget.chromeBridge.markActiveTabModified = null;
@@ -817,6 +847,9 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     widget.chromeBridge.runtimeNavigate = null;
     widget.chromeBridge.updateRuntimeState = null;
     widget.chromeBridge.listTabs = null;
+    widget.chromeBridge.hostNewProjectInActive = null;
+    widget.chromeBridge.hostOpenProjectInActive = null;
+    widget.chromeBridge.hostCloseProjectInActive = null;
     widget.chromeBridge.newProjectInActive = null;
     widget.chromeBridge.openProjectInActive = null;
     widget.chromeBridge.closeProjectInActive = null;
@@ -826,6 +859,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     widget.chromeBridge.debugRuntimes = null;
     widget.chromeBridge.debugChat = null;
     widget.chromeBridge.sendChat = null;
+    widget.chromeBridge.hostActiveProjectInfo = null;
     widget.chromeBridge.activeProjectInfo = null;
     widget.chromeBridge.debugConfig = null;
     widget.chromeBridge.openPackagePicker = null;
@@ -1769,7 +1803,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // includes the open project (`<pkg>::<project>`). Reading `t.path` alone
     // pointed at the project-less base controller (always empty), which read
     // turnCount 0 while the real conversation lived under the `::project`
-    // key (konpi's "another empty surface" — the active-tab chat identity
+    // key (an empty surface — the active-tab chat identity
     // mismatch). Report the effective coordinator (scoped override) too, as
     // `_sendChat` does, so the debug surface names the agent actually talking.
     final chatKey = t.isHome ? 'home' : _chatKeyForTab(t);
@@ -1779,8 +1813,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     return <String, dynamic>{
       'ok': true,
       'tabKey': chatKey,
-      'agentId':
-          widget.chromeBridge.chatManagerOverride.value ?? t.chatAgentId,
+      'agentId': widget.chromeBridge.chatManagerOverride.value ?? t.chatAgentId,
       'turnCount': all.length,
       'turns': <Map<String, dynamic>>[
         for (final turn in tail)
@@ -1958,8 +1991,17 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       for (final t in saved) {
         final b = readBundleAt(t.path!);
         if (b == null) {
+          // A built-in app tab points at its workspace dir, which has no
+          // manifest to activate; it is restored by the launcher path
+          // alone and works. Only a missing dir is a real loss.
+          final builtIn =
+              widget.chromeBridge.defaultChatAgentResolver?.call(t.path!) !=
+              null;
           widget.chromeBridge.recordBootEvent(
-            'tab "${t.name}" path missing or unreadable: ${t.path}',
+            builtIn
+                ? 'tab "${t.name}" is a built-in app — restored without '
+                    'bundle activation'
+                : 'tab "${t.name}" path missing or unreadable: ${t.path}',
           );
           continue;
         }
@@ -2257,8 +2299,8 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       bundle: bundle,
       exposedShortId: exposedShortId,
       chromeBridge: widget.chromeBridge,
-      knowledgeEngine: widget.bundles.knowledgeEngine,
-      domainStorage: widget.domainStorage,
+      kb: widget.kb,
+      clientHost: widget.clientHost,
       sessionBridge: widget.chromeBridge.sessionBridge,
     );
     tab.activation = ctx;
@@ -3058,7 +3100,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
                     child: ListView.separated(
                       itemCount: profiles.length,
                       separatorBuilder:
-                          (_, __) => const SizedBox(height: VbuTokens.space2),
+                          (_, _) => const SizedBox(height: VbuTokens.space2),
                       itemBuilder: (_, i) => _AgentCard(profile: profiles[i]),
                     ),
                   ),
@@ -3652,7 +3694,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     final bridge = widget.chromeBridge;
     return ValueListenableBuilder<bool>(
       valueListenable: bridge.tabBarVisible,
-      builder: (_, visible, __) {
+      builder: (_, visible, _) {
         if (visible) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3668,7 +3710,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
             ValueListenableBuilder<bool>(
               valueListenable: bridge.tabBarPeek,
               builder:
-                  (_, peek, __) => AnimatedSlide(
+                  (_, peek, _) => AnimatedSlide(
                     offset: peek ? Offset.zero : const Offset(0, -1),
                     duration: const Duration(milliseconds: 140),
                     curve: Curves.easeOutCubic,
@@ -3731,7 +3773,8 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
 
   Widget _bodyForTab(StudioTab t) {
     if (t.isHome) return _homeBody();
-    if (t.extensionBuilder != null) return Builder(builder: t.extensionBuilder!);
+    if (t.extensionBuilder != null)
+      return Builder(builder: t.extensionBuilder!);
     return _bodyForBundleUI(t);
   }
 
@@ -3768,38 +3811,38 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     List<HomeInstalledTile> extTiles,
   ) {
     final hasInstalled = list.isNotEmpty || extTiles.isNotEmpty;
-        final hasBuiltIns = widget.builtInLaunchers.isNotEmpty;
-        final Widget body =
-            (!hasInstalled && !hasBuiltIns)
-                ? PackageWelcomePanel(
-                  onInstall: _installFromPicker,
-                  onCreate: () => _createNewPackage(),
-                )
-                : _PackagePickerView(
-                  entries: list,
-                  serviceTiles: extTiles,
-                  builtInLaunchers: widget.builtInLaunchers,
-                  extensionEntries: widget.extensionEntries,
-                  onActivate: _openPackage,
-                  onUninstall: _uninstallFromPicker,
-                );
-        // Built-in apps now have their own BUILT-IN APPS card row, so
-        // the top-right always-on seed launcher icons are redundant
-        // (and visually clutter the Home view). Removed — re-entry to
-        // built-ins is via the BUILT-IN APPS tile + MCP
-        // `studio.chrome.open_seed`.
-        return Stack(
-          children: <Widget>[
-            Positioned.fill(child: body),
-            if (_installStatus != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 24,
-                child: Center(child: _StatusPill(text: _installStatus!)),
-              ),
-          ],
-        );
+    final hasBuiltIns = widget.builtInLaunchers.isNotEmpty;
+    final Widget body =
+        (!hasInstalled && !hasBuiltIns)
+            ? PackageWelcomePanel(
+              onInstall: _installFromPicker,
+              onCreate: () => _createNewPackage(),
+            )
+            : _PackagePickerView(
+              entries: list,
+              serviceTiles: extTiles,
+              builtInLaunchers: widget.builtInLaunchers,
+              extensionEntries: widget.extensionEntries,
+              onActivate: _openPackage,
+              onUninstall: _uninstallFromPicker,
+            );
+    // Built-in apps now have their own BUILT-IN APPS card row, so
+    // the top-right always-on seed launcher icons are redundant
+    // (and visually clutter the Home view). Removed — re-entry to
+    // built-ins is via the BUILT-IN APPS tile + MCP
+    // `studio.chrome.open_seed`.
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(child: body),
+        if (_installStatus != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: Center(child: _StatusPill(text: _installStatus!)),
+          ),
+      ],
+    );
   }
 
   /// Focus an existing tab for the seed identified by [namespace], or

@@ -139,9 +139,13 @@ class WebSocketChannel implements Channel {
             'timestamp': DateTime.now().toIso8601String(),
           });
         },
-        onError: (error) {
-          _controller?.addError(error);
-        },
+        // No `onError` arm: a client `WebSocket` never delivers one. Every
+        // failure it can have — a protocol violation, a reset connection, a
+        // reserved frame — is turned into a close inside the socket, so the
+        // stream ends rather than erroring, and `onDone` below is where a
+        // broken connection actually arrives. An error handler here looked
+        // like the place failures were reported and reported nothing;
+        // `disconnected` with a close code is the report.
         onDone: () {
           _isActive = false;
           _controller?.add({

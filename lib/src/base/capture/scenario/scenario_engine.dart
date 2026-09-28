@@ -301,7 +301,7 @@ class ScenarioEngine {
           encoding = await _encoder.encode(
             recording,
             outputPath: opts['outputPath']?.toString(),
-            codec: opts['codec']?.toString() ?? 'libx264',
+            codec: opts['codec']?.toString(),
             pixelFormat: opts['pixelFormat']?.toString() ?? 'yuv420p',
             crf: opts['crf'] is int ? opts['crf'] as int : null,
             audioTracks: audioTracks,

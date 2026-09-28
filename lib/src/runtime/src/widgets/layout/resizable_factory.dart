@@ -4,7 +4,7 @@ import '../../renderer/render_context.dart';
 import '../../utils/binding_path.dart';
 import '../widget_factory.dart';
 
-/// Factory for `resizable` (spec §10.29).
+/// Factory for `resizable`.
 ///
 /// Sizes one box against whatever surrounds it. `splitter` is the other shape
 /// — a fixed area divided between siblings.
@@ -18,7 +18,7 @@ class ResizableFactory extends WidgetFactory {
 
     final widthBinding = twoWayPath(properties['width']);
     final heightBinding = twoWayPath(properties['height']);
-    final handles = (context.resolve<List<dynamic>?>(properties['handles']) ??
+    final handles = (listOf(properties['handles'], context) ??
             const ['bottomEnd'])
         .map((e) => e.toString())
         .toSet();

@@ -7,7 +7,7 @@ import Foundation
 
 import audio_session
 import device_info_plus
-import ffmpeg_kit_flutter_new
+import ffmpeg_kit_flutter_new_full
 import file_picker
 import file_selector_macos
 import flutter_js

@@ -90,7 +90,7 @@ class SkillsPage extends ConsumerWidget {
                               : ListView.separated(
                                 itemCount: rows.length,
                                 separatorBuilder:
-                                    (_, __) => const Divider(height: 1),
+                                    (_, _) => const Divider(height: 1),
                                 itemBuilder: (_, i) {
                                   final s = rows[i];
                                   return ListTile(

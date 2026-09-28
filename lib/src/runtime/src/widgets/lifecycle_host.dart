@@ -8,7 +8,7 @@ import '../renderer/render_context.dart';
 import '../routing/page_activity_scope.dart';
 import '../runtime/lifecycle_runner.dart';
 
-/// Runs the **instance-level** lifecycle of a widget (§6.8.2) — the hooks a
+/// Runs the **instance-level** lifecycle of a widget — the hooks a
 /// widget declares inside its own `lifecycle: {}` object.
 ///
 /// ```json
@@ -18,7 +18,7 @@ import '../runtime/lifecycle_runner.dart';
 ///
 /// Nothing read that block before: a widget could declare hooks and the
 /// runtime would render the widget and drop them, with no error and no log.
-/// Template instances use the same wrapper (§9.9.1 — a template's own
+/// Template instances use the same wrapper (a template's own
 /// `onMount`/`onUnmount` fire once per instance), so both share this host.
 ///
 /// Wrapping is skipped entirely when a definition declares no hooks, so the
@@ -104,7 +104,7 @@ class _LifecycleHostState extends State<LifecycleHost> {
   @override
   void dispose() {
     _pageActive?.removeListener(_onPageActivityChanged);
-    // §18 makes running `onUnmount` a MUST for template instances, and a
+    // Running `onUnmount` is required for template instances, and a
     // widget that acquired something on mount has no other place to release it.
     unawaited(_runner.unmount());
     super.dispose();

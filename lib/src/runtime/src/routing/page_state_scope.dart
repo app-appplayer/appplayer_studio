@@ -112,7 +112,7 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // `onPause` / `onResume` (§1.5.1) describe a page that loses focus
+    // `onPause` / `onResume` describe a page that loses focus
     // *without* being destroyed, and a page covered by a pushed route is
     // exactly that: its element stays in the tree, so `dispose` never runs
     // and nothing else reports the change. `RouteAware` is the framework's
@@ -133,7 +133,7 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
 
   /// The route above this page was popped — this instance is visible again,
   /// and it is the *same* instance, which is what separates this from the
-  /// `onInit` a replaced page gets on its next visit (§6.8.3).
+  /// `onInit` a replaced page gets on its next visit.
   @override
   void didPopNext() {
     _active.value = true;
@@ -143,7 +143,7 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
   /// Seeds page state and channels, then runs the page's own lifecycle.
   ///
   /// The routed page used to run `onEnter` and `onMount` and nothing else — so
-  /// a page written the way §6.8.1 shows it (subscribe in `onReady`, release
+  /// a page written the documented way (subscribe in `onReady`, release
   /// in `onDestroy`) initialized its state and then sat there, while the very
   /// same document streamed correctly when embedded. Hook order now comes from
   /// [LifecycleRunner], the same one every other mount site uses.
@@ -158,8 +158,8 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
       });
     }
 
-    // Register channels declared at page scope (spec §4.13 +
-    // §Channel Lifecycle). autoDispose channels are torn down in [dispose].
+    // Register channels declared at page scope.
+    // autoDispose channels are torn down in [dispose].
     final channels = widget.pageDefinition.channels;
     if (channels != null && channels.isNotEmpty) {
       widget.runtimeEngine.channelManager.initializeChannels(channels);
@@ -208,8 +208,8 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
   void dispose() {
     NavigationService.instance.routeObserver.unsubscribe(this);
     _active.dispose();
-    // The runner fires onUnmount → onDestroy (§6.8.3). `onPause` is not part
-    // of it: this page is being destroyed, and §1.5.1 defines that hook as
+    // The runner fires onUnmount → onDestroy. `onPause` is not part
+    // of it: this page is being destroyed, and that hook is defined as
     // losing focus *without* being destroyed. It is not
     // awaited: dispose cannot be async, and a hook that releases a
     // subscription must still be given the chance to run.

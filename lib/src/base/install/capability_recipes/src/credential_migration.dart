@@ -14,7 +14,7 @@
 /// vault I/O only.
 library;
 
-import 'package:appplayer_secure/appplayer_secure.dart'
+import 'package:appplayer_secure_core/appplayer_secure_core.dart'
     show PassphraseSealer, SecureStorage;
 
 import 'secret_example.dart' show defaultCredentialNamespace;

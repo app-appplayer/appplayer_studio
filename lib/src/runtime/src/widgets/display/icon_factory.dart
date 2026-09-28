@@ -7,7 +7,7 @@ import '../../renderer/render_context.dart';
 import '../../utils/icon_resolver.dart';
 import '../widget_factory.dart';
 
-/// Factory for Icon widgets (spec §2.5).
+/// Factory for Icon widgets.
 ///
 /// Three supported input shapes for the `icon` property:
 ///
@@ -88,9 +88,9 @@ class IconWidgetFactory extends WidgetFactory {
     Color? color,
     RenderContext context,
   ) {
-    // §2.5.4 / IconRef — a bare string carrying no known scheme is a *name*,
+    // IconRef — a bare string carrying no known scheme is a *name*,
     // which keeps the named form the zero-ceremony default. Anything that
-    // parses as a real asset form goes through the one resolver (§6.12), so
+    // parses as a real asset form goes through the one resolver, so
     // an icon may now be a bundle SVG, an inline data URI, or a host resource
     // rather than only an http(s) URL.
     final ref = value is String ? AssetRef.parse(value) : null;
@@ -99,7 +99,7 @@ class IconWidgetFactory extends WidgetFactory {
       // (`assets/icons/heart.svg`), and `data:image/svg+xml` is named in
       // `IconRef` itself. It is drawn by a picture widget and tinted through
       // a colour filter, which is what makes `color` apply to it the way
-      // §2.5 says it does for the named and codepoint forms.
+      // it does for the named and codepoint forms.
       if (AssetResolver.isVector(ref)) {
         final vector = context.assetResolver.vectorWidgetFor(
           ref,

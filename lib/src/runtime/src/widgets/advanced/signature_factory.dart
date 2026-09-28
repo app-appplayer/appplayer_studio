@@ -3,8 +3,10 @@
 /// Provides a signature pad for capturing handwritten signatures.
 library signature_factory;
 
-import 'dart:ui' as ui;
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -25,16 +27,13 @@ class SignatureWidgetFactory extends WidgetFactory {
     // on-surface text color so a dark-mode signature reads against the
     // dark surface; background falls back to the `surface` slot.
     final penColor = parseColor(properties['penColor'], context) ??
-        context.themeManager.getColorValue('onSurface') ??
-        Colors.black;
+        context.themeManager.colorOr('onSurface', Colors.black);
     final penWidth = (dimensionOf(properties['penWidth'], context))?.toDouble() ?? 2.0;
     final backgroundColor =
         parseColor(properties['backgroundColor'], context) ??
-            context.themeManager.getColorValue('surface') ??
-            Colors.white;
+            context.themeManager.colorOr('surface', Colors.white);
     final borderColor = parseColor(properties['borderColor'], context) ??
-        context.themeManager.getColorValue('outlineVariant') ??
-        Colors.grey.shade300;
+        context.themeManager.colorOr('outlineVariant', Colors.grey.shade300);
     final borderWidth = (numberOf(properties['borderWidth'], context))?.toDouble() ?? 1.0;
 
     // Options
@@ -142,12 +141,37 @@ class _SignaturePadState extends State<_SignaturePad> {
       }
     });
 
-    _updateBinding();
+    unawaited(_publish());
+  }
+
+  /// Encodes what was drawn and hands it to the document.
+  ///
+  /// The binding is documented to hold "base64 PNG or SVG path", and its own
+  /// `onSignatureEnd` example writes `{{event.value}}`. Neither existed: the
+  /// binding received an internal stroke dump no consumer can render or
+  /// submit as an image, the event carried no `value` at all — so the spec's
+  /// own example stored NULL — and `toImage`, which produces exactly the PNG
+  /// the spec describes, was never called from anywhere.
+  ///
+  /// The encode is asynchronous, so this runs after the stroke rather than
+  /// inside the gesture callback. The stroke coordinates stay reachable on
+  /// the event for a document that wants the vector rather than the picture.
+  Future<void> _publish() async {
+    final png = await toImage();
+    if (!mounted) return;
+    final value =
+        png == null ? null : 'data:image/png;base64,${base64Encode(png)}';
+
+    if (widget.stateBinding != null) {
+      widget.context.setValue(widget.stateBinding!, value);
+    }
 
     if (widget.onSignatureEnd != null) {
       final eventContext = widget.context.createChildContext(
         variables: {
           'event': {
+            'value': value,
+            'strokes': _serializeStrokes()['strokes'],
             'strokeCount': _strokes.length,
             'hasSignature': _hasSignature,
           }
@@ -176,11 +200,7 @@ class _SignaturePadState extends State<_SignaturePad> {
 
   void _updateBinding() {
     if (widget.stateBinding != null) {
-      // Update state with signature data
-      widget.context.setValue(
-        widget.stateBinding!,
-        _hasSignature ? _serializeStrokes() : null,
-      );
+      widget.context.setValue(widget.stateBinding!, null);
     }
   }
 
@@ -240,13 +260,12 @@ class _SignaturePadState extends State<_SignaturePad> {
     final tm = widget.context.themeManager;
     final scheme = Theme.of(context).colorScheme;
     final clearBg =
-        tm.getColorValue('secondaryContainer') ?? scheme.secondaryContainer;
-    final clearFg = tm.getColorValue('onSecondaryContainer') ??
-        scheme.onSecondaryContainer;
+        tm.colorOr('secondaryContainer', scheme.secondaryContainer);
+    final clearFg = tm.colorOr('onSecondaryContainer', scheme.onSecondaryContainer);
     final guideColor =
-        tm.getColorValue('outlineVariant') ?? scheme.outlineVariant;
+        tm.colorOr('outlineVariant', scheme.outlineVariant);
     final placeholderColor =
-        tm.getColorValue('onSurfaceVariant') ?? scheme.onSurfaceVariant;
+        tm.colorOr('onSurfaceVariant', scheme.onSurfaceVariant);
 
     return Container(
       decoration: BoxDecoration(

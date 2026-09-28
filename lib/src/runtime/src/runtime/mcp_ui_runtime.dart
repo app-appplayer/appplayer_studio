@@ -465,7 +465,7 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
   @override
   void didChangePlatformBrightness() {
     super.didChangePlatformBrightness();
-    // Spec §5.2 — `system` mode must track host brightness without a
+    // `system` mode must track host brightness without a
     // shell re-render. Forward the platform event to the ThemeManager.
     widget.engine.themeManager.notifyBrightnessChanged();
   }
@@ -510,6 +510,9 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 theme: widget.engine.themeManager.currentTheme,
                 initialRoute: widget.engine.routeManager!.initialRoute,
                 routes: widget.engine.routeManager!.generateRoutes(context),
+                // Parameterised routes (`/users/:id`) are pushed with the
+                // parameter filled in, which matches no key in `routes`.
+                onGenerateRoute: widget.engine.routeManager!.onGenerateRoute,
               );
             } else {
               // Build simple routing without navigation wrapper
@@ -525,6 +528,9 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 theme: widget.engine.themeManager.currentTheme,
                 initialRoute: widget.engine.routeManager!.initialRoute,
                 routes: widget.engine.routeManager!.generateRoutes(context),
+                // Parameterised routes (`/users/:id`) are pushed with the
+                // parameter filled in, which matches no key in `routes`.
+                onGenerateRoute: widget.engine.routeManager!.onGenerateRoute,
               );
             }
           } else {

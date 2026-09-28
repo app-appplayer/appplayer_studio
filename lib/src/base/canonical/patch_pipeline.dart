@@ -38,7 +38,11 @@ class PatchPipelineImpl implements PatchPipeline {
         afterHash: '',
       );
     }
-    final issues = _validator.dryRun(_canonical.current, patch);
+    final issues = issuesIntroducedByPatch(
+      validator: _validator,
+      beforeJson: _canonical.currentJson,
+      patch: patch,
+    );
     final errors = issues
         .where((i) => i.severity == ValidationSeverity.error)
         .toList(growable: false);

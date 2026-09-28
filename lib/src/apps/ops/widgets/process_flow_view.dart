@@ -57,8 +57,8 @@ class ProcessFlowView extends StatelessWidget {
 /// gate the run is waiting on is marked [PipelineState.gate] (awaiting
 /// approval).
 List<PipelineStep> stepsForProcess(proc.Process p) {
-  // Determine progression from the latest run if any. Without run data,
-  // default to step 0 = running, rest = pending.
+  // Determine progression from the latest run if any. Without run data
+  // every step is pending — nothing is in progress before a run exists.
   final latestRun = p.runs.isNotEmpty ? p.runs.last : null;
   final isWaitingApproval =
       latestRun?.state == proc.ProcessRunState.waitingApproval;
@@ -89,10 +89,10 @@ List<PipelineStep> stepsForProcess(proc.Process p) {
     if (i < completedCount) {
       state = PipelineState.done;
     } else if (i == completedCount && !isWaitingApproval) {
-      state =
-          latestRun == null
-              ? (i == 0 ? PipelineState.running : PipelineState.pending)
-              : PipelineState.running;
+      // No run yet means nothing is in progress: every step is queued until
+      // a run exists. Marking the first step "in progress" on a freshly saved
+      // process showed work that had not started.
+      state = latestRun == null ? PipelineState.pending : PipelineState.running;
     } else {
       state = PipelineState.pending;
     }

@@ -109,6 +109,7 @@ class SchemaValidator {
       final t = p.type.toLowerCase();
       return !t.contains('widget');
     }
+
     for (final k in const <String>['content', 'child']) {
       if (governedBySpec(k)) continue;
       final v = node[k];
@@ -131,7 +132,8 @@ class SchemaValidator {
           'path': '/children',
           'expected': 'a list of widget nodes',
           'actual': kids.runtimeType.toString(),
-          'message': '`children` holds several child widgets, so it must be '
+          'message':
+              '`children` holds several child widgets, so it must be '
               'a list.',
           'suggestion': 'Wrap it: {"children": [{"type": "...", ...}]}.',
         });
@@ -179,8 +181,10 @@ class SchemaValidator {
     };
     for (final p in spec.properties) {
       if (p.isElementPath) continue;
-      final spelling =
-          p.spellings.firstWhere(providedKeys.contains, orElse: () => '');
+      final spelling = p.spellings.firstWhere(
+        providedKeys.contains,
+        orElse: () => '',
+      );
       final present = spelling.isNotEmpty;
       final value = present ? node[spelling] : null;
       if (p.required && !present) {
@@ -389,7 +393,8 @@ class SchemaValidator {
               'path': '/$name',
               'expected': 'a list',
               'actual': value.runtimeType.toString(),
-              'message': '`$name` must be a list — `${sub.key}` describes its '
+              'message':
+                  '`$name` must be a list — `${sub.key}` describes its '
                   'entries.',
               'suggestion': 'Wrap the entries: {"$name": [ … ]}.',
             };
@@ -498,9 +503,11 @@ class SchemaValidator {
           'code': 'primitiveOutOfRange',
           'expected': prim!.expectation,
           'actual': value,
-          'message': '`${prop.key}` is a ${prim.name}: "$value" is not one of '
+          'message':
+              '`${prop.key}` is a ${prim.name}: "$value" is not one of '
               'the forms it accepts.',
-          'suggestion': 'See `configs/_primitive/${prim.name}.yaml` for the '
+          'suggestion':
+              'See `configs/_primitive/${prim.name}.yaml` for the '
               'accepted spellings.',
         };
       }
@@ -525,9 +532,11 @@ class SchemaValidator {
     'code': 'missingRequired',
     'expected': '$shape with `$key`',
     'actual': item,
-    'message': '`${prop.key}` holds a $shape that is missing required '
+    'message':
+        '`${prop.key}` holds a $shape that is missing required '
         'property `$key`.',
-    'suggestion': 'Every $shape must declare `$key`; a misspelled key is kept '
+    'suggestion':
+        'Every $shape must declare `$key`; a misspelled key is kept '
         'as an extra rather than read, so the entry ends up without one.',
   };
 
@@ -597,5 +606,6 @@ class SchemaValidator {
     final inner = t.substring(open + 1, t.length - 1).trim();
     return inner.isEmpty || inner == 'Widget';
   }
+
   bool _isActionType(String t) => t == 'Action' || t.startsWith('Action<');
 }

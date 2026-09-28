@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../widget_factory.dart';
 import '../../renderer/render_context.dart';
 
-/// `colorPicker` (spec §2.6.18).
+/// `colorPicker`.
 ///
 /// Four of its properties — `showAlpha`, `showLabel`, `pickerType`,
 /// `enableHistory` — used to be read into variables and dropped behind an
@@ -67,8 +67,7 @@ class ColorPickerFactory extends WidgetFactory {
     final currentValue =
         binding != null ? context.resolve("{{$binding}}") : properties['value'];
     final currentColor = parseColor(currentValue, context) ??
-        context.themeManager.getColorValue('primary') ??
-        Colors.blue;
+        context.themeManager.colorOr('primary', Colors.blue);
 
     final historyKey = binding ?? '#anonymous';
 
@@ -97,10 +96,8 @@ class ColorPickerFactory extends WidgetFactory {
             color: color,
             border: Border.all(
               color: selected
-                  ? (context.themeManager.getColorValue('onSurface') ??
-                      Colors.black)
-                  : (context.themeManager.getColorValue('outlineVariant') ??
-                      Colors.grey[300]!),
+                  ? (context.themeManager.colorOr('onSurface', Colors.black))
+                  : (context.themeManager.colorOr('outlineVariant', Colors.grey[300]!)),
               width: selected ? 3 : 1,
             ),
             borderRadius: BorderRadius.circular(4),

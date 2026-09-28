@@ -38,7 +38,7 @@ class RegisteredPlugin {
 
 class PluginHost {
   PluginHost(this._registry, {KernelClientHost? clientHost})
-      : _clientHost = clientHost;
+    : _clientHost = clientHost;
 
   final HostToolRegistry _registry;
   final KernelClientHost? _clientHost;

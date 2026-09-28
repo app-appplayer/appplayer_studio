@@ -40,10 +40,7 @@ class ProcessBoard extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           children: [
             for (final p in processes)
-              _Swimlane(
-                process: p,
-                runs: runsByProcess[p.id] ?? const [],
-              ),
+              _Swimlane(process: p, runs: runsByProcess[p.id] ?? const []),
           ],
         );
       },
@@ -59,16 +56,13 @@ class _Swimlane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final doneStates = {
-      ProcessRunState.completed,
-      ProcessRunState.cancelled,
-    };
+    final doneStates = {ProcessRunState.completed, ProcessRunState.cancelled};
     List<ProcessRun> at(String stepId) => [
-          for (final r in runs)
-            if (!doneStates.contains(r.state) &&
-                placedBoardColumnFor(r, process) == stepId)
-              r,
-        ];
+      for (final r in runs)
+        if (!doneStates.contains(r.state) &&
+            placedBoardColumnFor(r, process) == stepId)
+          r,
+    ];
     final done = [
       for (final r in runs)
         if (doneStates.contains(r.state)) r,
@@ -173,10 +167,7 @@ class _StepColumn extends StatelessWidget {
           if (runs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(
-                '—',
-                style: TextStyle(color: OpsColors.textMute),
-              ),
+              child: Text('—', style: TextStyle(color: OpsColors.textMute)),
             ),
           for (final r in runs) _RunCard(run: r),
         ],
@@ -194,9 +185,9 @@ class _RunCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (color, label) = switch (run.state) {
       ProcessRunState.waitingApproval => (
-          OpsColors.warn,
-          '⏳ ${run.pendingApproval?.approverId ?? 'approval'}',
-        ),
+        OpsColors.warn,
+        '⏳ ${run.pendingApproval?.approverId ?? 'approval'}',
+      ),
       ProcessRunState.blocked => (OpsColors.app, 'blocked'),
       ProcessRunState.completed => (OpsColors.textMute, 'completed'),
       ProcessRunState.cancelled => (OpsColors.textMute, 'cancelled'),

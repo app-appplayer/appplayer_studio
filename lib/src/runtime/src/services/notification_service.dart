@@ -17,6 +17,18 @@ class NotificationService extends RuntimeService {
   final Map<String, NotificationChannel> _channels = {};
   final Map<String, VoidCallback> _actionHandlers = {};
 
+  /// Distinguishes notifications raised within the same millisecond.
+  ///
+  /// The convenience helpers below used to key off
+  /// `DateTime.now().millisecondsSinceEpoch` alone, so two of them raised in
+  /// one tick — an error and the warning explaining it, a batch reporting each
+  /// item — produced the SAME id, and the manager kept only the last. The user
+  /// saw one message and the other was gone with nothing said.
+  int _sequence = 0;
+
+  String _generatedId() =>
+      '${DateTime.now().millisecondsSinceEpoch}-${_sequence++}';
+
   /// Gets the notification manager
   NotificationManager get manager => _manager;
 
@@ -175,7 +187,7 @@ class NotificationService extends RuntimeService {
   /// Shows a simple info notification
   Future<void> showInfo(String message, {String? title}) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _generatedId(),
       title: title ?? 'Information',
       body: message,
       type: NotificationType.inApp,
@@ -186,7 +198,7 @@ class NotificationService extends RuntimeService {
   /// Shows a success notification
   Future<void> showSuccess(String message, {String? title}) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _generatedId(),
       title: title ?? 'Success',
       body: message,
       type: NotificationType.inApp,
@@ -197,7 +209,7 @@ class NotificationService extends RuntimeService {
   /// Shows an error notification
   Future<void> showError(String message, {String? title}) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _generatedId(),
       title: title ?? 'Error',
       body: message,
       type: NotificationType.inApp,
@@ -208,7 +220,7 @@ class NotificationService extends RuntimeService {
   /// Shows a warning notification
   Future<void> showWarning(String message, {String? title}) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _generatedId(),
       title: title ?? 'Warning',
       body: message,
       type: NotificationType.inApp,

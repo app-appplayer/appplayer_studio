@@ -69,6 +69,12 @@ class TransformWidgetFactory extends WidgetFactory {
 
   Offset _resolveTranslate(RenderContext context, dynamic value) {
     if (value == null) return Offset.zero;
+    // Resolved first, the way `scale` next to it already does. Without this a
+    // BOUND translate — `"translate": "{{offset}}"`, which is how an animated
+    // position is written — arrived as the binding string, matched no branch,
+    // and came back as zero: the widget rendered exactly where it started and
+    // nothing said the binding had been read at all.
+    value = context.resolve(value);
     if (value is Map) {
       final x = _toDouble(context.resolve(value['x']));
       final y = _toDouble(context.resolve(value['y']));

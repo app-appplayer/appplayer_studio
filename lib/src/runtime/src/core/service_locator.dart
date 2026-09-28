@@ -24,6 +24,33 @@ class ServiceLocator {
     _logger.debug('Registered service: $T');
   }
 
+  /// Register [service] under a Type known only at run time.
+  ///
+  /// `register<T>` takes its key from the STATIC type of its argument, which
+  /// is right at a call site that names the service and wrong wherever the
+  /// type travels as data — a plugin's `Map<Type, Service>`, for one. There
+  /// every entry registered under `Service` itself: the first plugin's
+  /// service answered every lookup, the second overwrote it, and
+  /// `get<MyService>()` found neither.
+  void registerByType(Type type, Object service, {List<Type>? dependencies}) {
+    _services[type] = service;
+    if (dependencies != null) {
+      _dependencies[type] = dependencies;
+    }
+    _logger.debug('Registered service: $type');
+  }
+
+  /// Remove a service registered under a run-time [Type].
+  ///
+  /// The counterpart of [registerByType]; `unregister<T>()` with no type
+  /// argument infers `dynamic` and removes nothing.
+  void unregisterByType(Type type) {
+    _services.remove(type);
+    _factories.remove(type);
+    _dependencies.remove(type);
+    _logger.debug('Unregistered service: $type');
+  }
+
   /// Register a lazy singleton service
   void registerLazy<T>(T Function() factory, {List<Type>? dependencies}) {
     _factories[T] = factory;
@@ -69,7 +96,17 @@ class ServiceLocator {
     // Service not found
     if (optional) {
       _logger.warning('Optional service not found: $T');
-      return null as T;
+      // `null as T` throws under sound null safety for every non-nullable T,
+      // which is every type a caller actually writes — so the degrade path
+      // raised a `type 'Null' is not a subtype of T` cast error instead of
+      // answering null, and no caller could handle it. An optional lookup has
+      // to be made with a nullable type argument; anything else is asking for
+      // a value that cannot represent absence.
+      if (null is T) return null as T;
+      throw ServiceNotFoundException(
+          'Service not found: $T. An optional lookup must name a nullable '
+          'type — get<$T?>(optional: true) — because $T cannot hold the '
+          'absent case.');
     }
 
     throw ServiceNotFoundException('Service not found: $T');

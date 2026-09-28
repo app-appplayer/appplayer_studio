@@ -5,7 +5,7 @@ import '../../renderer/render_context.dart';
 import '../widget_factory.dart';
 import 'qr_encoder.dart';
 
-/// Factory for `qrCode` (spec §10.23).
+/// Factory for `qrCode`.
 class QrCodeFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
@@ -32,7 +32,7 @@ class QrCodeFactory extends WidgetFactory {
     }
 
     // Contrast below this cannot be read reliably by a scanner, so the widget
-    // refuses rather than emitting an unreadable code (spec §10.23).
+    // refuses rather than emitting an unreadable code.
     if (_contrast(fg, bg) < 3.0) {
       return _unrenderable(size, 'QR contrast too low to scan');
     }
@@ -83,7 +83,7 @@ class QrCodeFactory extends WidgetFactory {
 
   static QrErrorCorrection _ecFrom(String? value) {
     switch (value) {
-      // Canonical (§17.1.3 lower case).
+      // Canonical (lower case).
       case 'low':
         return QrErrorCorrection.l;
       case 'quartile':
@@ -93,7 +93,7 @@ class QrCodeFactory extends WidgetFactory {
       case 'medium':
         return QrErrorCorrection.m;
       // The QR standard's own single letters — kept as legacy aliases, not
-      // part of the canonical surface (§17.3).
+      // part of the canonical surface.
       case 'L':
         return QrErrorCorrection.l;
       case 'Q':

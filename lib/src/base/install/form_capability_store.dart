@@ -67,9 +67,10 @@ class KernelFormTemplateFactStore implements FormTemplateFactStore {
   Future<void> append(FormTemplateRecord record) async {
     if (_nextSeq == null) {
       final existing = await _queryAll();
-      _nextSeq = existing.isEmpty
-          ? 0
-          : existing.map(_seqOf).reduce((a, b) => a > b ? a : b) + 1;
+      _nextSeq =
+          existing.isEmpty
+              ? 0
+              : existing.map(_seqOf).reduce((a, b) => a > b ? a : b) + 1;
     }
     final seq = _nextSeq!;
     _nextSeq = seq + 1;

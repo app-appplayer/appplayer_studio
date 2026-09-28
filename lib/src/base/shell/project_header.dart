@@ -588,7 +588,9 @@ class _IconButtonState extends State<_IconButton> {
             ? c.mint
             : (_hovered ? c.textPrimary : c.textSecondary);
     return Tooltip(
-      message: enabled ? widget.tooltip : '',
+      // Disabled buttons explain themselves too ("Nothing to undo",
+      // "Save (no changes)") — the tooltips carry that state.
+      message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 150),
       preferBelow: false,
       verticalOffset: 18,

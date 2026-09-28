@@ -31,7 +31,7 @@ void main() {
               'icon': 'export',
             },
           ],
-          onFire: (_, __) async {},
+          onFire: (_, _) async {},
         ),
       ),
     );
@@ -78,7 +78,7 @@ void main() {
               'category': 'cloud',
             },
           ],
-          onFire: (_, __) async {},
+          onFire: (_, _) async {},
         ),
       ),
     );
@@ -90,7 +90,7 @@ void main() {
       _wrap(
         WiringSettingsList(
           entries: const <Map<String, dynamic>>[],
-          onFire: (_, __) async {},
+          onFire: (_, _) async {},
         ),
       ),
     );

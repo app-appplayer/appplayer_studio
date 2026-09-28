@@ -12,12 +12,12 @@ library;
 
 /// `flutter_mcp_ui_runtime` — the runtime the emitted Flutter apps
 /// (native_bundle / native_inline) load.
-const String kTemplateFlutterMcpUiRuntime = '^0.7.0';
+const String kTemplateFlutterMcpUiRuntime = '^0.8.1';
 
 /// `mcp_server` — the MCP server core the emitted serving apps
 /// (bundle / inline) and Flutter apps host.
-const String kTemplateMcpServer = '^2.1.2';
+const String kTemplateMcpServer = '^2.2.3';
 
 /// `mcp_bundle` — the .mbd bundle format library the bundle-backed variants
 /// read at runtime.
-const String kTemplateMcpBundle = '^0.4.8';
+const String kTemplateMcpBundle = '^0.4.10';

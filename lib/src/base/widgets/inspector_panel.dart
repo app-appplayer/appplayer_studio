@@ -190,8 +190,7 @@ class _InspectorPanelState extends State<InspectorPanel> {
     // marketplace shell and never converts to a Dart/Flutter artifact,
     // so it gets exactly one card; conversely app projects never boot
     // the serving shell, so the server card is absent from their strip.
-    final isServerProject =
-        projectKindNameOf(projectPath) == 'cloudServerApp';
+    final isServerProject = projectKindNameOf(projectPath) == 'cloudServerApp';
     final present = <_DiscoveredVariant>[];
     final absent = <_VariantSpec>[];
     for (final spec in _variants) {

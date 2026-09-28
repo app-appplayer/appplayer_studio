@@ -136,9 +136,13 @@ class WorkspaceLoader {
     for (final sub in const ['skills', 'profiles', 'philosophies']) {
       final dir = Directory('$wsRoot/$sub');
       if (!dir.existsSync()) continue;
-      final files = dir.listSync().whereType<File>().where(
-        (f) => f.path.endsWith('.yaml'),
-      ).toList()..sort((a, b) => a.path.compareTo(b.path));
+      final files =
+          dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => f.path.endsWith('.yaml'))
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
       for (final f in files) {
         String body;
         try {
@@ -297,7 +301,7 @@ class WorkspaceLoader {
       OpsLog.boot(
         'wsload',
         'agents mirrored=$mirrored · 4-axis forks=$forks · '
-        'fork-skip=$forkSkipped',
+            'fork-skip=$forkSkipped',
       );
     }
   }
@@ -348,10 +352,7 @@ class WorkspaceLoader {
     if (!phil.isAvailable) return const <String>[];
     final out = <String>[];
     final seen = <String>{};
-    final chain = <String>[
-      wsId,
-      ...await registries.workspace.ancestors(wsId),
-    ];
+    final chain = <String>[wsId, ...await registries.workspace.ancestors(wsId)];
     for (final id in chain) {
       // Active context must load charter only for LIVE workspaces. An archived
       // (deactivated-but-retained) ancestor's charter must NOT leak into a live

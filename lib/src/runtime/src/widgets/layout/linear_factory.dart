@@ -9,7 +9,7 @@ class LinearLayoutFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Get direction. Canonical `direction`; spec §17.3.2 legacy aliases:
+    // Get direction. Canonical `direction`; legacy aliases:
     // `orientation` (static-layout authors) and `scrollDirection` (authors
     // coming from Flutter's Row/Column wrapped in scroll views).
     final direction = context.resolve<String>(properties['direction'] ??
@@ -29,7 +29,7 @@ class LinearLayoutFactory extends WidgetFactory {
         'start';
 
     // Get spacing. Canonical `spacing`; legacy aliases `gap` and
-    // `itemSpacing` per §17.3.2.
+    // `itemSpacing`.
     final gapValue = context.resolve(properties['spacing'] ??
             properties['gap'] ??
             properties['itemSpacing']) ??

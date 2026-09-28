@@ -9,15 +9,15 @@ class SliderWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // Canonical `value`; §17.3.2 legacy alias `values` (single-value case).
+    // Canonical `value`; legacy alias `values` (single-value case).
     final resolvedValue = context
         .resolve<num?>(properties['value'] ?? properties['values']);
 
-    // §2.6.0 — `binding` is two-way: the runtime READS the current value from
+    // `binding` is two-way: the runtime READS the current value from
     // the path as well as writing input back to it. Only the write half was
     // wired, so a slider declared with the shorthand sat at its minimum while
     // the state it was bound to held something else, in every release since
-    // 0.5.1. Precedence per §2.6.0: an explicit `value` + `onChange` pair wins,
+    // 0.5.1. Precedence: an explicit `value` + `onChange` pair wins,
     // which is how an author opts out for debounced or side-effecting flows.
     final bindingPath = stringOf(properties['binding'], context);
     final hasExplicitPair =

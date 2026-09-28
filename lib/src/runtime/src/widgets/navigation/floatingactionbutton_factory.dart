@@ -31,7 +31,7 @@ class FloatingActionButtonWidgetFactory extends WidgetFactory {
     final autofocus = boolOf(properties['autofocus'], context) ?? false;
     final materialTapTargetSize =
         _parseMaterialTapTargetSize(properties['materialTapTargetSize']);
-    // §2.8.7 documents `label` as "Extended FAB label" and declares no
+    // `label` is documented as "Extended FAB label" and declares no
     // `isExtended` at all: a document that supplies a label is asking for the
     // extended form. Requiring an undeclared flag on top meant the label was
     // accepted, validated, and never drawn. `isExtended` still wins when set,

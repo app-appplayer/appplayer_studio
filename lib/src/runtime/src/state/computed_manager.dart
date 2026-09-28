@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../state/state_manager.dart';
 import '../binding/binding_engine.dart';
@@ -104,9 +103,16 @@ class Watcher {
   }
 
   bool _deepEquals(dynamic a, dynamic b) {
-    if (a == b) return true;
-    if (a.runtimeType != b.runtimeType) return false;
+    if (identical(a, b)) return true;
 
+    // Structure first, runtime type never.
+    //
+    // The baseline this compares against is a CLONE, and cloning re-types:
+    // `{'a': 1}` is a `Map<String, int>` and its clone a
+    // `Map<String, dynamic>`; `[1, 2]` is a `List<int>` and its clone a
+    // `List<dynamic>`. A runtimeType check rejected every one of those before
+    // looking at the contents, so a `deep` watcher fired on every write of an
+    // unchanged collection — the exact thing deep watching exists to prevent.
     if (a is Map && b is Map) {
       if (a.length != b.length) return false;
       for (final key in a.keys) {
@@ -125,7 +131,8 @@ class Watcher {
       return true;
     }
 
-    return false;
+    // Scalars, and a collection compared against something that is not one.
+    return a == b;
   }
 
   dynamic _cloneValue(dynamic value) {
@@ -145,7 +152,6 @@ class ComputedManager {
   final Map<String, List<Watcher>> _watchers = {};
   final StateManager _stateManager;
   final BindingEngine _bindingEngine;
-  final Map<String, StreamSubscription> _subscriptions = {};
 
   /// Every listener this manager installed on the shared [StateManager].
   /// Kept so [dispose] can take them off again: clearing our own maps left
@@ -253,10 +259,6 @@ class ComputedManager {
 
   /// Dispose of all resources
   void dispose() {
-    for (final subscription in _subscriptions.values) {
-      subscription.cancel();
-    }
-    _subscriptions.clear();
     for (final listener in _stateListeners) {
       _stateManager.removeListener(listener);
     }

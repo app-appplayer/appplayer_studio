@@ -40,9 +40,8 @@ Future<void> showOrgNodeDetail(
         return;
       }
       // Strip the sign-off "✓ " prefix from the display name.
-      final name = node.label.startsWith('✓ ')
-          ? node.label.substring(2)
-          : node.label;
+      final name =
+          node.label.startsWith('✓ ') ? node.label.substring(2) : node.label;
       await showAgentDetailDialog(
         context,
         ref,
@@ -70,47 +69,60 @@ Future<void> showOrgNodeDetail(
 Future<void> _showCardDialog(BuildContext context, Widget body) {
   return showDialog<void>(
     context: context,
-    builder: (ctx) => Dialog(
-      backgroundColor: OpsColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: OpsRadius.all_md),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(padding: const EdgeInsets.all(OpsSpace.s8), child: body),
-      ),
-    ),
+    builder:
+        (ctx) => Dialog(
+          backgroundColor: OpsColors.surface,
+          shape: const RoundedRectangleBorder(borderRadius: OpsRadius.all_md),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: const EdgeInsets.all(OpsSpace.s8),
+              child: body,
+            ),
+          ),
+        ),
   );
 }
 
-Widget _workspaceDetail(OrgNode node, OrgChartModel model, KnowledgeInit? init) {
+Widget _workspaceDetail(
+  OrgNode node,
+  OrgChartModel model,
+  KnowledgeInit? init,
+) {
   final wsId = node.wsId;
   // Distinct participants = every assignee/approver in the lanes + roster.
-  final participants = model.nodes
-      .where(
-        (n) =>
-            n.wsId == wsId &&
-            (n.kind == OrgNodeKind.step ||
-                n.kind == OrgNodeKind.signoff ||
-                n.kind == OrgNodeKind.agent) &&
-            (n.agentId?.isNotEmpty ?? false),
-      )
-      .map((n) => n.agentId!)
-      .toSet();
-  final processes = model.nodes
-      .where((n) => n.kind == OrgNodeKind.process && n.wsId == wsId)
-      .map((n) => n.label)
-      .toList();
-  final gates = model.nodes
-      .where((n) => n.kind == OrgNodeKind.gate && n.wsId == wsId)
-      .length;
+  final participants =
+      model.nodes
+          .where(
+            (n) =>
+                n.wsId == wsId &&
+                (n.kind == OrgNodeKind.step ||
+                    n.kind == OrgNodeKind.signoff ||
+                    n.kind == OrgNodeKind.agent) &&
+                (n.agentId?.isNotEmpty ?? false),
+          )
+          .map((n) => n.agentId!)
+          .toSet();
+  final processes =
+      model.nodes
+          .where((n) => n.kind == OrgNodeKind.process && n.wsId == wsId)
+          .map((n) => n.label)
+          .toList();
+  final gates =
+      model.nodes
+          .where((n) => n.kind == OrgNodeKind.gate && n.wsId == wsId)
+          .length;
   // Parent / children from hierarchy edges.
-  final parent = model.edges
-      .where((e) => e.kind == OrgEdgeKind.hierarchy && e.toId == node.id)
-      .map((e) => e.fromId.replaceFirst('ws:', ''))
-      .join();
-  final children = model.edges
-      .where((e) => e.kind == OrgEdgeKind.hierarchy && e.fromId == node.id)
-      .map((e) => e.toId.replaceFirst('ws:', ''))
-      .toList();
+  final parent =
+      model.edges
+          .where((e) => e.kind == OrgEdgeKind.hierarchy && e.toId == node.id)
+          .map((e) => e.fromId.replaceFirst('ws:', ''))
+          .join();
+  final children =
+      model.edges
+          .where((e) => e.kind == OrgEdgeKind.hierarchy && e.fromId == node.id)
+          .map((e) => e.toId.replaceFirst('ws:', ''))
+          .toList();
 
   return Column(
     mainAxisSize: MainAxisSize.min,
@@ -137,8 +149,12 @@ Widget _workspaceDetail(OrgNode node, OrgChartModel model, KnowledgeInit? init) 
       _kv('type', node.sublabel?.split(' · ').first ?? '—'),
       _kv('parent', parent.isEmpty ? '— (top)' : parent),
       _kv('children', children.isEmpty ? '—' : children.join(', ')),
-      _kv('processes',
-          processes.isEmpty ? '0' : '${processes.length} · ${processes.join(', ')}'),
+      _kv(
+        'processes',
+        processes.isEmpty
+            ? '0'
+            : '${processes.length} · ${processes.join(', ')}',
+      ),
       _kv('participants', '${participants.length}'),
       _kv('gates', '$gates'),
       if (init != null) _CharterSection(init: init, wsId: wsId),
@@ -151,26 +167,31 @@ Widget _workspaceDetail(OrgNode node, OrgChartModel model, KnowledgeInit? init) 
 /// any event chaining (this process triggers / is triggered by another).
 Widget _processDetail(OrgNode node, OrgChartModel model) {
   final pid = node.processId;
-  final steps = model.nodes
-      .where((n) => n.kind == OrgNodeKind.step && n.processId == pid)
-      .length;
-  final signoffs = model.nodes
-      .where((n) => n.kind == OrgNodeKind.signoff && n.processId == pid)
-      .map((n) => n.label.startsWith('✓ ') ? n.label.substring(2) : n.label)
-      .toList();
-  final gates = model.nodes
-      .where((n) => n.kind == OrgNodeKind.gate && n.processId == pid)
-      .map((n) => n.label)
-      .toList();
+  final steps =
+      model.nodes
+          .where((n) => n.kind == OrgNodeKind.step && n.processId == pid)
+          .length;
+  final signoffs =
+      model.nodes
+          .where((n) => n.kind == OrgNodeKind.signoff && n.processId == pid)
+          .map((n) => n.label.startsWith('✓ ') ? n.label.substring(2) : n.label)
+          .toList();
+  final gates =
+      model.nodes
+          .where((n) => n.kind == OrgNodeKind.gate && n.processId == pid)
+          .map((n) => n.label)
+          .toList();
   // Event chaining via process→process edges.
-  final triggeredBy = model.edges
-      .where((e) => e.kind == OrgEdgeKind.event && e.toId == node.id)
-      .map((e) => e.fromId.replaceFirst(RegExp(r'^pc:[^:]*:'), ''))
-      .toList();
-  final triggers = model.edges
-      .where((e) => e.kind == OrgEdgeKind.event && e.fromId == node.id)
-      .map((e) => e.toId.replaceFirst(RegExp(r'^pc:[^:]*:'), ''))
-      .toList();
+  final triggeredBy =
+      model.edges
+          .where((e) => e.kind == OrgEdgeKind.event && e.toId == node.id)
+          .map((e) => e.fromId.replaceFirst(RegExp(r'^pc:[^:]*:'), ''))
+          .toList();
+  final triggers =
+      model.edges
+          .where((e) => e.kind == OrgEdgeKind.event && e.fromId == node.id)
+          .map((e) => e.toId.replaceFirst(RegExp(r'^pc:[^:]*:'), ''))
+          .toList();
 
   return Column(
     mainAxisSize: MainAxisSize.min,
@@ -198,7 +219,10 @@ Widget _processDetail(OrgNode node, OrgChartModel model) {
       _kv('steps', '$steps'),
       _kv('sign-offs', signoffs.isEmpty ? '—' : signoffs.join(', ')),
       _kv('charter gates', gates.isEmpty ? '—' : gates.join(', ')),
-      _kv('triggered by', triggeredBy.isEmpty ? '— (entry point)' : triggeredBy.join(', ')),
+      _kv(
+        'triggered by',
+        triggeredBy.isEmpty ? '— (entry point)' : triggeredBy.join(', '),
+      ),
       _kv('triggers', triggers.isEmpty ? '—' : triggers.join(', ')),
     ],
   );
@@ -207,15 +231,18 @@ Widget _processDetail(OrgNode node, OrgChartModel model) {
 /// Knowledge node detail — the axis + which members reference it (resolved
 /// from ownership edges in the model).
 Widget _knowledgeDetail(OrgNode node, OrgChartModel model) {
-  final owners = model.edges
-      .where((e) => e.kind == OrgEdgeKind.ownership && e.toId == node.id)
-      .map((e) => model.nodes
-          .firstWhere((n) => n.id == e.fromId,
-              orElse: () => node)
-          .label)
-      .toSet()
-      .toList()
-    ..sort();
+  final owners =
+      model.edges
+          .where((e) => e.kind == OrgEdgeKind.ownership && e.toId == node.id)
+          .map(
+            (e) =>
+                model.nodes
+                    .firstWhere((n) => n.id == e.fromId, orElse: () => node)
+                    .label,
+          )
+          .toSet()
+          .toList()
+        ..sort();
   return Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,8 +258,10 @@ Widget _knowledgeDetail(OrgNode node, OrgChartModel model) {
       const SizedBox(height: OpsSpace.s5),
       _kv('axis', node.sublabel ?? '—'),
       _kv('workspace', node.wsId),
-      _kv('referenced by',
-          owners.isEmpty ? '—' : '${owners.length} · ${owners.join(', ')}'),
+      _kv(
+        'referenced by',
+        owners.isEmpty ? '—' : '${owners.length} · ${owners.join(', ')}',
+      ),
     ],
   );
 }
@@ -249,8 +278,11 @@ class _LessonsLine extends StatelessWidget {
     return FutureBuilder<int>(
       future: () async {
         try {
-          final facts = await init.registries.knowledge
-              .graphFactsForWorkspace(wsId, category: 'org_lesson', limit: 500);
+          final facts = await init.registries.knowledge.graphFactsForWorkspace(
+            wsId,
+            category: 'org_lesson',
+            limit: 500,
+          );
           return facts.length;
         } catch (_) {
           return 0;
@@ -297,8 +329,8 @@ class _CharterSection extends StatelessWidget {
         if (ch == null) {
           return _kv('charter', '— (set via workspace_set_charter)');
         }
-        final prohibitions = (ch['prohibitions'] as List?)?.cast<String>() ??
-            const <String>[];
+        final prohibitions =
+            (ch['prohibitions'] as List?)?.cast<String>() ?? const <String>[];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -1,6 +1,6 @@
 /// In-app video editing primitives — trim & concat of EXISTING video
 /// files (imported clips or prior recordings), on top of
-/// `ffmpeg_kit_flutter_new`. This is the editing LOGIC (host primitive);
+/// `ffmpeg_kit_flutter_new_full`. This is the editing LOGIC (host primitive);
 /// the Scene Builder builtin only wires to it through `studio.video.*`
 /// MCP tools (builtin = UI + wiring, no logic).
 ///
@@ -11,10 +11,13 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_full/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
 import 'package:path/path.dart' as p;
+
+import 'ffmpeg_kit_setup.dart';
+import 'h264_encoder.dart';
 
 /// Result of a trim / concat op.
 class VideoEditResult {
@@ -46,14 +49,18 @@ String buildTrimCommand({
   required double startSec,
   double? endSec,
   required String output,
-  String codec = 'libx264',
+  String? codec,
   String pixelFormat = 'yuv420p',
   int? crf,
 }) {
-  final crfArg = crf == null ? '' : '-crf $crf ';
+  final video = h264VideoArgs(
+    crf: crf,
+    encoder: codec,
+    pixelFormat: pixelFormat,
+  );
   final to = endSec == null ? '' : '-to ${endSec.toStringAsFixed(3)} ';
   return '-y -i "$input" -ss ${startSec.toStringAsFixed(3)} $to'
-      '-c:v $codec -pix_fmt $pixelFormat $crfArg-c:a aac "$output"';
+      '$video -c:a aac "$output"';
 }
 
 /// Pure — the concat-demuxer list-file body for [inputs] (absolute paths,
@@ -65,7 +72,7 @@ String buildConcatListFile(List<String> inputs) =>
 /// Pure — ffmpeg concat (demuxer) command. [listPath] is a file written
 /// from [buildConcatListFile]. Stream-copy — clips must share
 /// codec/resolution/fps (true for studio recordings and clips trimmed to
-/// the canonical libx264/yuv420p above; mixed-spec imports need a
+/// the canonical H.264/yuv420p above; mixed-spec imports need a
 /// normalize pass first).
 String buildConcatCommand({required String listPath, required String output}) =>
     '-y -f concat -safe 0 -i "$listPath" -c copy "$output"';
@@ -86,9 +93,13 @@ String buildConvertCommand({
   final scale = width == null ? '' : ',scale=$width:-1:flags=lanczos';
   switch (format) {
     case 'webm':
-      // VP9 + Opus. crf with -b:v 0 = constant-quality.
+      // VP9 + Opus. crf with -b:v 0 = constant-quality. yuv420p pins VP9
+      // profile 0 in YUV — left to negotiate, a source without a colour
+      // matrix (studio recordings, captured from RGB frames) comes out tagged
+      // RGB, which profile 0 cannot carry and browsers refuse to decode.
       final q = crf == null ? '' : '-crf $crf -b:v 0 ';
-      return '-y -i "$input" -c:v libvpx-vp9 $q-c:a libopus "$output"';
+      return '-y -i "$input" -c:v libvpx-vp9 -pix_fmt yuv420p $q'
+          '-c:a libopus "$output"';
     case 'gif':
       // Palette pass (palettegen/paletteuse) for clean colors.
       final f = fps ?? 15;
@@ -102,9 +113,7 @@ String buildConvertCommand({
           '-c:v libwebp -loop 0 -q:v 70 "$output"';
     case 'mp4':
     default:
-      final q = crf == null ? '' : '-crf $crf ';
-      return '-y -i "$input" -c:v libx264 -pix_fmt yuv420p $q-c:a aac '
-          '"$output"';
+      return '-y -i "$input" ${h264VideoArgs(crf: crf)} -c:a aac "$output"';
   }
 }
 
@@ -165,8 +174,7 @@ String buildZoomCommand({
   final vf =
       "crop=w='$cw':h='$ch':x='$cx':y='$cy',"
       'scale=$width:$height:flags=bicubic,setsar=1';
-  return '-y -i "$input" -vf "$vf" -c:v libx264 -pix_fmt yuv420p '
-      '-c:a copy "$output"';
+  return '-y -i "$input" -vf "$vf" ${h264VideoArgs()} -c:a copy "$output"';
 }
 
 class VideoEditService {
@@ -276,6 +284,7 @@ class VideoEditService {
 
   /// Duration of [input] in seconds (null if unprobeable).
   Future<double?> probeDuration(String input) async {
+    await prepareFfmpegKit();
     final session = await FFprobeKit.getMediaInformation(input);
     final d = session.getMediaInformation()?.getDuration();
     return d == null ? null : double.tryParse(d);
@@ -284,6 +293,7 @@ class VideoEditService {
   /// Pixel dimensions `(width, height)` of [input]'s first video stream
   /// (null if unprobeable).
   Future<(int, int)?> probeSize(String input) async {
+    await prepareFfmpegKit();
     final session = await FFprobeKit.getMediaInformation(input);
     final streams = session.getMediaInformation()?.getStreams();
     if (streams == null) return null;
@@ -308,6 +318,7 @@ class VideoEditService {
     _busy = true;
     final completer = Completer<VideoEditResult>();
     try {
+      await prepareFfmpegKit();
       await FFmpegKit.executeAsync(cmd, (session) async {
         final code = await session.getReturnCode();
         _busy = false;

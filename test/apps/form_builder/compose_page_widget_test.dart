@@ -1,6 +1,7 @@
-import 'dart:convert' show base64Decode, jsonDecode;
+import 'dart:convert' show base64Decode, jsonDecode, jsonEncode;
 import 'dart:io';
 
+import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -97,6 +98,46 @@ void main() {
     expect(find.text('Default item'), findsWidgets);
   });
 
+  testWidgets(
+    'a stored template whose sections do not parse shows the reason',
+    (tester) async {
+      // A template saved before the capability checked template shape: the
+      // real `get_template` answer with one block's index broken.
+      final real = await h.server.callTool('form.get_template', {
+        'templateId': 'harness-quote',
+      });
+      final body =
+          jsonDecode((real.content.first as mk.KernelTextContent).text)
+              as Map<String, dynamic>;
+      final tpl = (body['template'] as Map).cast<String, dynamic>();
+      final block =
+          (((tpl['defaultSections'] as List).first as Map)['blocks'] as List)
+                  .first
+              as Map;
+      block['index'] = 'zero';
+      h.server.removeTool('form.get_template');
+      h.server.addTool(
+        name: 'form.get_template',
+        description: 'legacy template',
+        inputSchema: const <String, dynamic>{'type': 'object'},
+        handler:
+            (_) async => mk.KernelToolResult(
+              content: <mk.KernelContent>[
+                mk.KernelTextContent(text: jsonEncode(body)),
+              ],
+            ),
+      );
+
+      await pumpPage(tester);
+      await pickHarnessTemplate(tester);
+      expect(tester.takeException(), isNull);
+      expect(
+        find.textContaining('This template cannot be shown:'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('typing into a field re-renders the sheet', (tester) async {
     await pumpPage(tester);
     await pickHarnessTemplate(tester);
@@ -127,13 +168,15 @@ void main() {
     expect(find.text('Added item'), findsWidgets); // editor + sheet
     // Remove row 2 (its close icon).
     await tester.tap(
-      find.descendant(
-        of: find.ancestor(
-          of: find.text('row 2'),
-          matching: find.byType(Container),
-        ),
-        matching: find.byIcon(Icons.close),
-      ).first,
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('row 2'),
+              matching: find.byType(Container),
+            ),
+            matching: find.byIcon(Icons.close),
+          )
+          .first,
     );
     await tester.pump();
     expect(find.text('row 2'), findsNothing);
@@ -169,14 +212,10 @@ void main() {
     await settle(tester, 12);
     final drafts = await tester.runAsync(() => h.init.listDrafts());
     expect(drafts, hasLength(1));
-    final doc =
-        (drafts!.first['document'] as Map).cast<String, dynamic>();
+    final doc = (drafts!.first['document'] as Map).cast<String, dynamic>();
     expect(doc['data']?['recipient'], 'Hanul Precision');
     final tables = (doc['tables'] as Map).cast<String, dynamic>();
-    expect(
-      ((tables['items'] as List).first as Map)['name'],
-      'Draft item',
-    );
+    expect(((tables['items'] as List).first as Map)['name'], 'Draft item');
     // Fresh page → load the draft from the list → editors restored.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
@@ -206,7 +245,9 @@ void main() {
     // The issue pipeline renders the chosen media + the record to disk —
     // give the real IO time.
     await settleUntil(
-        tester, () => find.textContaining('Issued').evaluate().isNotEmpty);
+      tester,
+      () => find.textContaining('Issued').evaluate().isNotEmpty,
+    );
     expect(find.textContaining('Issued'), findsOneWidget);
     final issues = await tester.runAsync(() => h.init.listIssues());
     expect(issues, hasLength(1));
@@ -217,28 +258,21 @@ void main() {
     );
     expect(
       files,
-      containsAll(
-        [
-          'document.pdf',
-          'document.html',
-          'document.png',
-          'document.formdoc.json',
-        ],
-      ),
+      containsAll([
+        'document.pdf',
+        'document.html',
+        'document.png',
+        'document.formdoc.json',
+      ]),
     );
     expect(files, isNot(contains('document.md')));
     // The image artifact is a real PNG raster.
     final pngHead = await tester.runAsync(
-      () async => (await File('${dir.path}/document.png').open())
-          .read(8),
+      () async => (await File('${dir.path}/document.png').open()).read(8),
     );
-    expect(
-      pngHead,
-      [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
-    );
+    expect(pngHead, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
     // The frozen data is the typed value.
-    final content =
-        (issues.first['content'] as Map).cast<String, dynamic>();
+    final content = (issues.first['content'] as Map).cast<String, dynamic>();
     expect(content['data']?['recipient'], 'Issue target');
   });
 
@@ -249,10 +283,12 @@ void main() {
       // Template with a PLACED image (the styles the uiDsl freeze loses).
       final tpl = harnessTemplate(id: 'placed-quote');
       final img = File('${h.projectRoot.path}/stamp.png');
-      img.writeAsBytesSync(base64Decode(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
-        'AAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-      ));
+      img.writeAsBytesSync(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+          'AAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        ),
+      );
       ((tpl['defaultSections'] as List).first['blocks'] as List).add({
         'blockId': 'seal',
         'type': 'image',
@@ -278,8 +314,21 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Issue'));
-      await settle(tester, 60);
-      final issues = await tester.runAsync(() => h.init.listIssues());
+      // Wait until the issue is recorded and its snapshot written — not a
+      // fixed number of frames.
+      List<Map<String, dynamic>>? issues;
+      for (var i = 0; i < 200; i++) {
+        await settle(tester, 1);
+        issues = await tester.runAsync(() => h.init.listIssues());
+        if (issues != null && issues.isNotEmpty) {
+          final n = issues.first['issueNumber'];
+          if (File(
+            '${h.projectRoot.path}/forms/$n/document.formdoc.json',
+          ).existsSync()) {
+            break;
+          }
+        }
+      }
       final number = issues!.first['issueNumber'] as String;
       final dir = '${h.projectRoot.path}/forms/$number';
       // 0) default selection = pdf only; the RECORD is still frozen and
@@ -289,19 +338,20 @@ void main() {
       // 1) typed snapshot exists and keeps the image's placement + size.
       final snap = await tester.runAsync(() async {
         return jsonDecode(
-          await File('$dir/document.formdoc.json').readAsString(),
-        ) as Map;
+              await File('$dir/document.formdoc.json').readAsString(),
+            )
+            as Map;
       });
-      final blocks = ((snap!['sections'] as List).first
-          as Map)['blocks'] as List;
-      final seal =
-          blocks.cast<Map>().firstWhere((b) => b['blockId'] == 'seal');
+      final blocks =
+          ((snap!['sections'] as List).first as Map)['blocks'] as List;
+      final seal = blocks.cast<Map>().firstWhere((b) => b['blockId'] == 'seal');
       expect(seal['maxWidth'], 90);
       expect(seal['style']?['placement']?['anchor'], 'bottom-left');
       // 2) table rows are the PATCHED (composed) content, not the template
       // example.
-      final items =
-          blocks.cast<Map>().firstWhere((b) => b['blockId'] == 'items');
+      final items = blocks.cast<Map>().firstWhere(
+        (b) => b['blockId'] == 'items',
+      );
       expect(
         ((items['rows'] as List).first as Map)['cells']?['name'],
         'Patched item',

@@ -305,11 +305,15 @@ void main() {
           outDir: outDir,
         );
         final readme = await File(p.join(outDir, 'README.md')).readAsString();
-        expect(readme, contains('--no-tree-shake-icons'),
-            reason: '${target.name} README must carry the flag');
         expect(
-          RegExp(r'flutter build [^\n]*\n').allMatches(readme).where(
-              (m) => !m.group(0)!.contains('--no-tree-shake-icons')),
+          readme,
+          contains('--no-tree-shake-icons'),
+          reason: '${target.name} README must carry the flag',
+        );
+        expect(
+          RegExp(r'flutter build [^\n]*\n')
+              .allMatches(readme)
+              .where((m) => !m.group(0)!.contains('--no-tree-shake-icons')),
           isEmpty,
           reason: '${target.name}: every `flutter build` line needs the flag',
         );
@@ -416,6 +420,26 @@ void main() {
       final pubspec = await File(p.join(outDir, 'pubspec.yaml')).readAsString();
       // nativeInline has no Flutter assets block (UI is baked in).
       expect(pubspec, isNot(contains('assets:')));
+    });
+
+    test('README states the transport the app actually starts with', () async {
+      final converter = DartConverterImpl();
+      final outDir = p.join(tmp.path, 'dc13c_natinline');
+      await converter.run(
+        canonical: _bundle(),
+        target: DartTarget.nativeInline,
+        outDir: outDir,
+      );
+      final setup =
+          await File(
+            p.join(outDir, 'lib', 'mcp_server_setup.dart'),
+          ).readAsString();
+      final readme = await File(p.join(outDir, 'README.md')).readAsString();
+      // The emitted default is stdio; the README must not promise HTTP.
+      expect(setup, contains('_defaultTransportKind = _TransportKind.stdio'));
+      expect(readme, contains('stdio by default'));
+      expect(readme, contains('--http'));
+      expect(readme, isNot(contains('8080 by default')));
     });
   });
 

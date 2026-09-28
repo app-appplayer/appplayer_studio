@@ -6,20 +6,38 @@ import '../capability_absent.dart';
 import '../widget_factory.dart';
 import 'platform/pdf_view.dart';
 
-/// Factory for `pdfViewer` (spec §10.25).
+/// Test seams for the platform split.
+///
+/// `platform/pdf_view.dart` resolves to a stub anywhere but a browser, so off
+/// the web this factory could only ever take its "no renderer here" branch.
+/// What sits below that branch is not browser code: which source forms are
+/// displayable at all, and the open-parameter fragment — the
+/// page the reader lands on, the zoom, whether the toolbar is there. None of
+/// it was verified on any platform.
+@visibleForTesting
+bool? debugPdfSupported;
+
+@visibleForTesting
+Widget Function({
+  required String source,
+  required double? height,
+  Key? key,
+})? debugBuildPdfView;
+
+/// Factory for `pdfViewer`.
 ///
 /// `src` is an `AssetRef`, so the same document works from a bundle, a URL, a
 /// picked file (`fileInput` writes a `data:` URI), or a server resource.
 ///
 /// Where the platform has no PDF renderer, this reports rather than rendering
-/// a blank box — the §6.12.4 rule applied to a widget: a host that cannot
+/// a blank box — the unresolvable-asset rule applied to a widget: a host that cannot
 /// serve a form says so, and `onError` fires so the document can respond.
 class PdfViewerFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    // §6.13 — PDF rendering is a platform power. With a host surface wired this draws
+    // PDF rendering is a platform power. With a host surface wired this draws
     // the real thing; without one it reports the absence rather than drawing
     // something that looks like a rendered document.
     final surface = context.capabilities.pdfBuilder;
@@ -74,7 +92,7 @@ class PdfViewerFactory extends WidgetFactory {
       );
     }
 
-    if (!pdfViewSupported) {
+    if (!(debugPdfSupported ?? pdfViewSupported)) {
       return _Unavailable(
         height: height,
         message: 'PDF viewing is not available on this platform',
@@ -100,7 +118,7 @@ class PdfViewerFactory extends WidgetFactory {
       );
     }
 
-    return buildPdfView(
+    return (debugBuildPdfView ?? buildPdfView)(
       source: _withOpenParameters(
         source,
         page: page,

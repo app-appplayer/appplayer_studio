@@ -25,6 +25,7 @@ import '../install/domain_servers/domain_server_manager.dart';
 import '../servers/connect_server_dialog.dart'
     show ConnectServerRequest, DiscoveredServer;
 import '../shell/project_header.dart';
+import '../install/preview_bundle_tools.dart';
 
 /// Snapshot of the active domain's chrome-relevant lifecycle flags.
 /// Bound to [ChromeBridge.lifecycleState] so the host's project
@@ -40,6 +41,7 @@ class DomainLifecycleState {
     required this.canRedo,
     required this.canCompareChannels,
     this.projectName,
+    this.recentProjects = const <String>[],
   });
 
   const DomainLifecycleState.empty()
@@ -48,7 +50,8 @@ class DomainLifecycleState {
       canUndo = false,
       canRedo = false,
       canCompareChannels = false,
-      projectName = null;
+      projectName = null,
+      recentProjects = const <String>[];
 
   /// Reserved snapshot for the Home tab — no project, but the header
   /// shows 'Home' as the label so the row reads as the launcher view
@@ -62,7 +65,8 @@ class DomainLifecycleState {
       canUndo = false,
       canRedo = false,
       canCompareChannels = false,
-      projectName = 'Home';
+      projectName = 'Home',
+      recentProjects = const <String>[];
 
   final bool hasProject;
   final bool dirty;
@@ -70,6 +74,10 @@ class DomainLifecycleState {
   final bool canRedo;
   final bool canCompareChannels;
   final String? projectName;
+
+  /// The domain's own recently opened projects, newest first — the project
+  /// header's recent menu. Empty for a domain that keeps no such list.
+  final List<String> recentProjects;
 }
 
 /// Returned by [ChromeBridge.closeTab] when the tab raised a confirmation
@@ -94,6 +102,12 @@ class ChromeBridge {
   /// clicking the gear icon in `ProjectHeader` / activity bar. Returns
   /// after the dialog is dismissed (Save or Cancel).
   Future<void> Function()? openSettings;
+
+  /// Apply a theme mode (`system` · `light` · `dark`) the way a Settings
+  /// save does — persisted, reported to the host, and the chrome flips
+  /// without a restart. Used when the theme arrives from the account.
+  /// Installed by `StandardStudioShell`; null before it mounts.
+  void Function(String themeMode)? applyThemeMode;
 
   /// Open the chat-history dialog (Studio · Package · Project tabs).
   /// Same code path as the user clicking the history icon. Returns
@@ -141,6 +155,14 @@ class ChromeBridge {
   /// widget; MCP tools call into this for the same code path the user
   /// triggers by clicking a tab pill.
   int Function(int index)? selectTab;
+
+  /// Completes once a tab switch just requested has been built — the
+  /// frame in which the tabs claim and release their project slots
+  /// ([openProjectInActive], [activeProjectInfo], …). A caller that switches
+  /// tabs and then uses a slot awaits this first, or it reaches the tab it
+  /// just left. Wired by the host's centre widget; null = nothing to wait
+  /// for.
+  Future<void> Function()? settleTabSwitch;
 
   /// Close a tab by index. Returns the resulting active index, or -1
   /// when the index is out of range / refers to the home tab (which
@@ -222,6 +244,32 @@ class ChromeBridge {
   /// active tab's project.
   Future<void> Function()? openProjectDialog;
 
+  // Project slots. A built-in tab installs its own handler while it is the
+  // active tab and clears the slot (sets null) when it deactivates; clearing
+  // falls back to the host's handler ([hostNewProjectInActive] …), so a tab
+  // that has no handler of its own still reaches the host's — never nothing.
+
+  /// Host handler behind [newProjectInActive] when no tab has its own.
+  Future<Map<String, dynamic>> Function({
+    required String name,
+    required String parent,
+  })?
+  hostNewProjectInActive;
+
+  /// Host handler behind [openProjectInActive] when no tab has its own.
+  Future<Map<String, dynamic>> Function(String path)? hostOpenProjectInActive;
+
+  /// Host handler behind [closeProjectInActive] when no tab has its own.
+  Map<String, dynamic> Function()? hostCloseProjectInActive;
+
+  Future<Map<String, dynamic>> Function({
+    required String name,
+    required String parent,
+  })?
+  _newProjectInActive;
+  Future<Map<String, dynamic>> Function(String path)? _openProjectInActive;
+  Map<String, dynamic> Function()? _closeProjectInActive;
+
   /// Set the active tab's project to a freshly-created directory at
   /// `<parent>/<name>`. Returns `{ok: true, projectPath}` or
   /// `{ok: false, error}`.
@@ -229,10 +277,21 @@ class ChromeBridge {
     required String name,
     required String parent,
   })?
-  newProjectInActive;
+  get newProjectInActive => _newProjectInActive ?? hostNewProjectInActive;
+  set newProjectInActive(
+    Future<Map<String, dynamic>> Function({
+      required String name,
+      required String parent,
+    })?
+    fn,
+  ) => _newProjectInActive = fn;
 
   /// Set the active tab's project to an existing directory.
-  Future<Map<String, dynamic>> Function(String path)? openProjectInActive;
+  Future<Map<String, dynamic>> Function(String path)? get openProjectInActive =>
+      _openProjectInActive ?? hostOpenProjectInActive;
+  set openProjectInActive(
+    Future<Map<String, dynamic>> Function(String path)? fn,
+  ) => _openProjectInActive = fn;
 
   /// Run a `/slash` command inside the active built-in tab's own
   /// dispatcher. The host chat panel routes `/cmd` input here so the
@@ -243,7 +302,10 @@ class ChromeBridge {
   Future<String?> Function(String input)? runSlashCommandInActive;
 
   /// Drop the active tab's project (return to State B welcome).
-  Map<String, dynamic> Function()? closeProjectInActive;
+  Map<String, dynamic> Function()? get closeProjectInActive =>
+      _closeProjectInActive ?? hostCloseProjectInActive;
+  set closeProjectInActive(Map<String, dynamic> Function()? fn) =>
+      _closeProjectInActive = fn;
 
   /// Sync the active tab's bound project into the host's tab model and
   /// re-key the chat panel to it. Built-in apps that own their own project
@@ -384,10 +446,31 @@ class ChromeBridge {
   )?
   dispatchBundleTool;
 
+  /// Activate the bundle at `bundlePath` for an authoring preview and hand
+  /// back its tool runner — the preview's `tool` actions run the bundle's own
+  /// tools (same `kb` wiring and client host as a tab) on a preview-only
+  /// server, not the host's public tool list. The caller disposes the handle
+  /// when the preview's bundle or refresh changes. Mounted by the host's
+  /// centre widget; null when no centre is attached.
+  Future<PreviewBundleTools> Function(String bundlePath)?
+  openPreviewBundleTools;
+
+  /// Host reader behind [activeProjectInfo] when the active tab has none —
+  /// reports the host tab model's `currentProject`. Mounted by the host's
+  /// centre widget.
+  Map<String, dynamic> Function()? hostActiveProjectInfo;
+  Map<String, dynamic> Function()? _activeProjectInfo;
+
   /// Snapshot of the active tab's project context — `{packageName,
   /// packagePath, projectPath, projectName}`. Returns null fields when
-  /// no project is active. Mounted by the host's centre widget.
-  Map<String, dynamic> Function()? activeProjectInfo;
+  /// no project is active. A built-in that tracks its own project claims
+  /// this while active and releases it (compare with `==`: a method
+  /// tear-off is equal to, not identical with, the one stored) when it
+  /// deactivates; the host reader answers otherwise.
+  Map<String, dynamic> Function()? get activeProjectInfo =>
+      _activeProjectInfo ?? hostActiveProjectInfo;
+  set activeProjectInfo(Map<String, dynamic> Function()? fn) =>
+      _activeProjectInfo = fn;
 
   /// Pool of every MCP server instance the studio process owns,
   /// keyed by URL. The system server is the always-alive entry;
@@ -464,7 +547,7 @@ class ChromeBridge {
   /// both renders and persists in the right chat even though
   /// `AgentHost.askAgent` wrote only the kernel conversation (the agent's
   /// working memory), not the studio transcript the panel renders — the
-  /// render-surface gap konpi caught (durable in conv, invisible in the
+  /// render-surface gap (durable in conv, invisible in the
   /// open window). Returns true if a matching studio chat took the turn
   /// (false = headless / no chat bound). Wired by the workspace.
   bool Function(String agentId, ChatTurn turn)? deliverAgentChatTurn;

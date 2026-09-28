@@ -26,15 +26,22 @@ import 'package:brain_kernel/mcp_host.dart' as mh;
 import 'package:appplayer_studio/workspace.dart';
 import 'package:appplayer_studio/src/base/agent/agent_invoke_queue.dart';
 import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
+import 'package:appplayer_studio/src/base/install/studio_kb.dart';
 import 'package:appplayer_studio/src/base/install/provisioning_capability.dart'
     show registerProvisioningCapability;
 import 'package:appplayer_studio/src/base/install/plugin_install.dart';
+import 'package:appplayer_studio/src/main/host_identity.dart';
+import 'package:appplayer_studio/src/base/builder/offscreen_dsl_renderer.dart';
+import 'package:appplayer_studio/src/base/main/studio_navigator.dart'
+    show studioRootNavigatorKey;
 import 'package:appplayer_studio/src/base/shell/plugins_panel.dart';
 import 'package:appplayer_studio/src/base/install/secret_vault_install.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_store.dart';
 import 'package:appplayer_studio/src/base/servers/local_server_manager.dart';
 import 'package:appplayer_studio/src/base/servers/reconnect_signals.dart'
     show bindStudioReachabilitySignals;
+import 'package:appplayer_studio/src/base/install/tool_call_guard.dart'
+    show FailureFlaggingServerHost;
 import 'package:appplayer_studio/src/base/servers/composition_seam.dart'
     show StudioCompositionSeam, kernelToolCallFrom;
 import 'package:appplayer_studio/src/base/servers/connect_server_dialog.dart'
@@ -63,7 +70,34 @@ class StudioExtensionContext {
     required this.registerInstalledTiles,
     required this.refreshHome,
     this.themeReinjectTick,
+    this.registerKbAppIdOf,
+    this.bindAccountStorage,
   });
+
+  /// Bind the account this tier is signed in to, or null when signed out
+  /// (platform spec 20). Calling it at all — null included — declares that
+  /// this tier has an account, which adds the account sync rows to Settings.
+  ///
+  /// Signing in is not having somewhere to store: `hasStorage` asks whether
+  /// the account has the plan that opens storage, and `planName` is what the
+  /// settings rows call it. Which plan that is belongs to the tier. Without a
+  /// plan nothing is stored or shared; with one, taste and bundle `kb`
+  /// records follow the device's sync switch. Null on a host with no account
+  /// seam.
+  final void Function(
+    AccountStorage? storage, {
+    Future<bool> Function()? hasStorage,
+    String? planName,
+  })?
+  bindAccountStorage;
+
+  /// Register how the host names an installed bundle's app for `host.kb`
+  /// (platform 20 §2.1.2): given the bundle's install directory, answer
+  /// `listing:<listingId>` when the extension installed it from a marketplace
+  /// listing, or null to keep `bundle:<manifest.id>`. The last registration
+  /// wins. Null on a host that keys every bundle by its manifest id.
+  final void Function(String? Function(String bundleDirectory) appIdOf)?
+  registerKbAppIdOf;
 
   /// Kernel server host — register MCP tools (`boot.addTool`).
   final mk.KernelServerHost boot;
@@ -214,7 +248,148 @@ class VibeStudioHostApp extends StudioApp {
   /// namespace (== `manifest.id`) and stores its state (recents /
   /// pins / preferences / caches) under it. Lifecycle is process-long
   /// — the JSON-file adapter is durable across restarts.
-  mk.DomainStorage? _domainStorage;
+  StudioKbWiring? _kbWiring;
+
+  /// The account's `kb` records while this device syncs (forwarded from
+  /// [_accountSync]); handed to [StudioKbWiring] so an activation reads it.
+  final ValueNotifier<mk.KbAccountRecords?> _accountKb =
+      ValueNotifier<mk.KbAccountRecords?>(null);
+
+  /// Account join/part — made once the shell has a config root; null on a
+  /// host whose tier never declared an account.
+  StudioAccountSync? _accountSync;
+
+  /// What the extension last bound, kept until [_accountSync] exists.
+  AccountStorage? _boundAccount;
+  Future<bool> Function()? _boundHasStorage;
+  String? _boundPlanName;
+
+  /// Whether an extension declared an account (see
+  /// [StudioExtensionContext.bindAccountStorage]).
+  bool _accountCapable = false;
+
+  /// The chrome theme mode, kept current from the settings the shell is built
+  /// with — what account sync pushes.
+  final ValueNotifier<String> _themeModeNotifier = ValueNotifier<String>(
+    'dark',
+  );
+
+  void _bindAccount(
+    AccountStorage? storage, {
+    Future<bool> Function()? hasStorage,
+    String? planName,
+  }) {
+    _accountCapable = true;
+    _boundAccount = storage;
+    _boundHasStorage = hasStorage;
+    _boundPlanName = planName;
+    final sync = _accountSync;
+    if (sync != null) {
+      unawaited(sync.bind(storage, hasStorage: hasStorage, planName: planName));
+    }
+  }
+
+  void _ensureAccountSync(StudioBackbone backbone) {
+    if (!_accountCapable || _accountSync != null) return;
+    final prefs = AccountSyncPrefs.loadOrCreate(backbone.configRoot);
+    final sync = StudioAccountSync(
+      deviceId: prefs.deviceId,
+      syncEnabled: prefs.syncEnabled,
+      themeMode: _themeModeNotifier,
+      applyThemeMode: (mode) => _chromeBridge.applyThemeMode?.call(mode),
+      persistSyncEnabled: prefs.setSyncEnabled,
+      onError:
+          (op, error, _) => stderr.writeln('account sync $op failed: $error'),
+    );
+    sync.kbAccount.addListener(() => _accountKb.value = sync.kbAccount.value);
+    _accountSync = sync;
+    final bound = _boundAccount;
+    if (bound != null) {
+      unawaited(
+        sync.bind(
+          bound,
+          hasStorage: _boundHasStorage,
+          planName: _boundPlanName,
+        ),
+      );
+    }
+  }
+
+  /// What `studio.debug.account` reports: the wiring as this host holds it,
+  /// and — when an account is bound — the account's own device profile and
+  /// taste records, read (never written) through the bound storage.
+  Future<Map<String, dynamic>> _accountSnapshot() async {
+    final sync = _accountSync;
+    final out = <String, dynamic>{
+      'accountCapable': _accountCapable,
+      'wired': sync != null,
+    };
+    if (sync == null) return out;
+    final status = sync.runner.value?.status.value;
+    out.addAll(<String, dynamic>{
+      'deviceId': sync.deviceId,
+      'syncEnabled': sync.syncEnabled.value,
+      'boundAccount': _boundAccount != null,
+      'plan': sync.plan.value?.name,
+      if (sync.planName.value != null) 'planName': sync.planName.value,
+      'joined': sync.session.value != null,
+      'kbOnAccount': sync.kbAccount.value != null,
+      if (status != null)
+        'runner': <String, dynamic>{
+          'phase': status.phase.name,
+          'lastSyncAt': status.lastSyncAt?.toUtc().toIso8601String(),
+          if (status.lastError != null) 'lastError': status.lastError,
+        },
+    });
+    final session = sync.session.value;
+    if (session == null) return out;
+    Future<Object?> read(StorageScope scope, String key) async {
+      try {
+        final record = await session.storage.get(scope, key);
+        if (record == null) return null;
+        return <String, dynamic>{
+          'version': record.version,
+          'updatedAt': record.updatedAt.toUtc().toIso8601String(),
+          'body': jsonDecode(utf8.decode(record.body)),
+        };
+      } catch (e) {
+        return <String, dynamic>{'error': '$e'};
+      }
+    }
+
+    out['profile'] = await read(StorageScope.device(sync.deviceId), 'profile');
+    out['commonSettings'] = await read(StorageScope.common, 'settings');
+    return out;
+  }
+
+  /// The extension's app-identity resolver for `host.kb` (see
+  /// [StudioExtensionContext.registerKbAppIdOf]). Read at each activation, so
+  /// the order of registration and first activation does not matter.
+  String? Function(String bundleDirectory)? _extensionKbAppIdOf;
+
+  /// `host.kb` for every bundle this host activates. Bundle tabs and plugin
+  /// bundles share one record store on the kernel key/value store, so a key
+  /// has one lock and one data set wherever the bundle was activated. The
+  /// former per-bundle `<configRoot>/domains` files are imported once per app
+  /// and left in place.
+  StudioKbWiring? _kbFor(StudioBackbone backbone) {
+    final kv = backbone.kvStorage;
+    if (kv == null) return null;
+    return _kbWiring ??= StudioKbWiring(
+      kv: kv,
+      engine: backbone.knowledgeEngine,
+      account: _accountKb,
+      appIdOf: (bundle) {
+        final dir = bundle.directory;
+        final resolve = _extensionKbAppIdOf;
+        return dir == null || resolve == null ? null : resolve(dir);
+      },
+      // ignore: deprecated_member_use
+      legacy: mk.JsonFileDomainStorage(
+        rootDir: p.join(backbone.configRoot, 'domains'),
+      ),
+    );
+  }
 
   /// Chrome-level UI action bridge — `StandardStudioShell` populates
   /// the setters from inside its `setState`. The MCP tool handlers
@@ -237,8 +412,8 @@ class VibeStudioHostApp extends StudioApp {
   /// Home INSTALLED APPS tile providers — accumulated so multiple sources
   /// compose (base's local servers + pro's connected market services). Each
   /// registration adds a provider; the Home gathers tiles from all of them.
-  final List<Future<List<HomeInstalledTile>> Function()> _extensionTileProviders =
-      <Future<List<HomeInstalledTile>> Function()>[];
+  final List<Future<List<HomeInstalledTile>> Function()>
+  _extensionTileProviders = <Future<List<HomeInstalledTile>> Function()>[];
 
   /// Kept so the Composition Profile seam can hand the recipe an origin opener.
   /// Composition opens a named origin on first use; this manager already owns
@@ -269,7 +444,8 @@ class VibeStudioHostApp extends StudioApp {
     if (hint is! Map) {
       // http(s) node — normalise the endpoint (mdns http carries host/port/
       // path; directory http carries `endpoint` directly).
-      final endpoint = (c['endpoint'] as String?) ??
+      final endpoint =
+          (c['endpoint'] as String?) ??
           (c['host'] != null
               ? 'http://${c['host']}:${c['port']}${c['path'] ?? ''}'
               : '');
@@ -407,7 +583,7 @@ class VibeStudioHostApp extends StudioApp {
   // ── StudioApp metadata ─────────────────────────────────────────
 
   @override
-  String get toolId => 'vibe_studio_debug';
+  String get toolId => kHostToolId;
 
   /// Public-facing name. The package id stays `vibe_studio` for now —
   /// rename happens in a separate migration round once we're sure no
@@ -415,12 +591,10 @@ class VibeStudioHostApp extends StudioApp {
   @override
   String get displayName => 'AppPlayer Studio';
 
-  /// Debug instance binds 7840 by default so it can coexist with the
-  /// release instance (7830 default). Release tree = `release/0.1/`,
-  /// debug tree = `debug/` (this build). See memory `project-vibe-
-  /// studio-paths`.
+  /// Per-tree default port — debug and release instances coexist on one
+  /// machine (host_identity.dart).
   @override
-  int get defaultPort => 7840;
+  int get defaultPort => kHostDefaultPort;
 
   /// The legacy `studio_builder.mbd` host-shell seed is retired. The
   /// host registers `builder.*` agents directly through
@@ -680,9 +854,9 @@ class VibeStudioHostApp extends StudioApp {
     required BundleInstallSurface bundles,
   }) {
     // Universal host — kb_* domain tools live in a future
-    // knowledge_builder.mbd that activates inside the studio (per
-    // memory `project_studio_appplayer_superset` — universal host
-    // ships only host-level surface, domains add their own).
+    // knowledge_builder.mbd that activates inside the studio (the
+    // universal host ships only host-level surface; domains add their
+    // own).
     //
     // Round C (kernel-app F) — the host's MCP endpoint joins the
     // shared `KernelApp` pool through `app.addEndpoint(label:'studio')`
@@ -695,7 +869,9 @@ class VibeStudioHostApp extends StudioApp {
       label: 'studio',
       appName: toolId,
     );
-    final boot = hostEndpoint.server..register();
+    // Every host tool registered through `boot` reports a failure body
+    // (`{ok:false}`) with the MCP `isError` flag too.
+    final boot = FailureFlaggingServerHost(hostEndpoint.server..register());
     _mcpBoot = boot;
     _bridge = BundleSessionBridge(
       systemResolver:
@@ -784,8 +960,11 @@ class VibeStudioHostApp extends StudioApp {
     // (inside `registerExposed`) covers both the external transport and
     // in-process dispatch. One registry shared by every capability below.
     final hostTools = mk.HostToolRegistry(
-      endpoint: boot,
-      attachToDispatcher: (_, __) {},
+      // Capability tools keep the built-in argument contract: a call that
+      // does not match the tool's own schema is answered `invalidArguments`
+      // before the capability runs (tool_call_guard.dart).
+      endpoint: FailureFlaggingServerHost(boot, checkArguments: true),
+      attachToDispatcher: (_, _) {},
       detachFromDispatcher: (_) {},
       // Destructive-action gate (FlowBrain runtime
       // handoff). Tools registered `destructive: true` (irreversible —
@@ -859,7 +1038,7 @@ class VibeStudioHostApp extends StudioApp {
       // usb / ble / tcp / ws transports through mcp_bridge (the FFI home)
       // and injects them via the kernel seam. The connection lands in the
       // same client host registry, so the kernel `mcp.*` verbs above drive
-      // the board by id afterward (cherry `embedded-mcp-serving-base`).
+      // the board by id afterward (embedded MCP serving base).
       registerExtensionConnectTool(hostTools, clientHost);
       // `mcp.discover_boards` / `mcp.connect_ble_board` — nearby-board
       // discovery over the vendored device_discovery (mDNS
@@ -885,9 +1064,11 @@ class VibeStudioHostApp extends StudioApp {
               await (_discoveryTrustEval ??= buildDiscoveryTrustEvaluator());
           return fn == null ? null : fn(identity);
         },
-        enforceSignature: () async =>
-            (await VibeSettings.load(VibeSettings.defaultPath(toolId)))
-                .discoveryEnforceSignature,
+        enforceSignature:
+            () async =>
+                (await VibeSettings.load(
+                  VibeSettings.defaultPath(toolId),
+                )).discoveryEnforceSignature,
       );
       // Settings-driven boot sweep (Auto discovery section). All sources
       // default OFF → no behavior on a fresh install. BLE never sweeps at
@@ -933,15 +1114,21 @@ class VibeStudioHostApp extends StudioApp {
       ),
       activateBundle: (source) async {
         // Plugin mode = activate the bundle's tools with no UI tab (tabKey:'').
-        final bundle =
-            await mk.McpBundleLoader.loadDirectory(source.endpoint ?? '');
+        final bundle = await mk.McpBundleLoader.loadDirectory(
+          source.endpoint ?? '',
+        );
+        // Same atoms as a tab activation: a bundle that requires `kb` must get
+        // `host.kb` whichever way it is activated.
+        final pluginBackbone = _backboneCached;
         final ctx = HostBundleActivationContext(
           boot: boot,
           tabKey: '',
           bundle: bundle,
           exposedShortId: source.id,
           chromeBridge: _chromeBridge,
-          backbone: _backboneCached,
+          kb: pluginBackbone == null ? null : _kbFor(pluginBackbone),
+          clientHost: () => _backboneCached?.app.clientHost,
+          backbone: pluginBackbone,
           sessionBridge: _bridge,
         );
         _pluginBundleCtxs[source.id] = ctx;
@@ -1011,6 +1198,10 @@ class VibeStudioHostApp extends StudioApp {
           _chromeBridge.reloadTab?.call(0);
         },
         themeReinjectTick: _chromeBridge.themeReinjectTick,
+        registerKbAppIdOf: (resolver) {
+          _extensionKbAppIdOf = resolver;
+        },
+        bindAccountStorage: _bindAccount,
       ),
     );
     // Local-server feature (base — standard + pro): the Home "+" (the
@@ -1079,9 +1270,14 @@ class VibeStudioHostApp extends StudioApp {
           ];
           final results = await Future.wait(
             sources.map(
-              (src) => disc.discover(src).catchError(
-                (_) => <String, dynamic>{'ok': false, 'candidates': const []},
-              ),
+              (src) => disc
+                  .discover(src)
+                  .catchError(
+                    (_) => <String, dynamic>{
+                      'ok': false,
+                      'candidates': const [],
+                    },
+                  ),
             ),
           );
           final out = <DiscoveredServer>[];
@@ -1314,8 +1510,9 @@ class VibeStudioHostApp extends StudioApp {
     registerFsTools(
       boot,
       toolId: toolId,
-      activeProjectRoot: () =>
-          _chromeBridge.activeProjectInfo?.call()['projectPath'] as String?,
+      activeProjectRoot:
+          () =>
+              _chromeBridge.activeProjectInfo?.call()['projectPath'] as String?,
     );
     // ── studio.search.* — BM25 search across installed bundles.
     // Body lives in vibe_studio_base.
@@ -1367,6 +1564,23 @@ class VibeStudioHostApp extends StudioApp {
       writer: writerSvc,
       validator: validatorSvc,
       resolveActiveMbdPath: resolveActiveMbdPath,
+      renderer: (
+        definition, {
+        required width,
+        required height,
+        required pixelRatio,
+      }) async {
+        final overlay = studioRootNavigatorKey.currentState?.overlay;
+        if (overlay == null) {
+          throw StateError('studio window is not mounted yet');
+        }
+        return renderDslOffscreen(
+          overlay: overlay,
+          definition: definition,
+          size: Size(width, height),
+          pixelRatio: pixelRatio,
+        );
+      },
     );
     // ── studio.debug.* — host introspection. Body lives in
     // vibe_studio_base; bridge.debugConfig / debugTabs feed the
@@ -1378,6 +1592,28 @@ class VibeStudioHostApp extends StudioApp {
       toolId: toolId,
       displayName: displayName,
       defaultPort: defaultPort,
+    );
+    // ── studio.debug.account — account storage wiring, read-only.
+    boot.addTool(
+      name: 'studio.debug.account',
+      description:
+          'Account storage wiring (platform spec 20), read-only: whether this '
+          'tier has an account, the device id, the sync switch, whether an '
+          'account is bound, its storage plan (checking · active · none · '
+          'unknown), whether it is joined, runner status, and whether bundle '
+          'kb goes to the account. When joined, also reads the account\'s '
+          '`device/<deviceId>/profile` and `shell/common/settings` records '
+          '(body · version · updatedAt). Never writes.',
+      inputSchema: const <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{},
+      },
+      handler:
+          (args) async => mk.KernelToolResult(
+            content: <mk.KernelContent>[
+              mk.KernelTextContent(text: jsonEncode(await _accountSnapshot())),
+            ],
+          ),
     );
     // ── studio.recorder.* / studio.overlay.* / studio.chat.send —
     // built-in capture surface for scenario-driven demos. Always on
@@ -1617,7 +1853,8 @@ class VibeStudioHostApp extends StudioApp {
   /// Each prompt body is short — a numbered checklist the LLM follows
   /// by calling the named `studio.*` tools in order.
   void _registerSeedPrompts(mk.KernelServerHost boot) {
-    (boot as mh.ServerBootstrap).server.addPrompt(
+    final server = (_concreteHost(boot) as mh.ServerBootstrap).server;
+    server.addPrompt(
       name: 'new-package',
       description:
           'Bootstrap a new authoring bundle under the studio workspace.',
@@ -1653,7 +1890,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    boot.server.addPrompt(
+    server.addPrompt(
       name: 'add-page-widget',
       description:
           'Add a widget to a page in an active bundle\'s mcp_ui_dsl tree.',
@@ -1691,7 +1928,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    boot.server.addPrompt(
+    server.addPrompt(
       name: 'wire-button-tool',
       description:
           'Wire a button\'s click action to invoke an MCP tool in an active bundle.',
@@ -1730,7 +1967,7 @@ class VibeStudioHostApp extends StudioApp {
         );
       },
     );
-    boot.server.addPrompt(
+    server.addPrompt(
       name: 'install-bundle',
       description:
           'Install an external bundle from a local `.mcpb` or `.mbd` path.',
@@ -1777,7 +2014,7 @@ class VibeStudioHostApp extends StudioApp {
             ? mk.KernelTransportKind.sse
             : mk.KernelTransportKind.streamableHttp;
     await boot.start(transportType, host: '127.0.0.1', port: port);
-    // Cherry 2026-05-27 cascade 4 — once the host endpoint's transport
+    // Once the host endpoint's transport
     // is up, `app.hostMcpServerSpec` returns the canonical streamable
     // HTTP / SSE URL. Hand it to `ClaudeCodeInteractiveProvider.forKernel(app)` so
     // the subscription path's `--mcp-config` flag points at vibe_studio
@@ -2375,7 +2612,8 @@ class VibeStudioHostApp extends StudioApp {
   }) {
     var mirrored = 0;
     var skipped = 0;
-    for (final tool in (source as mh.ServerBootstrap).server.getTools()) {
+    for (final tool
+        in (_concreteHost(source) as mh.ServerBootstrap).server.getTools()) {
       // Only host base — `studio.*` family. Anything else is a
       // domain surface and follows the attach lifecycle, not the
       // host mirror.
@@ -2413,7 +2651,8 @@ class VibeStudioHostApp extends StudioApp {
     required mk.KernelServerHost source,
   }) {
     var mirrored = 0;
-    for (final res in (source as mh.ServerBootstrap).server.getResources()) {
+    final sourceServer = (_concreteHost(source) as mh.ServerBootstrap).server;
+    for (final res in sourceServer.getResources()) {
       // Only host-level docs — domains add their own at attach time.
       // The studio seed prefixes its sources with `studio_host_`.
       if (!res.uri.startsWith('studio://knowledge/studio_host_')) continue;
@@ -2428,8 +2667,7 @@ class VibeStudioHostApp extends StudioApp {
             // does not expose a direct `callResource(uri)` so we use
             // the protocol-level read on the underlying mcp.Server and
             // re-wrap the wire shape into the envelope return type.
-            final raw = await source.server
-                .readResource(uri);
+            final raw = await sourceServer.readResource(uri);
             return mk.KernelReadResourceResult(
               contents: <mk.KernelResourceContent>[
                 for (final c in raw.contents)
@@ -3007,6 +3245,8 @@ class VibeStudioHostApp extends StudioApp {
   }) {
     _backboneCached = backbone;
     _settings = settings;
+    _themeModeNotifier.value = settings.themeMode;
+    _ensureAccountSync(backbone);
     // Sync the debug-mode pin from VibeSettings into the chrome
     // bridge. DslWorkspaceView listens here and re-mounts its
     // runtime through `MCPUIRuntime.withInspector(...)` when true,
@@ -3043,6 +3283,10 @@ class VibeStudioHostApp extends StudioApp {
                       : (readFriendlyLabel(projectPath) ??
                           p.basenameWithoutExtension(projectPath)),
               chromeBridge: _chromeBridge,
+              extraSettingsSections: <SettingsSection>[
+                if (_accountSync != null)
+                  accountSyncSettingsSection(_accountSync!),
+              ],
               shellOverlay:
                   (_captureSurface == null && _extensionOverlays.isEmpty)
                       ? null
@@ -3066,10 +3310,8 @@ class VibeStudioHostApp extends StudioApp {
                     chromeBridge: _chromeBridge,
                     configRoot: backbone.configRoot,
                     boot: _mcpBoot!,
-                    domainStorage:
-                        _domainStorage ??= mk.JsonFileDomainStorage(
-                          rootDir: p.join(backbone.configRoot, 'domains'),
-                        ),
+                    kb: _kbFor(backbone),
+                    clientHost: () => backbone.app.clientHost,
                     onActiveContextChanged: _setActiveContext,
                     chatForKey: _chatFor,
                     builtInLaunchers: <BuiltInLauncher>[
@@ -3192,3 +3434,8 @@ class VibeStudioHostApp extends StudioApp {
     );
   }
 }
+
+/// The kernel host under the host's [FailureFlaggingServerHost] — for the
+/// few places that reach the concrete MCP server behind it.
+Object _concreteHost(Object host) =>
+    host is FailureFlaggingServerHost ? host.inner : host;

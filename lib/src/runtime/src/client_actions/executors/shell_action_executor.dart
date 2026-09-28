@@ -4,7 +4,7 @@
 library shell_action_executor;
 
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import '../../platform/host_platform.dart';
 
 import '../../actions/action_result.dart';
 import '../../renderer/render_context.dart';
@@ -21,7 +21,7 @@ class ShellActionExecutor {
     RenderContext context,
   ) async {
     // Shell execution not available on web
-    if (kIsWeb) {
+    if (HostPlatform.isWeb) {
       return ActionResult.error(
         'Shell execution not supported on web platform',
       );
@@ -76,17 +76,19 @@ class ShellActionExecutor {
         runInShell: false, // SECURITY: Don't use shell to prevent injection
       );
 
-      // Collect output with timeout
-      final stdout = StringBuffer();
-      final stderr = StringBuffer();
-
-      process.stdout.transform(const SystemEncoding().decoder).listen(
-            (data) => stdout.write(data),
-          );
-
-      process.stderr.transform(const SystemEncoding().decoder).listen(
-            (data) => stderr.write(data),
-          );
+      // Collect output. The buffers are filled from two streams that finish
+      // independently of `exitCode`, so both have to be awaited: a process can
+      // exit while its last chunk is still in the pipe, and reading the
+      // buffers at that moment returns output the caller never sees. That is
+      // not a rare race — a command whose entire output is one short line hits
+      // it routinely, and the document is handed an empty `stdout` for a
+      // command that printed.
+      final stdoutDone = process.stdout
+          .transform(const SystemEncoding().decoder)
+          .join();
+      final stderrDone = process.stderr
+          .transform(const SystemEncoding().decoder)
+          .join();
 
       // Wait for completion with timeout
       final exitCode = await process.exitCode.timeout(
@@ -97,10 +99,13 @@ class ShellActionExecutor {
         },
       );
 
+      final stdout = await stdoutDone;
+      final stderr = await stderrDone;
+
       return ActionResult.success(data: {
         'code': exitCode,
-        'stdout': stdout.toString(),
-        'stderr': stderr.toString(),
+        'stdout': stdout,
+        'stderr': stderr,
         'command': command,
         'success': exitCode == 0,
       });

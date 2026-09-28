@@ -46,16 +46,17 @@ class LocalServerRecord {
   final String? credentialRef;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'transport': transport.name,
-        'name': name,
-        if (endpoint != null) 'endpoint': endpoint,
-        if (command != null) 'command': command,
-        if (args.isNotEmpty) 'args': args,
-        if (credentialRef != null) 'credentialRef': credentialRef,
-      };
+    'id': id,
+    'transport': transport.name,
+    'name': name,
+    if (endpoint != null) 'endpoint': endpoint,
+    if (command != null) 'command': command,
+    if (args.isNotEmpty) 'args': args,
+    if (credentialRef != null) 'credentialRef': credentialRef,
+  };
 
-  static LocalServerRecord fromJson(Map<String, dynamic> j) => LocalServerRecord(
+  static LocalServerRecord fromJson(Map<String, dynamic> j) =>
+      LocalServerRecord(
         id: j['id'] as String,
         transport: KernelTransportKind.values.firstWhere(
           (t) => t.name == j['transport'],
@@ -73,7 +74,7 @@ class LocalServerRecord {
 /// [onChanged] fires after any mutation so the host can refresh the Home grid.
 class LocalServerStore {
   LocalServerStore(String configRoot)
-      : _file = File(p.join(configRoot, 'local_servers.json'));
+    : _file = File(p.join(configRoot, 'local_servers.json'));
 
   final File _file;
 
@@ -84,7 +85,8 @@ class LocalServerStore {
     if (!_file.existsSync()) return <String, LocalServerRecord>{};
     try {
       final decoded = jsonDecode(_file.readAsStringSync());
-      if (decoded is! Map<String, dynamic>) return <String, LocalServerRecord>{};
+      if (decoded is! Map<String, dynamic>)
+        return <String, LocalServerRecord>{};
       final out = <String, LocalServerRecord>{};
       decoded.forEach((k, v) {
         if (v is Map<String, dynamic>) out[k] = LocalServerRecord.fromJson(v);
@@ -138,9 +140,7 @@ class LocalServerCredentialVault {
   Future<void> write(String ref, String secret) =>
       _storage.write(ref, secret, namespace: namespace);
 
-  Future<String?> read(String ref) =>
-      _storage.read(ref, namespace: namespace);
+  Future<String?> read(String ref) => _storage.read(ref, namespace: namespace);
 
-  Future<void> delete(String ref) =>
-      _storage.delete(ref, namespace: namespace);
+  Future<void> delete(String ref) => _storage.delete(ref, namespace: namespace);
 }

@@ -30,7 +30,9 @@ class ProjectPaths {
     if (projectRoot.isEmpty || path.isEmpty) return false;
     final root = p.normalize(p.absolute(projectRoot));
     final abs =
-        p.isAbsolute(path) ? p.normalize(path) : p.normalize(p.join(root, path));
+        p.isAbsolute(path)
+            ? p.normalize(path)
+            : p.normalize(p.join(root, path));
     return abs == root || p.isWithin(root, abs);
   }
 

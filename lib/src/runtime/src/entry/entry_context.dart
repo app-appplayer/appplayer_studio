@@ -1,4 +1,4 @@
-/// Entry and identity value types (MCP UI DSL §8.9).
+/// Entry and identity value types.
 ///
 /// The types themselves live in `flutter_mcp_ui_core` alongside the other
 /// spec value types, so authoring tools, validators and non-runtime consumers

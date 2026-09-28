@@ -208,7 +208,7 @@ class DefaultWidgets {
     registry.register('aspectRatio', AspectRatioWidgetFactory()); // CamelCase
     registry.register('baseline', BaselineWidgetFactory());
     // `constrainedBox` / `constrained` are runtime-only legacy aliases
-    // of `box`. Spec § 2.4.1 declares `box` as the canonical surface and
+    // of `box`. `box` is the canonical surface and
     // every constraint they expressed (min/max width/height) is now a
     // property of `box`; new bundles SHOULD emit `box`. We keep the
     // registration so already-distributed bundles continue rendering.
@@ -241,12 +241,19 @@ class DefaultWidgets {
     registry.register('decoratedBox', ContainerWidgetFactory());
 
     // Progress indicators - MCP UI DSL v1.0 uses CamelCase.
-    // Canonical: `progressBar` per §17.3.1. Aliases registered explicitly
+    // Canonical: `progressBar`. Aliases registered explicitly
     // so factory schema conformance passes.
     registry.register('loadingIndicator', ProgressWidgetFactory());
     registry.register('progressBar', ProgressWidgetFactory());
     registry.register('progress', ProgressWidgetFactory());
-    registry.register('linearProgressIndicator', ProgressWidgetFactory());
+    // The two shape-naming spellings carry their own shape: a widget called
+    // `linearProgressIndicator` that draws a spinner is a name that lies, and
+    // it is also the only way to pick a shape without the `type` property the
+    // widget-type key shadows.
+    registry.register('linearProgressIndicator',
+        ProgressWidgetFactory(defaultIndicatorType: 'linear'));
+    registry.register('circularProgressIndicator',
+        ProgressWidgetFactory());
 
     // Input widgets - Spec v1.0 names
     registry.register(
@@ -262,10 +269,10 @@ class DefaultWidgets {
     registry.register('slider', SliderWidgetFactory());
     registry.register('rangeSlider', RangeSliderWidgetFactory()); // CamelCase
 
-    // Legacy alias for textInput per spec §17.3.1 (§17.5.2: runtimes MUST
+    // Legacy alias for textInput (runtimes MUST
     // accept registered aliases). Form-aware behavior (binding, validation)
     // is folded into `textInput` via TextFieldWidgetFactory, which supports
-    // both validation shapes per §7.2.1.
+    // both validation shapes.
     registry.register('textFormField', TextFieldWidgetFactory());
 
     // Additional input widgets
@@ -290,8 +297,8 @@ class DefaultWidgets {
     registry.register('listView',
         ListViewWidgetFactory()); // Also register listView for v1.0 spec
     registry.register('grid', GridViewWidgetFactory());
-    registry.register('listItem', ListTileWidgetFactory()); // Canonical per spec §17.2.1
-    registry.register('listTile', ListTileWidgetFactory()); // Legacy alias per §17.3.1
+    registry.register('listItem', ListTileWidgetFactory()); // Canonical
+    registry.register('listTile', ListTileWidgetFactory()); // Legacy alias
 
     // Navigation widgets - Spec v1.0 names
     registry.register('headerBar', AppBarWidgetFactory()); // CamelCase per spec
@@ -312,9 +319,9 @@ class DefaultWidgets {
     registry.register('tabBarView', TabBarViewWidgetFactory()); // CamelCase
 
     // Scroll widgets
-    // `view` — Composition Profile (spec v1.4 §2.13.1): embeds a definition
+    // `view` — Composition Profile: embeds a definition
     // sourced from anywhere, including another MCP origin. Fails closed when
-    // no host resolver is registered (§18.7.3).
+    // no host resolver is registered.
     registry.register('view', ViewFactory());
 
     registry.register('scrollView', ScrollViewFactory()); // CamelCase per spec
@@ -422,6 +429,10 @@ class DefaultWidgets {
     registry.register('switch', SwitchWidgetFactory()); // Legacy alias for toggle
     registry.register('textField', TextFieldWidgetFactory()); // Legacy alias for textInput
     registry.register('textfield', TextFieldWidgetFactory());
+    // The kebab spelling is declared by the registry and accepted by the
+    // schema, so a document may carry it; without this registration the
+    // document loaded and the field drew an unknown-type box instead.
+    registry.register('text-form-field', TextFieldWidgetFactory());
     registry.register('dropdown', DropdownWidgetFactory());
     registry.register('listview', ListViewWidgetFactory());
     registry.register('gridview', GridViewWidgetFactory());
@@ -429,26 +440,26 @@ class DefaultWidgets {
     registry.register(
         'bottomnavigationbar', BottomNavigationBarWidgetFactory());
 
-    // v1.4 widgets (§17.2.1). Registered as they are implemented; the spec
+    // v1.4 widgets. Registered as they are implemented; the spec
     // declares the full set and drift_audit reports what has not landed yet.
     registry.register('multiSelect', MultiSelectFactory());
     registry.register('combobox', ComboboxFactory());
-    registry.register('autocomplete', ComboboxFactory()); // §17.3.1 alias
+    registry.register('autocomplete', ComboboxFactory()); // Alias
     registry.register('otpInput', OtpInputFactory());
     registry.register('dateTimePicker', DateTimePickerFactory());
     registry.register('fileInput', FileInputFactory());
     registry.register('qrCode', QrCodeFactory());
     registry.register('barcode', BarcodeFactory());
     registry.register('accordion', AccordionFactory());
-    registry.register('collapsible', AccordionFactory()); // §17.3.1 alias
+    registry.register('collapsible', AccordionFactory()); // Alias
     registry.register('popover', PopoverFactory());
-    registry.register('hoverCard', PopoverFactory()); // §17.3.1 alias
+    registry.register('hoverCard', PopoverFactory()); // Alias
     registry.register('menu', MenuFactory());
     registry.register('contextMenu', ContextMenuFactory());
     registry.register('breadcrumb', BreadcrumbFactory());
     registry.register('pagination', PaginationFactory());
     registry.register('link', LinkFactory());
-    registry.register('navLink', LinkFactory()); // §17.3.1 alias
+    registry.register('navLink', LinkFactory()); // Alias
     registry.register('splitter', SplitterFactory());
     registry.register('resizable', ResizableFactory());
     registry.register('diffViewer', DiffViewerFactory());
@@ -459,11 +470,11 @@ class DefaultWidgets {
     registry.register('pdfViewer', PdfViewerFactory());
     registry.register('voiceInput', VoiceInputFactory());
 
-    // v1.4 palette aliases (§17.3.1). A no-code builder's vocabulary was
+    // v1.4 palette aliases. A no-code builder's vocabulary was
     // aligned with this spec; twenty of its components turned out to be
     // existing widgets under another name. Read-only: accepted on input,
     // never emitted, so a document round-tripped through a tool converges on
-    // the canonical name (§18.2.10).
+    // the canonical name.
     registry.register('dataGrid', DataTableWidgetFactory());
     registry.register('treeView', TreeWidgetFactory());
     registry.register('meter', GaugeWidgetFactory());
@@ -471,7 +482,7 @@ class DefaultWidgets {
     registry.register('audio', MediaPlayerWidgetFactory());
     registry.register('modal', DialogWidgetFactory());
     registry.register('dialog', DialogWidgetFactory());
-    registry.register('alert', AlertDialogWidgetFactory()); // §17.3.1
+    registry.register('alert', AlertDialogWidgetFactory()); // Alias
     registry.register('confirmDialog', AlertDialogWidgetFactory());
     registry.register('toast', SnackBarWidgetFactory());
     registry.register('skeleton', PlaceholderWidgetFactory());
@@ -485,12 +496,12 @@ class DefaultWidgets {
 
     // Kebab-case legacy aliases.
     //
-    // Per spec §17.1.2 widget type names are canonical as camelCase. Only
-    // the three kebab forms explicitly listed in §17.3.1 Widget Type
+    // Widget type names are canonical as camelCase. Only
+    // the three kebab forms explicitly listed as Widget Type
     // Aliases are accepted. All other previously-registered kebab spellings
     // have been removed as out-of-spec; DSL authors must use the canonical
     // camelCase widget type (or the lowercase/camelCase legacy aliases
-    // declared in §17.3.1).
+    // declared as aliases).
     registry.register('list-tile', ListTileWidgetFactory());
     registry.register('progress-bar', ProgressWidgetFactory());
     registry.register('loading-indicator', ProgressWidgetFactory());

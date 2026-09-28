@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../base/shell/inspect_tag.dart';
+import '../inspect_tag.dart';
 import '../tokens.dart';
 
 /// One action button on a [VbuHeroPanel]. The first action with

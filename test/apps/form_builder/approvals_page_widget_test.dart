@@ -8,8 +8,7 @@ import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:appplayer_studio/builtin_api.dart' as mk
-    show KernelTextContent;
+import 'package:appplayer_studio/builtin_api.dart' as mk show KernelTextContent;
 import 'package:appplayer_studio/src/apps/form_builder/ui/approvals_page.dart';
 
 import 'form_ui_harness.dart';
@@ -27,10 +26,8 @@ void main() {
   ) async {
     final out = await tester.runAsync(() async {
       final r = await h.server.callTool(name, args);
-      final text = r.content
-          .whereType<mk.KernelTextContent>()
-          .map((c) => c.text)
-          .join();
+      final text =
+          r.content.whereType<mk.KernelTextContent>().map((c) => c.text).join();
       return (jsonDecode(text) as Map).cast<String, dynamic>();
     });
     return out!;
@@ -45,19 +42,28 @@ void main() {
     }
   }
 
+  /// Settles until [done] holds (bounded). The approve path writes facts
+  /// with real I/O; a fixed round count raced it under a loaded parallel run.
+  Future<void> settleUntil(
+    WidgetTester tester,
+    bool Function() done, {
+    int maxRounds = 150,
+  }) async {
+    for (var i = 0; i < maxRounds && !done(); i++) {
+      await settle(tester, 1);
+    }
+  }
+
   Future<void> pumpPage(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: ApprovalsPage(server: h.server, init: h.init),
-        ),
+        home: Scaffold(body: ApprovalsPage(server: h.server, init: h.init)),
       ),
     );
     await settle(tester);
   }
 
-  testWidgets(
-      'request → pending card · issue refused · approve via dialog → '
+  testWidgets('request → pending card · issue refused · approve via dialog → '
       'line completes → issue passes with provenance', (tester) async {
     await call(tester, 'form.save_template', {'template': harnessTemplate()});
     final created = await call(tester, 'form.create_document', {
@@ -101,7 +107,10 @@ void main() {
       'Acknowledged',
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Approve').last);
-    await settle(tester, 40);
+    await settleUntil(
+      tester,
+      () => find.text('approved').evaluate().isNotEmpty,
+    );
     expect(find.text('approved'), findsOneWidget);
 
     // Server state advanced — and the issue now passes, freezing the line.
@@ -120,10 +129,7 @@ void main() {
     expect(issued['issueNumber'], isNotNull);
     final prov = (issued['approval'] as Map).cast<String, dynamic>();
     expect(prov['requestedBy'], 'nina');
-    expect(
-      ((prov['line'] as List).first as Map)['actedBy'],
-      'dept-lead',
-    );
+    expect(((prov['line'] as List).first as Map)['actedBy'], 'dept-lead');
   });
 
   testWidgets('reject flow: comment required in dialog semantics, draft '
@@ -150,13 +156,16 @@ void main() {
     await pumpPage(tester);
     expect(find.text('Reject case'), findsOneWidget);
     await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
-    await settle(tester, 4);
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Reason (required)'),
-      'amount needs review',
-    );
+    // Wait for what each step produces, not a fixed number of frames — a
+    // fixed settle missed the result under full-suite load.
+    final reason = find.widgetWithText(TextField, 'Reason (required)');
+    await settleUntil(tester, () => reason.evaluate().isNotEmpty);
+    await tester.enterText(reason, 'amount needs review');
     await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
-    await settle(tester, 40);
+    await settleUntil(
+      tester,
+      () => find.text('rejected').evaluate().isNotEmpty,
+    );
     expect(find.text('rejected'), findsOneWidget);
 
     final draft = await call(tester, 'form_builder.draft_get', {
@@ -171,65 +180,66 @@ void main() {
   });
 
   testWidgets(
-      'draft re-key moves the approval — a reloaded document cannot bypass '
-      'a pending gate and keeps provenance', (tester) async {
-    final created = await call(tester, 'form.create_document', {
-      'templateId': 'harness-quote',
-      'data': {'recipient': 'Jackie check'},
-    });
-    final docA = created['documentId'] as String;
-    await call(tester, 'form_builder.draft_save', {
-      'documentId': docA,
-      'templateId': 'harness-quote',
-      'data': {'recipient': 'Jackie check'},
-    });
-    await call(tester, 'form_builder.approval_request', {
-      'documentId': docA,
-      'requestedBy': 'nina',
-      'title': 'Jackie request',
-      'line': [
-        {'approverId': 'lead'},
-      ],
-    });
+    'draft re-key moves the approval — a reloaded document cannot bypass '
+    'a pending gate and keeps provenance',
+    (tester) async {
+      final created = await call(tester, 'form.create_document', {
+        'templateId': 'harness-quote',
+        'data': {'recipient': 'Jackie check'},
+      });
+      final docA = created['documentId'] as String;
+      await call(tester, 'form_builder.draft_save', {
+        'documentId': docA,
+        'templateId': 'harness-quote',
+        'data': {'recipient': 'Jackie check'},
+      });
+      await call(tester, 'form_builder.approval_request', {
+        'documentId': docA,
+        'requestedBy': 'nina',
+        'title': 'Jackie request',
+        'line': [
+          {'approverId': 'lead'},
+        ],
+      });
 
-    // Editor reload: a NEW engine document replaces the draft.
-    final again = await call(tester, 'form.create_document', {
-      'templateId': 'harness-quote',
-      'data': {'recipient': 'Jackie check'},
-    });
-    final docB = again['documentId'] as String;
-    await call(tester, 'form_builder.draft_save', {
-      'documentId': docB,
-      'templateId': 'harness-quote',
-      'data': {'recipient': 'Jackie check'},
-      'previousDocumentId': docA,
-    });
+      // Editor reload: a NEW engine document replaces the draft.
+      final again = await call(tester, 'form.create_document', {
+        'templateId': 'harness-quote',
+        'data': {'recipient': 'Jackie check'},
+      });
+      final docB = again['documentId'] as String;
+      await call(tester, 'form_builder.draft_save', {
+        'documentId': docB,
+        'templateId': 'harness-quote',
+        'data': {'recipient': 'Jackie check'},
+        'previousDocumentId': docA,
+      });
 
-    // The pending gate FOLLOWED the document — issuing docB is refused.
-    final refused = await call(tester, 'form_builder.issue', {
-      'documentId': docB,
-      'formats': ['markdown'],
-    });
-    expect(refused['code'], 'form_builder.approval_required');
+      // The pending gate FOLLOWED the document — issuing docB is refused.
+      final refused = await call(tester, 'form_builder.issue', {
+        'documentId': docB,
+        'formats': ['markdown'],
+      });
+      expect(refused['code'], 'form_builder.approval_required');
 
-    // Approve under the NEW id, issue, and the provenance rides along.
-    await call(tester, 'form_builder.approve', {
-      'documentId': docB,
-      'actor': 'lead',
-    });
-    final issued = await call(tester, 'form_builder.issue', {
-      'documentId': docB,
-      'formats': ['markdown'],
-      'issuedBy': 'nina',
-    });
-    expect((issued['approval'] as Map)['requestedBy'], 'nina');
-    // The old key is gone.
-    final all = await call(tester, 'form_builder.approval_list', {});
-    final ids = [
-      for (final a in (all['approvals'] as List).cast<Map>())
-        a['documentId'],
-    ];
-    expect(ids, contains(docB));
-    expect(ids, isNot(contains(docA)));
-  });
+      // Approve under the NEW id, issue, and the provenance rides along.
+      await call(tester, 'form_builder.approve', {
+        'documentId': docB,
+        'actor': 'lead',
+      });
+      final issued = await call(tester, 'form_builder.issue', {
+        'documentId': docB,
+        'formats': ['markdown'],
+        'issuedBy': 'nina',
+      });
+      expect((issued['approval'] as Map)['requestedBy'], 'nina');
+      // The old key is gone.
+      final all = await call(tester, 'form_builder.approval_list', {});
+      final ids = [
+        for (final a in (all['approvals'] as List).cast<Map>()) a['documentId'],
+      ];
+      expect(ids, contains(docB));
+      expect(ids, isNot(contains(docA)));
+    },
+  );
 }

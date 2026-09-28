@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 ///
 /// A page that is paused rather than destroyed stays mounted, and so does
 /// everything inside it. Without this, an instance-level `lifecycle` block
-/// (§6.8.2) heard `onInit`/`onMount`/`onReady` when its page opened and then
+/// heard `onInit`/`onMount`/`onReady` when its page opened and then
 /// nothing ever again: leaving the page paused the *page*, and the widget that
 /// had started a timer or a subscription in `onMount` kept running while
 /// nobody was looking at it.

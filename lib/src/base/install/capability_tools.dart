@@ -20,8 +20,7 @@ import 'capability_recipes/capability_recipes.dart'
         formCapabilityId,
         formCapabilityTools,
         registerCapabilityTools;
-import '../../apps/form_builder/infra/form_spec_vocab.dart'
-    show validateTemplateVocabulary;
+import 'form_spec_vocab.dart' show validateTemplateVocabulary;
 
 /// Register `form.<verb>` for every tool `mcp_form` declares, via the
 /// vendored `capability_tools` recipe (the canonical form wiring — the same
@@ -52,10 +51,7 @@ List<String> registerFormCapability(
       tool.verb == 'save_template' ? withFormVocabularyGate(tool) : tool,
   ];
   for (final tool in tools) {
-    registry.unregisterExposed(
-      bundleId: formCapabilityId,
-      rawName: tool.verb,
-    );
+    registry.unregisterExposed(bundleId: formCapabilityId, rawName: tool.verb);
   }
   return registerCapabilityTools(
     registry,

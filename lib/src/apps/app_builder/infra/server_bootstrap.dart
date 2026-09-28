@@ -681,7 +681,11 @@ class ServerBootstrap {
 
     _addVibeTool(
       name: 'vibe_convert_embed',
-      description: 'Convert canonical to an embedded C/C++ artifact.',
+      description:
+          'Write an embedded C starter scaffold for a board (empty main + '
+          'CMake; with_bundle also writes the canonical JSON as data). '
+          'Device logic, the display binding and the transport are not '
+          'generated — see `notGenerated` in the result.',
       inputSchema: const <String, dynamic>{
         'type': 'object',
         'properties': <String, dynamic>{
@@ -706,23 +710,30 @@ class ServerBootstrap {
             args['mode'] == 'with_bundle'
                 ? EmbedMode.withBundle
                 : EmbedMode.native;
+        // Same anchoring as `vibe_convert_dart`: project-relative, or
+        // absolute under the project root.
         final r = await _embedConv.run(
           canonical: _canonical.current,
           mode: mode,
           board: board,
-          outDir: outDir,
+          outDir: _resolveOutDirAgainstProject(outDir),
         );
         return _text(<String, dynamic>{
           'outDir': r.outDir,
           'canonicalHash': r.canonicalHash,
           'writtenFiles': r.writtenFiles,
+          'scaffold': r.isScaffold,
+          'notGenerated': r.notGenerated,
         });
       },
     );
 
     _addVibeTool(
       name: 'vibe_convert_selfui',
-      description: 'Convert canonical UI into chip-side self-UI source code.',
+      description:
+          'Write a chip-side self-UI starter scaffold (LVGL init stub or an '
+          'empty Qt window). The canonical UI is not translated yet — see '
+          '`notGenerated` in the result.',
       inputSchema: const <String, dynamic>{
         'type': 'object',
         'properties': <String, dynamic>{
@@ -748,12 +759,14 @@ class ServerBootstrap {
         final r = await _selfUiConv.run(
           canonical: _canonical.current,
           framework: framework,
-          outDir: outDir,
+          outDir: _resolveOutDirAgainstProject(outDir),
         );
         return _text(<String, dynamic>{
           'outDir': r.outDir,
           'canonicalHash': r.canonicalHash,
           'writtenFiles': r.writtenFiles,
+          'scaffold': r.isScaffold,
+          'notGenerated': r.notGenerated,
         });
       },
     );
@@ -1183,7 +1196,7 @@ class ServerBootstrap {
     _addVibeTool(
       name: 'vibe_widget_list',
       description:
-          'List every widget type the mcp_ui DSL 1.3 schema recognises. '
+          'List every widget type the mcp_ui DSL 1.4 schema recognises. '
           'Cheap orientation read — call once per session before '
           'authoring unfamiliar widgets, then use `vibe_widget_describe` '
           'to drill into a specific type.',
@@ -1249,7 +1262,7 @@ class ServerBootstrap {
       description:
           'Return the MCP UI DSL spec version vibe is pinned to. '
           '`revision` is the full 3-part current spec point '
-          '(e.g. `1.3.4`, single source of truth). `series` is '
+          '(e.g. `1.4.3`, single source of truth). `series` is '
           'the major.minor mask used for the schema directory '
           'and `\$id` URL prefix (e.g. `1.3`). Use `revision` '
           'when reporting the version to users; use `series` '
@@ -3436,7 +3449,7 @@ class ServerBootstrap {
 
     _addVibeResource(
       uri: 'vibe://widgets',
-      name: 'mcp_ui DSL 1.3 widget schema',
+      name: 'mcp_ui DSL 1.4 widget schema',
       description:
           'Full JSON Schema (`\$defs` map) for every widget type the '
           'runtime accepts — types, properties, enums, defaults, '
@@ -4620,10 +4633,11 @@ Write-Host "$($p.Id)"
 /// Orientation document served at `vibe://about`. The first thing any
 /// MCP-connecting LLM should fetch — explains the editor's mental
 /// model, project shape, and how to use the tool / resource catalogue.
-final String _aboutMarkdown = r'''
+final String _aboutMarkdown =
+    r'''
 # vibe — MCP-driven mcp_ui DSL **app** editor
 
-vibe is a desktop tool for authoring **mcp_ui DSL 1.3 applications**.
+vibe is a desktop tool for authoring **mcp_ui DSL 1.4 applications**.
 The unit of work is the *application as a whole*, not a single page.
 An application is a coherent bundle of:
 
@@ -4909,7 +4923,7 @@ the LLM needs to be told the vibe-specific workflow.
 
 ### DSL spec (static, does not change with the project)
 
-- `vibe://widgets`        — full JSON Schema for every mcp_ui DSL 1.3
+- `vibe://widgets`        — full JSON Schema for every mcp_ui DSL 1.4
                             widget. Large — prefer the
                             `vibe_widget_list` / `vibe_widget_describe`
                             tools when
@@ -5182,9 +5196,11 @@ LVGL source for the project:
 2. Read app-level slices first (`ui://manifest`, `ui://routes`,
    `ui://theme`) before page-level details.
 3. Use `vibe_file_*` to write under `build/<target>/`.
-''' + '''
+''' +
+    '''
 4. Pin hosted pub deps (`mcp_server: $kTemplateMcpServer`, `mcp_bundle: $kTemplateMcpBundle`).
-''' + r'''
+''' +
+    r'''
 5. Inline variants must use raw canonical JSON — never the typed view.
 6. Run `dart pub get` + `dart compile` + a stdio handshake to verify.
 

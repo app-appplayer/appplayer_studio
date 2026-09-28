@@ -97,7 +97,8 @@ class StudioResumeHint with WidgetsBindingObserver {
     // The EDGE, not the state: a host that is already foregrounded and reports
     // it again must not dial, for the same reason a repeated "connected" from
     // a platform's connectivity feed must not.
-    if (was != null && was != AppLifecycleState.resumed &&
+    if (was != null &&
+        was != AppLifecycleState.resumed &&
         state == AppLifecycleState.resumed) {
       _watch.hintReachable();
     }

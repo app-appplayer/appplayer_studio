@@ -32,7 +32,7 @@ Map<String, dynamic> _json(mk.KernelToolResult r) {
 mk.HostToolRegistry _registry(mk.InProcessKernelServerHost boot) =>
     mk.HostToolRegistry(
       endpoint: boot,
-      attachToDispatcher: (_, __) {},
+      attachToDispatcher: (_, _) {},
       detachFromDispatcher: (_) {},
     );
 

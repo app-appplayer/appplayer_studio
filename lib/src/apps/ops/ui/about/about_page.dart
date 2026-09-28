@@ -17,6 +17,9 @@ class AboutPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cfg = ref.watch(opsConfigProvider);
+    // The workspace in use now — `cfg.activeWorkspace` is only the one the
+    // project booted with.
+    final activeWs = ref.watch(activeWorkspaceIdProvider) ?? '';
     return Padding(
       padding: const EdgeInsets.all(20),
       child: ListView(
@@ -29,10 +32,7 @@ class AboutPage extends ConsumerWidget {
               rows: [
                 _Prop('App name', cfg.appName),
                 _Prop('Config version', cfg.version),
-                _Prop(
-                  'Active workspace',
-                  cfg.activeWorkspace.isEmpty ? '—' : cfg.activeWorkspace,
-                ),
+                _Prop('Active workspace', activeWs.isEmpty ? '—' : activeWs),
                 _Prop('Workspaces root', cfg.workspacesRoot),
                 _Prop('Theme mode', cfg.themeMode),
                 _Prop(
@@ -110,10 +110,20 @@ class AboutPage extends ConsumerWidget {
                 OutlinedButton.icon(
                   icon: const Icon(Icons.copy_outlined, size: 14),
                   label: const Text('Copy build info'),
-                  onPressed:
-                      () => Clipboard.setData(
-                        ClipboardData(text: _buildInfoText(cfg)),
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: _buildInfoText(cfg, activeWs)),
+                    );
+                    if (!context.mounted) return;
+                    // The clipboard write has no visible effect of its own;
+                    // without this the button looks dead.
+                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                      const SnackBar(
+                        content: Text('Build info copied'),
+                        duration: Duration(seconds: 2),
                       ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -124,12 +134,12 @@ class AboutPage extends ConsumerWidget {
     );
   }
 
-  String _buildInfoText(dynamic cfg) {
+  String _buildInfoText(dynamic cfg, String activeWs) {
     return [
       'makemind Ops',
       'appName: ${cfg.appName}',
       'configVersion: ${cfg.version}',
-      'activeWorkspace: ${cfg.activeWorkspace}',
+      'activeWorkspace: ${activeWs.isEmpty ? '—' : activeWs}',
       'platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
       'dart: ${Platform.version}',
     ].join('\n');

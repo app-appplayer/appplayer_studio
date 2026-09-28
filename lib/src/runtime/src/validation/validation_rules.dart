@@ -20,7 +20,7 @@ class PropertyKeys {
   static const String style = 'style';
   static const String theme = 'theme';
 
-  // Event handler property keys (on + PascalCase per v1.0 §9)
+  // Event handler property keys (on + PascalCase)
   static const String onTap = 'onTap';
   static const String onDoubleTap = 'onDoubleTap';
   static const String onRightClick = 'onRightClick';
