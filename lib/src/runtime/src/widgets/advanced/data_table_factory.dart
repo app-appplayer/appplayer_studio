@@ -300,6 +300,8 @@ class _DataTableViewState extends State<_DataTableView> {
               // columns, which is the width the header already uses.
               width: _tableWidth,
               child: ListView.builder(
+                // An inner list takes no device inset (§2.4.13).
+                padding: EdgeInsets.zero,
                 itemCount: rows.length,
                 itemExtent: widget.rowHeight,
                 itemBuilder: (_, i) => _bodyRow(rows[i]),

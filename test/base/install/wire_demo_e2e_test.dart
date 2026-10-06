@@ -72,7 +72,7 @@ void main() {
           final tap = node['onTap'];
           if (tap is Map &&
               tap['action'] == 'tool' &&
-              tap['tool'] == 'wire_demo.shout') {
+              tap['tool'] == 'shout') {
             found = true;
           }
           for (final v in node.values) {
@@ -89,7 +89,9 @@ void main() {
       expect(
         found,
         isTrue,
-        reason: 'ui/app.json must declare onTap → tool wire_demo.shout',
+        // The bundle names its own tool by the declared name; the host
+        // adds the id when it registers it.
+        reason: 'ui/app.json must declare onTap → tool shout',
       );
     });
 

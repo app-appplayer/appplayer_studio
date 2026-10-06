@@ -219,6 +219,8 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 240),
             child: ListView(
+              // An inner list takes no device inset (§2.4.13).
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               children: [
                 for (final option in visible)

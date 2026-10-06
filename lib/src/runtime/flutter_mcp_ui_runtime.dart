@@ -34,6 +34,7 @@ export 'src/runtime/lifecycle_runner.dart';
 export 'src/runtime/service_registry.dart' hide ServiceStatus;
 export 'src/runtime/background_service_manager.dart';
 export 'src/runtime/conformance_checker.dart';
+export 'src/runtime/conformance_claim.dart';
 export 'src/runtime/cache_manager.dart';
 
 // Service exports
@@ -65,7 +66,8 @@ export 'src/actions/action_handler.dart'
         ActionHandler,
         ActionExecutor,
         NavigationActionExecutor,
-        ChannelActionExecutor;
+        ChannelActionExecutor,
+        navigatorFor;
 export 'src/actions/action_result.dart' show ActionResult;
 // A host that dispatches on its own initiative marks the origin, so an action
 // that answers only to a person's act can tell.

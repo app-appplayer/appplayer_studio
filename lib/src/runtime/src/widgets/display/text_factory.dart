@@ -128,7 +128,7 @@ class TextWidgetFactory extends WidgetFactory {
       softWrap: context.resolve(properties['softWrap']) as bool? ?? true,
       textScaler: properties['textScaleFactor'] != null
           ? TextScaler.linear(
-              parseDimension(context.resolve(properties['textScaleFactor'])) ?? 1.0)
+              readDimension(properties['textScaleFactor'], context) ?? 1.0)
           : null,
       semanticsLabel:
           context.resolve(properties['semanticsLabel']) as String? ??
@@ -194,20 +194,20 @@ class TextWidgetFactory extends WidgetFactory {
 
       return TextStyle(
         fontSize:
-            parseDimension(context.resolve(style[core.PropertyKeys.fontSize])),
+            readDimension(style[core.PropertyKeys.fontSize], context),
         fontWeight: _parseFontWeight(
             context.resolve(style[core.PropertyKeys.fontWeight])),
         fontStyle: _parseFontStyle(context.resolve(style['fontStyle'])),
         color: parsedColor,
-        letterSpacing: parseDimension(context.resolve(style['letterSpacing'])),
-        wordSpacing: parseDimension(context.resolve(style['wordSpacing'])),
+        letterSpacing: readDimension(style['letterSpacing'], context),
+        wordSpacing: readDimension(style['wordSpacing'], context),
         height: readLineHeight(style, context, fontSize: fontSize),
         decoration: _parseTextDecoration(context.resolve(style['decoration'])),
         decorationColor: parseColor(context.resolve(style['decorationColor']), context),
         decorationStyle: _parseTextDecorationStyle(
             context.resolve(style['decorationStyle'])),
         decorationThickness:
-            parseDimension(context.resolve(style['decorationThickness'])),
+            readDimension(style['decorationThickness'], context),
         fontFamily:
             context.resolve(style[core.PropertyKeys.fontFamily]) as String?,
         fontFeatures: _parseFontFeatures(style['fontFeatures']),
@@ -399,11 +399,11 @@ class TextWidgetFactory extends WidgetFactory {
           color: parseColor(context.resolve(shadow['color']), context) ?? Colors.black,
           offset: offset != null
               ? Offset(
-                  parseDimension(context.resolve(offset['x'])) ?? 0,
-                  parseDimension(context.resolve(offset['y'])) ?? 0,
+                  readDimension(offset['x'], context) ?? 0,
+                  readDimension(offset['y'], context) ?? 0,
                 )
               : Offset.zero,
-          blurRadius: parseDimension(context.resolve(shadow['blurRadius'])) ?? 0,
+          blurRadius: readDimension(shadow['blurRadius'], context) ?? 0,
         );
       }
       return const Shadow();

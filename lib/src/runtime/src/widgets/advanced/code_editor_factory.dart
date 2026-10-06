@@ -299,6 +299,8 @@ class _CodeEditorState extends State<_CodeEditor> {
                 ),
               ),
               child: ListView.builder(
+                // An inner list takes no device inset (§2.4.13).
+                padding: EdgeInsets.zero,
                 controller: _lineNumberScrollController,
                 itemCount: lineCount,
                 itemBuilder: (context, index) {

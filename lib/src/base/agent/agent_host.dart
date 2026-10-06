@@ -11,6 +11,7 @@ import '../session/session.dart';
 import 'package:mcp_bundle/mcp_bundle.dart' as mb;
 import 'package:brain_kernel/brain_kernel.dart' as fb;
 
+import '../install/bundle_tool_names.dart';
 import 'agent_profile.dart';
 
 class AgentHost {
@@ -226,12 +227,29 @@ class AgentHost {
     final owner = fb.BundleActivationRegistry.instance.findOwnerOfAgent(
       resolved,
     );
+    // A bundle agent lists its bundle's tools by their declared names;
+    // each entry resolves to the owning bundle's namespace first
+    // (platform spec 04-ui-host "Name isolation").
+    final bundleId = owner?.bundleId;
+    final registered = <String>{
+      for (final ep in flowbrain.endpoints)
+        for (final d in ep.server.toolDefinitions) d.name,
+    };
     return flowbrain.toolsForAgent(
       resolved,
       role: profile.role,
-      bundleId: owner?.bundleId,
+      bundleId: bundleId,
       explicitAllowlist:
-          profile.toolNames.isEmpty ? null : profile.toolNames.toList(),
+          profile.toolNames.isEmpty
+              ? null
+              : <String>[
+                for (final t in profile.toolNames)
+                  resolveBundleToolPattern(
+                    t,
+                    namespace: bundleId,
+                    registered: registered,
+                  ),
+              ],
     );
   }
 

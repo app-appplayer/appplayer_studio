@@ -31,6 +31,7 @@
 /// regardless of the navigation type (drawer/tabs/bottom/routes).
 library mcp_ui_runtime;
 
+import 'runtime/conformance_claim.dart';
 import 'dart:async';
 import 'routing/route_value.dart';
 
@@ -77,6 +78,15 @@ Widget _withFormFactor(BuildContext context, Widget child) {
   return FormFactorScope(formFactor: ff, child: child);
 }
 
+/// The document's layout direction for its active locale (§12.8): right to
+/// left for an RTL locale, or as the document's `textDirection` says. A
+/// document without an `i18n` block leaves direction to its host.
+Widget _withDocumentDirection(RuntimeEngine engine, Widget child) {
+  final i18n = engine.i18nManager;
+  if (!i18n.hasDefinition) return child;
+  return Directionality(textDirection: i18n.textDirection, child: child);
+}
+
 /// Main MCP UI Runtime class that provides the entry point for using the runtime
 class MCPUIRuntime {
   MCPUIRuntime({
@@ -113,6 +123,20 @@ class MCPUIRuntime {
 
   /// Gets the runtime engine instance (always non-null, initialized in constructor)
   RuntimeEngine get engine => _engine;
+
+  /// Sets the document's active locale (§12.6) — a tag such as `ko-KR`, or
+  /// a language the document carries a locale for (`ko`). The page redraws
+  /// with every `{{i18n.*}}` binding resolved again. The first locale is the
+  /// host's language when the document carries it, else its `defaultLocale`.
+  void setLocale(String locale) => _engine.setLocale(locale);
+
+  /// The document's active locale, in the document's own spelling.
+  String get locale => _engine.locale;
+
+  /// What this runtime claims, in the shape of spec §18.8 — derived from
+  /// what the host wired (resolver, payment and location ports), so it never
+  /// lists a Profile the runtime cannot honour.
+  ConformanceClaim get conformanceClaim => ConformanceClaim.of(_engine);
 
   /// Gets whether the runtime is initialized
   bool get isInitialized => _isInitialized;
@@ -362,6 +386,12 @@ class MCPUIRuntime {
     }
 
     return MCPRuntimeWidget(
+      // One state per engine. Without a key, a host that puts a second
+      // runtime where the first one was gets the first one's state back: its
+      // `initState` never runs for the new engine, so the engine is never
+      // marked ready and its tool and resource handlers are never installed
+      // — the page stays on the progress indicator for good.
+      key: ObjectKey(_engine),
       engine: _engine,
       uiDefinition: uiDefinition,
       initialState: initialState,
@@ -726,7 +756,7 @@ class MCPUIRuntime {
     await NavigationService.instance.onDispose();
 
     // Reset theme manager singleton
-    ThemeManager.instance.reset();
+    _engine.themeManager.reset();
 
     // Clear BindingEngine static caches
     BindingEngine.clearStaticCaches();
@@ -945,8 +975,9 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                     widget.engine.themeManager.toFlutterTheme(isDark: true),
                 themeMode: widget.engine.themeManager.flutterThemeMode,
                 debugShowCheckedModeBanner: false,
-                builder: (ctx, child) =>
-                    _withFormFactor(ctx, child ?? const SizedBox.shrink()),
+                builder: (ctx, child) => _withDocumentDirection(
+                    widget.engine,
+                    _withFormFactor(ctx, child ?? const SizedBox.shrink())),
                 home: _ApplicationShell(
                   engine: widget.engine,
                   appDefinition: appDefinition,
@@ -980,8 +1011,9 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                     widget.engine.themeManager.toFlutterTheme(isDark: true),
                 themeMode: widget.engine.themeManager.flutterThemeMode,
                 debugShowCheckedModeBanner: false,
-                builder: (ctx, child) =>
-                    _withFormFactor(ctx, child ?? const SizedBox.shrink()),
+                builder: (ctx, child) => _withDocumentDirection(
+                    widget.engine,
+                    _withFormFactor(ctx, child ?? const SizedBox.shrink())),
                 initialRoute: widget.engine.routeManager!.initialRoute,
                 routes: widget.engine.routeManager!.generateRoutes(context),
                 // Parameterised routes (`/users/:id`) are pushed with the
@@ -1050,7 +1082,8 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
       stateManager: widget.engine.stateManager,
       bindingEngine: widget.engine.bindingEngine,
       actionHandler: widget.engine.actionHandler,
-      themeManager: ThemeManager(), // Create a basic theme manager
+      themeManager: widget.engine.themeManager,
+      i18nManager: widget.engine.i18nManager,
       buildContext: context,
       engine: widget.engine,
     );
@@ -1162,8 +1195,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
         // scanned or deep-linked target. Open it over the shell once the
         // first frame exists, so back returns to the tab the document names.
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final navigator =
-              NavigationService.instance.navigatorKey.currentState;
+          final navigator = widget.engine.navigatorKey.currentState;
           navigator?.pushNamed(initialRoute);
         });
       }

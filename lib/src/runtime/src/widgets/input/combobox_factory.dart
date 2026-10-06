@@ -218,6 +218,8 @@ class _ComboboxFieldState extends State<_ComboboxField> {
             child: Material(
               elevation: 2,
               child: ListView.builder(
+                // An inner list takes no device inset (§2.4.13).
+                padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 itemCount: matches.length,
                 itemBuilder: (_, i) => ListTile(

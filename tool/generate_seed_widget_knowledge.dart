@@ -11,7 +11,8 @@
 ///
 /// Both vocabularies already exist in machine-readable form:
 ///
-///   `specs/mcp_ui_dsl/spec/<version>/widgets/**.yaml`  the specification
+///   `specs-pub/ui_dsl/<version>/widgets/**.yaml`       the specification
+///                                                      (published English)
 ///   `lib/src/ui/atoms/*.yaml`                          the studio's own atoms
 ///
 /// So the seed is generated from them rather than restated beside them. A
@@ -45,12 +46,13 @@ Future<void> main(List<String> args) async => exitCode = await _run(args);
 Future<int> _run(List<String> args) async {
   final checkOnly = args.contains('--check');
 
+  // The published English specification is the source the seed teaches.
   final specsRoot = _findUp((d) {
-    final c = Directory(p.join(d, 'specs', 'mcp_ui_dsl'));
-    return c.existsSync() ? p.join(d, 'specs') : null;
+    final c = Directory(p.join(d, 'specs-pub', 'ui_dsl'));
+    return c.existsSync() ? p.join(d, 'specs-pub') : null;
   });
   if (specsRoot == null) {
-    stderr.writeln('no specs/ tree found above ${Directory.current.path}');
+    stderr.writeln('no specs-pub/ tree found above ${Directory.current.path}');
     return 2;
   }
   final seedManifest =
@@ -311,7 +313,7 @@ class _Prop {
 
 List<_Widget> _readSpecWidgets(String specsRoot, String version) {
   final dir =
-      Directory(p.join(specsRoot, 'mcp_ui_dsl', 'spec', version, 'widgets'));
+      Directory(p.join(specsRoot, 'ui_dsl', version, 'widgets'));
   if (!dir.existsSync()) return const [];
   final out = <_Widget>[];
   for (final f in dir.listSync(recursive: true).whereType<File>()) {

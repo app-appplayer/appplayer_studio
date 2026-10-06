@@ -41,7 +41,11 @@ class StudioUiRenderer extends StatelessWidget {
     this.initialState,
     this.placeholder,
     this.errorBuilder,
+    this.toolNamespace,
   });
+
+  /// The bundle's tool namespace — see [DslWorkspaceView.toolNamespace].
+  final String? toolNamespace;
 
   /// Absolute path to the bundle root (`.mbd/` directory).
   final String bundlePath;
@@ -84,6 +88,7 @@ class StudioUiRenderer extends StatelessWidget {
           initialState: initialState,
           placeholder: placeholder,
           errorBuilder: errorBuilder,
+          toolNamespace: toolNamespace,
         );
       case UiEntryKinds.studioUi:
         return _StudioUiPlaceholder(uiPath: uiPath);

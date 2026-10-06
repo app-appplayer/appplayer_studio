@@ -26,6 +26,14 @@ class ThemeManager with ChangeNotifier {
 
   ThemeManager._internal();
 
+  /// A theme of its own, not the process-wide [instance].
+  ///
+  /// Each runtime engine holds one. With one shared instance, every document
+  /// on screen drew with the theme of whichever was set up last — two apps
+  /// open side by side took each other's palette — and each engine's state
+  /// manager replaced the previous one's for `theme.mode` overrides.
+  ThemeManager.scoped();
+
   /// Active strongly-typed theme definition.
   ThemeDefinition _definition = ThemeDefinition.defaultLight();
 

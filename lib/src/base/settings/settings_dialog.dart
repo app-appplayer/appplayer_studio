@@ -1,5 +1,4 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:appplayer_core/appplayer_core.dart' show OpenSourceLicenses;
 import 'package:flutter/material.dart';
 import 'package:appplayer_studio/ui.dart';
 
@@ -7,6 +6,7 @@ import '../chat/model_option.dart';
 import '../shell/app_theme.dart';
 import '../../ui/inspect_tag.dart';
 import '../shell/tokens.dart';
+import 'open_source_licenses.dart';
 import 'vibe_settings.dart';
 
 /// One section rendered inside [showVibeSettingsDialog]. Used by both
@@ -75,6 +75,9 @@ Future<VibeSettings?> showVibeSettingsDialog(
   DomainSettingsPanel? domain,
   String appName = 'AppPlayer Studio',
   int mcpPort = 7830,
+  String domainTabLabel = 'Domain',
+  String hostTabLabel = 'Studio',
+  Set<SettingsHostSection>? hostSections,
 }) {
   return showDialog<VibeSettings?>(
     context: context,
@@ -90,8 +93,22 @@ Future<VibeSettings?> showVibeSettingsDialog(
           domain: domain,
           appName: appName,
           mcpPort: mcpPort,
+          domainTabLabel: domainTabLabel,
+          hostTabLabel: hostTabLabel,
+          hostSections: hostSections,
         ),
   );
+}
+
+/// Built-in sections of the host settings tab a host may choose to show.
+/// API providers, Claude Code and About always show.
+enum SettingsHostSection {
+  appearance,
+  debugMode,
+  workspace,
+  mcpServer,
+  autosave,
+  autoDiscovery,
 }
 
 enum _SettingsTab { domain, studio }
@@ -108,6 +125,9 @@ class _SettingsDialog extends StatefulWidget {
     this.domain,
     this.appName = 'AppPlayer Studio',
     this.mcpPort = 7830,
+    this.domainTabLabel = 'Domain',
+    this.hostTabLabel = 'Studio',
+    this.hostSections,
   });
   final VibeSettings initial;
   final List<VibeModelOption> modelOptions;
@@ -126,6 +146,17 @@ class _SettingsDialog extends StatefulWidget {
   /// The port this instance's MCP server listens on — the URL field's hint
   /// shows it (a debug instance does not listen on the release port).
   final int mcpPort;
+
+  /// Sidebar label of the active bundle's tab.
+  final String domainTabLabel;
+
+  /// Sidebar label (and title prefix) of the host's own settings tab.
+  final String hostTabLabel;
+
+  /// Built-in host sections to show; null shows every one (the Studio
+  /// layout). A host without projects, autosave or board discovery leaves
+  /// those out.
+  final Set<SettingsHostSection>? hostSections;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -325,7 +356,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     final title =
         activeTab == _SettingsTab.domain
             ? '${widget.domain!.name} Settings'
-            : 'Studio Settings';
+            : '${widget.hostTabLabel} Settings';
     return Dialog(
       backgroundColor: c.surface2,
       child: SizedBox(
@@ -337,6 +368,9 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             if (hasDomain)
               _SettingsSidebar(
                 domainName: widget.domain!.name,
+                domainLabel: widget.domainTabLabel,
+                hostLabel: widget.hostTabLabel,
+                hostName: widget.appName,
                 active: activeTab,
                 onPick: (t) => setState(() => _tab = t),
               ),
@@ -441,186 +475,201 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     );
   }
 
+  bool _shows(SettingsHostSection section) =>
+      widget.hostSections?.contains(section) ?? true;
+
   Widget _buildStudioBody(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        VbuFormSection(
-          label: 'Appearance',
-          children: <Widget>[
-            VbuLabelledMenu<String>(
-              label: 'Theme mode',
-              value: _themeMode,
-              options: const <String>['system', 'light', 'dark'],
-              labels: const <String, String>{
-                'system': 'System (follow OS)',
-                'light': 'Light',
-                'dark': 'Dark',
-              },
-              onChanged: (v) => setState(() => _themeMode = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
-        VbuFormSection(
-          label: 'Debug mode',
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Tag every rendered widget for inspect. '
-                    'Required for `studio.renderer.layout_snapshot` '
-                    '+ `studio.ui.tap({elementId:...})` automation '
-                    '(scripted UI tests, recording tutorials). '
-                    'Doubles widget RenderObject count — leave off '
-                    'for fast production sessions.',
-                    style: TextStyle(
-                      fontFamily: VibeTokens.fontSans,
-                      fontSize: 11,
-                      color: VibeTokens.colorOf(context).textSecondary,
+        if (_shows(SettingsHostSection.appearance)) ...<Widget>[
+          VbuFormSection(
+            label: 'Appearance',
+            children: <Widget>[
+              VbuLabelledMenu<String>(
+                label: 'Theme mode',
+                value: _themeMode,
+                options: const <String>['system', 'light', 'dark'],
+                labels: const <String, String>{
+                  'system': 'System (follow OS)',
+                  'light': 'Light',
+                  'dark': 'Dark',
+                },
+                onChanged: (v) => setState(() => _themeMode = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
+        if (_shows(SettingsHostSection.debugMode)) ...<Widget>[
+          VbuFormSection(
+            label: 'Debug mode',
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      'Tag every rendered widget for inspect. '
+                      'Required for `studio.renderer.layout_snapshot` '
+                      '+ `studio.ui.tap({elementId:...})` automation '
+                      '(scripted UI tests, recording tutorials). '
+                      'Doubles widget RenderObject count — leave off '
+                      'for fast production sessions.',
+                      style: TextStyle(
+                        fontFamily: VibeTokens.fontSans,
+                        fontSize: 11,
+                        color: VibeTokens.colorOf(context).textSecondary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: VibeTokens.space2),
-                _compactSwitch(
-                  _debugMode,
-                  (v) => setState(() => _debugMode = v),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
-        VbuFormSection(
-          label: 'Workspace',
-          children: <Widget>[
-            VbuLabelledFolder(
-              label: 'Default location',
-              value: _workspaceDir,
-              hint: '~/AppPlayerBuilder',
-              onPick: _pickWorkspaceDir,
-              onClear:
-                  _workspaceDir == null
-                      ? null
-                      : () => setState(() => _workspaceDir = null),
-            ),
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
-        VbuFormSection(
-          label: 'MCP server',
-          children: <Widget>[
-            VbuLabelledField(
-              label: 'URL',
-              controller: _mcpUrl,
-              hint: 'http://localhost:${widget.mcpPort} — restart required',
-            ),
-            VbuLabelledMenu<String>(
-              label: 'Transport',
-              value: _mcpTransport,
-              options: const <String>['http', 'sse'],
-              labels: const <String, String>{
-                'http': 'Streamable HTTP',
-                'sse': 'SSE (legacy)',
-              },
-              onChanged: (v) => setState(() => _mcpTransport = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
-        VbuFormSection(
-          label: 'Autosave',
-          children: <Widget>[
-            VbuLabelledMenu<int>(
-              label: 'Idle delay',
-              value: _autosaveDelaySec,
-              options: const <int>[0, 5, 10, 30],
-              labels: const <int, String>{
-                0: 'Off (manual ⌘S only)',
-                5: '5 seconds',
-                10: '10 seconds',
-                30: '30 seconds',
-              },
-              onChanged: (v) => setState(() => _autosaveDelaySec = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
+                  const SizedBox(width: VibeTokens.space2),
+                  _compactSwitch(
+                    _debugMode,
+                    (v) => setState(() => _debugMode = v),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
+        if (_shows(SettingsHostSection.workspace)) ...<Widget>[
+          VbuFormSection(
+            label: 'Workspace',
+            children: <Widget>[
+              VbuLabelledFolder(
+                label: 'Default location',
+                value: _workspaceDir,
+                hint: '~/AppPlayerBuilder',
+                onPick: _pickWorkspaceDir,
+                onClear:
+                    _workspaceDir == null
+                        ? null
+                        : () => setState(() => _workspaceDir = null),
+              ),
+            ],
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
+        if (_shows(SettingsHostSection.mcpServer)) ...<Widget>[
+          VbuFormSection(
+            label: 'MCP server',
+            children: <Widget>[
+              VbuLabelledField(
+                label: 'URL',
+                controller: _mcpUrl,
+                hint: 'http://localhost:${widget.mcpPort} — restart required',
+              ),
+              VbuLabelledMenu<String>(
+                label: 'Transport',
+                value: _mcpTransport,
+                options: const <String>['http', 'sse'],
+                labels: const <String, String>{
+                  'http': 'Streamable HTTP',
+                  'sse': 'SSE (legacy)',
+                },
+                onChanged: (v) => setState(() => _mcpTransport = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
+        if (_shows(SettingsHostSection.autosave)) ...<Widget>[
+          VbuFormSection(
+            label: 'Autosave',
+            children: <Widget>[
+              VbuLabelledMenu<int>(
+                label: 'Idle delay',
+                value: _autosaveDelaySec,
+                options: const <int>[0, 5, 10, 30],
+                labels: const <int, String>{
+                  0: 'Off (manual ⌘S only)',
+                  5: '5 seconds',
+                  10: '10 seconds',
+                  30: '30 seconds',
+                },
+                onChanged: (v) => setState(() => _autosaveDelaySec = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
         // Auto discovery — nearby MCP boards. Every toggle is backed by a
         // real scanner (usb serial probe · mDNS · BLE UUID scan · LDAP
         // labeledURI); sources default OFF and the sweep runs only when at
         // least one is on. BLE note: first scan triggers the OS Bluetooth
         // permission prompt.
-        VbuFormSection(
-          label: 'Auto discovery',
-          children: <Widget>[
-            _toggleRow(
-              'USB (serial)',
-              _discoveryUsb,
-              (v) => setState(() => _discoveryUsb = v),
-            ),
-            _toggleRow(
-              'Wi-Fi (mDNS)',
-              _discoveryMdns,
-              (v) => setState(() => _discoveryMdns = v),
-            ),
-            _toggleRow(
-              'Bluetooth',
-              _discoveryBle,
-              (v) => setState(() => _discoveryBle = v),
-            ),
-            _toggleRow(
-              'Organization directory (LDAP)',
-              _discoveryDirectory,
-              (v) => setState(() => _discoveryDirectory = v),
-            ),
-            const SizedBox(height: VibeTokens.space2),
-            _toggleRow(
-              'Auto-connect confirmed boards',
-              _discoveryAutoConnect,
-              (v) => setState(() => _discoveryAutoConnect = v),
-            ),
-            _toggleRow(
-              'Require signed boards',
-              _discoveryEnforceSignature,
-              (v) => setState(() => _discoveryEnforceSignature = v),
-            ),
-            if (_discoveryDirectory) ...<Widget>[
+        if (_shows(SettingsHostSection.autoDiscovery)) ...<Widget>[
+          VbuFormSection(
+            label: 'Auto discovery',
+            children: <Widget>[
+              _toggleRow(
+                'USB (serial)',
+                _discoveryUsb,
+                (v) => setState(() => _discoveryUsb = v),
+              ),
+              _toggleRow(
+                'Wi-Fi (mDNS)',
+                _discoveryMdns,
+                (v) => setState(() => _discoveryMdns = v),
+              ),
+              _toggleRow(
+                'Bluetooth',
+                _discoveryBle,
+                (v) => setState(() => _discoveryBle = v),
+              ),
+              _toggleRow(
+                'Organization directory (LDAP)',
+                _discoveryDirectory,
+                (v) => setState(() => _discoveryDirectory = v),
+              ),
               const SizedBox(height: VibeTokens.space2),
-              VbuLabelledField(
-                label: 'Directory host',
-                controller: _dirHost,
-                hint: 'ldap.example.org',
+              _toggleRow(
+                'Auto-connect confirmed boards',
+                _discoveryAutoConnect,
+                (v) => setState(() => _discoveryAutoConnect = v),
               ),
-              VbuLabelledField(
-                label: 'Port',
-                controller: _dirPort,
-                hint: 'blank = 389 (636 with LDAPS)',
+              _toggleRow(
+                'Require signed boards',
+                _discoveryEnforceSignature,
+                (v) => setState(() => _discoveryEnforceSignature = v),
               ),
-              _toggleRow('LDAPS (TLS)', _dirSsl, (v) {
-                setState(() => _dirSsl = v);
-              }),
-              VbuLabelledField(
-                label: 'Base DN',
-                controller: _dirBaseDN,
-                hint: 'ou=devices,dc=example,dc=org',
-              ),
-              VbuLabelledField(
-                label: 'Bind DN',
-                controller: _dirBindDN,
-                hint: 'blank = anonymous bind',
-              ),
-              VbuLabelledField(
-                label: 'Password',
-                controller: _dirPassword,
-                hint: '',
-              ),
+              if (_discoveryDirectory) ...<Widget>[
+                const SizedBox(height: VibeTokens.space2),
+                VbuLabelledField(
+                  label: 'Directory host',
+                  controller: _dirHost,
+                  hint: 'ldap.example.org',
+                ),
+                VbuLabelledField(
+                  label: 'Port',
+                  controller: _dirPort,
+                  hint: 'blank = 389 (636 with LDAPS)',
+                ),
+                _toggleRow('LDAPS (TLS)', _dirSsl, (v) {
+                  setState(() => _dirSsl = v);
+                }),
+                VbuLabelledField(
+                  label: 'Base DN',
+                  controller: _dirBaseDN,
+                  hint: 'ou=devices,dc=example,dc=org',
+                ),
+                VbuLabelledField(
+                  label: 'Bind DN',
+                  controller: _dirBindDN,
+                  hint: 'blank = anonymous bind',
+                ),
+                VbuLabelledField(
+                  label: 'Password',
+                  controller: _dirPassword,
+                  hint: '',
+                ),
+              ],
             ],
-          ],
-        ),
-        const SizedBox(height: VibeTokens.space3),
+          ),
+          const SizedBox(height: VibeTokens.space3),
+        ],
         // LLM — credentials only (no model selector). Two sibling
         // sections always visible: the 3 API providers (inner tab —
         // Claude / OpenAI / Gemini) and Claude Code (subscription via
@@ -833,11 +882,17 @@ class _SettingsDialogState extends State<_SettingsDialog> {
 class _SettingsSidebar extends StatelessWidget {
   const _SettingsSidebar({
     required this.domainName,
+    required this.domainLabel,
+    required this.hostLabel,
+    required this.hostName,
     required this.active,
     required this.onPick,
   });
 
   final String domainName;
+  final String domainLabel;
+  final String hostLabel;
+  final String hostName;
   final _SettingsTab active;
   final ValueChanged<_SettingsTab> onPick;
 
@@ -858,7 +913,7 @@ class _SettingsSidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _SidebarItem(
-            label: 'Domain',
+            label: domainLabel,
             sublabel: domainName,
             icon: Icons.extension_outlined,
             selected: active == _SettingsTab.domain,
@@ -866,8 +921,8 @@ class _SettingsSidebar extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           _SidebarItem(
-            label: 'Studio',
-            sublabel: 'AppPlayer Studio',
+            label: hostLabel,
+            sublabel: hostName,
             icon: Icons.tune,
             selected: active == _SettingsTab.studio,
             onTap: () => onPick(_SettingsTab.studio),

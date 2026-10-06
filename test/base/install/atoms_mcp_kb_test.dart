@@ -99,6 +99,50 @@ void main() {
       expect((list as List).toSet(), {'studio.a', 'studio.b'});
     });
 
+    test(
+      'a name from inside a bundle resolves to its own namespace first',
+      () async {
+        final boot = mk.InProcessKernelServerHost();
+        for (final name in <String>[
+          'kanban.board.summary',
+          'other.board.summary',
+          'studio.echo',
+        ]) {
+          boot.addTool(
+            name: name,
+            description: name,
+            inputSchema: const {'type': 'object', 'properties': {}},
+            handler: (_) async => _ok({'by': name}),
+          );
+        }
+        final atom = McpAtom(boot: boot, namespace: 'kanban');
+        Future<Object?> call(String tool) async =>
+            ((await atom.dispatch('callTool', [tool, const {}]))
+                as Map<String, dynamic>)['body'];
+        // Declared name (with a dot) → own namespace, not another bundle's.
+        expect(
+          call('board.summary'),
+          completion({'by': 'kanban.board.summary'}),
+        );
+        // Full names and host tools reach as written.
+        expect(
+          call('kanban.board.summary'),
+          completion({'by': 'kanban.board.summary'}),
+        );
+        expect(
+          call('other.board.summary'),
+          completion({'by': 'other.board.summary'}),
+        );
+        expect(call('studio.echo'), completion({'by': 'studio.echo'}));
+        // Outside a bundle only full names reach.
+        final outside = McpAtom(boot: boot);
+        final r =
+            (await outside.dispatch('callTool', ['board.summary', const {}]))
+                as Map<String, dynamic>;
+        expect(r['isError'], isTrue);
+      },
+    );
+
     test('callTool requires a non-empty toolName', () async {
       final boot = mk.InProcessKernelServerHost();
       final atom = McpAtom(boot: boot);
@@ -138,15 +182,21 @@ void main() {
     tearDown(() => tmp.deleteSync(recursive: true));
 
     KbAtom atomFor(String appId, {mk.KbRecordStore? records}) => KbAtom(
-      mk.BundleKbStore(appId: appId, records: records ?? mk.KvKbRecordStore(kv)),
+      mk.BundleKbStore(
+        appId: appId,
+        records: records ?? mk.KvKbRecordStore(kv),
+      ),
     );
 
     test('put / get / list / delete answer the kernel contract', () async {
       final atom = atomFor('bundle:com.test.kb');
-      expect(await atom.dispatch('put', [
-        'a',
-        {'n': 1},
-      ]), {'ok': true});
+      expect(
+        await atom.dispatch('put', [
+          'a',
+          {'n': 1},
+        ]),
+        {'ok': true},
+      );
       expect(await atom.dispatch('get', ['a']), {'n': 1});
       expect(await atom.dispatch('list', ['']), [
         {
@@ -223,22 +273,28 @@ void main() {
       expect(await b.dispatch('get', ['k']), 'B');
     });
 
-    test('a write on a stale version is a conflict, force overwrites', () async {
-      final records = mk.KvKbRecordStore(kv);
-      final first = atomFor('bundle:com.test.kb', records: records);
-      final second = atomFor('bundle:com.test.kb', records: records);
-      await first.dispatch('put', ['k', 1]);
-      expect(await second.dispatch('get', ['k']), 1);
-      await second.dispatch('put', ['k', 2]);
-      final stale = await first.dispatch('put', ['k', 3]) as Map;
-      expect(stale['ok'], isFalse);
-      expect((stale['conflict'] as Map)['value'], 2);
-      expect(await first.dispatch('put', [
-        'k',
-        3,
-        {'force': true},
-      ]), {'ok': true});
-    });
+    test(
+      'a write on a stale version is a conflict, force overwrites',
+      () async {
+        final records = mk.KvKbRecordStore(kv);
+        final first = atomFor('bundle:com.test.kb', records: records);
+        final second = atomFor('bundle:com.test.kb', records: records);
+        await first.dispatch('put', ['k', 1]);
+        expect(await second.dispatch('get', ['k']), 1);
+        await second.dispatch('put', ['k', 2]);
+        final stale = await first.dispatch('put', ['k', 3]) as Map;
+        expect(stale['ok'], isFalse);
+        expect((stale['conflict'] as Map)['value'], 2);
+        expect(
+          await first.dispatch('put', [
+            'k',
+            3,
+            {'force': true},
+          ]),
+          {'ok': true},
+        );
+      },
+    );
 
     test('throws on unknown verb', () async {
       expect(

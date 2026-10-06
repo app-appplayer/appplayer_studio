@@ -41,11 +41,6 @@ void main() {
       final bridge = ChromeBridge();
       expect(bridge.toolsSubTab.value, equals('tool'));
     });
-
-    test('themeReinjectTick starts at 0', () {
-      final bridge = ChromeBridge();
-      expect(bridge.themeReinjectTick.value, equals(0));
-    });
   });
 
   group('DomainLifecycleState', () {
@@ -86,18 +81,6 @@ void main() {
       expect(hits, 1);
       bridge.inspectorEnabled.value = false;
       expect(hits, 2);
-    });
-
-    test('themeReinjectTick can be bumped repeatedly', () {
-      final bridge = ChromeBridge();
-      final captured = <int>[];
-      bridge.themeReinjectTick.addListener(
-        () => captured.add(bridge.themeReinjectTick.value),
-      );
-      bridge.themeReinjectTick.value++;
-      bridge.themeReinjectTick.value++;
-      bridge.themeReinjectTick.value++;
-      expect(captured, <int>[1, 2, 3]);
     });
   });
 
@@ -204,19 +187,21 @@ void main() {
       expect(result.single.raw['id'], 'acme.lab');
     });
 
-    test('connectDiscovered slot forwards the picked server to the host',
-        () async {
-      final bridge = ChromeBridge();
-      DiscoveredServer? routed;
-      bridge.connectDiscovered = (s) async => routed = s;
-      const picked = DiscoveredServer(
-        source: 'ble',
-        name: 'Wrist Sensor',
-        detail: 'dev-1',
-        raw: <String, dynamic>{},
-      );
-      await bridge.connectDiscovered!.call(picked);
-      expect(routed, same(picked));
-    });
+    test(
+      'connectDiscovered slot forwards the picked server to the host',
+      () async {
+        final bridge = ChromeBridge();
+        DiscoveredServer? routed;
+        bridge.connectDiscovered = (s) async => routed = s;
+        const picked = DiscoveredServer(
+          source: 'ble',
+          name: 'Wrist Sensor',
+          detail: 'dev-1',
+          raw: <String, dynamic>{},
+        );
+        await bridge.connectDiscovered!.call(picked);
+        expect(routed, same(picked));
+      },
+    );
   });
 }

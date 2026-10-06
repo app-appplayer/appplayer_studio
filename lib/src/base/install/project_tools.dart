@@ -25,6 +25,7 @@ import '../main/chrome_bridge.dart';
 import '../settings/manifest_field_inheritance.dart' show readPackageOverrides;
 import '../settings/vibe_settings.dart';
 import 'builtin_app.dart' show BuiltInAppRegistry;
+import 'bundle_self_names.dart';
 import 'project_layout.dart';
 
 /// Register all 6 `studio.project.*` tools onto [boot]. Handlers read
@@ -421,6 +422,27 @@ void registerProjectTools(
           content: <mk.KernelContent>[
             mk.KernelTextContent(
               text: '{"ok":false,"error":"bundle not found"}',
+            ),
+          ],
+          isError: true,
+        );
+      }
+      // An exported bundle runs under whatever id the installing host
+      // gives it, so it must not name its own tools with its id.
+      final issues = <String>[
+        for (final r in selfNamedToolReferences(bundlePath)) '$r',
+      ];
+      if (issues.isNotEmpty) {
+        return mk.KernelToolResult(
+          content: <mk.KernelContent>[
+            mk.KernelTextContent(
+              text: jsonEncode(<String, dynamic>{
+                'ok': false,
+                'error':
+                    'the bundle names its own tools with its id; write the '
+                    'declared names instead',
+                'issues': issues,
+              }),
             ),
           ],
           isError: true,

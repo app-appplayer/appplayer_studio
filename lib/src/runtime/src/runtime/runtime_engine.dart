@@ -1,3 +1,4 @@
+import '../i18n/i18n_manager.dart';
 import '../assets/asset_resolver.dart';
 import '../capabilities/media_registry.dart';
 import '../capabilities/runtime_capabilities.dart';
@@ -104,6 +105,19 @@ class RuntimeEngine with ChangeNotifier {
   String? _launchRoute;
   late final Renderer _renderer;
   late final ThemeManager _themeManager;
+
+  /// This document's translations and active locale (§12). The engine's own,
+  /// not the process-wide `I18nManager.instance`: two documents open at once
+  /// must not read each other's text or switch each other's language.
+  final I18nManager _i18nManager = I18nManager.scoped();
+  I18nManager get i18nManager => _i18nManager;
+
+  /// Sets the active locale (§12.6). Every `{{i18n.*}}` binding re-resolves
+  /// on the rebuild this triggers.
+  void setLocale(String locale) => _i18nManager.setLocale(locale);
+
+  /// The active locale, in the document's spelling.
+  String get locale => _i18nManager.currentLocale;
 
   /// Tear-off of [notifyListeners] registered on [_themeManager] in
   /// `initialize()` so ThemeManager mutations forward to engine
@@ -447,6 +461,10 @@ class RuntimeEngine with ChangeNotifier {
     _themeListener = notifyListeners;
     _themeManager.addListener(_themeListener!);
 
+    // A locale change re-renders the document (§12.6). The manager is this
+    // engine's own, so the listener goes with it on destroy.
+    _i18nManager.addListener(notifyListeners);
+
     // Register all default widgets
     DefaultWidgets.registerAll(_widgetRegistry);
 
@@ -481,7 +499,9 @@ class RuntimeEngine with ChangeNotifier {
       stateManager: _stateManager,
       engine: this,
       widgetWrapper: _widgetWrapper,
-    );
+    )
+      ..i18nManager = _i18nManager
+      ..themeManager = _themeManager;
 
     // Register core services
     await _registerCoreServices();
@@ -605,6 +625,19 @@ class RuntimeEngine with ChangeNotifier {
         // an entry that names one wins because it is the more specific fact.
         launchRoute: _entrySession.entry?.route ?? _launchRoute,
       );
+
+      // The document's `i18n` block (§12.1). The host's languages, in its
+      // order of preference, choose the first locale when the document
+      // carries one of them (§12.6); otherwise `defaultLocale` does.
+      final i18n = definition['i18n'];
+      if (i18n is Map) {
+        await _i18nManager.loadDefinition(
+          Map<String, dynamic>.from(i18n),
+          preferredLocales: WidgetsBinding.instance.platformDispatcher.locales
+              .map((locale) => locale.toLanguageTag())
+              .toList(),
+        );
+      }
 
       // Initialize theme from application definition
       if (_applicationDefinition!.theme != null) {
@@ -1129,6 +1162,8 @@ class RuntimeEngine with ChangeNotifier {
       _themeManager.removeListener(tl);
       _themeListener = null;
     }
+    _i18nManager.removeListener(notifyListeners);
+    _i18nManager.clear();
 
     _isInitialized = false;
     _isReady = false;
@@ -1420,13 +1455,14 @@ class RuntimeEngine with ChangeNotifier {
 
     _widgetRegistry = WidgetRegistry();
     _bindingEngine = BindingEngine();
-    _actionHandler = ActionHandler();
+    _actionHandler = ActionHandler()..navigatorKey = navigatorKey;
     _stateManager = StateManager();
     _entrySession = EntrySession(stateManager: _stateManager);
-    _themeManager = ThemeManager();
+    _themeManager = ThemeManager.scoped();
     _computedManager = ComputedManager(
       stateManager: _stateManager,
       bindingEngine: _bindingEngine,
+      themeManager: _themeManager,
     );
 
     _channelManager = ChannelManager();

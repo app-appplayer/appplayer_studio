@@ -16,12 +16,23 @@ import 'dart:convert';
 import '../../session/session.dart';
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
+import '../bundle_tool_names.dart';
 import 'atom_category.dart';
 
 class McpAtom extends AtomCategory {
-  McpAtom({required this.boot, this.sessionBridge, this.sessionResolver});
+  McpAtom({
+    required this.boot,
+    this.sessionBridge,
+    this.sessionResolver,
+    this.namespace,
+  });
 
   final mk.KernelServerHost boot;
+
+  /// The calling bundle's tool namespace. A name the bundle's js passes
+  /// resolves to its own `<namespace>.<name>` first, then as written
+  /// ([resolveBundleToolName]).
+  final String? namespace;
 
   /// Optional host bridge. When present (and [sessionResolver]
   /// yields a non-null session), every `callTool` from JS runs
@@ -63,10 +74,14 @@ class McpAtom extends AtomCategory {
           throw ArgumentError('args must be an object map');
         }
         final argsMap = Map<String, dynamic>.from(toolArgs);
+        final target = resolveBundleToolName(
+          toolName,
+          namespace: namespace,
+          isRegistered: boot.toolScopes.containsKey,
+        );
         final session = sessionResolver?.call();
         final bridge = sessionBridge;
-        Future<mk.KernelToolResult> doCall() =>
-            boot.callTool(toolName, argsMap);
+        Future<mk.KernelToolResult> doCall() => boot.callTool(target, argsMap);
         final mk.KernelToolResult result;
         if (bridge != null && session != null) {
           result = await bridge.runScoped(session, doCall);

@@ -24,7 +24,7 @@ class StepperWidgetFactory extends WidgetFactory {
     final stepperType =
         _parseStepperType(properties['stepperType'] ?? properties['type']) ??
             StepperType.vertical;
-    final physics = _parseScrollPhysics(properties['physics']);
+    final physics = readScrollPhysics(properties['physics'], context);
     final margin = edgeInsetsOf(properties['margin'], context);
 
     // Extract steps
@@ -122,19 +122,6 @@ class StepperWidgetFactory extends WidgetFactory {
         return StepperType.vertical;
       case 'horizontal':
         return StepperType.horizontal;
-      default:
-        return null;
-    }
-  }
-
-  ScrollPhysics? _parseScrollPhysics(String? value) {
-    switch (value) {
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      case 'never':
-        return const NeverScrollableScrollPhysics();
       default:
         return null;
     }

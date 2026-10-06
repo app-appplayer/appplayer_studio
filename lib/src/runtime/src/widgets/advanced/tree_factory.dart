@@ -31,8 +31,8 @@ class TreeWidgetFactory extends WidgetFactory {
     final onDrop = actionOf(properties['onDrop'], context);
     final showLines = context.resolve<bool>(properties['showLines'] ?? true);
     final selectable = context.resolve<bool>(properties['selectable'] ?? false);
-    final width = parseDimension(context.resolve((properties['width'])));
-    final height = parseDimension(context.resolve((properties['height'])));
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context);
     final indentation =
         (dimensionOf(properties['indentation'], context))?.toDouble() ?? 24.0;
     // `itemPadding`: EdgeInsets applied inside every row so the

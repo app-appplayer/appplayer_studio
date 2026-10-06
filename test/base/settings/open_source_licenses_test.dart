@@ -1,12 +1,12 @@
 /// One place in the app lists every license: Settings → About → Open-source
 /// licenses. It shows the Dart packages Flutter registers plus the native
 /// libraries and fonts the app ships (assets/licenses/{apple,desktop}.json),
-/// registered through the platform's OpenSourceLicenses.
+/// registered through the app's OpenSourceLicenses.
 library;
 
 import 'dart:io';
 
-import 'package:appplayer_core/appplayer_core.dart' show OpenSourceLicenses;
+import 'package:appplayer_studio/src/base/settings/open_source_licenses.dart';
 import 'package:appplayer_studio/src/base/settings/settings_dialog.dart';
 import 'package:appplayer_studio/src/base/settings/third_party_licenses.dart';
 import 'package:appplayer_studio/src/base/settings/vibe_settings.dart';

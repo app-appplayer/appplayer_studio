@@ -256,6 +256,11 @@ class HostBundleActivationContext implements BundleActivationContext {
         return _registerMcpTool(tool);
       case mb.ToolKind.cloud:
         return _registerCloudTool(tool);
+      case mb.ToolKind.host:
+        // A host builtin re-declared by the bundle (bundle spec 04 §4.4) —
+        // the host already dispatches it, so there is nothing to register.
+        // Whether the host has it is `requires.builtinTools`' question.
+        return const RegistrationResult(ok: true, exposedName: '');
       case mb.ToolKind.ts:
         // `type: server` bundle tool — compiled and executed by the
         // marketplace serving runtime, never by this host (no local TS
@@ -857,6 +862,7 @@ class HostBundleActivationContext implements BundleActivationContext {
         boot: _boot,
         sessionBridge: _sessionBridge,
         sessionResolver: () => _session,
+        namespace: exposedShortId,
       ),
       AgentAtom(),
       if (kbStore != null) KbAtom(kbStore),

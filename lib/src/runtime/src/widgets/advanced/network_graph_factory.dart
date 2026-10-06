@@ -15,8 +15,8 @@ class NetworkGraphWidgetFactory extends WidgetFactory {
         [];
     final edges = listOf(properties['edges'] ?? [], context) ??
         [];
-    final width = parseDimension(context.resolve((properties['width'])));
-    final height = parseDimension(context.resolve((properties['height']))) ?? 400.0;
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context) ?? 400.0;
     final interactive =
         context.resolve<bool>(properties['interactive'] ?? true);
     final layout = context.resolve<String>(properties['layout'] ?? 'force');

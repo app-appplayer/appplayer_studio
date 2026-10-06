@@ -66,7 +66,7 @@ class TabBarWidgetFactory extends WidgetFactory {
         : null;
     final mouseCursor = _parseMouseCursor(properties['mouseCursor']);
     final enableFeedback = boolOf(properties['enableFeedback'], context);
-    final physics = _parseScrollPhysics(properties['physics']);
+    final physics = readScrollPhysics(properties['physics'], context);
 
     // Canonical `selectedIndex` + `onChange`. Accept legacy
     // Flutter-style `onTap` / `click` as aliases.
@@ -189,19 +189,6 @@ class TabBarWidgetFactory extends WidgetFactory {
         return SystemMouseCursors.click;
       case 'basic':
         return SystemMouseCursors.basic;
-      default:
-        return null;
-    }
-  }
-
-  ScrollPhysics? _parseScrollPhysics(String? physics) {
-    switch (physics) {
-      case 'never':
-        return const NeverScrollableScrollPhysics();
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
       default:
         return null;
     }

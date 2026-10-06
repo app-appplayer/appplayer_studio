@@ -18,7 +18,7 @@ class SingleChildScrollViewWidgetFactory extends WidgetFactory {
     final reverse = boolOf(properties['reverse'], context) ?? false;
     final padding = edgeInsetsOf(properties['padding'], context);
     final primary = boolOf(properties['primary'], context);
-    final physics = _parseScrollPhysics(properties['physics']);
+    final physics = readScrollPhysics(properties['physics'], context);
     final clipBehavior =
         _parseClip(properties['clipBehavior']) ?? Clip.hardEdge;
 
@@ -48,19 +48,6 @@ class SingleChildScrollViewWidgetFactory extends WidgetFactory {
         return Axis.horizontal;
       case 'vertical':
         return Axis.vertical;
-      default:
-        return null;
-    }
-  }
-
-  ScrollPhysics? _parseScrollPhysics(String? value) {
-    switch (value) {
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      case 'never':
-        return const NeverScrollableScrollPhysics();
       default:
         return null;
     }

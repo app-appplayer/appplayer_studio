@@ -32,18 +32,15 @@ class LocalServerManager {
     required LocalServerStore store,
     required LocalServerCredentialVault vault,
     required OpenServerTab openTab,
-    ValueNotifier<int>? themeReinjectTick,
   }) : _clientHost = clientHost,
        _store = store,
        _vault = vault,
-       _openTab = openTab,
-       _themeReinjectTick = themeReinjectTick;
+       _openTab = openTab;
 
   final mk.KernelClientHost _clientHost;
   final LocalServerStore _store;
   final LocalServerCredentialVault _vault;
   final OpenServerTab _openTab;
-  final ValueNotifier<int>? _themeReinjectTick;
 
   /// Re-dial routes for connections that are NOT recorded servers — a board
   /// reached through discovery has no store record, so [reopen] cannot open it
@@ -181,7 +178,6 @@ class LocalServerManager {
           (_) => ServedServiceBody(
             clientHost: _clientHost,
             connectionId: id,
-            themeReinjectTick: _themeReinjectTick,
             reconnect: reconnect,
           ),
     );
@@ -218,7 +214,6 @@ class LocalServerManager {
           (_) => ServedServiceBody(
             clientHost: _clientHost,
             connectionId: r.id,
-            themeReinjectTick: _themeReinjectTick,
             reconnect: reconnect,
           ),
     );

@@ -16,8 +16,8 @@ class ChartWidgetFactory extends WidgetFactory {
         context.resolve<String>(properties['chartType'] ?? 'line');
     final rawData = properties['data'];
     final title = context.resolve<String?>(properties['title']);
-    final width = parseDimension(context.resolve((properties['width'])));
-    final height = parseDimension(context.resolve((properties['height']))) ?? 300.0;
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context) ?? 300.0;
 
     // Extract visual properties
     final showGrid = context.resolve<bool>(properties['showGrid'] ?? true);

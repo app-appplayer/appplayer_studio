@@ -50,8 +50,8 @@ String serviceConnectionIdOf(String installId) =>
 /// baseline definition — bundle fields win, host fills the gaps, and the
 /// `light` / `dark` sub-variants merge entry-by-entry (same rule as the
 /// workspace surface). A themeless served app therefore still gets a full
-/// two-variant definition instead of whatever the singleton ThemeManager
-/// last held (fresh boot = an empty light default → dim dark-on-dark text).
+/// two-variant definition instead of the runtime's stock default (an empty
+/// light default → dim dark-on-dark text).
 Map<String, Object?> mergeServedTheme(
   Map<String, Object?> host,
   Map<String, dynamic>? bundle,
@@ -132,9 +132,9 @@ Future<Map<String, dynamic>> readServiceJson(
 /// endless spinner that re-fires network calls on every repaint.
 ///
 /// ACTIVE-GATED: the workspace keeps EVERY open tab alive in an IndexedStack,
-/// but `flutter_mcp_ui_runtime`'s ThemeManager / WidgetCache / navigatorKey are
-/// PROCESS singletons — two co-mounted served surfaces would fight over them
-/// and render each other's UI (two market-service tabs showing the same app).
+/// but `flutter_mcp_ui_runtime`'s WidgetCache is a PROCESS singleton — two
+/// co-mounted served surfaces would fight over it and render each other's UI
+/// (two market-service tabs showing the same app).
 /// So only the ACTIVE service tab mounts its runtime; inactive tabs show a
 /// token-bg placeholder (their render future + runtime stay alive for instant
 /// re-entry). This is the same single-runtime-at-a-time discipline the DSL
@@ -146,7 +146,6 @@ class ServedServiceBody extends StatefulWidget {
     super.key,
     required this.clientHost,
     required this.connectionId,
-    this.themeReinjectTick,
     this.reconnect,
   });
 
@@ -160,24 +159,16 @@ class ServedServiceBody extends StatefulWidget {
   /// host wiring (tests, standalone), where the view behaves as before.
   final StudioReconnectWatch? reconnect;
 
-  /// Cross-tab "the shared singleton ThemeManager was just reset" signal
-  /// (`ChromeBridge.themeReinjectTick`). Bumped when ANY served/authoring
-  /// runtime is torn down (a tab closing); an active tab listens and re-injects
-  /// its own theme so a sibling's close doesn't blank it. Null in mount paths
-  /// with no chrome (tests, standalone) — the active-edge re-inject still runs.
-  final ValueNotifier<int>? themeReinjectTick;
-
   @override
   State<ServedServiceBody> createState() => _ServedServiceBodyState();
 }
 
 class _ServedServiceBodyState extends State<ServedServiceBody> {
   Future<Widget>? _rendered;
-  bool _wasActive = false;
-  // Re-assert THIS surface's theme on the shared singleton the moment the tab
-  // becomes active again (a sibling tab's runtime dispose resets the singleton
-  // ThemeManager). Captured once the runtime is ready.
+  // Re-applies this surface's theme under a new host brightness (the Studio
+  // theme flipped). Captured once the runtime is ready.
   void Function(Brightness)? _reapplyTheme;
+  Brightness? _appliedBrightness;
   Brightness _lastBrightness = Brightness.dark;
   // Last liveness this view acted on, so the watch's ticks are turned into the
   // dead→live edge rather than a rebuild storm.
@@ -186,7 +177,6 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
   @override
   void initState() {
     super.initState();
-    widget.themeReinjectTick?.addListener(_onThemeReinjectTick);
     final reconnect = widget.reconnect;
     if (reconnect != null) {
       _lastLive = _isLive();
@@ -202,22 +192,7 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
       reconnect.changes.removeListener(_onReconnectChanged);
       reconnect.release(widget.connectionId);
     }
-    widget.themeReinjectTick?.removeListener(_onThemeReinjectTick);
-    // This tab is closing — its runtime tears down and resets the process-
-    // singleton ThemeManager behind the surviving active tab's back. Signal
-    // survivors to re-inject (same contract as DslWorkspaceView.dispose).
-    final tick = widget.themeReinjectTick;
-    if (tick != null) tick.value++;
     super.dispose();
-  }
-
-  // A sibling tab closed and reset the singleton — if we're the active tab,
-  // re-inject our theme after the frame so our palette survives.
-  void _onThemeReinjectTick() {
-    if (!_wasActive) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _reapplyTheme?.call(_lastBrightness);
-    });
   }
 
   bool _isLive() => widget.clientHost.connections.any(
@@ -256,29 +231,16 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
     final brightness = Theme.of(context).brightness;
     _lastBrightness = brightness;
     final active = WorkspaceTabActiveScope.isActiveOf(context);
-    // Inactive→active edge: re-inject our theme onto the shared singleton.
-    // TWICE, on purpose:
-    //  - synchronously, so this build's first rebuild already sees our palette;
-    //  - after the frame, so we WIN over a sibling service tab whose runtime
-    //    unmounts during this same switch frame — that dispose resets the
-    //    singleton ThemeManager (host-brightness → null, theme → default), and
-    //    if it runs after our synchronous inject the newly-active tab would show
-    //    a blank/stale theme (the exact "theme goes weird on switch" symptom).
-    //    A post-frame re-inject is the last writer, so our theme sticks. Same
-    //    class the DSL workspace solves for authoring tabs.
-    if (active && !_wasActive) {
-      _wasActive = true;
+    // The surface follows the Studio theme: a brightness change since the last
+    // apply re-pins it on this runtime's own ThemeManager.
+    if (active &&
+        _appliedBrightness != null &&
+        _appliedBrightness != brightness) {
       _reapplyTheme?.call(brightness);
-      final b = brightness;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reapplyTheme?.call(b);
-      });
-    } else if (!active && _wasActive) {
-      _wasActive = false;
     }
     // Only the active tab mounts the runtime (see the class doc). Inactive tabs
-    // return a bare surface so `runtime.buildUI()` never touches the singletons
-    // while another tab owns them. The render future is preserved, so switching
+    // return a bare surface so `runtime.buildUI()` never touches the widget
+    // cache while another tab owns it. The render future is preserved, so switching
     // back is instant (no re-fetch).
     if (!active) {
       return Container(color: scheme.surface);
@@ -346,9 +308,8 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
       pageLoader: (uri) => readServiceJson(conn, uri),
       hostBrightnessOf: () => hostBrightness,
       onRuntimeReady: (target, runtime) {
-        // Re-arm the process-singleton ThemeManager for THIS surface: studio
-        // baseline + bundle-wins merge, then pin the host brightness — same
-        // discipline as the workspace surface.
+        // This surface's theme: studio baseline + bundle-wins merge, then pin
+        // the host brightness — same discipline as the workspace surface.
         final bundleTheme = app['theme'];
         void apply(Brightness b) {
           runtime.themeManager.setTheme(
@@ -358,11 +319,10 @@ class _ServedServiceBodyState extends State<ServedServiceBody> {
             ),
           );
           runtime.themeManager.setHostBrightness(b);
+          _appliedBrightness = b;
         }
 
         apply(hostBrightness);
-        // Keep the re-arm handle so the active-edge gate can re-assert this
-        // surface's theme after a sibling tab resets the shared singleton.
         _reapplyTheme = apply;
         // Composition Profile (MCP UI DSL v1.4): this served app may `$ref` a
         // definition living on ANOTHER server and then drive and track that

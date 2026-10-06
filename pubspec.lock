@@ -9,14 +9,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.1"
-  appplayer_core:
-    dependency: "direct main"
-    description:
-      name: appplayer_core
-      sha256: a1ff85137eecbf33ac881b706ec6efdef8601bd73a74d6e04d367be2f6767c8b
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.1"
   appplayer_form_view:
     dependency: "direct main"
     description:
@@ -428,10 +420,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: a41a3f9d814f1ca62644f7d2486e24ae309e75a476be02875f3d9ea7280f5677
+      sha256: a1d108c36ad6d32424c7f7773c041c5b7d426ee73676f2ad1390a041f80bc1d0
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.7"
+    version: "0.6.9"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
@@ -444,10 +436,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: b8e520197cc8aa9588efe08268852bfc2363b49ce3c168ba868fc39a0cbcc903
+      sha256: "42671044058c6e65471b7eeccdfdfb4a0c1e814b0a55b9751b64df252ee92341"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.2"
+    version: "0.8.4"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

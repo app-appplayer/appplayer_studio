@@ -4,6 +4,8 @@ import 'package:flutter_mcp_ui_core/flutter_mcp_ui_core.dart'
 import '../runtime/widget_registry.dart';
 
 /// Conformance level definitions for MCP UI DSL v1.0
+@Deprecated('The v1.0 levels. Use MCPUIRuntime.conformanceClaim, which '
+    'reports the Profiles of spec 1.4 §18.1 in the §18.8 shape.')
 enum ConformanceLevel {
   /// Core conformance - Basic widget set
   core,
@@ -19,6 +21,8 @@ enum ConformanceLevel {
 ///
 /// Uses the canonical widget lists from [ConformanceLevels] in the core
 /// package as the single source of truth for conformance requirements.
+@Deprecated('The v1.0 levels. Use MCPUIRuntime.conformanceClaim, which '
+    'reports the Profiles of spec 1.4 §18.1 in the §18.8 shape.')
 class ConformanceChecker {
   final WidgetRegistry widgetRegistry;
 

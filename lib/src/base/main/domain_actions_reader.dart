@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../install/bundle_tool_names.dart';
 import '../shell/project_header.dart';
 import 'chrome_bridge.dart';
 
@@ -31,15 +32,16 @@ import 'chrome_bridge.dart';
 /// — supports mode-toggle patterns (the same icon strip showing which
 /// mode is currently active).
 ///
-/// [exposedNs] is the activated bundle's MCP namespace; non-empty values
-/// are prepended to each `tool` short name (`<exposedNs>.<tool>`). Tool
-/// names that already contain a `.` pass through unchanged so host-level
-/// tools (`studio.renderer.activate`, `studio.fs.read`) can be wired
-/// directly.
+/// [exposedNs] is the activated bundle's MCP namespace. Each `tool` name
+/// resolves to the bundle's own `<exposedNs>.<tool>` first and, when that
+/// is not registered ([isRegistered]), to the name as written — a full
+/// name or a host-level tool (`studio.renderer.activate`) —
+/// [resolveBundleToolName].
 List<HeaderAction> readDomainActionsFromManifest({
   required String mbdPath,
   required Future<void> Function(String fullToolName, Map<String, dynamic> args)
   invokeTool,
+  required bool Function(String fullName) isRegistered,
   String? exposedNs,
   ChromeBridge? bridge,
   Map<String, Object?> state = const <String, Object?>{},
@@ -65,6 +67,7 @@ List<HeaderAction> readDomainActionsFromManifest({
           entry: entry,
           state: state,
           exposedNs: exposedNs,
+          isRegistered: isRegistered,
           invokeTool: invokeTool,
           bridge: bridge,
           out: out,
@@ -79,6 +82,7 @@ List<HeaderAction> readDomainActionsFromManifest({
         entry: entry,
         state: state,
         exposedNs: exposedNs,
+        isRegistered: isRegistered,
         invokeTool: invokeTool,
         bridge: bridge,
         out: out,
@@ -94,6 +98,7 @@ void _appendButton({
   required Map<String, dynamic> entry,
   required Map<String, Object?> state,
   required String? exposedNs,
+  required bool Function(String) isRegistered,
   required Future<void> Function(String, Map<String, dynamic>) invokeTool,
   required ChromeBridge? bridge,
   required List<HeaderAction> out,
@@ -102,7 +107,11 @@ void _appendButton({
   if (toolShort == null || toolShort.isEmpty) return;
   final iconName = entry['icon']?.toString() ?? 'extension';
   final label = entry['tooltip']?.toString() ?? '$toolShort (domain action)';
-  final fullName = _resolveFullToolName(toolShort, exposedNs);
+  final fullName = resolveBundleToolName(
+    toolShort,
+    namespace: exposedNs,
+    isRegistered: isRegistered,
+  );
   final tooltip = '$label\ntool: $toolShort\nid: $fullName';
   final args = _readArgs(entry);
   final hasExplicitDivider = entry['divider'] == true;
@@ -139,6 +148,7 @@ void _appendSelectGroup({
   required Map<String, dynamic> entry,
   required Map<String, Object?> state,
   required String? exposedNs,
+  required bool Function(String) isRegistered,
   required Future<void> Function(String, Map<String, dynamic>) invokeTool,
   required ChromeBridge? bridge,
   required List<HeaderAction> out,
@@ -153,7 +163,11 @@ void _appendSelectGroup({
     if (toolShort == null || toolShort.isEmpty) continue;
     final iconName = raw['icon']?.toString() ?? 'extension';
     final label = raw['tooltip']?.toString() ?? toolShort;
-    final fullName = _resolveFullToolName(toolShort, exposedNs);
+    final fullName = resolveBundleToolName(
+      toolShort,
+      namespace: exposedNs,
+      isRegistered: isRegistered,
+    );
     final tooltip = '$label\ntool: $toolShort\nid: $fullName';
     final args = _readArgs(raw);
     final value = raw['value'];
@@ -182,13 +196,6 @@ void _appendSelectGroup({
       ),
     );
   }
-}
-
-String _resolveFullToolName(String toolShort, String? exposedNs) {
-  if (exposedNs == null || exposedNs.isEmpty || toolShort.contains('.')) {
-    return toolShort;
-  }
-  return '$exposedNs.$toolShort';
 }
 
 Map<String, dynamic> _readArgs(Map<String, dynamic> entry) {

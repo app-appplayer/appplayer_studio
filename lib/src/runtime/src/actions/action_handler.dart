@@ -1,5 +1,4 @@
 import '../utils/color_parser.dart';
-import '../theme/theme_manager.dart';
 import 'dart:async' show Future, TimeoutException;
 import 'dart:convert' show jsonDecode;
 import 'dart:math' show pow;
@@ -74,11 +73,6 @@ class ActionHandler {
     final conditionalExecutor = ConditionalActionExecutor();
     conditionalExecutor._actionHandler = this; // Connect the action handler
     _executors['conditional'] = conditionalExecutor;
-    _executors['addRandomWidget'] = TestActionExecutor();
-    _executors['deleteRandomWidget'] = TestActionExecutor();
-    _executors['shuffleWidgets'] = TestActionExecutor();
-    _executors['clearWidgets'] = TestActionExecutor();
-    _executors['addHeavyWidget'] = TestActionExecutor();
     _executors['increment'] =
         StateActionExecutor(); // Alias for state increment
 
@@ -376,9 +370,43 @@ class ActionHandler {
       bool Function(String action, String route, Map<String, dynamic> params)
           handler) {
     _logger.info('ActionHandler: Registering navigation handler');
-    NavigationActionExecutor.setGlobalNavigationHandler(handler);
+    navigationHandler = handler;
     _logger.info('ActionHandler: Navigation handler registered');
   }
+
+  /// This runtime's navigation handler (an application shell's route → tab
+  /// mapping). Held per handler — one per runtime — so two shells on screen
+  /// each handle their own document's navigation; a process-wide slot gave
+  /// every runtime the shell registered last.
+  bool Function(String action, String route, Map<String, dynamic> params)?
+      navigationHandler;
+
+  /// This runtime's navigator key. The engine sets it; navigation, dialogs
+  /// and snack bars act on it when the runtime drew a navigator on it (see
+  /// [navigatorFor]).
+  GlobalKey<NavigatorState>? navigatorKey;
+}
+
+/// The navigator an action in [context] acts on.
+///
+/// 1. Its runtime's own, when the runtime drew one (an application).
+/// 2. Otherwise the navigator around the widget that acted — a page renders
+///    inside its host's navigator and has none of its own.
+/// 3. Otherwise the process-wide [NavigationService] key, for a host that
+///    mounts its navigator on that key and acts without a build context.
+///
+/// The process-wide key alone answered for whichever runtime attached last,
+/// so with two documents on screen one document's navigation and dialogs
+/// went to the other.
+NavigatorState? navigatorFor(RenderContext context) {
+  final own = context.actionHandler.navigatorKey?.currentState;
+  if (own != null) return own;
+  final build = context.buildContext;
+  if (build != null && build.mounted) {
+    final nearest = Navigator.maybeOf(build);
+    if (nearest != null) return nearest;
+  }
+  return NavigationService().navigatorKey.currentState;
 }
 
 /// Base class for action executors
@@ -1067,6 +1095,7 @@ class NavigationActionExecutor extends ActionExecutor {
       MCPLogger('NavigationActionExecutor')
           .debug('Using renderer handler: ${handler != null}');
     }
+    handler ??= context.actionHandler.navigationHandler;
     if (handler == null) {
       handler = _globalNavigationHandler;
       MCPLogger('NavigationActionExecutor')
@@ -1099,7 +1128,7 @@ class NavigationActionExecutor extends ActionExecutor {
     MCPLogger('NavigationActionExecutor')
         .debug('NavigatorKey hashCode: ${navigatorKey.hashCode}');
 
-    final navigatorState = navigatorKey.currentState;
+    final navigatorState = navigatorFor(context);
     MCPLogger('NavigationActionExecutor')
         .debug('Navigator currentState: $navigatorState');
 
@@ -1740,7 +1769,10 @@ class ConditionalActionExecutor extends ActionExecutor {
 /// Executes dialog actions
 class DialogActionExecutor extends ActionExecutor {
   static final _logger = MCPLogger('DialogActionExecutor');
-  static final _dialogService = DialogService();
+  /// One per executor — one per runtime. A process-wide service made "one
+  /// dialog at a time" span every runtime on screen: a dialog open in one
+  /// document refused the next one in another.
+  final _dialogService = DialogService();
 
   @override
   Future<ActionResult> execute(
@@ -1768,6 +1800,8 @@ class DialogActionExecutor extends ActionExecutor {
         : null;
     final dismissible = dialog['dismissible'] as bool? ?? true;
     final actions = dialog['actions'] as List<dynamic>?;
+
+    _dialogService.navigatorResolver = () => navigatorFor(context);
 
     // One dialog at a time: `DialogService.show` refuses a second one and
     // answers null, and the alert / simple branches below then report
@@ -1799,7 +1833,7 @@ class DialogActionExecutor extends ActionExecutor {
               text: label,
               onPressed: () async {
                 final navigatorContext =
-                    DialogService.navigatorKey.currentContext;
+                    navigatorFor(context)?.context;
                 if (navigatorContext == null) return;
 
                 if (handler == 'close') {
@@ -1845,7 +1879,7 @@ class DialogActionExecutor extends ActionExecutor {
                 text: label,
                 onPressed: () async {
                   final navigatorContext =
-                      DialogService.navigatorKey.currentContext;
+                      navigatorFor(context)?.context;
                   if (navigatorContext == null) return;
                   Navigator.of(navigatorContext).pop();
                   if (onSelect != null) {
@@ -1889,7 +1923,7 @@ class DialogActionExecutor extends ActionExecutor {
               isDismissible: sheetDismissible,
               enableDrag: dialog['enableDrag'] as bool? ?? true,
               backgroundColor: dialog['backgroundColor'] != null
-                  ? _parseColor(dialog['backgroundColor'] as String)
+                  ? _parseColor(dialog['backgroundColor'] as String, context)
                   : null,
             );
           }
@@ -1916,7 +1950,7 @@ class DialogActionExecutor extends ActionExecutor {
           final snackAction =
               dialog['action'] as Map<String, dynamic>?;
           final navigatorContext =
-              DialogService.navigatorKey.currentContext;
+              navigatorFor(context)?.context;
           if (navigatorContext != null) {
             SnackBarAction? uiAction;
             if (snackAction != null) {
@@ -1965,9 +1999,10 @@ class DialogActionExecutor extends ActionExecutor {
   /// The previous copy read `#RRGGBB` with `int.parse` and no alpha channel,
   /// so a six-digit hex became `0x00RRGGBB` — fully transparent. A dialog
   /// asked for a background and got none.
-  Color? _parseColor(String colorString) => DslColor.parse(
+  Color? _parseColor(String colorString, RenderContext context) =>
+      DslColor.parse(
         colorString,
-        slotResolver: ThemeManager.instance.getColorValue,
+        slotResolver: context.themeManager.getColorValue,
         where: 'dialog color',
       );
 
@@ -2002,19 +2037,6 @@ class DialogActionExecutor extends ActionExecutor {
       default:
         return raw;
     }
-  }
-}
-
-/// Executes test actions for UI testing scenarios
-class TestActionExecutor extends ActionExecutor {
-  @override
-  Future<ActionResult> execute(
-    Map<String, dynamic> action,
-    RenderContext context,
-  ) async {
-    // For test purposes, just return success
-    // In a real application, these would be actual implementations
-    return ActionResult.success();
   }
 }
 

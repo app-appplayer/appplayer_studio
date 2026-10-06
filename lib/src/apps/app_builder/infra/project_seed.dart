@@ -46,6 +46,7 @@ const Map<ProjectKind, List<String>> _seedFilesByKind =
         'manifest.json',
         'ui/app.json',
         'ui/pages/home.json',
+        'tools/hello.js',
       ],
       // Cloud server app — normal bundle UI plus the tools/ directory
       // holding real TypeScript tool sources (SERVER_AUTHORING contract).

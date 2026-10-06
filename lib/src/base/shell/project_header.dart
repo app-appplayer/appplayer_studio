@@ -117,7 +117,29 @@ class ProjectHeader extends StatelessWidget {
     this.onToggleLeftPanel,
     this.newTooltip = 'New project',
     this.openTooltip = 'Open project folder',
+    this.boundSlots,
+    this.slotLabels = const <String, String>{},
+    this.hostActions = const <HeaderAction>[],
   });
+
+  /// The host's own buttons, in the system row next to Settings — apart
+  /// from the domain's [trailing] icons.
+  final List<HeaderAction> hostActions;
+
+  /// Slots the active domain wired; non-null disables the system buttons
+  /// of every other slot (bundle spec 06 §6.3.1). Null leaves them all on.
+  final Set<String>? boundSlots;
+
+  /// Tooltip per slot, replacing the standard wording.
+  final Map<String, String> slotLabels;
+
+  bool _wired(String slot) => boundSlots?.contains(slot) ?? true;
+
+  /// [onTap] when [slot] is wired, else null (button disabled).
+  VoidCallback? _gate(String slot, VoidCallback? onTap) =>
+      _wired(slot) ? onTap : null;
+
+  String _tip(String slot, String standard) => slotLabels[slot] ?? standard;
 
   /// Tooltip override for the New button. Hosts that want Home-tab
   /// "New package" semantics swap this in via the chrome bridge.
@@ -223,6 +245,7 @@ class ProjectHeader extends StatelessWidget {
                       projectName: projectName,
                       dirty: dirty,
                       hasProject: hasProject,
+                      renamable: hasProject && _wired('project.rename'),
                       onRename: onRename,
                     ),
                   ),
@@ -245,48 +268,70 @@ class ProjectHeader extends StatelessWidget {
             Row(
               children: <Widget>[
                 _IconButton(
-                  tooltip: newTooltip,
+                  tooltip: _tip('project.new', newTooltip),
                   icon: Icons.add_circle_outlined,
-                  onTap: onNew,
+                  onTap: _gate('project.new', onNew),
                 ),
-                _IconButton(
-                  tooltip: openTooltip,
-                  icon: Icons.folder_open_outlined,
-                  onTap: onOpen,
-                ),
-                if (recentProjects.isNotEmpty)
-                  _RecentMenuButton(
-                    recents: recentProjects,
-                    onPick: onOpenRecent,
+                ...<Widget>[
+                  _IconButton(
+                    tooltip: _tip('project.open', openTooltip),
+                    icon: Icons.folder_open_outlined,
+                    onTap: _gate('project.open', onOpen),
                   ),
+                  if (recentProjects.isNotEmpty && _wired('project.open'))
+                    _RecentMenuButton(
+                      recents: recentProjects,
+                      onPick: onOpenRecent,
+                    ),
+                ],
                 _IconButton(
-                  tooltip: dirty ? 'Save' : 'Save (no changes)',
+                  tooltip: _tip(
+                    'project.save',
+                    dirty ? 'Save' : 'Save (no changes)',
+                  ),
                   icon: Icons.save_outlined,
-                  onTap: hasProject ? onSave : null,
-                  emphasised: dirty && hasProject,
+                  onTap: _gate('project.save', hasProject ? onSave : null),
+                  emphasised: dirty && hasProject && _wired('project.save'),
                 ),
                 _IconButton(
-                  tooltip: 'Save as…',
+                  tooltip: _tip('project.saveAs', 'Save as…'),
                   icon: Icons.save_as_outlined,
-                  onTap: hasProject ? onSaveAs : null,
+                  onTap: _gate('project.saveAs', hasProject ? onSaveAs : null),
                 ),
                 _IconButton(
-                  tooltip:
-                      dirty
-                          ? 'Revert (discard unsaved changes)'
-                          : 'Revert (no changes)',
+                  tooltip: _tip(
+                    'project.revert',
+                    dirty
+                        ? 'Revert (discard unsaved changes)'
+                        : 'Revert (no changes)',
+                  ),
                   icon: Icons.restore_outlined,
-                  onTap: hasProject ? onRevert : null,
+                  onTap: _gate('project.revert', hasProject ? onRevert : null),
                 ),
                 _IconButton(
-                  tooltip:
-                      hasProject
-                          ? 'Close project (return to welcome)'
-                          : 'No project open',
+                  tooltip: _tip(
+                    'project.close',
+                    hasProject
+                        ? 'Close project (return to welcome)'
+                        : 'No project open',
+                  ),
                   icon: Icons.close_outlined,
-                  onTap: hasProject ? onCloseProject : null,
+                  onTap: _gate(
+                    'project.close',
+                    hasProject ? onCloseProject : null,
+                  ),
                 ),
                 const Spacer(),
+                for (final action in hostActions)
+                  _wrapWithElementMeta(
+                    elementId: action.elementId,
+                    child: _IconButton(
+                      tooltip: action.tooltip,
+                      icon: action.icon,
+                      onTap: action.onTap,
+                      emphasised: action.emphasised,
+                    ),
+                  ),
                 _IconButton(
                   tooltip: 'Settings',
                   icon: Icons.settings_outlined,
@@ -301,19 +346,31 @@ class ProjectHeader extends StatelessWidget {
             Row(
               children: <Widget>[
                 _IconButton(
-                  tooltip: canUndo ? 'Undo last change' : 'Nothing to undo',
+                  tooltip: _tip(
+                    'edit.undo',
+                    canUndo ? 'Undo last change' : 'Nothing to undo',
+                  ),
                   icon: Icons.undo_outlined,
-                  onTap: hasProject && canUndo ? onUndo : null,
+                  onTap: _gate(
+                    'edit.undo',
+                    hasProject && canUndo ? onUndo : null,
+                  ),
                 ),
                 _IconButton(
-                  tooltip: canRedo ? 'Redo' : 'Nothing to redo',
+                  tooltip: _tip(
+                    'edit.redo',
+                    canRedo ? 'Redo' : 'Nothing to redo',
+                  ),
                   icon: Icons.redo_outlined,
-                  onTap: hasProject && canRedo ? onRedo : null,
+                  onTap: _gate(
+                    'edit.redo',
+                    hasProject && canRedo ? onRedo : null,
+                  ),
                 ),
                 _IconButton(
-                  tooltip: 'Change history (audit log)',
+                  tooltip: _tip('history.show', 'Change history (audit log)'),
                   icon: Icons.history_outlined,
-                  onTap: onHistory,
+                  onTap: _gate('history.show', onHistory),
                 ),
                 const Spacer(),
                 for (final action in trailing) ...<Widget>[
@@ -470,12 +527,16 @@ class _ProjectNameRow extends StatefulWidget {
     required this.projectName,
     required this.dirty,
     required this.hasProject,
+    required this.renamable,
     required this.onRename,
   });
 
   final String projectName;
   final bool dirty;
   final bool hasProject;
+
+  /// Whether a click renames (and the pencil shows).
+  final bool renamable;
   final VoidCallback onRename;
 
   @override
@@ -489,7 +550,7 @@ class _ProjectNameRowState extends State<_ProjectNameRow> {
   Widget build(BuildContext context) {
     final c = VibeTokens.colorOf(context);
     final tipMsg =
-        widget.hasProject
+        widget.renamable
             ? (widget.dirty
                 ? '${widget.projectName} (unsaved) — click to rename'
                 : '${widget.projectName} — click to rename')
@@ -519,7 +580,7 @@ class _ProjectNameRowState extends State<_ProjectNameRow> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        if (widget.hasProject) ...<Widget>[
+        if (widget.renamable) ...<Widget>[
           const SizedBox(width: VibeTokens.space1),
           Icon(
             Icons.edit_outlined,
@@ -534,17 +595,17 @@ class _ProjectNameRowState extends State<_ProjectNameRow> {
       waitDuration: const Duration(milliseconds: 400),
       child: MouseRegion(
         cursor:
-            widget.hasProject
+            widget.renamable
                 ? SystemMouseCursors.click
                 : SystemMouseCursors.basic,
         onEnter: (_) {
-          if (!widget.hasProject) return;
+          if (!widget.renamable) return;
           setState(() => _hovered = true);
         },
         onExit: (_) => setState(() => _hovered = false),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: widget.hasProject ? widget.onRename : null,
+          onTap: widget.renamable ? widget.onRename : null,
           child: row,
         ),
       ),

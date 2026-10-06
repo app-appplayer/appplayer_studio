@@ -2,9 +2,8 @@
 /// market-connected service tabs rendering the SAME screen.
 ///
 /// The workspace keeps every open tab alive in an IndexedStack, and
-/// `flutter_mcp_ui_runtime`'s ThemeManager / WidgetCache / navigatorKey are
-/// PROCESS singletons — so two co-mounted served surfaces would fight over
-/// those singletons and render each other's UI. The fix gates the render on
+/// `flutter_mcp_ui_runtime`'s WidgetCache is a PROCESS singleton — so two
+/// co-mounted served surfaces would fight over it and render each other's UI. The fix gates the render on
 /// `WorkspaceTabActiveScope`: only the ACTIVE service tab mounts its runtime.
 ///
 /// This test proves the gate WITHOUT the runtime: an inactive body must never
@@ -69,10 +68,8 @@ class _Host implements KernelClientHost {
 }
 
 Widget _wrap({required bool active, required Widget child}) => MaterialApp(
-      home: Scaffold(
-        body: WorkspaceTabActiveScope(active: active, child: child),
-      ),
-    );
+  home: Scaffold(body: WorkspaceTabActiveScope(active: active, child: child)),
+);
 
 void main() {
   testWidgets('an INACTIVE service tab never reads its connection', (
@@ -90,7 +87,8 @@ void main() {
     expect(
       conn.reads,
       isEmpty,
-      reason: 'inactive tab must not mount its runtime — no resource read, so '
+      reason:
+          'inactive tab must not mount its runtime — no resource read, so '
           'it cannot contend for the singleton runtime state',
     );
   });
@@ -106,36 +104,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(conn.reads, contains('ui://app'));
   });
-
-  testWidgets(
-    'closing a served tab bumps themeReinjectTick so survivors re-inject',
-    (tester) async {
-      final tick = ValueNotifier<int>(0);
-      final host = _Host([_RecordingConn('A')]);
-      // Mount, then replace with an empty tree so the body disposes (tab close).
-      await tester.pumpWidget(
-        _wrap(
-          active: true,
-          child: ServedServiceBody(
-            clientHost: host,
-            connectionId: 'A',
-            themeReinjectTick: tick,
-          ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 50));
-      final before = tick.value;
-      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-      await tester.pump();
-      expect(
-        tick.value,
-        greaterThan(before),
-        reason: 'a closing served tab must signal survivors that the shared '
-            'singleton ThemeManager was reset',
-      );
-      tick.dispose();
-    },
-  );
 
   testWidgets(
     'two co-mounted tabs: only the ACTIVE one reads (no entanglement)',
@@ -173,7 +141,11 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 50));
       expect(a.reads, contains('ui://app'), reason: 'active A renders');
-      expect(b.reads, isEmpty, reason: 'inactive B stays gated — no shared render');
+      expect(
+        b.reads,
+        isEmpty,
+        reason: 'inactive B stays gated — no shared render',
+      );
     },
   );
 }

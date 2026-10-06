@@ -4,7 +4,7 @@
     "id": "com.makemind.form_builder",
     "name": "Form Builder",
     "version": "0.1.0",
-    "type": "library",
+    "type": "extension",
     "description": "Form Builder built-in seed - the project manager agent and the authoring/issuing knowledge an LLM needs to create templates, insert objects, and issue documents."
   },
   "agents": {

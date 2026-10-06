@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:brain_kernel/brain_kernel.dart' show CanonicalChange;
-import 'package:flutter_mcp_ui_runtime/flutter_mcp_ui_runtime.dart'
-    show ThemeManager;
 
 import 'package:appplayer_studio/base.dart'
     show PreviewMcpUi, WorkspaceCanonical;
@@ -58,6 +56,11 @@ void main() {
   Brightness seen(WidgetTester tester) =>
       MediaQuery.of(tester.element(find.text('probe'))).platformBrightness;
 
+  // The scheme the runtime's own ThemeManager resolved and the page draws
+  // with — not a process-wide singleton.
+  Brightness drawn(WidgetTester tester) =>
+      Theme.of(tester.element(find.text('probe'))).brightness;
+
   testWidgets('mf1: previewMode light→null returns to inherited dark', (
     tester,
   ) async {
@@ -73,9 +76,9 @@ void main() {
     await settle(tester);
     expect(seen(tester), Brightness.dark, reason: 'system inherits dark host');
     expect(
-      ThemeManager.instance.flutterThemeMode,
-      ThemeMode.dark,
-      reason: 'singleton pinned to host brightness on system render',
+      drawn(tester),
+      Brightness.dark,
+      reason: 'runtime theme pinned to host brightness on system render',
     );
 
     await tester.pumpWidget(
@@ -89,7 +92,7 @@ void main() {
     );
     await settle(tester);
     expect(seen(tester), Brightness.light, reason: 'explicit light override');
-    expect(ThemeManager.instance.flutterThemeMode, ThemeMode.light);
+    expect(drawn(tester), Brightness.light);
 
     await tester.pumpWidget(
       host(
@@ -102,13 +105,12 @@ void main() {
       Brightness.dark,
       reason: 'back to System must re-inherit the dark host, not stay light',
     );
-    // The singleton ThemeManager keeps the previous surface's explicit
-    // mode ('light') in `_themeMode`; without the per-render re-pin the
-    // live canvas showed the stale light scheme. The pin must win.
+    // Without the per-render re-pin the live canvas kept the previous
+    // surface's explicit 'light' scheme. The pin must win.
     expect(
-      ThemeManager.instance.flutterThemeMode,
-      ThemeMode.dark,
-      reason: 'per-render host pin overrides the stale singleton mode',
+      drawn(tester),
+      Brightness.dark,
+      reason: 'per-render host pin overrides the stale explicit mode',
     );
   });
 }

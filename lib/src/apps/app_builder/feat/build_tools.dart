@@ -5834,7 +5834,7 @@ Widgets:
                   viewportFraction, loop, autoPlay, autoPlayInterval,
                   transition: slide|fade|coverflow|depth,
                   indicatorPosition: top|bottom|none, children
-  pageView      initialPage, loop, scrollPhysics, children,
+  pageView      initialPage, loop, physics, children,
                   allowImplicitScrolling
   scrollView    children OR slivers (mutually exclusive). slivers
                   ∈ sliverAppBar / sliverPersistentHeader /

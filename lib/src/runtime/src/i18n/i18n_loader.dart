@@ -29,31 +29,17 @@ class I18nLoader {
     });
   }
 
-  /// Load translations from MCP UI DSL format
-  static Future<void> loadFromMcpFormat(Map<String, dynamic> i18nData) async {
-    // MCP UI DSL format:
-    // {
-    //   "locales": ["en", "es", "fr"],
-    //   "defaultLocale": "en",
-    //   "translations": {
-    //     "en": {
-    //       "greeting": "Hello",
-    //       "welcome": "Welcome {name}"
-    //     },
-    //     "es": {
-    //       "greeting": "Hola",
-    //       "welcome": "Bienvenido {name}"
-    //     }
-    //   }
-    // }
-
-    // Load all translations including default locale
-    await I18nManager.instance.loadTranslations({
-      'fallbackLocale': i18nData['defaultLocale'] ?? 'en',
-      'translations': i18nData['translations'],
-      'remoteUrl': i18nData['remoteUrl'],
-    });
-  }
+  /// Load an `ApplicationDefinition.i18n` block (§12.1) into the shared
+  /// [I18nManager.instance] — `defaultLocale`, `text`, `pluralization`,
+  /// `numberFormat`, `dateFormat` and `textDirection`. A runtime engine loads
+  /// its own document's block itself; this is for a host that renders
+  /// outside one.
+  static Future<void> loadFromMcpFormat(
+    Map<String, dynamic> i18nData, {
+    List<String> preferredLocales = const [],
+  }) =>
+      I18nManager.instance
+          .loadDefinition(i18nData, preferredLocales: preferredLocales);
 
   /// Set current locale from string
   static void setLocale(String localeString) {

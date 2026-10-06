@@ -50,7 +50,11 @@ class ManagedComputedProperty {
     required this.dependencies,
     required this.stateManager,
     required this.bindingEngine,
+    this.themeManager,
   });
+
+  /// The runtime's theme, for `{{theme.*}}` inside the expression.
+  final ThemeManager? themeManager;
 
   dynamic get value {
     if (_isDirty) {
@@ -65,7 +69,8 @@ class ManagedComputedProperty {
 
   void _recompute() {
     // Create a simple context for evaluation
-    final context = SimpleComputedContext(stateManager);
+    final context =
+        SimpleComputedContext(stateManager, themeManager: themeManager);
     _cachedValue = bindingEngine.resolve(expression, context);
     _isDirty = false;
   }
@@ -163,8 +168,12 @@ class ComputedManager {
   ComputedManager({
     required StateManager stateManager,
     required BindingEngine bindingEngine,
+    ThemeManager? themeManager,
   })  : _stateManager = stateManager,
-        _bindingEngine = bindingEngine;
+        _bindingEngine = bindingEngine,
+        _themeManager = themeManager;
+
+  final ThemeManager? _themeManager;
 
   /// Register a computed property
   void registerComputed(String key, ComputedConfig config) {
@@ -174,6 +183,7 @@ class ComputedManager {
       dependencies: config.dependencies,
       stateManager: _stateManager,
       bindingEngine: _bindingEngine,
+      themeManager: _themeManager,
     );
 
     _computedProperties[key] = computed;

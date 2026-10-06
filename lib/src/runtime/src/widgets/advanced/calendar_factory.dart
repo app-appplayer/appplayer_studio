@@ -19,9 +19,9 @@ class CalendarWidgetFactory extends WidgetFactory {
         context.resolve<bool>(properties['showWeekNumbers'] ?? false);
     final firstDayOfWeek =
         context.resolve<int>(properties['firstDayOfWeek'] ?? 0);
-    final width = parseDimension(context.resolve((properties['width'])));
+    final width = readDimension(properties['width'], context);
     final height =
-        parseDimension(context.resolve((properties['height']))) ?? 400.0;
+        readDimension(properties['height'], context) ?? 400.0;
 
     // Extract colors — theme-adaptive defaults. Today/selected/event
     // previously pinned to hardcoded Material-2 blues / red which clashed

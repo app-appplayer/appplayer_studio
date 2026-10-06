@@ -17,7 +17,8 @@
     "tools": [
       {
         "name": "hello",
-        "kind": "host",
+        "kind": "js",
+        "target": { "entry": "tools/hello.js", "fn": "hello" },
         "description": "Sample greeting tool. Replace with your own verb — see studio.builder.addTool to add more.",
         "inputSchema": {
           "type": "object",
@@ -28,15 +29,6 @@
             }
           },
           "required": ["name"]
-        }
-      },
-      {
-        "name": "ping",
-        "kind": "host",
-        "description": "Health-check sample. Returns `pong` so callers can confirm the bundle is reachable.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {}
         }
       }
     ]

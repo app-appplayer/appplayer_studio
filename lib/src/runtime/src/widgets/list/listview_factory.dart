@@ -16,11 +16,23 @@ class ListViewWidgetFactory extends WidgetFactory {
     final reverse = boolOf(properties['reverse'], context) ?? false;
     // Follow MCP UI DSL v1.0 spec: shrinkWrap defaults to false
     final shrinkWrap = boolOf(properties['shrinkWrap'], context) ?? false;
-    final physics = _parseScrollPhysics(properties['physics']);
-    final padding = edgeInsetsOf(properties['padding'], context);
+    final physics = readScrollPhysics(properties['physics'], context);
+    // A shrink-wrapped view the author gave no physics is not the primary
+    // scroll view. Flutter would otherwise force always-scrollable physics on
+    // it, so a view already at full height would take vertical drags from the
+    // enclosing scroll view. A view capped below its content still scrolls.
+    // An explicit `primary` wins: `scrollBar` sets it on its child so the
+    // child attaches to the controller the scrollbar paints against.
+    final bool? primary = boolOf(properties['primary'], context) ??
+        (shrinkWrap && physics == null ? false : null);
+    // No `padding` is no padding. Flutter's list and grid fill a missing
+    // padding with the device's safe-area inset, which the document never
+    // asked for — system insets belong to `safeArea` (§2.4.13).
+    final padding =
+        edgeInsetsOf(properties['padding'], context) ?? EdgeInsets.zero;
     // spec v1.0: 'spacing', legacy: 'itemSpacing'
-    final itemSpacing = parseDimension(
-        properties['spacing'] ?? properties['itemSpacing']) ?? 0.0;
+    final itemSpacing = readDimension(
+        properties['spacing'] ?? properties['itemSpacing'], context) ?? 0.0;
     final emptyMessage = context.resolve<String?>(properties['emptyMessage']);
     final virtual = boolOf(properties['virtual'], context) ?? false;
     // `cacheExtent` was deprecated in favour of the typed `ScrollCacheExtent`;
@@ -69,6 +81,7 @@ class ListViewWidgetFactory extends WidgetFactory {
         reverse: reverse,
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         scrollCacheExtent: scrollCacheExtent,
         itemCount: itemCount,
@@ -110,6 +123,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           reverse: reverse,
           shrinkWrap: shrinkWrap,
           physics: physics,
+          primary: primary,
           padding: padding,
           scrollCacheExtent: scrollCacheExtent,
           itemExtent: itemExtent,
@@ -134,6 +148,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           reverse: reverse,
           shrinkWrap: shrinkWrap,
           physics: physics,
+          primary: primary,
           padding: padding,
           scrollCacheExtent: scrollCacheExtent,
           itemCount: items.length,
@@ -168,6 +183,7 @@ class ListViewWidgetFactory extends WidgetFactory {
         reverse: reverse,
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         scrollCacheExtent: scrollCacheExtent,
         itemCount: items.length,
@@ -194,6 +210,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           reverse: reverse,
           shrinkWrap: shrinkWrap,
           physics: physics,
+          primary: primary,
           padding: padding,
           scrollCacheExtent: scrollCacheExtent,
           itemCount: children.length,
@@ -210,6 +227,7 @@ class ListViewWidgetFactory extends WidgetFactory {
           reverse: reverse,
           shrinkWrap: shrinkWrap,
           physics: physics,
+          primary: primary,
           padding: padding,
           scrollCacheExtent: scrollCacheExtent,
           itemExtent: itemExtent,
@@ -224,6 +242,7 @@ class ListViewWidgetFactory extends WidgetFactory {
         listView = ListView(
           shrinkWrap: shrinkWrap,
           physics: physics,
+          primary: primary,
           padding: padding,
         );
       }
@@ -299,18 +318,4 @@ class ListViewWidgetFactory extends WidgetFactory {
     }
   }
 
-  ScrollPhysics? _parseScrollPhysics(String? value) {
-    switch (value) {
-      case 'never':
-        return const NeverScrollableScrollPhysics();
-      case 'always':
-        return const AlwaysScrollableScrollPhysics();
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      default:
-        return null;
-    }
-  }
 }

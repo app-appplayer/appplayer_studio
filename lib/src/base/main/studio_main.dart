@@ -31,12 +31,10 @@ import 'package:appplayer_secure/appplayer_secure.dart'
 import 'package:args/args.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:appplayer_studio/runtime.dart' as studio_rt;
 import 'package:appplayer_studio/src/base/main/runtime_log_bridge.dart'
     show installRuntimeLogBridge;
 import 'package:appplayer_studio/src/base/main/studio_navigator.dart'
     show studioRootNavigatorKey;
-import 'package:appplayer_studio/ui.dart' as ui;
 
 import '../boot/studio_boot.dart';
 import '../chat/chat_controller.dart';
@@ -137,7 +135,10 @@ class StudioMain {
     // lock (fcntl / LockFileEx), released by the OS on exit so a crashed slot
     // frees itself.
     final explicitInstance = int.tryParse((args['instance'] as String?) ?? '');
-    final instance = _resolveInstance(baseConfigRootName, explicitInstance);
+    final instance =
+        app.claimsInstanceSlots
+            ? _resolveInstance(baseConfigRootName, explicitInstance)
+            : 1;
 
     // Instance N routes to its own config root `<base>-N` and its own main-port
     // band (`defaultPort + (N-1)*100`). See [instanceConfigRootName] /
@@ -145,7 +146,10 @@ class StudioMain {
     final portOffset = instancePortOffset(instance);
     final configRootName = instanceConfigRootName(baseConfigRootName, instance);
     final configRoot = p.join(_homeDir(), '.config', configRootName);
-    final settingsPath = p.join(configRoot, 'settings.json');
+    final settingsPath = p.join(
+      app.settingsRoot ?? configRoot,
+      'settings.json',
+    );
     // Native libraries and bundled fonts join the Dart package licenses.
     registerThirdPartyLicenses();
     // LLM keys are read from and written to the OS keychain.
@@ -180,6 +184,7 @@ class StudioMain {
     }
     final port =
         int.tryParse((args['port'] as String?) ?? '') ??
+        app.fixedPort ??
         portFromSettingsUrl ??
         (app.defaultPort + portOffset);
 
@@ -234,18 +239,6 @@ class StudioMain {
       llm: llm,
       server: server,
     );
-
-    // ThemeManager is a process-singleton inside the
-    // `vibe_studio_runtime` fork (see runtime_engine.dart's
-    // `_themeManager = ThemeManager()` factory). Inject the studio's
-    // M3 tone ONCE at host boot so every `MCPUIRuntime` instance —
-    // multiple alive workspace tabs included — reads the same
-    // ThemeDefinition. Per-mount injection drove the singleton's
-    // `_definition` / `_stateManager` through repeated overwrites,
-    // leaving the last-mounted bundle's theme winning across all
-    // tabs (visible regression: returning to an earlier tab lost
-    // its text styling).
-    studio_rt.ThemeManager.instance.setTheme(ui.VbuTheme.studioRuntimeTheme());
 
     // The runtime's author-facing diagnostics reach only a host that installs
     // a sink. Without this the studio — an authoring tool — swallowed exactly

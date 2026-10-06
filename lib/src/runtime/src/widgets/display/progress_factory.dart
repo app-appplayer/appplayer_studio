@@ -47,13 +47,13 @@ class CircularProgressWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final value = parseDimension(context.resolve((properties['value'])));
+    final value = readDimension(properties['value'], context);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final color = parseColor(context.resolve(properties['color']), context);
     final strokeWidth =
-        parseDimension(context.resolve(properties['strokeWidth'])) ?? 4.0;
-    final size = parseDimension(context.resolve(properties['size']));
+        readDimension(properties['strokeWidth'], context) ?? 4.0;
+    final size = readDimension(properties['size'], context);
 
     Widget widget = CircularProgressIndicator(
       value: value,
@@ -80,12 +80,12 @@ class LinearProgressWidgetFactory extends WidgetFactory {
   @override
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
-    final value = parseDimension(context.resolve((properties['value'])));
+    final value = readDimension(properties['value'], context);
     final backgroundColor =
         parseColor(context.resolve(properties['backgroundColor']), context);
     final color = parseColor(context.resolve(properties['color']), context);
-    final height = parseDimension(context.resolve(properties['height'])) ??
-        parseDimension(context.resolve(properties['minHeight']));
+    final height = readDimension(properties['height'], context) ??
+        readDimension(properties['minHeight'], context);
 
     Widget widget = LinearProgressIndicator(
       value: value,

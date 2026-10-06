@@ -31,6 +31,7 @@ import '../chat/chat_slash_hint.dart';
 import '../chat/chat_turn.dart';
 import '../chat/chat_controller.dart';
 import '../install/bundle_loading.dart';
+import '../install/bundle_tool_names.dart';
 import '../runtime/vbu_widgets.dart' show resolveIconName;
 import 'bundle_install_surface.dart';
 import '../install/host_bundle_activation.dart';
@@ -42,6 +43,7 @@ import '../shell/package_welcome_panel.dart';
 import '../shell/project_header.dart';
 import 'chrome_bridge.dart';
 import 'domain_actions_reader.dart';
+import 'manifest_chrome.dart';
 import 'lifecycle_dispatcher.dart';
 import 'studio_tab.dart';
 
@@ -510,11 +512,9 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
           chromeBridge: widget.chromeBridge,
         );
     widget.chromeBridge.dispatchBundleTool = (mbdPath, toolShort, args) async {
-      // Resolve the activated bundle's exposed namespace from our tab
-      // model — bridges that bind tools (settings menu, future slash
-      // dispatch) only know the package path. Falls back to the bare
-      // tool name when no activation is found, so chrome-level builtins
-      // (`studio.*`) still resolve.
+      // Bridges that bind tools (settings menu) only know the package
+      // path; the tab model gives the bundle's namespace, and the name
+      // resolves there first, then as written (a `studio.*` builtin).
       String? exposed;
       for (final t in _tabs) {
         if (!t.isHome && t.path == mbdPath) {
@@ -522,11 +522,14 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
           break;
         }
       }
-      final fullName =
-          exposed != null && exposed.isNotEmpty
-              ? '$exposed.$toolShort'
-              : toolShort;
-      await widget.boot.callTool(fullName, args);
+      await widget.boot.callTool(
+        resolveBundleToolName(
+          toolShort,
+          namespace: exposed,
+          isRegistered: widget.boot.toolScopes.containsKey,
+        ),
+        args,
+      );
     };
     widget.chromeBridge.debugTabs =
         () => <Map<String, dynamic>>[
@@ -646,7 +649,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     // channel produces a value.
     final lifecycle =
         bridge.lifecycleStateResolver?.call(t.path ?? '') ??
-        _readManifestLifecycleBindings(t.path ?? '', liveState);
+        readManifestLifecycleBindings(t.path ?? '', liveState);
     bridge.lifecycleState.value =
         lifecycle ?? const DomainLifecycleState.empty();
     // Titlebar + statusbar user-zone payloads + bundle version.
@@ -661,9 +664,9 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     final tbTpl = bundleAtTab?.wiring?.titlebar;
     final sbTpl = bundleAtTab?.wiring?.statusbar;
     bridge.titlebarText.value =
-        tbTpl == null ? '' : _interpolate(tbTpl, liveState);
+        tbTpl == null ? '' : interpolateChromeText(tbTpl, liveState);
     bridge.statusbarText.value =
-        sbTpl == null ? '' : _interpolate(sbTpl, liveState);
+        sbTpl == null ? '' : interpolateChromeText(sbTpl, liveState);
     bridge.bundleVersion.value = bundleAtTab?.manifest.version ?? '';
 
     // Resolver-first: non-manifest domains (built-in apps) plug their
@@ -691,6 +694,7 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         _syncHeaderActions();
       },
       exposedNs: t.activation?.exposedShortId,
+      isRegistered: widget.boot.toolScopes.containsKey,
       bridge: widget.chromeBridge,
       // Forward the bundle's runtime-state snapshot verbatim — the
       // manifest's `emphasisedWhen.key` selects whichever key it
@@ -714,27 +718,6 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
       }
     }
     return tabPath;
-  }
-
-  /// Resolve `{{path}}` tokens inside [template] against a flat state
-  /// map. Nested paths (`{{a.b.c}}`) walk the map; missing keys leave
-  /// the placeholder empty. Plain string interpolation — no DSL
-  /// expressions / arithmetic / function calls.
-  String _interpolate(String template, Map<String, Object?> state) {
-    return template.replaceAllMapped(RegExp(r'\{\{([^}]+)\}\}'), (m) {
-      final raw = m.group(1)?.trim() ?? '';
-      if (raw.isEmpty) return '';
-      Object? cursor = state;
-      for (final seg in raw.split('.')) {
-        if (cursor is Map) {
-          cursor = cursor[seg];
-        } else {
-          cursor = null;
-          break;
-        }
-      }
-      return cursor == null ? '' : cursor.toString();
-    });
   }
 
   /// Re-cache the snapshot from the currently-active tab's runtime so
@@ -791,45 +774,12 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         out =
             t.path == null
                 ? const <ChatSlashHint>[]
-                : _slashHintsForBundle(t.path!);
+                : readManifestSlashHints(t.path!);
       }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       bridge.chatSlashHints.value = out;
     });
-  }
-
-  /// Parse the bundle's manifest.chat.slashCommands[] (when present)
-  /// into [ChatSlashHint]s. Schema:
-  ///   manifest.chat.slashCommands: [
-  ///     { command: '/foo', template: 'bar', description: '...' }
-  ///   ]
-  List<ChatSlashHint> _slashHintsForBundle(String mbdPath) {
-    try {
-      final file = File(p.join(mbdPath, 'manifest.json'));
-      if (!file.existsSync()) return const <ChatSlashHint>[];
-      final raw = jsonDecode(file.readAsStringSync());
-      if (raw is! Map<String, dynamic>) return const <ChatSlashHint>[];
-      final chat = raw['chat'];
-      if (chat is! Map<String, dynamic>) return const <ChatSlashHint>[];
-      final cmds = chat['slashCommands'];
-      if (cmds is! List) return const <ChatSlashHint>[];
-      return <ChatSlashHint>[
-        for (final c in cmds)
-          if (c is Map<String, dynamic> && c['command'] is String)
-            ChatSlashHint(
-              c['command'] as String,
-              c['template'] as String?,
-              c['description'] as String?,
-              c['tool'] as String?,
-              (c['arguments'] is Map)
-                  ? Map<String, dynamic>.from(c['arguments'] as Map)
-                  : null,
-            ),
-      ];
-    } catch (_) {
-      return const <ChatSlashHint>[];
-    }
   }
 
   @override
@@ -905,11 +855,20 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
         'error': 'no active bundle for lifecycle dispatch',
       };
     }
+    final namespace = _tabs[_active].activation?.exposedShortId;
     return dispatchLifecycleSlot(
       mbdPath: mbdPath,
       slot: slot,
       args: args,
-      callTool: widget.boot.callTool,
+      callTool:
+          (name, a) => widget.boot.callTool(
+            resolveBundleToolName(
+              name,
+              namespace: namespace,
+              isRegistered: widget.boot.toolScopes.containsKey,
+            ),
+            a,
+          ),
     );
   }
 
@@ -2841,114 +2800,6 @@ class _StudioWorkspaceState extends State<StudioWorkspace> {
     _syncHomeActive();
     // ignore: unawaited_futures
     _saveTabs();
-  }
-
-  /// Manifest-side chrome lifecycle channel — mirrors what a built-in
-  /// app exposes through [BuiltInAppContext.lifecycleStateProvider],
-  /// but driven by binding expressions declared in the bundle's
-  /// `manifest.wiring.lifecycleStateBindings` block.
-  ///
-  /// Shape on disk:
-  /// ```json
-  /// "wiring": {
-  ///   "lifecycleStateBindings": {
-  ///     "projectName": "{{currentProject}}",
-  ///     "hasProject": "{{currentProject != ''}}",
-  ///     "dirty": "{{isDirty}}",
-  ///     "canUndo": "{{canUndo}}",
-  ///     "canRedo": "{{canRedo}}"
-  ///   }
-  /// }
-  /// ```
-  /// Each value is resolved against [liveState] (the active tab's
-  /// runtime state map). Bindings using `{{...}}` are evaluated as
-  /// pure-state expressions — the same shape the runtime engine
-  /// applies to widget props. Missing keys fall through to the
-  /// `DomainLifecycleState.empty()` defaults. Returns `null` when the
-  /// bundle declares no bindings so the caller stays on the empty
-  /// state path.
-  DomainLifecycleState? _readManifestLifecycleBindings(
-    String mbdPath,
-    Map<String, Object?> liveState,
-  ) {
-    if (mbdPath.isEmpty) return null;
-    Map<String, dynamic>? bindings;
-    try {
-      final file = File(p.join(mbdPath, 'manifest.json'));
-      if (!file.existsSync()) return null;
-      final raw = jsonDecode(file.readAsStringSync());
-      if (raw is! Map<String, dynamic>) return null;
-      final wiring = raw['wiring'];
-      if (wiring is! Map<String, dynamic>) return null;
-      final block = wiring['lifecycleStateBindings'];
-      if (block is! Map<String, dynamic>) return null;
-      bindings = block;
-    } catch (_) {
-      return null;
-    }
-    if (bindings.isEmpty) return null;
-
-    String? readString(String key) {
-      final raw = bindings![key];
-      if (raw is! String) return raw?.toString();
-      return _evalBinding(raw, liveState)?.toString();
-    }
-
-    bool readBool(String key) {
-      final raw = bindings![key];
-      if (raw is bool) return raw;
-      if (raw is! String) return false;
-      final v = _evalBinding(raw, liveState);
-      if (v is bool) return v;
-      if (v is String) return v.isNotEmpty && v != 'false' && v != '0';
-      if (v is num) return v != 0;
-      return v != null;
-    }
-
-    return DomainLifecycleState(
-      hasProject: readBool('hasProject'),
-      dirty: readBool('dirty'),
-      canUndo: readBool('canUndo'),
-      canRedo: readBool('canRedo'),
-      canCompareChannels: readBool('canCompareChannels'),
-      projectName: readString('projectName'),
-    );
-  }
-
-  /// Evaluate a single binding expression against [state]. Supports
-  /// either a bare `{{key}}` lookup or a `{{a != ''}}` / `{{!key}}`
-  /// style negation / inequality check. Falls back to returning the
-  /// raw string (with no `{{...}}` wrapper) untouched when no template
-  /// is detected.
-  Object? _evalBinding(String src, Map<String, Object?> state) {
-    final trimmed = src.trim();
-    final m = RegExp(r'^\{\{(.+)\}\}$').firstMatch(trimmed);
-    if (m == null) return trimmed;
-    final expr = m.group(1)!.trim();
-    // `key != ''` / `key == ''`
-    final neq = RegExp(r"^(\w+)\s*!=\s*''$").firstMatch(expr);
-    if (neq != null) {
-      final v = state[neq.group(1)!];
-      if (v == null) return false;
-      if (v is String) return v.isNotEmpty;
-      return true;
-    }
-    final eq = RegExp(r"^(\w+)\s*==\s*''$").firstMatch(expr);
-    if (eq != null) {
-      final v = state[eq.group(1)!];
-      if (v == null) return true;
-      if (v is String) return v.isEmpty;
-      return false;
-    }
-    // `!key`
-    if (expr.startsWith('!')) {
-      final key = expr.substring(1).trim();
-      final v = state[key];
-      if (v == null || v == false || v == '' || v == 0) return true;
-      return false;
-    }
-    // Plain key lookup.
-    return state[expr];
   }
 
   /// External LLM onboarding panel — shows the studio's MCP endpoint

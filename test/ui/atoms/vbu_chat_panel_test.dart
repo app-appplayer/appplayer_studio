@@ -229,4 +229,28 @@ void main() {
     expect(find.byKey(const Key('vibe.chat.input')), findsOneWidget);
     addTearDown(() async => tester.binding.setSurfaceSize(null));
   });
+
+  testWidgets('a host names the empty conversation line', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 600));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+    final ctrl = _controller();
+    addTearDown(ctrl.dispose);
+    await tester.pumpWidget(
+      _wrap(
+        ChatPanel(
+          controller: ctrl,
+          modelOptions: _models,
+          layerColorBuilder: _layerColor,
+          layerLabelBuilder: _layerLabel,
+          emptyHint: 'Describe Reading list: what should it do?',
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.text('Describe Reading list: what should it do?'),
+      findsOneWidget,
+    );
+    expect(find.text('No patches yet. Tell vibe what to build.'), findsNothing);
+  });
 }

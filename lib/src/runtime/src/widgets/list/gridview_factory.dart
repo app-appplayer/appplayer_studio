@@ -13,8 +13,20 @@ class GridViewWidgetFactory extends WidgetFactory {
     final scrollDirection = _parseAxis(properties['scrollDirection']);
     final reverse = boolOf(properties['reverse'], context) ?? false;
     final shrinkWrap = boolOf(properties['shrinkWrap'], context) ?? false;
-    final physics = _parseScrollPhysics(properties['physics']);
-    final padding = edgeInsetsOf(properties['padding'], context);
+    final physics = readScrollPhysics(properties['physics'], context);
+    // A shrink-wrapped view the author gave no physics is not the primary
+    // scroll view. Flutter would otherwise force always-scrollable physics on
+    // it, so a view already at full height would take vertical drags from the
+    // enclosing scroll view. A view capped below its content still scrolls.
+    // An explicit `primary` wins: `scrollBar` sets it on its child so the
+    // child attaches to the controller the scrollbar paints against.
+    final bool? primary = boolOf(properties['primary'], context) ??
+        (shrinkWrap && physics == null ? false : null);
+    // No `padding` is no padding. Flutter's list and grid fill a missing
+    // padding with the device's safe-area inset, which the document never
+    // asked for — system insets belong to `safeArea` (§2.4.13).
+    final padding =
+        edgeInsetsOf(properties['padding'], context) ?? EdgeInsets.zero;
 
     // Grid specific properties
     // Support both 'columns' (MCP UI DSL v1.0) and 'crossAxisCount' (Flutter
@@ -37,17 +49,18 @@ class GridViewWidgetFactory extends WidgetFactory {
     // `spacing` (shared shorthand) accepted.
     final spacing = dimensionOf(properties['spacing'], context);
     final mainAxisSpacing =
-        parseDimension(properties['rowGap'] ?? properties['mainAxisSpacing']) ??
+        readDimension(properties['rowGap'] ?? properties['mainAxisSpacing'], context) ??
             spacing ??
             0.0;
-    final crossAxisSpacing = parseDimension(
-            properties['columnGap'] ?? properties['crossAxisSpacing']) ??
+    final crossAxisSpacing = readDimension(
+            properties['columnGap'] ?? properties['crossAxisSpacing'], context) ??
         spacing ??
         0.0;
     // Canonical `itemAspectRatio`; `childAspectRatio` kept as
     // legacy Flutter-style alias.
-    final childAspectRatio = parseDimension(
-            properties['itemAspectRatio'] ?? properties['childAspectRatio']) ??
+    final childAspectRatio = readDimension(
+            properties['itemAspectRatio'] ?? properties['childAspectRatio'],
+            context) ??
         1.0;
     final mainAxisExtent = dimensionOf(properties['mainAxisExtent'], context);
 
@@ -102,6 +115,7 @@ class GridViewWidgetFactory extends WidgetFactory {
         reverse: reverse,
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         gridDelegate: gridDelegate,
         itemCount: items.length,
@@ -137,6 +151,7 @@ class GridViewWidgetFactory extends WidgetFactory {
         reverse: reverse,
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         gridDelegate: gridDelegate,
         itemCount: items.length,
@@ -156,6 +171,7 @@ class GridViewWidgetFactory extends WidgetFactory {
         reverse: reverse,
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         gridDelegate: gridDelegate,
         children: children,
@@ -165,6 +181,7 @@ class GridViewWidgetFactory extends WidgetFactory {
       gridView = GridView(
         shrinkWrap: shrinkWrap,
         physics: physics,
+        primary: primary,
         padding: padding,
         gridDelegate: gridDelegate,
       );
@@ -210,18 +227,4 @@ class GridViewWidgetFactory extends WidgetFactory {
     }
   }
 
-  ScrollPhysics? _parseScrollPhysics(String? value) {
-    switch (value) {
-      case 'never':
-        return const NeverScrollableScrollPhysics();
-      case 'always':
-        return const AlwaysScrollableScrollPhysics();
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      default:
-        return null;
-    }
-  }
 }

@@ -21,6 +21,7 @@ import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../main/chrome_bridge.dart';
 import 'bundle_loading.dart';
+import 'bundle_tool_names.dart';
 import 'host_bundle_activation.dart';
 import 'studio_kb.dart';
 
@@ -105,7 +106,14 @@ class PreviewBundleTools {
     if (context == null) {
       throw StateError('no bundle could be read at $bundlePath');
     }
-    if (!registered.contains(tool)) {
+    // The document names the bundle's own tools by their declared names;
+    // a full name reaches them too.
+    final target = resolveBundleToolName(
+      tool,
+      namespace: context.exposedShortId,
+      isRegistered: _boot.toolScopes.containsKey,
+    );
+    if (!_boot.toolScopes.containsKey(target)) {
       final why = failed[tool];
       throw StateError(
         why == null
@@ -113,10 +121,7 @@ class PreviewBundleTools {
             : 'tool "$tool" did not register: $why',
       );
     }
-    final result = await _boot.callTool(
-      '${context.exposedShortId}.$tool',
-      params,
-    );
+    final result = await _boot.callTool(target, params);
     return <String, dynamic>{
       'content': <Map<String, dynamic>>[
         for (final c in result.content) _contentJson(c),

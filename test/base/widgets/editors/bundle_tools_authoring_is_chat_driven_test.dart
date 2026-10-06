@@ -119,16 +119,29 @@ void main() {
     // Press it and read the manifest back. Asserting the icon merely renders
     // would pass against a delete whose callback had been gutted, and then d1
     // would be green on a dead editor rather than on the decision.
+    // The save rewrites the manifest asynchronously; under load a fixed wait
+    // can land mid-write and read an empty file. Wait for a complete document.
+    Map<String, dynamic>? raw;
     await tester.runAsync(() async {
       await tester.tap(find.byTooltip('Delete tool'));
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      final file = File('${tmp.path}/manifest.json');
+      for (var i = 0; i < 50 && raw == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        try {
+          final decoded = jsonDecode(file.readAsStringSync());
+          final tools = (decoded as Map<String, dynamic>)['tools'];
+          final list = tools is Map ? tools['tools'] : tools;
+          if (list is List && list.isEmpty) raw = decoded;
+        } on FormatException {
+          // Mid-write; read again.
+        }
+      }
     });
     await tester.pump();
-
-    final raw =
+    final doc = raw ??
         jsonDecode(File('${tmp.path}/manifest.json').readAsStringSync())
             as Map<String, dynamic>;
-    final tools = raw['tools'];
+    final tools = doc['tools'];
     expect(
       (tools is Map ? tools['tools'] : tools) as List,
       isEmpty,

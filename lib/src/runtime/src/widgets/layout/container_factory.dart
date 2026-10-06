@@ -26,9 +26,9 @@ class ContainerWidgetFactory extends WidgetFactory {
         _resolveEdgeInsets(properties[core.PropertyKeys.margin], context);
     // Use parseDimension to support MCP UI DSL v1.0 format
     final width =
-        parseDimension(context.resolve(properties[core.PropertyKeys.width]));
+        readDimension(properties[core.PropertyKeys.width], context);
     final height =
-        parseDimension(context.resolve(properties[core.PropertyKeys.height]));
+        readDimension(properties[core.PropertyKeys.height], context);
 
     // Build BoxDecoration via the shared resolver. It accepts the full
     // `decoration: {...}` map AND any flat top-level shorthand fields
@@ -61,13 +61,13 @@ class ContainerWidgetFactory extends WidgetFactory {
     BoxConstraints? boxConstraints =
         parseConstraints(properties['constraints']);
     final flatMinW =
-        parseDimension(context.resolve(properties['minWidth']));
+        readDimension(properties['minWidth'], context);
     final flatMaxW =
-        parseDimension(context.resolve(properties['maxWidth']));
+        readDimension(properties['maxWidth'], context);
     final flatMinH =
-        parseDimension(context.resolve(properties['minHeight']));
+        readDimension(properties['minHeight'], context);
     final flatMaxH =
-        parseDimension(context.resolve(properties['maxHeight']));
+        readDimension(properties['maxHeight'], context);
     if (flatMinW != null ||
         flatMaxW != null ||
         flatMinH != null ||

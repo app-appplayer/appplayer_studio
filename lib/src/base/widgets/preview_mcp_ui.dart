@@ -113,6 +113,7 @@ class CanonicalUiViewAdapter implements UiViewAdapter {
           'type': 'application',
           if (ui['theme'] is Map) 'theme': ui['theme'],
           if (ui['templates'] is Map) 'templates': ui['templates'],
+          if (ui['i18n'] is Map) 'i18n': ui['i18n'],
           'routes': <String, dynamic>{'/': _kDashboardUri},
           'initialRoute': '/',
         };
@@ -136,6 +137,7 @@ class CanonicalUiViewAdapter implements UiViewAdapter {
           'type': 'application',
           if (ui['theme'] is Map) 'theme': ui['theme'],
           if (ui['templates'] is Map) 'templates': ui['templates'],
+          if (ui['i18n'] is Map) 'i18n': ui['i18n'],
           'routes': <String, dynamic>{
             '/': '$_kComponentUriPrefix$id$_kComponentUriSuffix',
           },
@@ -147,10 +149,10 @@ class CanonicalUiViewAdapter implements UiViewAdapter {
       final pages = ui['pages'];
       final page = pages is Map ? pages[id] : null;
       if (page is! Map) return null;
-      // Runtime engine only reads `theme` (and registers `templates`)
-      // from an ApplicationDefinition. Wrap the focused page in a
-      // synthetic single-route App so page preview runs through the
-      // same theme + template pipeline as the app target.
+      // The runtime reads `theme`, `i18n` (spec §12) and registers
+      // `templates` from an ApplicationDefinition only. Wrap the focused
+      // page in a synthetic single-route App that carries them, so page
+      // preview renders the same text and theme as the app target.
       //
       // `ApplicationDefinition.routes` is typed `Map<String, String>` —
       // route values MUST be URI strings, never inline page maps. We
@@ -160,6 +162,7 @@ class CanonicalUiViewAdapter implements UiViewAdapter {
         'type': 'application',
         if (ui['theme'] is Map) 'theme': ui['theme'],
         if (ui['templates'] is Map) 'templates': ui['templates'],
+        if (ui['i18n'] is Map) 'i18n': ui['i18n'],
         'routes': <String, dynamic>{'/': 'ui://pages/$id'},
         'initialRoute': '/',
       };
@@ -232,12 +235,9 @@ class McpUiRuntimePort implements UiRuntimePort {
   });
 
   /// Resolves the host surface's effective brightness at render time —
-  /// what `theme.mode: system` should inherit inside the Studio. Also
-  /// drives the per-render [ThemeManager.setHostBrightness] re-pin: the
-  /// runtime's ThemeManager is a process singleton, so without the pin a
-  /// previous surface's explicit mode survives into a definition that
-  /// declares none. Null = legacy caller; resolution falls back to the
-  /// ambient [Theme] at build time and the singleton is left untouched.
+  /// what `theme.mode: system` should inherit inside the Studio; pinned on
+  /// the rendered runtime's own [ThemeManager]. Null = resolution falls
+  /// back to the ambient [Theme] at build time and no pin is set.
   final Brightness Function()? hostBrightnessOf;
 
   /// Optional canonical reference. When set, the runtime gets a
@@ -317,17 +317,12 @@ class McpUiRuntimePort implements UiRuntimePort {
       // when the Studio theme setting flips. (On a real device the same
       // bundle resolves "system" against the OS.)
       final mode = _modeOf(snapshot.data);
-      // Rebaseline BEFORE the brightness pin: the singleton ThemeManager
-      // also leaks the previous definition's PALETTE (a themeless
-      // definition rendered after a themed one inherits foreign colors —
-      // brightness pinning can't cover that axis), and its stock default
-      // has no dark token set (dark pin + empty default = broken dark).
-      // A definition that declares no palette of its own therefore resets
-      // the singleton to a content-ful neutral baseline (M3 light + real
-      // dark variant), keeping any declared/overridden mode. A definition
-      // WITH its own palette re-asserts that palette (identical to what
-      // engine init applied) so the guard below has one canonical map to
-      // restore either way.
+      // Baseline BEFORE the brightness pin: the runtime's stock default
+      // theme has no dark token set (dark pin + empty default = broken
+      // dark). A definition that declares no palette of its own therefore
+      // gets a content-ful neutral baseline (M3 light + real dark variant),
+      // keeping any declared/overridden mode. A definition WITH its own
+      // palette keeps it (identical to what engine init applied).
       final declared = snapshot.data['theme'];
       final hasOwnPalette =
           declared is Map && declared.keys.any((k) => k != 'mode');
@@ -346,13 +341,9 @@ class McpUiRuntimePort implements UiRuntimePort {
         _ => hostBrightnessOf?.call(),
       };
       if (pinned != null) {
-        // Re-pin on EVERY render (not just mode changes): each runtime
-        // instance shares the singleton ThemeManager, so redrawing a
-        // surface must re-assert its own resolution or it inherits
-        // whatever the previous render left behind.
         runtime.themeManager.setHostBrightness(pinned);
       }
-      final rendered = Builder(
+      return Builder(
         builder: (context) {
           final base = Theme.of(context);
           final Brightness brightness = pinned ?? base.brightness;
@@ -371,18 +362,6 @@ class McpUiRuntimePort implements UiRuntimePort {
             ),
           );
         },
-      );
-      // Liveness guard: an input-based gate alone lies — another runtime's
-      // `destroy()` calls `ThemeManager.instance.reset()` behind the host's
-      // back (no hook), wiping palette+mode+pin between renders of the SAME
-      // definition. The guard remembers the applied state's fingerprint and
-      // re-asserts on divergence — but only while its surface is the ACTIVE
-      // one, so co-mounted surfaces never ping-pong the singleton.
-      return _ThemeLivenessGuard(
-        themeManager: runtime.themeManager,
-        theme: assertTheme,
-        pinned: pinned,
-        child: rendered,
       );
     } catch (e) {
       return _Fallback(snapshot: snapshot, error: e);
@@ -685,97 +664,6 @@ class _Fallback extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Keeps a rendered runtime surface's theme ALIVE on the process-singleton
-/// [ThemeManager], not merely applied once: `MCPUIRuntime.destroy()` (a tab
-/// closing, a preview unmounting) resets the singleton behind the host's
-/// back, so a surface that stays mounted — or re-shows without re-rendering
-/// (memoized futures, IndexedStack re-entry) — would silently drop to the
-/// empty stock default ("same thing re-opened looks wrong; visiting another
-/// app fixes it"). The guard stores the fingerprint of the state it applied
-/// and re-asserts theme+pin whenever the live fingerprint diverges — gated
-/// on [WorkspaceTabActiveScope] so only the active surface writes (multiple
-/// mounted guards must not ping-pong the shared singleton).
-class _ThemeLivenessGuard extends StatefulWidget {
-  const _ThemeLivenessGuard({
-    required this.themeManager,
-    required this.theme,
-    required this.pinned,
-    required this.child,
-  });
-
-  final ThemeManager themeManager;
-  final Map<String, dynamic> theme;
-  final Brightness? pinned;
-  final Widget child;
-
-  @override
-  State<_ThemeLivenessGuard> createState() => _ThemeLivenessGuardState();
-}
-
-class _ThemeLivenessGuardState extends State<_ThemeLivenessGuard> {
-  late String _appliedFingerprint;
-  bool _reasserting = false;
-
-  /// `ThemeManager.reset()` (runtime destroy) wipes WITHOUT notifying, so
-  /// a listener alone cannot see it. A cheap periodic fingerprint compare
-  /// (string equality, no-op while intact) catches the silent case even
-  /// when nothing rebuilds this subtree.
-  Timer? _livenessTicker;
-
-  @override
-  void initState() {
-    super.initState();
-    _appliedFingerprint = widget.themeManager.fingerprint;
-    widget.themeManager.addListener(_onThemeManagerChanged);
-    _livenessTicker = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted) return;
-      _reassertIfActive();
-    });
-  }
-
-  @override
-  void dispose() {
-    _livenessTicker?.cancel();
-    widget.themeManager.removeListener(_onThemeManagerChanged);
-    super.dispose();
-  }
-
-  void _onThemeManagerChanged() {
-    if (!mounted || _reasserting) return;
-    if (widget.themeManager.fingerprint == _appliedFingerprint) return;
-    // Divergence — someone else wrote/reset the singleton. Re-assert on
-    // the next frame (a notify can land mid-build) if still the active
-    // surface by then.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _reassertIfActive();
-    });
-  }
-
-  void _reassertIfActive() {
-    if (widget.themeManager.fingerprint == _appliedFingerprint) return;
-    if (!WorkspaceTabActiveScope.isActiveOf(context)) return;
-    _reasserting = true;
-    try {
-      widget.themeManager.setTheme(widget.theme);
-      if (widget.pinned != null) {
-        widget.themeManager.setHostBrightness(widget.pinned);
-      }
-      _appliedFingerprint = widget.themeManager.fingerprint;
-    } finally {
-      _reasserting = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Build-time check covers divergence windows where no notification
-    // reached us while inactive — re-entry (tab switch rebuilds) heals.
-    _reassertIfActive();
-    return widget.child;
   }
 }
 

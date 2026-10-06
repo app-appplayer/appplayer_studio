@@ -99,12 +99,12 @@ class AnimatedPositionedWidgetFactory extends WidgetFactory {
         childDef != null ? context.buildWidget(childDef) : const SizedBox();
 
     return AnimatedPositioned(
-      top: parseDimension(context.resolve(properties['top'])),
-      right: parseDimension(context.resolve(properties['right'])),
-      bottom: parseDimension(context.resolve(properties['bottom'])),
-      left: parseDimension(context.resolve(properties['left'])),
-      width: parseDimension(context.resolve(properties['width'])),
-      height: parseDimension(context.resolve(properties['height'])),
+      top: readDimension(properties['top'], context),
+      right: readDimension(properties['right'], context),
+      bottom: readDimension(properties['bottom'], context),
+      left: readDimension(properties['left'], context),
+      width: readDimension(properties['width'], context),
+      height: readDimension(properties['height'], context),
       duration: _resolveDuration(context.resolve(properties['duration'])),
       curve: _resolveCurve(context.resolve(properties['curve'])),
       onEnd: _onEndCallback(properties['onEnd'], context),
@@ -136,10 +136,10 @@ class AnimatedDefaultTextStyleWidgetFactory extends WidgetFactory {
   TextStyle _parseTextStyle(
       Map<String, dynamic> style, RenderContext context) {
     return TextStyle(
-      fontSize: parseDimension(context.resolve(style['fontSize'])),
+      fontSize: readDimension(style['fontSize'], context),
       fontWeight: _parseFontWeight(context.resolve(style['fontWeight'])),
       color: parseColor(context.resolve(style['color']), context),
-      letterSpacing: parseDimension(context.resolve(style['letterSpacing'])),
+      letterSpacing: readDimension(style['letterSpacing'], context),
       height: readLineHeight(style, context),
     );
   }

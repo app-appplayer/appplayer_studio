@@ -166,8 +166,8 @@ class KenBurnsImageWidgetFactory extends WidgetFactory {
     context.resolve(properties['endAlignment']); // resolved for intent; the real renderer ships later
     context.resolve(properties['curve']); // resolved for intent; the real renderer ships later
     final fit = _resolveBoxFit(context.resolve(properties['fit']));
-    final width = parseDimension(context.resolve(properties['width']));
-    final height = parseDimension(context.resolve(properties['height']));
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context);
 
     final image = _buildImage(src, fit);
     return _KenBurnsRunner(
@@ -539,8 +539,8 @@ class RiveWidgetFactory extends WidgetFactory {
     context.resolve(properties['inputs']); // resolved for intent; the real renderer ships later
     context.resolve(properties['fit']); // resolved for intent; the real renderer ships later
     context.resolve(properties['alignment']); // resolved for intent; the real renderer ships later
-    final width = parseDimension(context.resolve(properties['width']));
-    final height = parseDimension(context.resolve(properties['height']));
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context);
     return SizedBox(
       width: width,
       height: height,

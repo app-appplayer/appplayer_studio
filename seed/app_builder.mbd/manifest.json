@@ -2,6 +2,7 @@
   "schemaVersion": "1.0.0",
   "manifest": {
     "id": "app.makemind.app_builder",
+    "type": "extension",
     "name": "App Builder",
     "version": "0.1.0",
     "icon": "build",
@@ -465,7 +466,7 @@
             "id": "dsl-box",
             "title": "box widget",
             "source": "mcp_ui_dsl/1.4/widgets/box",
-            "content": "`box` (also `container`, `constrained`) — layout, Core profile. Generic single-child container that applies size, padding, margin, and a decoration (background color, border, shadow, gradient, borderRadius). Most commonly used as a styled wrapper around any child widget.\nOptional: alignment:Alignment, color:Color (alias backgroundColor), constraints:object, decoration:BoxDecoration, height:Dimension, margin:EdgeInsets, maxHeight:number, maxWidth:number, minHeight:number, minWidth:number, padding:string|EdgeInsets, width:Dimension.\n\nNotes: box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"text\":\"hello\"}}."
+            "content": "`box` (also `container`, `constrained`, `decoratedBox`, `constrainedBox`) — layout, Core profile. Generic single-child container that applies size, padding, margin, and a decoration (background color, border, shadow, gradient, borderRadius). Most commonly used as a styled wrapper around any child widget.\nOptional: alignment:Alignment, color:Color (alias backgroundColor), constraints:object, decoration:BoxDecoration, height:Dimension, margin:BoxSpacing, maxHeight:number, maxWidth:number, minHeight:number, minWidth:number, padding:BoxSpacing, width:Dimension.\n\nNotes: box is the basic single-child container. Replaces Flutter's Container. Properties: child:<Widget>, padding:number|EdgeInsets, margin:number, width:number, height:number, color:string (hex like #RRGGBB), decoration:object, alignment:'topLeft'|'center'|'bottomRight'|etc. Use box for padding, background colour, fixed dimensions. Do NOT use 'container' — the canonical lowercase name is 'box'. Example: {\"type\":\"box\",\"padding\":16,\"color\":\"#1F2A3A\",\"child\":{\"type\":\"text\",\"text\":\"hello\"}}."
           },
           {
             "id": "dsl-breadcrumb",
@@ -477,19 +478,19 @@
             "id": "dsl-button",
             "title": "button widget",
             "source": "mcp_ui_dsl/1.4/widgets/button",
-            "content": "`button` — input, Core profile. Interactive button. The canonical label field is `label`.\nRequired: label:string (alias text).\nOptional: ariaLabel:string, backgroundColor:Color, borderColor:Color, borderWidth:Dimension, elevation:string|number, enabled:boolean (default true), foregroundColor:Color, fullWidth:boolean, icon:IconRef, iconPosition:string, loading:boolean, onDoubleTap:Action, onLongPress:Action, onSubmit:Action, onTap:Action, size:Dimension, submit:Action, variant:string (one of elevated|filled|outlined|text|icon; default elevated; alias style).\n\nNotes: button is a clickable action surface. Required: type:'button', label:string, onTap:Action. The tap handler property is named `onTap`; `click` and `onPressed` are accepted aliases (§17.3.2). Do NOT use a property named `action` — the runtime ignores it. Properties: variant:'elevated'|'filled'|'outlined'|'text'|'icon' (default 'elevated'; those five are the whole set — 'tonal' is not one of them and is rejected), icon:IconRef, enabled:bool. onTap is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
+            "content": "`button` — input, Core profile. Interactive button. The canonical label field is `label`.\nRequired: label:string (alias text).\nOptional: ariaLabel:string, backgroundColor:Color, borderColor:Color, borderWidth:Dimension, elevation:string|number, enabled:boolean (default true), foregroundColor:Color, fullWidth:boolean, icon:IconRef, iconPosition:string, loading:boolean, onDoubleTap:Action, onLongPress:Action, onSubmit:Action, onTap:Action, size:string|number (one of small|medium|large; default medium), submit:Action, variant:string (one of elevated|filled|outlined|text|icon; default elevated; alias style).\n\nNotes: button is a clickable action surface. Required: type:'button', label:string, onTap:Action. The tap handler property is named `onTap`; `click` and `onPressed` are accepted aliases (§17.3.2). Do NOT use a property named `action` — the runtime ignores it. Properties: variant:'elevated'|'filled'|'outlined'|'text'|'icon' (default 'elevated'; those five are the whole set — 'tonal' is not one of them and is rejected), icon:IconRef, enabled:bool. onTap is canonical {type:'tool', tool:'<name>', params:{...}} (see actions doc). Example: {\"type\":\"button\",\"label\":\"Submit\",\"variant\":\"filled\",\"onTap\":{\"type\":\"tool\",\"tool\":\"shout\",\"params\":{\"text\":\"{{input}}\"}}}."
           },
           {
             "id": "dsl-calendar",
             "title": "calendar widget",
             "source": "mcp_ui_dsl/1.4/widgets/calendar",
-            "content": "`calendar` — advanced, Core profile. Calendar view for date selection and event display.\nOptional: backgroundColor:Color, change:Action, eventColor:Color, events:binding, firstDate:string, firstDayOfWeek:number, height:Dimension, lastDate:string, onChange:Action, onMonthChange:Action, primaryColor:Color, selectedColor:Color, selectedDate:string | binding, showHeader:boolean, showWeekNumbers:boolean, todayColor:Color, view:string (one of month|week|day; default month), width:Dimension."
+            "content": "`calendar` — advanced, Advanced profile. Calendar view for date selection and event display.\nOptional: backgroundColor:Color, change:Action, eventColor:Color, events:array<object>, firstDate:string, firstDayOfWeek:number, height:Dimension, lastDate:string, onChange:Action, onMonthChange:Action, primaryColor:Color, selectedColor:Color, selectedDate:string | binding, showHeader:boolean, showWeekNumbers:boolean, todayColor:Color, view:string (one of month|week|day; default month), width:Dimension."
           },
           {
             "id": "dsl-canvas",
             "title": "canvas widget",
             "source": "mcp_ui_dsl/1.4/widgets/canvas",
-            "content": "`canvas` — advanced, Core profile. General-purpose vector drawing via an ordered command array. All numeric and color properties support binding expressions, enabling data-driven graphics (progress rings, custom indicators, composable chart primitives). backgroundColor: type: Color description: \"Legacy alias of `color`.\"\nOptional: width:Dimension."
+            "content": "`canvas` — advanced, Advanced profile. General-purpose vector drawing via an ordered command array. All numeric and color properties support binding expressions, enabling data-driven graphics (progress rings, custom indicators, composable chart primitives). backgroundColor: type: Color description: \"Legacy alias of `color`.\"\nOptional: width:Dimension."
           },
           {
             "id": "dsl-card",
@@ -513,7 +514,7 @@
             "id": "dsl-chart",
             "title": "chart widget",
             "source": "mcp_ui_dsl/1.4/widgets/chart",
-            "content": "`chart` — advanced, Core profile. Data visualization widget with multiple chart types.\nRequired: chartType:string (one of line|bar|pie|donut|scatter|area|radar|polar|bubble), data:object | array, data.datasets[].data:array<number>.\nOptional: backgroundColor:Color, colors:array<Color>, data.datasets[].backgroundColor:string (default theme), data.datasets[].borderColor:string (default theme), data.datasets[].label:string, gridColor:Color, height:number, labelColor:Color, options:object (default {}), options.animation.duration:number (default 1000), options.legend.position:string (one of top|bottom|left|right|none; default top), options.responsive:boolean (default true), primaryColor:Color, showGrid:boolean, showLabels:boolean, showLegend:boolean, title:string, width:number."
+            "content": "`chart` — advanced, Advanced profile. Data visualization widget with multiple chart types.\nRequired: chartType:string (one of line|bar|pie|donut|scatter|area|radar|polar|bubble), data:object | array, data.datasets[].data:array<number>.\nOptional: backgroundColor:Color, colors:array<Color>, data.datasets[].backgroundColor:string (default theme), data.datasets[].borderColor:string (default theme), data.datasets[].label:string, gridColor:Color, height:number, labelColor:Color, options:object (default {}), options.animation.duration:number (default 1000), options.legend.position:string (one of top|bottom|left|right|none; default top), options.responsive:boolean (default true), primaryColor:Color, showGrid:boolean, showLabels:boolean, showLegend:boolean, title:string, width:number."
           },
           {
             "id": "dsl-checkbox",
@@ -549,13 +550,13 @@
             "id": "dsl-codeEditor",
             "title": "codeEditor widget",
             "source": "mcp_ui_dsl/1.4/widgets/codeEditor",
-            "content": "`codeEditor` (also `code`) — advanced, Core profile. Syntax-highlighted code editor.\nOptional: backgroundColor:Color, binding:string, change:Action, code:string | binding, copyable:boolean (default false), expandAll:boolean (default false), fontSize:number, height:number, language:string (one of plaintext|javascript|typescript|dart|python|java|kotlin|swift|go|rust|c|cpp|csharp|ruby|php|sql|json|yaml|xml|html|css|markdown|shell; default plaintext), lineHeight:number, lineNumberColor:Color, onChange:Action, readOnly:boolean (default false), showLineNumbers:boolean (default true), tabSize:number (default 2), textColor:Color, theme:string (one of vsLight|vsDark|monokai|solarizedLight|solarizedDark|github|dracula; default vsLight), width:number."
+            "content": "`codeEditor` (also `code`) — advanced, Advanced profile. Syntax-highlighted code editor.\nOptional: backgroundColor:Color, binding:string, change:Action, code:string | binding, copyable:boolean (default false), expandAll:boolean (default false), fontSize:number, height:number, language:string (one of plaintext|javascript|typescript|dart|python|java|kotlin|swift|go|rust|c|cpp|csharp|ruby|php|sql|json|yaml|xml|html|css|markdown|shell; default plaintext), lineHeight:number, lineNumberColor:Color, onChange:Action, readOnly:boolean (default false), showLineNumbers:boolean (default true), tabSize:number (default 2), textColor:Color, theme:string (one of vsLight|vsDark|monokai|solarizedLight|solarizedDark|github|dracula; default vsDark), width:number."
           },
           {
             "id": "dsl-colorPicker",
             "title": "colorPicker widget",
             "source": "mcp_ui_dsl/1.4/widgets/colorPicker",
-            "content": "`colorPicker` — input, Core profile. Color selection. Shared rows per §2.6.0; `value` is a hex color string.\nOptional: enableHistory:boolean (default false), label:string, pickerType:string (one of wheel|palette|both; default wheel), showAlpha:boolean (default false), showLabel:boolean (default true)."
+            "content": "`colorPicker` — input, Core profile. Color selection. Shared rows per §2.6.0; `value` is a hex color string.\nOptional: enableHistory:boolean (default false), label:string, pickerType:string (one of wheel|palette|both; default palette), showAlpha:boolean (default false), showLabel:boolean (default true)."
           },
           {
             "id": "dsl-combobox",
@@ -591,7 +592,7 @@
             "id": "dsl-dataTable",
             "title": "dataTable widget",
             "source": "mcp_ui_dsl/1.4/widgets/dataTable",
-            "content": "`dataTable` (also `dataGrid`) — advanced, Core profile. Material-style sortable, selectable data table bound to a row array.\nRequired: columns:array<Column>, columns[].key:string, columns[].label:string, rows:array<object> | binding.\nOptional: columns[].align:string (one of start|center|end; default start), columns[].sortable:boolean (default false), columns[].width:number, editable:boolean (default false), filterable:boolean (default false), onRowTap:Action, onSort:Action, resizableColumns:boolean (default false), rowHeight:number, selectable:boolean (default false), sortAscending:binding (default true), sortColumn:binding, virtualScroll:boolean (default false)."
+            "content": "`dataTable` (also `dataGrid`) — advanced, Advanced profile. Material-style sortable, selectable data table bound to a row array.\nRequired: columns:array<Column>, columns[].key:string, columns[].label:string, rows:array<object> | binding.\nOptional: columns[].align:string (one of start|center|end; default start), columns[].sortable:boolean (default false), columns[].width:number, editable:boolean (default false), filterable:boolean (default false), onCellEdit:Action, onRowTap:Action, onSort:Action, resizableColumns:boolean (default false), rowHeight:number, selectable:boolean (default false), sortAscending:boolean (default true), sortColumn:string, virtualScroll:boolean (default false)."
           },
           {
             "id": "dsl-dateField",
@@ -675,7 +676,7 @@
             "id": "dsl-fileExplorer",
             "title": "fileExplorer widget",
             "source": "mcp_ui_dsl/1.4/widgets/fileExplorer",
-            "content": "`fileExplorer` — advanced, Core profile. File and directory browser.\nOptional: backgroundColor:Color, directories:array<string>, expandAll:boolean (default false), files:array<string>, height:number, iconColor:Color, items:array<object> | binding, onOpen:Action, onSelect:Action, rootPath:string, selectedColor:Color, showHidden:boolean (default false), showIcons:boolean (default true), width:number."
+            "content": "`fileExplorer` — advanced, Advanced profile. File and directory browser.\nOptional: backgroundColor:Color, directories:array<string>, expandAll:boolean (default false), files:array<string>, height:number, iconColor:Color, items:array<object> | binding, onOpen:Action, onSelect:Action, rootPath:string, selectedColor:Color, showHidden:boolean (default false), showIcons:boolean (default true), width:number."
           },
           {
             "id": "dsl-fileInput",
@@ -729,7 +730,7 @@
             "id": "dsl-gauge",
             "title": "gauge widget",
             "source": "mcp_ui_dsl/1.4/widgets/gauge",
-            "content": "`gauge` (also `meter`) — advanced, Core profile. Radial gauge for a value within a range.\nRequired: value:number.\nOptional: backgroundColor:Color (default #E0E0E0), labelFormat:string (default {value}), max:number (default 100), min:number (default 0), segments:array<Segment>, showLabel:boolean (default true), size:number (default 200), startAngle:number (default 135), strokeWidth:number (default 20), sweepAngle:number (default 270), valueColor:Color (default theme primary)."
+            "content": "`gauge` (also `meter`) — advanced, Advanced profile. Radial gauge for a value within a range.\nRequired: value:number.\nOptional: backgroundColor:Color (default #E0E0E0), labelFormat:string (default {value}%), max:number (default 100), min:number (default 0), segments:array<Segment>, showLabel:boolean (default true), size:number (default 200), startAngle:number (default -220), strokeWidth:number (default 10), sweepAngle:number (default 260), valueColor:Color (default theme primary)."
           },
           {
             "id": "dsl-gestureDetector",
@@ -741,7 +742,7 @@
             "id": "dsl-graph",
             "title": "graph widget",
             "source": "mcp_ui_dsl/1.4/widgets/graph",
-            "content": "`graph` — advanced, Core profile. Time-series / numeric data graph (line, bar, area, scatter) drawn on a single set of axes. For node/edge topology visualization use `networkGraph` (§10.13).\nRequired: data:array<Point> | binding.\nOptional: chartType:string (one of line|bar|area|scatter; default line), fillColor:Color, gridColor:Color (default light grey), height:number (default 200), labelColor:Color, lineColor:Color (default #2196F3), showGrid:boolean (default true), showLabels:boolean (default true), strokeWidth:number (default 2), width:number (default 300)."
+            "content": "`graph` — advanced, Advanced profile. Time-series / numeric data graph (line, bar, area, scatter) drawn on a single set of axes. For node/edge topology visualization use `networkGraph` (§10.13).\nRequired: data:array<Point>|array<number>.\nOptional: chartType:string (one of line|bar|area|scatter; default line), fillColor:Color, gridColor:Color (default light grey), height:number (default 200), labelColor:Color, lineColor:Color (default #2196F3), showGrid:boolean (default true), showLabels:boolean (default true), strokeWidth:number (default 2), width:number (default 300)."
           },
           {
             "id": "dsl-grid",
@@ -759,7 +760,7 @@
             "id": "dsl-heatmap",
             "title": "heatmap widget",
             "source": "mcp_ui_dsl/1.4/widgets/heatmap",
-            "content": "`heatmap` — advanced, Core profile. Two-dimensional heatmap visualization.\nRequired: data:array | binding.\nOptional: cellGap:Dimension, cellSize:number (default 40), colorRange:{ low, high } (default { #E3F2FD, #1565C0 }), colorRange.high:Color, colorRange.low:Color, colorScheme:string, columnLabels:array<string>, columns:number, maxValue:number, minValue:number, onCellTap:Action, rowLabels:array<string>, showLabels:boolean, showValues:boolean (default false)."
+            "content": "`heatmap` — advanced, Advanced profile. Two-dimensional heatmap visualization.\nRequired: data:array | binding.\nOptional: cellGap:Dimension, cellSize:number (default 40), colorRange:{ low, high } (default { #E3F2FD, #1565C0 }), colorRange.high:Color, colorRange.low:Color, colorScheme:string, columnLabels:array<string>, columns:number, maxValue:number, minValue:number, onCellTap:Action, rowLabels:array<string>, showLabels:boolean, showValues:boolean (default true)."
           },
           {
             "id": "dsl-hero",
@@ -819,7 +820,7 @@
             "id": "dsl-kanban",
             "title": "kanban widget",
             "source": "mcp_ui_dsl/1.4/widgets/kanban",
-            "content": "`kanban` — advanced, Advanced profile. Cards in columns, moved between columns by dragging. Composable from `grid` + `draggable` + `dragTarget` in the sense that the pieces exist — and that composition is where the work actually is. Drop targets must be the gaps between cards rather than the cards themselves, the column must auto-scroll while a card hovers near its edge, and a drop must report *where* in the destination the card landed, not just that it moved. Authors composing this get a board that looks right and reorders wrongly. The widget owns presentation and gesture. It does **not** own the move: `onCardMove` reports the intent and the author's action decides, so a server-rejected move is not silently already applied on screen.\nRequired: columns:array<object> | binding, itemTemplate:Widget.\nOptional: columnWidth:Dimension, draggable:boolean (default true), itemKey:string (default id), optimistic:boolean (default false)."
+            "content": "`kanban` — advanced, Advanced profile. Cards in columns, moved between columns by dragging. Composable from `grid` + `draggable` + `dragTarget` in the sense that the pieces exist — and that composition is where the work actually is. Drop targets must be the gaps between cards rather than the cards themselves, the column must auto-scroll while a card hovers near its edge, and a drop must report *where* in the destination the card landed, not just that it moved. Authors composing this get a board that looks right and reorders wrongly. The widget owns presentation and gesture. It does **not** own the move: `onCardMove` reports the intent and the author's action decides, so a server-rejected move is not silently already applied on screen.\nRequired: columns:array<object> | binding, itemTemplate:Widget.\nOptional: columnWidth:Dimension, draggable:boolean (default true), height:Dimension, itemKey:string (default id), optimistic:boolean (default false)."
           },
           {
             "id": "dsl-kenBurnsImage",
@@ -843,13 +844,13 @@
             "id": "dsl-lightbox",
             "title": "lightbox widget",
             "source": "mcp_ui_dsl/1.4/widgets/lightbox",
-            "content": "`lightbox` — advanced, Core profile. Full-screen modal image viewer with pinch-zoom and swipe-between- images. Used as a tap target on a thumbnail image — opening the lightbox transitions the thumbnail into the full-screen view. Pairs naturally with `hero` for the cover-to-detail morph.\nRequired: images:array<AssetRef>.\nOptional: allowSwipe:boolean (default true), allowZoom:boolean (default true), backgroundColor:Color (default #FF000000), initialIndex:number (default 0), maxZoom:number (default 4.0), onClose:Action, onIndexChanged:Action."
+            "content": "`lightbox` — advanced, Advanced profile. Full-screen modal image viewer with pinch-zoom and swipe-between- images. Used as a tap target on a thumbnail image — opening the lightbox transitions the thumbnail into the full-screen view. Pairs naturally with `hero` for the cover-to-detail morph.\nRequired: images:array<AssetRef>.\nOptional: allowSwipe:boolean (default true), allowZoom:boolean (default true), backgroundColor:Color (default #FF000000), initialIndex:number (default 0), maxZoom:number (default 4.0), onClose:Action, onIndexChanged:Action."
           },
           {
             "id": "dsl-limitedBox",
             "title": "limitedBox widget",
             "source": "mcp_ui_dsl/1.4/widgets/limitedBox",
-            "content": "`limitedBox` — utility, Core profile. Limits a child's size only when it would otherwise be unbounded.\nRequired: child:Widget.\nOptional: maxHeight:number (default double.infinity), maxWidth:number (default double.infinity)."
+            "content": "`limitedBox` — utility, Core profile. Limits a child's size only when it would otherwise be unbounded.\nRequired: child:Widget.\nOptional: maxHeight:number, maxWidth:number."
           },
           {
             "id": "dsl-linear",
@@ -885,7 +886,7 @@
             "id": "dsl-map",
             "title": "map widget",
             "source": "mcp_ui_dsl/1.4/widgets/map",
-            "content": "`map` — advanced, Core profile. Geographic map with markers and overlays.\nRequired: markers[].id:string, markers[].latitude:number, markers[].longitude:number, overlays[].type:string (one of polygon|polyline|circle).\nOptional: backgroundColor:Color, center:{ latitude, longitude }, gridColor:Color, height:Dimension, interactive:boolean, latitude:number, longitude:number, mapType:string (one of standard|satellite|terrain|hybrid; default standard), markerColor:Color, markers:array<Marker> (default []), markers[].color:string, markers[].icon:string, markers[].label:string, onMapTap:Action, onMarkerTap:Action, overlays:array<Overlay> (default []), overlays[].fillColor:string, overlays[].points:array<object{ latitude: number, longitude: number }> (default required for polygon/polyline), overlays[].strokeColor:string, overlays[].strokeWidth:number (default 1), showCoordinates:boolean, showGrid:boolean, width:Dimension, zoom:number (default 13)."
+            "content": "`map` — advanced, Advanced profile. Geographic map with markers and overlays.\nRequired: markers[].id:string, markers[].latitude:number, markers[].longitude:number, overlays[].type:string (one of polygon|polyline|circle).\nOptional: backgroundColor:Color, center:{ latitude, longitude }, gridColor:Color, height:Dimension, interactive:boolean, latitude:number, longitude:number, mapType:string (one of standard|satellite|terrain|hybrid; default standard), markerColor:Color, markers:array<Marker> (default []), markers[].color:string, markers[].icon:string, markers[].label:string, onMapTap:Action, onMarkerTap:Action, overlays:array<Overlay> (default []), overlays[].fillColor:string, overlays[].points:array<object{ latitude: number, longitude: number }> (default required for polygon/polyline), overlays[].strokeColor:string, overlays[].strokeWidth:number (default 1), showCoordinates:boolean, showGrid:boolean, width:Dimension, zoom:number (default 13)."
           },
           {
             "id": "dsl-margin",
@@ -897,13 +898,13 @@
             "id": "dsl-markdown",
             "title": "markdown widget",
             "source": "mcp_ui_dsl/1.4/widgets/markdown",
-            "content": "`markdown` — advanced, Core profile. Markdown renderer.\nRequired: text:string | binding (alias content).\nOptional: backgroundColor:Color, codeBackgroundColor:Color, fontSize:number, height:number, linkColor:Color, onLinkTap:Action, selectable:boolean (default false), textColor:Color, width:number."
+            "content": "`markdown` — advanced, Advanced profile. Markdown renderer.\nRequired: text:string | binding (alias content).\nOptional: backgroundColor:Color, codeBackgroundColor:Color, fontSize:number, height:number, linkColor:Color, onLinkTap:Action, selectable:boolean (default false), textColor:Color, width:number."
           },
           {
             "id": "dsl-mediaPlayer",
             "title": "mediaPlayer widget",
             "source": "mcp_ui_dsl/1.4/widgets/mediaPlayer",
-            "content": "`mediaPlayer` (also `video`, `audio`) — advanced, Core profile. Audio / video player widget.\nRequired: source:AssetRef (alias src).\nOptional: accentColor:Color, autoPlay:boolean (default false), backgroundColor:Color, controls:boolean (default true), controlsColor:Color, duration:Dimension, height:number, loop:boolean (default false), mediaType:string (one of audio|video; default inferred), muted:boolean (default false), onEnded:Action, onError:Action, onPause:Action, onPlay:Action, onSeek:Action, onTimeUpdate:Action, poster:AssetRef, title:string, volume:number (default 1.0), waveform:boolean (default false), width:number."
+            "content": "`mediaPlayer` (also `video`, `audio`) — advanced, Advanced profile. Audio / video player widget.\nRequired: source:AssetRef (alias src).\nOptional: accentColor:Color, autoPlay:boolean (default false), backgroundColor:Color, controls:boolean (default true), controlsColor:Color, duration:Dimension, height:number, loop:boolean (default false), mediaType:string (one of audio|video), muted:boolean (default false), onEnded:Action, onError:Action, onPause:Action, onPlay:Action, onSeek:Action, onTimeUpdate:Action, poster:AssetRef, title:string, volume:number (default 1.0), waveform:boolean (default false), width:number."
           },
           {
             "id": "dsl-mediaQuery",
@@ -933,7 +934,7 @@
             "id": "dsl-networkGraph",
             "title": "networkGraph widget",
             "source": "mcp_ui_dsl/1.4/widgets/networkGraph",
-            "content": "`networkGraph` — advanced, Core profile. Network topology graph. Same node/edge model as `graph`, with topology-oriented defaults (hierarchical layout, directed edges).\nOptional: edgeColor:Color, edges:array<object>, height:Dimension, interactive:boolean, labelColor:Color, layout:string, nodeColor:Color, nodes:array<object>, onEdgeTap:Action, onNodeTap:Action, width:Dimension."
+            "content": "`networkGraph` — advanced, Advanced profile. Network topology graph. Same node/edge model as `graph`, with topology-oriented defaults (hierarchical layout, directed edges).\nOptional: edgeColor:Color, edges:array<object> | binding, height:Dimension, interactive:boolean, labelColor:Color, layout:string, nodeColor:Color, nodes:array<object> | binding, onEdgeTap:Action, onNodeTap:Action, width:Dimension."
           },
           {
             "id": "dsl-numberField",
@@ -975,7 +976,7 @@
             "id": "dsl-pageView",
             "title": "pageView widget",
             "source": "mcp_ui_dsl/1.4/widgets/pageView",
-            "content": "`pageView` — scroll, Core profile. Full-viewport paged scroll view. Snaps one page per swipe; ideal for book pages, photo galleries, onboarding flows. Distinct from `carousel` (partial-viewport, peeking neighbours) — pageView is always one full page. Each child is rendered as a separate page.\nRequired: children:array<Widget>.\nOptional: allowImplicitScrolling:boolean (default false), clipBehavior:string, direction:string (one of horizontal|vertical; default horizontal), initialPage:number (default 0), loop:boolean (default false), onChange:Action, onPageChanged:Action, padEnds:boolean, pageSnapping:boolean, reverse:boolean, scrollDirection:string, scrollPhysics:string (one of bouncing|clamping|neverScrollable; default clamping)."
+            "content": "`pageView` — scroll, Core profile. Full-viewport paged scroll view. Snaps one page per swipe; ideal for book pages, photo galleries, onboarding flows. Distinct from `carousel` (partial-viewport, peeking neighbours) — pageView is always one full page. Each child is rendered as a separate page.\nRequired: children:array<Widget>.\nOptional: allowImplicitScrolling:boolean (default false), clipBehavior:string, direction:string (one of horizontal|vertical; default horizontal), initialPage:number (default 0), loop:boolean (default false), onChange:Action, onPageChanged:Action, padEnds:boolean, pageSnapping:boolean, physics:string (one of bouncing|clamping|never|always; default clamping; alias scrollPhysics), reverse:boolean, scrollDirection:string."
           },
           {
             "id": "dsl-pagination",
@@ -1023,13 +1024,13 @@
             "id": "dsl-progressBar",
             "title": "progressBar widget",
             "source": "mcp_ui_dsl/1.4/widgets/progressBar",
-            "content": "`progressBar` (also `linearProgressIndicator`, `loadingIndicator`, `loading-indicator`, `progress-bar`, `progress`) — display, Core profile. Progress indicator (linear or circular).\nOptional: backgroundColor:Color, color:Color (default theme primary), indicatorType:string (default linear), size:Dimension, strokeWidth:Dimension, value:number | binding."
+            "content": "`progressBar` (also `linearProgressIndicator`, `circularProgressIndicator`, `loadingIndicator`, `loading-indicator`, `progress-bar`, `progress`) — display, Core profile. Progress indicator (linear or circular).\nOptional: backgroundColor:Color, color:Color (default theme primary), indicatorType:string (default circular), size:Dimension, strokeWidth:Dimension, value:number | binding."
           },
           {
             "id": "dsl-qrCode",
             "title": "qrCode widget",
             "source": "mcp_ui_dsl/1.4/widgets/qrCode",
-            "content": "`qrCode` — advanced, Advanced profile. Renders a QR code for `value`. Cannot be composed — the module grid is computed, not laid out. The definition is small in exchange, and it pairs with the scanning side the platform already has: a code produced here is the same artefact §8.9 reads on arrival.\nRequired: value:string | binding.\nOptional: backgroundColor:Color, errorCorrection:string (one of low|medium|quartile|high; default M), foregroundColor:Color, logo:AssetRef, margin:boolean (default true), size:number (default 200)."
+            "content": "`qrCode` — advanced, Advanced profile. Renders a QR code for `value`. Cannot be composed — the module grid is computed, not laid out. The definition is small in exchange, and it pairs with the scanning side the platform already has: a code produced here is the same artefact §8.9 reads on arrival.\nRequired: value:string | binding.\nOptional: backgroundColor:Color, errorCorrection:string (one of low|medium|quartile|high; default medium), foregroundColor:Color, logo:AssetRef, margin:boolean (default true), size:number (default 200)."
           },
           {
             "id": "dsl-radio",
@@ -1101,7 +1102,7 @@
             "id": "dsl-scrollView",
             "title": "scrollView widget",
             "source": "mcp_ui_dsl/1.4/widgets/scrollView",
-            "content": "`scrollView` (also `scrollArea`) — scroll, Core profile. Scrollable viewport. Two layout modes — pick one per instance: - **Linear mode** — `child` (single widget) or `children` (wrapped in an implicit linear column along `direction`). Simplest for everyday scrolling content. - **Sliver mode** — `slivers` array of `Sliver` primitives. Use for collapsing app bars, sticky section headers, parallax mastheads, or mixing list/grid sections in one viewport. The three input slots (`child`, `children`, `slivers`) are mutually exclusive.\nOptional: child:Widget, children:array<Widget>, direction:string (one of vertical|horizontal; default vertical), padding:EdgeInsets, primary:boolean, reverse:boolean, scrollDirection:string, scrollPhysics:string (one of bouncing|clamping|neverScrollable; default clamping), slivers:array<Sliver>."
+            "content": "`scrollView` (also `scrollArea`) — scroll, Core profile. Scrollable viewport. Two layout modes — pick one per instance: - **Linear mode** — `child` (single widget) or `children` (wrapped in an implicit linear column along `direction`). Simplest for everyday scrolling content. - **Sliver mode** — `slivers` array of `Sliver` primitives. Use for collapsing app bars, sticky section headers, parallax mastheads, or mixing list/grid sections in one viewport. The three input slots (`child`, `children`, `slivers`) are mutually exclusive.\nOptional: child:Widget, children:array<Widget>, direction:string (one of vertical|horizontal; default vertical), padding:EdgeInsets, physics:string (one of bouncing|clamping|never|always; default clamping; alias scrollPhysics), primary:boolean, reverse:boolean, scrollDirection:string, slivers:array<Sliver>."
           },
           {
             "id": "dsl-segmentedControl",
@@ -1119,7 +1120,7 @@
             "id": "dsl-signature",
             "title": "signature widget",
             "source": "mcp_ui_dsl/1.4/widgets/signature",
-            "content": "`signature` — advanced, Core profile. Signature capture pad.\nOptional: backgroundColor:Color, binding:binding, borderColor:Color, borderWidth:Dimension, height:number, onClear:Action, onSignatureEnd:Action, onSignatureStart:Action, penColor:Color (default #000000; alias color), penWidth:number (default 2.0; alias strokeWidth), showClearButton:boolean (default true), showGuide:boolean (default false), width:number."
+            "content": "`signature` — advanced, Advanced profile. Signature capture pad.\nOptional: backgroundColor:Color, binding:binding, borderColor:Color, borderWidth:Dimension, height:number, onClear:Action, onSignatureEnd:Action, onSignatureStart:Action, penColor:Color (default #000000; alias color), penWidth:number (default 2.0; alias strokeWidth), showClearButton:boolean (default true), showGuide:boolean (default true), width:number."
           },
           {
             "id": "dsl-simpleDialog",
@@ -1203,13 +1204,13 @@
             "id": "dsl-table",
             "title": "table widget",
             "source": "mcp_ui_dsl/1.4/widgets/table",
-            "content": "`table` — advanced, Core profile. Layout table for arranging widgets in rows and columns. Not data-bound; each cell is a widget.\nRequired: rows:array<object{ cells: array<Widget> }>.\nOptional: border:{ color, width }, columnWidths:object, defaultColumnWidth:string | number (default flex), defaultVerticalAlignment:string (one of top|middle|bottom|baseline; default middle), textBaseline:string, textDirection:string."
+            "content": "`table` — advanced, Advanced profile. Layout table for arranging widgets in rows and columns. Not data-bound; each cell is a widget.\nRequired: rows:array<TableRow>.\nOptional: border:{ color, width }, columnWidths:object, defaultColumnWidth:string | number (default flex), defaultVerticalAlignment:string (one of top|middle|bottom|baseline; default middle), textBaseline:string, textDirection:string."
           },
           {
             "id": "dsl-terminal",
             "title": "terminal widget",
             "source": "mcp_ui_dsl/1.4/widgets/terminal",
-            "content": "`terminal` — advanced, Core profile. ANSI-capable terminal emulator.\nOptional: backgroundColor:Color, fontSize:number, height:number, lines:binding, maxLines:number, onCommand:Action, prompt:string (default $), promptColor:Color, showInput:boolean (default true), textColor:Color, theme:string, width:number."
+            "content": "`terminal` — advanced, Advanced profile. ANSI-capable terminal emulator.\nOptional: backgroundColor:Color, fontSize:number, height:number, lines:array<string>, maxLines:number, onCommand:Action, prompt:string (default $ ), promptColor:Color, showInput:boolean (default true), textColor:Color, theme:string, width:number."
           },
           {
             "id": "dsl-text",
@@ -1227,19 +1228,19 @@
             "id": "dsl-timeField",
             "title": "timeField widget",
             "source": "mcp_ui_dsl/1.4/widgets/timeField",
-            "content": "`timeField` — input, Core profile. Time input. Shared rows per §2.6.0; `value` is a time string (e.g., `\"14:30\"`).\nOptional: errorText:string, format:string (default HH:mm), label:string, mode:string (one of spinner|input|dial; default spinner), use24HourFormat:boolean (default true)."
+            "content": "`timeField` — input, Core profile. Time input. Shared rows per §2.6.0; `value` is a time string (e.g., `\"14:30\"`).\nOptional: errorText:string, format:string (default HH:mm), label:string, mode:string (one of spinner|input|dial; default spinner), use24HourFormat:boolean (default false)."
           },
           {
             "id": "dsl-timePicker",
             "title": "timePicker widget",
             "source": "mcp_ui_dsl/1.4/widgets/timePicker",
-            "content": "`timePicker` — input, Core profile. Standalone time picker surface. Shared rows per §2.6.0; `value` is a time string.\nOptional: change:Action, icon:IconRef, initialTime:string, label:string, timeFormat:string, use24HourFormat:boolean (default false), variant:string (one of elevated|filled|outlined|text|icon)."
+            "content": "`timePicker` — input, Core profile. Standalone time picker surface. Shared rows per §2.6.0; `value` is a time string.\nOptional: change:Action, icon:IconRef, initialTime:string, label:string, timeFormat:string, use24HourFormat:boolean (default true), variant:string (one of elevated|filled|outlined|text|icon)."
           },
           {
             "id": "dsl-timeline",
             "title": "timeline widget",
             "source": "mcp_ui_dsl/1.4/widgets/timeline",
-            "content": "`timeline` — advanced, Core profile. Chronological timeline of events.\nRequired: items:array<TimelineItem>, items[].title:string.\nOptional: itemTemplate:Widget, items[].color:string (default theme), items[].icon:string, items[].subtitle:string, items[].time:string, lineColor:Color, lineWidth:Dimension, nodeSize:Dimension, orientation:string (one of vertical|horizontal; default vertical), spacing:Dimension."
+            "content": "`timeline` — advanced, Advanced profile. Chronological timeline of events.\nRequired: items:array<TimelineItem>, items[].title:string.\nOptional: itemTemplate:Widget, items[].color:string (default theme), items[].icon:string, items[].subtitle:string, items[].time:string, lineColor:Color, lineWidth:Dimension, nodeSize:Dimension, orientation:string (one of vertical|horizontal; default vertical), spacing:Dimension."
           },
           {
             "id": "dsl-toggle",
@@ -1263,7 +1264,7 @@
             "id": "dsl-tree",
             "title": "tree widget",
             "source": "mcp_ui_dsl/1.4/widgets/tree",
-            "content": "`tree` (also `treeView`) — advanced, Core profile. Hierarchical tree view with expandable nodes.\nRequired: data:array | binding.\nOptional: checkable:boolean (default false), checkedKeys:array<string> | binding, childrenKey:string (default children), draggable:boolean (default false), expandable:boolean (default true), height:number, indentation:number (default 24), initiallyExpanded:boolean (default false), itemPadding:EdgeInsets, itemTemplate:Widget, lineColor:Color, onCollapse:Action, onExpand:Action, onNodeTap:Action, onSelect:Action, selectable:boolean (default false), selectedColor:Color, showLines:boolean (default true), width:number."
+            "content": "`tree` (also `treeView`) — advanced, Advanced profile. Hierarchical tree view with expandable nodes.\nRequired: data:array | binding.\nOptional: checkable:boolean (default false), checkedKeys:array<string> | binding, childrenKey:string (default children), draggable:boolean (default false), expandable:boolean (default true), height:number, indentation:number (default 24), initiallyExpanded:boolean (default false), itemPadding:EdgeInsets, itemTemplate:Widget, lineColor:Color, onCollapse:Action, onDrop:Action, onExpand:Action, onNodeTap:Action, onSelect:Action, selectable:boolean (default false), selectedColor:Color, showLines:boolean (default true), width:number."
           },
           {
             "id": "dsl-use",
@@ -1299,7 +1300,7 @@
             "id": "dsl-webView",
             "title": "webView widget",
             "source": "mcp_ui_dsl/1.4/widgets/webView",
-            "content": "`webView` — advanced, Core profile. Embedded web view.\nOptional: allowNavigation:boolean (default true), backgroundColor:Color, enableJavaScript:boolean (default true), enableZoom:boolean (default true), height:number, html:string (default null (if url set)), onError:Action, onPageFinished:Action, onPageStarted:Action, url:string (default null (if html set)), width:number."
+            "content": "`webView` — advanced, Advanced profile. Embedded web view.\nOptional: allowNavigation:boolean (default true), backgroundColor:Color, enableJavaScript:boolean (default true), enableZoom:boolean (default true), height:number, html:string (default null (if url set)), onError:Action, onPageFinished:Action, onPageStarted:Action, url:string (default null (if html set)), width:number."
           },
           {
             "id": "dsl-wrap",
@@ -1626,7 +1627,7 @@
             "id": "manifest-schema",
             "title": "bundle manifest schema",
             "source": "mcp_bundle/manifest",
-            "content": "A bundle's manifest.json has four top-level sections. (1) manifest:{id,name,version,description} — descriptive metadata; id should be reverse-DNS like 'com.example.myapp'. (2) tools:{tools:[<ToolDef>...]} — kind:'js' tool definitions with inputSchema/outputSchema. (3) requires:{builtinAtoms:[string...], builtinTools:[string...]} — host capabilities the bundle needs (kb, mcp, ui, workspace, agent, bus, bundle, fs). (4) UI: the canonical UI lives on disk as ui/app.json (an mcp_ui_dsl ApplicationDefinition) inside the .mbd directory — manifest.json does NOT inline a UI pointer. The legacy inline `ui` field is deprecated (round-trip only). Optional: agents (declares per-bundle LLM agents), wiring (per-tool surface entry points — see wiring-section). Example skeleton: {\"manifest\":{\"id\":\"com.example.counter\",\"name\":\"Counter\",\"version\":\"0.1.0\",\"description\":\"\"},\"requires\":{\"builtinAtoms\":[]}} paired with ui/app.json on disk."
+            "content": "A bundle's manifest.json has four top-level sections. (1) manifest:{id,name,version,description,type} — descriptive metadata; id should be reverse-DNS like 'com.example.myapp'. manifest.type is the kind of app, chosen when the project is created in App Builder, and the bundle is built to it: \"application\" (the default, AppPlayer App) runs on AppPlayer and in Studio — build its screens and tools from the standard mcp_ui_dsl and portable tools; \"extension\" (Studio Package) is a Studio app — its screens and composition are built for Studio and may use Studio's widgets (Vbu*), studio.* tools and Studio atoms; \"server\" (Cloud Server App) is served, not installed. The market shows where an app runs from type. (2) tools:{tools:[<ToolDef>...]} — kind:'js' tool definitions with inputSchema/outputSchema. (3) requires:{builtinAtoms:[string...], builtinTools:[string...]} — host capabilities the bundle needs (kb, mcp, ui, workspace, agent, bus, bundle, fs). (4) UI: the canonical UI lives on disk as ui/app.json (an mcp_ui_dsl ApplicationDefinition) inside the .mbd directory — manifest.json does NOT inline a UI pointer. The legacy inline `ui` field is deprecated (round-trip only). Optional: agents (declares per-bundle LLM agents), wiring (per-tool surface entry points — see wiring-section). Example skeleton: {\"manifest\":{\"id\":\"com.example.counter\",\"name\":\"Counter\",\"version\":\"0.1.0\",\"description\":\"\"},\"requires\":{\"builtinAtoms\":[]}} paired with ui/app.json on disk."
           },
           {
             "id": "tool-definition-js",
@@ -1638,7 +1639,7 @@
             "id": "requires-builtinAtoms",
             "title": "requires.builtinAtoms — host capability declaration",
             "source": "mcp_bundle/requires",
-            "content": "List the atoms a bundle's JS tools use under requires.builtinAtoms. Available atoms (registered into JS global as host.<name>): fs (read/write files inside bundle), bus (cross-bundle pub/sub messaging), bundle (introspect own manifest), kb (knowledge query + per-domain key/value storage — get/put/list/delete), mcp (call other bundles' MCP tools), ui (notify/dialog/prompt the host shell), agent (run per-bundle LLM agent), workspace (read/write the project canonical). Example for a bundle that stores recents and calls a sibling: {\"requires\":{\"builtinAtoms\":[\"kb\",\"mcp\"]}}. Declare only what tools actually call — undeclared atom access throws."
+            "content": "List the atoms a bundle's JS tools use under requires.builtinAtoms. Available atoms (registered into JS global as host.<name>): fs (read/write files inside bundle), bus (cross-bundle pub/sub messaging), bundle (introspect own manifest), kb (knowledge query + per-domain key/value storage — get/put/list/delete), mcp (call other bundles' MCP tools), ui (notify/dialog/prompt the host shell), agent (run per-bundle LLM agent), workspace (read/write the project canonical). Example for a bundle that stores recents and calls a sibling: {\"requires\":{\"builtinAtoms\":[\"kb\",\"mcp\"]}}. Declare only what tools actually call — undeclared atom access throws. fs, bus, ui and workspace are Studio's atoms — they belong in a Studio app (manifest.type \"extension\")."
           },
           {
             "id": "domain-storage-kb",

@@ -75,6 +75,24 @@ abstract class StudioApp {
   /// don't collide on `127.0.0.1`.
   int get defaultPort;
 
+  /// Port the host fixes for this launch, ahead of the Settings MCP URL and
+  /// [defaultPort] (a `--port` CLI arg still wins). Null — the usual case —
+  /// keeps that order. A host running several processes over one shared
+  /// settings file gives each its own port here.
+  int? get fixedPort => null;
+
+  /// Directory holding `settings.json`, and so the LLM key scope. Null keeps
+  /// it in the process config root. A host whose processes each have their
+  /// own config root but share one set of settings and keys points them all
+  /// here.
+  String? get settingsRoot => null;
+
+  /// Whether a launch claims the first free instance slot (config root
+  /// `<base>-N`, port band N). A host that decides its own config root per
+  /// process ([configRootName]) turns this off: every launch then uses the
+  /// bare root.
+  bool get claimsInstanceSlots => true;
+
   // ── Boot inputs (forwarded to StudioBoot.start) ─────────────────
 
   /// Agent profile catalogue — registered with FlowBrain on boot.

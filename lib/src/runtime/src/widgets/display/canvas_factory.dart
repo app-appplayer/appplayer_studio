@@ -15,8 +15,8 @@ class CanvasWidgetFactory extends WidgetFactory {
   Widget build(Map<String, dynamic> definition, RenderContext context) {
     final properties = extractProperties(definition);
 
-    final width = parseDimension(context.resolve(properties[PropertyKeys.width])) ?? 300;
-    final height = parseDimension(context.resolve(properties[PropertyKeys.height])) ?? 200;
+    final width = readDimension(properties[PropertyKeys.width], context) ?? 300;
+    final height = readDimension(properties[PropertyKeys.height], context) ?? 200;
     final bgColor = parseColor(context.resolve(properties[PropertyKeys.backgroundColor]), context);
 
     final rawCommands = properties[PropertyKeys.commands];

@@ -42,6 +42,8 @@ class DomainLifecycleState {
     required this.canCompareChannels,
     this.projectName,
     this.recentProjects = const <String>[],
+    this.boundSlots,
+    this.slotLabels = const <String, String>{},
   });
 
   const DomainLifecycleState.empty()
@@ -51,7 +53,9 @@ class DomainLifecycleState {
       canRedo = false,
       canCompareChannels = false,
       projectName = null,
-      recentProjects = const <String>[];
+      recentProjects = const <String>[],
+      boundSlots = null,
+      slotLabels = const <String, String>{};
 
   /// Reserved snapshot for the Home tab — no project, but the header
   /// shows 'Home' as the label so the row reads as the launcher view
@@ -66,7 +70,9 @@ class DomainLifecycleState {
       canRedo = false,
       canCompareChannels = false,
       projectName = 'Home',
-      recentProjects = const <String>[];
+      recentProjects = const <String>[],
+      boundSlots = null,
+      slotLabels = const <String, String>{};
 
   final bool hasProject;
   final bool dirty;
@@ -78,6 +84,16 @@ class DomainLifecycleState {
   /// The domain's own recently opened projects, newest first — the project
   /// header's recent menu. Empty for a domain that keeps no such list.
   final List<String> recentProjects;
+
+  /// Lifecycle slots the domain wired (`project.save`, `edit.undo` …).
+  /// Non-null → the project header enables only the system buttons of
+  /// these slots (bundle spec 06 §6.3.1: an unbound slot is greyed out).
+  /// Null → every system button follows the flags above alone.
+  final Set<String>? boundSlots;
+
+  /// Tooltip per slot, replacing the standard wording (e.g. the wired
+  /// tool's own description).
+  final Map<String, String> slotLabels;
 }
 
 /// Returned by [ChromeBridge.closeTab] when the tab raised a confirmation
@@ -794,17 +810,6 @@ class ChromeBridge {
   /// `VibeSettings.debugMode`; host boot wires the initial value and
   /// the dialog `Save` handler pushes updates here.
   final ValueNotifier<bool> inspectorEnabled = ValueNotifier<bool>(false);
-
-  /// Bumped whenever a workspace tab's runtime is destroyed (close
-  /// path's `_runtime.destroy()` → process-singleton
-  /// `ThemeManager.instance.reset()`). Surviving tabs whose
-  /// brightness/theme would otherwise revert to the default Blue-indigo
-  /// seed listen for the bump and re-inject their merged theme. The
-  /// `activeTabKey` swap-edge already covers the case where closing
-  /// the active tab moves focus elsewhere; this tick covers the
-  /// **inactive close** case (active stays, but the destroyed tab
-  /// wiped the singleton out from under it).
-  final ValueNotifier<int> themeReinjectTick = ValueNotifier<int>(0);
 
   /// Transient hover-reveal flag. When the strip is hidden
   /// (`tabBarVisible == false`) the titlebar / strip set this true on

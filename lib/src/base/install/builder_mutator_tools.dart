@@ -27,6 +27,7 @@ import 'package:brain_kernel/brain_kernel.dart' as mk;
 
 import '../main/chrome_bridge.dart';
 import 'bundle_history.dart';
+import 'bundle_self_names.dart';
 
 /// Register the 14 `studio.builder.*` mutator tools onto [boot].
 /// Handlers route through [bridge] for post-mutation view activation
@@ -2017,10 +2018,17 @@ Future<mk.KernelToolResult> _runKnowledgeMutation(
       /* swallow — reload is non-fatal */
     }
   }
+  // A bundle names its own tools by their declared names; an id-prefixed
+  // name the edit left behind is reported so the caller fixes it.
+  final issues = <String>[for (final r in selfNamedToolReferences(mbd)) '$r'];
   return mk.KernelToolResult(
     content: <mk.KernelContent>[
       mk.KernelTextContent(
-        text: jsonEncode(<String, dynamic>{'ok': true, ...summary}),
+        text: jsonEncode(<String, dynamic>{
+          'ok': true,
+          ...summary,
+          if (issues.isNotEmpty) 'warnings': issues,
+        }),
       ),
     ],
   );

@@ -6,7 +6,7 @@
     "version": "0.1.0",
     "description": "Makemind Ops — per-project operations console for tasks, processes, knowledge, members, skills, profiles, philosophies, and bundles. vibe_studio built-in app: each Ops tab binds a single project directory (standard newProjectInActive / openProjectInActive wiring); members, tasks, skills, processes, philosophies, profiles, and knowledge live inside the project. The seed ships only the shared `ops.manager` agent and operations-manual knowledge that every project reuses.",
     "schemaVersion": "1.0.0",
-    "type": "application",
+    "type": "extension",
     "icon": "dashboard"
   },
   "requires": {

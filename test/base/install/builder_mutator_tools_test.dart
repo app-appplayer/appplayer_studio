@@ -192,8 +192,7 @@ void main() {
       expect(out['error'], contains('bundle not found'));
     });
 
-    test('a bundle with no manifest is refused with NOTHING written',
-        () async {
+    test('a bundle with no manifest is refused with NOTHING written', () async {
       // The manifest patch runs after the ui/app.json write, so this refusal
       // used to arrive with the page already on disk — `ok:false` while the
       // bundle had in fact changed, which reads to any caller as "nothing
@@ -208,12 +207,14 @@ void main() {
 
       expect(out['ok'], isFalse);
       expect(out['error'], contains('manifest.json missing'));
-      expect(File(p.join(mbdPath, 'ui', 'app.json')).existsSync(), isFalse,
-          reason: 'refused, but the page was written anyway');
+      expect(
+        File(p.join(mbdPath, 'ui', 'app.json')).existsSync(),
+        isFalse,
+        reason: 'refused, but the page was written anyway',
+      );
     });
 
-    test('success writes ui/app.json + seeds manifest.ui + reloads',
-        () async {
+    test('success writes ui/app.json + seeds manifest.ui + reloads', () async {
       await writeManifest(baseManifest());
       final page = <String, dynamic>{
         'type': 'page',
@@ -290,27 +291,29 @@ void main() {
       expect(out['error'], contains('bundle not found'));
     });
 
-    test('success writes scenarios/<id>.json + marks modified + reloads',
-        () async {
-      final scenario = <String, dynamic>{
-        'id': 'intro',
-        'steps': <dynamic>['a', 'b'],
-      };
-      final out = await _call(host, 'studio.builder.writeScenario', {
-        'mbdPath': mbdPath,
-        'scenario': scenario,
-      });
-      expect(out['ok'], isTrue);
-      expect(out['id'], 'intro');
-      final written = jsonDecode(
-        await File(p.join(mbdPath, 'scenarios', 'intro.json')).readAsString(),
-      );
-      expect(written, scenario);
-      expect(modifiedCalls, 1);
-      expect(reloadCalls, 1);
-      // Not routed through `_runKnowledgeMutation` — no view activation.
-      expect(activatedViews, isEmpty);
-    });
+    test(
+      'success writes scenarios/<id>.json + marks modified + reloads',
+      () async {
+        final scenario = <String, dynamic>{
+          'id': 'intro',
+          'steps': <dynamic>['a', 'b'],
+        };
+        final out = await _call(host, 'studio.builder.writeScenario', {
+          'mbdPath': mbdPath,
+          'scenario': scenario,
+        });
+        expect(out['ok'], isTrue);
+        expect(out['id'], 'intro');
+        final written = jsonDecode(
+          await File(p.join(mbdPath, 'scenarios', 'intro.json')).readAsString(),
+        );
+        expect(written, scenario);
+        expect(modifiedCalls, 1);
+        expect(reloadCalls, 1);
+        // Not routed through `_runKnowledgeMutation` — no view activation.
+        expect(activatedViews, isEmpty);
+      },
+    );
   });
 
   // ── patchManifest ─────────────────────────────────────────────
@@ -343,8 +346,7 @@ void main() {
       expect(out['error'], contains('op:rfc6902 requires ops'));
     });
 
-    test('fresh draft: missing manifest.json is seeded then merged',
-        () async {
+    test('fresh draft: missing manifest.json is seeded then merged', () async {
       final out = await _call(host, 'studio.builder.patchManifest', {
         'mbdPath': mbdPath,
         'patch': <String, dynamic>{
@@ -392,43 +394,50 @@ void main() {
       }
     });
 
-    test('deepMerge:true preserves sibling keys under a shared parent',
-        () async {
-      // `wiring` is a modeled top-level section with two typed sibling
-      // lists (`domainActions` / `settings`) — both survive the
-      // mutator's typed reparse-on-write, unlike an ad-hoc nested key
-      // the section model doesn't recognize.
-      final seeded = baseManifest();
-      seeded['wiring'] = <String, dynamic>{
-        'domainActions': <dynamic>[
-          <String, dynamic>{'tool': 'keep.me', 'icon': 'star'},
-        ],
-      };
-      await writeManifest(seeded);
-      final out = await _call(host, 'studio.builder.patchManifest', {
-        'mbdPath': mbdPath,
-        'op': 'merge',
-        'deepMerge': true,
-        'patch': <String, dynamic>{
-          'wiring': <String, dynamic>{
-            'settings': <dynamic>[
-              <String, dynamic>{'tool': 'new.entry', 'label': 'New'},
-            ],
+    test(
+      'deepMerge:true preserves sibling keys under a shared parent',
+      () async {
+        // `wiring` is a modeled top-level section with two typed sibling
+        // lists (`domainActions` / `settings`) — both survive the
+        // mutator's typed reparse-on-write, unlike an ad-hoc nested key
+        // the section model doesn't recognize.
+        final seeded = baseManifest();
+        seeded['wiring'] = <String, dynamic>{
+          'domainActions': <dynamic>[
+            <String, dynamic>{'tool': 'keep.me', 'icon': 'star'},
+          ],
+        };
+        await writeManifest(seeded);
+        final out = await _call(host, 'studio.builder.patchManifest', {
+          'mbdPath': mbdPath,
+          'op': 'merge',
+          'deepMerge': true,
+          'patch': <String, dynamic>{
+            'wiring': <String, dynamic>{
+              'settings': <dynamic>[
+                <String, dynamic>{'tool': 'new.entry', 'label': 'New'},
+              ],
+            },
           },
-        },
-      });
-      expect(out['ok'], isTrue);
-      final manifest = await readManifestFile();
-      final wiring = manifest['wiring'] as Map;
-      expect((wiring['domainActions'] as List).single['tool'], 'keep.me');
-      expect((wiring['settings'] as List).single['tool'], 'new.entry');
-    });
+        });
+        expect(out['ok'], isTrue);
+        final manifest = await readManifestFile();
+        final wiring = manifest['wiring'] as Map;
+        expect((wiring['domainActions'] as List).single['tool'], 'keep.me');
+        expect((wiring['settings'] as List).single['tool'], 'new.entry');
+      },
+    );
 
     test('rfc6902 add/replace/remove/move/copy/test round-trip', () async {
       final seeded = baseManifest();
       seeded['facts'] = <String, dynamic>{
         'facts': <dynamic>[
-          <String, dynamic>{'id': 'f1', 'subject': 'a', 'predicate': 'is', 'object': 'b'},
+          <String, dynamic>{
+            'id': 'f1',
+            'subject': 'a',
+            'predicate': 'is',
+            'object': 'b',
+          },
         ],
       };
       await writeManifest(seeded);
@@ -616,7 +625,12 @@ void main() {
       final seeded = baseManifest();
       seeded['facts'] = <String, dynamic>{
         'facts': <dynamic>[
-          <String, dynamic>{'id': 'f1', 'subject': 'a', 'predicate': 'is', 'object': 'b'},
+          <String, dynamic>{
+            'id': 'f1',
+            'subject': 'a',
+            'predicate': 'is',
+            'object': 'b',
+          },
         ],
       };
       await writeManifest(seeded);
@@ -785,31 +799,33 @@ void main() {
       expect(out['error'], contains('source "ghost" not found'));
     });
 
-    test('addKnowledgeDoc adds then upserts by doc.id under its source',
-        () async {
-      await writeManifest(baseManifest());
-      await _call(host, 'studio.builder.addKnowledgeSource', {
-        'mbdPath': mbdPath,
-        'source': <String, dynamic>{'id': 'src1', 'name': 'S1'},
-      });
-      var out = await _call(host, 'studio.builder.addKnowledgeDoc', {
-        'mbdPath': mbdPath,
-        'sourceId': 'src1',
-        'doc': <String, dynamic>{'id': 'd1', 'content': 'first'},
-      });
-      expect(out['ok'], isTrue);
-      out = await _call(host, 'studio.builder.addKnowledgeDoc', {
-        'mbdPath': mbdPath,
-        'sourceId': 'src1',
-        'doc': <String, dynamic>{'id': 'd1', 'content': 'second'},
-      });
-      expect(out['ok'], isTrue);
-      final manifest = await readManifestFile();
-      final sources = (manifest['knowledge'] as Map)['sources'] as List;
-      final docs = (sources.single as Map)['documents'] as List;
-      expect(docs, hasLength(1));
-      expect(docs.single['content'], 'second');
-    });
+    test(
+      'addKnowledgeDoc adds then upserts by doc.id under its source',
+      () async {
+        await writeManifest(baseManifest());
+        await _call(host, 'studio.builder.addKnowledgeSource', {
+          'mbdPath': mbdPath,
+          'source': <String, dynamic>{'id': 'src1', 'name': 'S1'},
+        });
+        var out = await _call(host, 'studio.builder.addKnowledgeDoc', {
+          'mbdPath': mbdPath,
+          'sourceId': 'src1',
+          'doc': <String, dynamic>{'id': 'd1', 'content': 'first'},
+        });
+        expect(out['ok'], isTrue);
+        out = await _call(host, 'studio.builder.addKnowledgeDoc', {
+          'mbdPath': mbdPath,
+          'sourceId': 'src1',
+          'doc': <String, dynamic>{'id': 'd1', 'content': 'second'},
+        });
+        expect(out['ok'], isTrue);
+        final manifest = await readManifestFile();
+        final sources = (manifest['knowledge'] as Map)['sources'] as List;
+        final docs = (sources.single as Map)['documents'] as List;
+        expect(docs, hasLength(1));
+        expect(docs.single['content'], 'second');
+      },
+    );
   });
 
   // ── addSkill / addProfile / addPhilosophy (top-level section routing) ──
@@ -824,8 +840,7 @@ void main() {
       expect(out['ok'], isFalse);
     });
 
-    test('addSkill routes to skills.modules[] (legacy alias key)',
-        () async {
+    test('addSkill routes to skills.modules[] (legacy alias key)', () async {
       await writeManifest(baseManifest());
       final out = await _call(host, 'studio.builder.addSkill', {
         'mbdPath': mbdPath,
@@ -880,89 +895,98 @@ void main() {
       expect(out['error'], contains('entry required'));
     });
 
-    test('validation failure surfaces issues[] without touching disk',
-        () async {
-      await writeManifest(baseManifest());
-      final out = await _call(host, 'studio.builder.addKnowledge', {
-        'mbdPath': mbdPath,
-        'kind': 'skill',
-        'entry': <String, dynamic>{'id': 'sk-noname'},
-      });
-      expect(out['ok'], isFalse);
-      expect(out['issues'], isNotEmpty);
-      final manifest = await readManifestFile();
-      expect(manifest.containsKey('skills'), isFalse);
-    });
+    test(
+      'validation failure surfaces issues[] without touching disk',
+      () async {
+        await writeManifest(baseManifest());
+        final out = await _call(host, 'studio.builder.addKnowledge', {
+          'mbdPath': mbdPath,
+          'kind': 'skill',
+          'entry': <String, dynamic>{'id': 'sk-noname'},
+        });
+        expect(out['ok'], isFalse);
+        expect(out['issues'], isNotEmpty);
+        final manifest = await readManifestFile();
+        expect(manifest.containsKey('skills'), isFalse);
+      },
+    );
 
     // Each supported kind routes to its documented section/list per
     // mcp_bundle's canonical schema. `_upsertKnowledgeList` /
     // `_upsertTopLevelList` both report `added: <listKey>` (not the
     // caller's `kind` string) — e.g. kind `skill` reports
     // `added: 'modules'` (the legacy alias list key).
-    final cases = <String, ({String section, String list, Map<String, dynamic> entry})>{
-      'source': (
-        section: 'knowledge',
-        list: 'sources',
-        entry: <String, dynamic>{'id': 'k-src', 'name': 'Src'},
-      ),
-      'fact': (
-        section: 'facts',
-        list: 'facts',
-        entry: <String, dynamic>{'id': 'k-fact'},
-      ),
-      'skill': (
-        section: 'skills',
-        list: 'modules',
-        entry: <String, dynamic>{'id': 'k-skill', 'name': 'Skill'},
-      ),
-      'profile': (
-        section: 'profiles',
-        list: 'profiles',
-        entry: <String, dynamic>{'id': 'k-profile', 'name': 'Profile'},
-      ),
-      'philosophy': (
-        section: 'philosophy',
-        list: 'philosophies',
-        entry: <String, dynamic>{'id': 'k-phil', 'name': 'Phil'},
-      ),
-      'workflow': (
-        section: 'workflows',
-        list: 'workflows',
-        entry: <String, dynamic>{'id': 'k-wf', 'name': 'Workflow'},
-      ),
-      'pipeline': (
-        section: 'pipelines',
-        list: 'pipelines',
-        entry: <String, dynamic>{'id': 'k-pipe', 'name': 'Pipeline'},
-      ),
-      'runbook': (
-        section: 'runbooks',
-        list: 'runbooks',
-        entry: <String, dynamic>{'id': 'k-rb', 'name': 'Runbook'},
-      ),
-      'agent': (
-        section: 'agents',
-        list: 'agents',
-        entry: <String, dynamic>{'id': 'k-agent', 'name': 'Agent', 'role': 'helper'},
-      ),
-    };
+    final cases =
+        <String, ({String section, String list, Map<String, dynamic> entry})>{
+          'source': (
+            section: 'knowledge',
+            list: 'sources',
+            entry: <String, dynamic>{'id': 'k-src', 'name': 'Src'},
+          ),
+          'fact': (
+            section: 'facts',
+            list: 'facts',
+            entry: <String, dynamic>{'id': 'k-fact'},
+          ),
+          'skill': (
+            section: 'skills',
+            list: 'modules',
+            entry: <String, dynamic>{'id': 'k-skill', 'name': 'Skill'},
+          ),
+          'profile': (
+            section: 'profiles',
+            list: 'profiles',
+            entry: <String, dynamic>{'id': 'k-profile', 'name': 'Profile'},
+          ),
+          'philosophy': (
+            section: 'philosophy',
+            list: 'philosophies',
+            entry: <String, dynamic>{'id': 'k-phil', 'name': 'Phil'},
+          ),
+          'workflow': (
+            section: 'workflows',
+            list: 'workflows',
+            entry: <String, dynamic>{'id': 'k-wf', 'name': 'Workflow'},
+          ),
+          'pipeline': (
+            section: 'pipelines',
+            list: 'pipelines',
+            entry: <String, dynamic>{'id': 'k-pipe', 'name': 'Pipeline'},
+          ),
+          'runbook': (
+            section: 'runbooks',
+            list: 'runbooks',
+            entry: <String, dynamic>{'id': 'k-rb', 'name': 'Runbook'},
+          ),
+          'agent': (
+            section: 'agents',
+            list: 'agents',
+            entry: <String, dynamic>{
+              'id': 'k-agent',
+              'name': 'Agent',
+              'role': 'helper',
+            },
+          ),
+        };
     for (final entry in cases.entries) {
-      test('kind=${entry.key} routes to ${entry.value.section}.${entry.value.list}[]',
-          () async {
-        await writeManifest(baseManifest());
-        final out = await _call(host, 'studio.builder.addKnowledge', {
-          'mbdPath': mbdPath,
-          'kind': entry.key,
-          'entry': entry.value.entry,
-        });
-        expect(out['ok'], isTrue, reason: out.toString());
-        expect(out['added'], entry.value.list);
-        final manifest = await readManifestFile();
-        final list =
-            (manifest[entry.value.section] as Map)[entry.value.list] as List;
-        expect(list, hasLength(1));
-        expect(list.single['id'], entry.value.entry['id']);
-      });
+      test(
+        'kind=${entry.key} routes to ${entry.value.section}.${entry.value.list}[]',
+        () async {
+          await writeManifest(baseManifest());
+          final out = await _call(host, 'studio.builder.addKnowledge', {
+            'mbdPath': mbdPath,
+            'kind': entry.key,
+            'entry': entry.value.entry,
+          });
+          expect(out['ok'], isTrue, reason: out.toString());
+          expect(out['added'], entry.value.list);
+          final manifest = await readManifestFile();
+          final list =
+              (manifest[entry.value.section] as Map)[entry.value.list] as List;
+          expect(list, hasLength(1));
+          expect(list.single['id'], entry.value.entry['id']);
+        },
+      );
     }
   });
 
@@ -995,7 +1019,11 @@ void main() {
       expect(out['id'], 'e1');
       out = await _call(host, 'studio.builder.addKnowledgeEntry', {
         'mbdPath': mbdPath,
-        'entry': <String, dynamic>{'id': 'e1', 'title': 'T1-updated', 'body': 'B1'},
+        'entry': <String, dynamic>{
+          'id': 'e1',
+          'title': 'T1-updated',
+          'body': 'B1',
+        },
       });
       expect(out['ok'], isTrue);
       expect(out['id'], 'e1');
@@ -1024,7 +1052,10 @@ void main() {
       expect(activatedViews, contains('tools/slash'));
       out = await _call(host, 'studio.builder.addSlashCommand', {
         'mbdPath': mbdPath,
-        'hint': <String, dynamic>{'command': '/find', 'template': '/find changed '},
+        'hint': <String, dynamic>{
+          'command': '/find',
+          'template': '/find changed ',
+        },
       });
       expect(out['ok'], isTrue);
       final manifest = await readManifestFile();
@@ -1066,6 +1097,43 @@ void main() {
     });
   });
 
+  // ── id-prefixed own tool names ────────────────────────────────
+
+  group('own tools named with the bundle id', () {
+    test('an edit that leaves one is answered with a warning', () async {
+      await writeManifest(<String, dynamic>{
+        ...baseManifest(id: 'com.example.kanban'),
+        'tools': <String, dynamic>{
+          'tools': <Map<String, dynamic>>[
+            <String, dynamic>{'name': 'board.summary', 'kind': 'js'},
+          ],
+        },
+      });
+      final bare = await _call(host, 'studio.builder.addDomainAction', {
+        'mbdPath': mbdPath,
+        'entry': <String, dynamic>{'tool': 'board.summary', 'icon': 'play'},
+      });
+      expect(bare['ok'], isTrue);
+      expect(bare.containsKey('warnings'), isFalse, reason: '$bare');
+
+      final prefixed = await _call(host, 'studio.builder.addDomainAction', {
+        'mbdPath': mbdPath,
+        'entry': <String, dynamic>{
+          'tool': 'kanban.board.summary',
+          'icon': 'play',
+        },
+      });
+      expect(prefixed['ok'], isTrue);
+      expect(
+        (prefixed['warnings'] as List).single,
+        contains(
+          '"kanban.board.summary" carries this bundle\'s id — write '
+          '"board.summary"',
+        ),
+      );
+    });
+  });
+
   // ── addSettingsSection + addSettingsField ────────────────────
 
   group('addSettingsSection + addSettingsField', () {
@@ -1083,17 +1151,12 @@ void main() {
       expect(out['ok'], isFalse);
     });
 
-    test('addSettingsField rejects unknown section / missing fields',
-        () async {
+    test('addSettingsField rejects unknown section / missing fields', () async {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addSettingsField', {
         'mbdPath': mbdPath,
         'sectionKey': 'ghost',
-        'field': <String, dynamic>{
-          'key': 'f1',
-          'label': 'F1',
-          'type': 'text',
-        },
+        'field': <String, dynamic>{'key': 'f1', 'label': 'F1', 'type': 'text'},
       });
       expect(out['ok'], isFalse);
       expect(out['error'], contains('not found'));
@@ -1106,8 +1169,7 @@ void main() {
       expect(out['error'], contains('sectionKey required'));
     });
 
-    test(
-        'creating a section then adding fields preserves them on a '
+    test('creating a section then adding fields preserves them on a '
         'label-only re-register; activates tools/section', () async {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addSettingsSection', {
@@ -1192,7 +1254,10 @@ void main() {
       expect(out['ok'], isTrue);
       out = await _call(host, 'studio.builder.addSettingsEntry', {
         'mbdPath': mbdPath,
-        'entry': <String, dynamic>{'tool': 'demo.clear', 'label': 'Clear Cache'},
+        'entry': <String, dynamic>{
+          'tool': 'demo.clear',
+          'label': 'Clear Cache',
+        },
       });
       expect(out['ok'], isTrue);
       final manifest = await readManifestFile();
@@ -1247,12 +1312,20 @@ void main() {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addFlow', {
         'mbdPath': mbdPath,
-        'flow': <String, dynamic>{'id': 'f1', 'name': 'Flow One', 'steps': <dynamic>[]},
+        'flow': <String, dynamic>{
+          'id': 'f1',
+          'name': 'Flow One',
+          'steps': <dynamic>[],
+        },
       });
       expect(out['ok'], isTrue);
       out = await _call(host, 'studio.builder.addFlow', {
         'mbdPath': mbdPath,
-        'flow': <String, dynamic>{'id': 'f1', 'name': 'Flow One v2', 'steps': <dynamic>[]},
+        'flow': <String, dynamic>{
+          'id': 'f1',
+          'name': 'Flow One v2',
+          'steps': <dynamic>[],
+        },
       });
       expect(out['ok'], isTrue);
       final manifest = await readManifestFile();
@@ -1276,12 +1349,20 @@ void main() {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addBehavior', {
         'mbdPath': mbdPath,
-        'behavior': <String, dynamic>{'id': 'b1', 'name': 'B1', 'steps': <dynamic>[]},
+        'behavior': <String, dynamic>{
+          'id': 'b1',
+          'name': 'B1',
+          'steps': <dynamic>[],
+        },
       });
       expect(out['ok'], isTrue);
       out = await _call(host, 'studio.builder.addBehavior', {
         'mbdPath': mbdPath,
-        'behavior': <String, dynamic>{'id': 'b1', 'name': 'B1 v2', 'steps': <dynamic>[]},
+        'behavior': <String, dynamic>{
+          'id': 'b1',
+          'name': 'B1 v2',
+          'steps': <dynamic>[],
+        },
       });
       expect(out['ok'], isTrue);
       final manifest = await readManifestFile();
@@ -1301,8 +1382,7 @@ void main() {
       expect(out['ok'], isFalse);
     });
 
-    test('with id: adds then upserts; without id: always appends',
-        () async {
+    test('with id: adds then upserts; without id: always appends', () async {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addFact', {
         'mbdPath': mbdPath,
@@ -1355,8 +1435,7 @@ void main() {
       expect(out['ok'], isFalse);
     });
 
-    test('adds then upserts by id under factGraph.embedded.facts[]',
-        () async {
+    test('adds then upserts by id under factGraph.embedded.facts[]', () async {
       await writeManifest(baseManifest());
       var out = await _call(host, 'studio.builder.addEmbeddedFact', {
         'mbdPath': mbdPath,
@@ -1380,8 +1459,7 @@ void main() {
       expect(out['ok'], isTrue);
       final manifest = await readManifestFile();
       final list =
-          ((manifest['factGraph'] as Map)['embedded'] as Map)['facts']
-              as List;
+          ((manifest['factGraph'] as Map)['embedded'] as Map)['facts'] as List;
       expect(list, hasLength(1));
       expect(list.single['content'], 'v2');
     });
@@ -1390,27 +1468,31 @@ void main() {
   // ── _runKnowledgeMutation guard branches ─────────────────────
 
   group('_runKnowledgeMutation guards', () {
-    test('bundle directory missing -> BundleMutationException(lockFailed)',
-        () async {
-      final out = await _call(host, 'studio.builder.addAgent', {
-        'mbdPath': p.join(tmpDir.path, 'never-created.mbd'),
-        'agent': <String, dynamic>{'id': 'a1', 'name': 'A'},
-      });
-      expect(out['ok'], isFalse);
-      expect(out['reason'], 'lockFailed');
-    });
+    test(
+      'bundle directory missing -> BundleMutationException(lockFailed)',
+      () async {
+        final out = await _call(host, 'studio.builder.addAgent', {
+          'mbdPath': p.join(tmpDir.path, 'never-created.mbd'),
+          'agent': <String, dynamic>{'id': 'a1', 'name': 'A'},
+        });
+        expect(out['ok'], isFalse);
+        expect(out['reason'], 'lockFailed');
+      },
+    );
 
-    test('directory exists but manifest.json missing -> conflict reason',
-        () async {
-      final dir = Directory(p.join(tmpDir.path, 'no-manifest.mbd'));
-      await dir.create(recursive: true);
-      final out = await _call(host, 'studio.builder.addAgent', {
-        'mbdPath': dir.path,
-        'agent': <String, dynamic>{'id': 'a1', 'name': 'A'},
-      });
-      expect(out['ok'], isFalse);
-      expect(out['reason'], 'conflict');
-    });
+    test(
+      'directory exists but manifest.json missing -> conflict reason',
+      () async {
+        final dir = Directory(p.join(tmpDir.path, 'no-manifest.mbd'));
+        await dir.create(recursive: true);
+        final out = await _call(host, 'studio.builder.addAgent', {
+          'mbdPath': dir.path,
+          'agent': <String, dynamic>{'id': 'a1', 'name': 'A'},
+        });
+        expect(out['ok'], isFalse);
+        expect(out['reason'], 'conflict');
+      },
+    );
   });
 
   // ── readManifest ──────────────────────────────────────────────
@@ -1487,32 +1569,38 @@ void main() {
       expect(out['bundle'], isA<Map>());
     });
 
-    test('sections filter narrows the response to the requested keys',
-        () async {
-      final seeded = baseManifest();
-      seeded['schemaVersion'] = '1.0.0';
-      seeded['facts'] = <String, dynamic>{
-        'facts': <dynamic>[
-          <String, dynamic>{'id': 'f1', 'subject': 'a', 'predicate': 'is', 'object': 'b'},
-        ],
-      };
-      await writeManifest(seeded);
-      final out = await _call(host, 'studio.builder.readBundle', {
-        'mbdPath': mbdPath,
-        'sections': <dynamic>['manifest'],
-      });
-      expect(out['ok'], isTrue);
-      final bundle = out['bundle'] as Map;
-      expect(bundle.containsKey('manifest'), isTrue);
-      expect(bundle.containsKey('facts'), isFalse);
-    });
+    test(
+      'sections filter narrows the response to the requested keys',
+      () async {
+        final seeded = baseManifest();
+        seeded['schemaVersion'] = '1.0.0';
+        seeded['facts'] = <String, dynamic>{
+          'facts': <dynamic>[
+            <String, dynamic>{
+              'id': 'f1',
+              'subject': 'a',
+              'predicate': 'is',
+              'object': 'b',
+            },
+          ],
+        };
+        await writeManifest(seeded);
+        final out = await _call(host, 'studio.builder.readBundle', {
+          'mbdPath': mbdPath,
+          'sections': <dynamic>['manifest'],
+        });
+        expect(out['ok'], isTrue);
+        final bundle = out['bundle'] as Map;
+        expect(bundle.containsKey('manifest'), isTrue);
+        expect(bundle.containsKey('facts'), isFalse);
+      },
+    );
   });
 
   // ── writeBundleFile ───────────────────────────────────────────
 
   group('writeBundleFile', () {
-    test('missing mbdPath / folder / relPath / content each reject',
-        () async {
+    test('missing mbdPath / folder / relPath / content each reject', () async {
       var out = await _call(host, 'studio.builder.writeBundleFile', {});
       expect(out['ok'], isFalse);
       out = await _call(host, 'studio.builder.writeBundleFile', {
@@ -1544,8 +1632,7 @@ void main() {
       expect(out['allowed'], isNotEmpty);
     });
 
-    test('manifest load failure hits the generic catch(e) branch',
-        () async {
+    test('manifest load failure hits the generic catch(e) branch', () async {
       final out = await _call(host, 'studio.builder.writeBundleFile', {
         'mbdPath': mbdPath,
         'folder': 'knowledge',

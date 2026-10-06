@@ -178,6 +178,8 @@ class _FileExplorerState extends State<_FileExplorer> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListView(
+        // An inner list takes no device inset (§2.4.13).
+        padding: EdgeInsets.zero,
         children: _buildItems(visibleItems, '', 0),
       ),
     );

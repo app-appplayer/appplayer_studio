@@ -20,7 +20,7 @@ class TabBarViewWidgetFactory extends WidgetFactory {
       initialIndex:
           selectedIndex.clamp(0, children.isEmpty ? 0 : children.length - 1),
       child: TabBarView(
-        physics: _resolveScrollPhysics(properties['physics']),
+        physics: readScrollPhysics(properties['physics'], context),
         dragStartBehavior:
             _resolveDragStartBehavior(properties['dragStartBehavior']),
         children: children
@@ -28,19 +28,6 @@ class TabBarViewWidgetFactory extends WidgetFactory {
             .toList(),
       ),
     );
-  }
-
-  ScrollPhysics? _resolveScrollPhysics(String? physics) {
-    switch (physics) {
-      case 'bounce':
-        return const BouncingScrollPhysics();
-      case 'clamp':
-        return const ClampingScrollPhysics();
-      case 'never':
-        return const NeverScrollableScrollPhysics();
-      default:
-        return null;
-    }
   }
 
   DragStartBehavior _resolveDragStartBehavior(String? behavior) {

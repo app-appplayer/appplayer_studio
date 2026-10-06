@@ -182,7 +182,7 @@ abstract class WidgetFactory {
   /// or a binding resolving to any of them. `parseEdgeInsets` alone takes the
   /// raw value, so a bound padding produced no inset and no diagnostic.
   EdgeInsets? edgeInsetsOf(dynamic raw, RenderContext context) =>
-      parseEdgeInsets(context.resolve(raw));
+      parseEdgeInsets(readScalar(raw, context));
 
   /// Parse EdgeInsets
   EdgeInsets? parseEdgeInsets(dynamic value) {
@@ -472,12 +472,27 @@ abstract class WidgetFactory {
   }
 }
 
+/// A scalar slot's value: the binding resolved, then a responsive object
+/// (§14.2.2) picked for the current form factor and resolved in turn — the
+/// picked value may itself be a binding.
+///
+/// A responsive object with no entry for the current size and no `default`
+/// stays a map, which no scalar reader accepts, so the slot takes its default.
+dynamic readScalar(dynamic raw, RenderContext context) {
+  final v = context.resolve<dynamic>(raw);
+  if (v is Map) {
+    final picked = context.pickResponsive(v);
+    if (picked != null) return context.resolve<dynamic>(picked);
+  }
+  return v;
+}
+
 /// A `Dimension` slot, read the way the registry declares it — a number, the
 /// v1.0 `{value, unit}` object, or a binding resolving to either. A factory
 /// that writes `numberOf(properties['width'], context)` throws on two of the three forms
 /// the same document is told it may use.
 double? readDimension(dynamic raw, RenderContext context) {
-  final v = context.resolve<dynamic>(raw);
+  final v = readScalar(raw, context);
   if (v is num) return v.toDouble();
   if (v is Map && v['value'] is num) return (v['value'] as num).toDouble();
   return null;
@@ -510,7 +525,7 @@ double? readLineHeight(
 /// ever *toggled*. The string forms are accepted for the same reason a
 /// document may carry `"true"` from a form field or a query string.
 bool? readBool(dynamic raw, RenderContext context) {
-  final v = context.resolve<dynamic>(raw);
+  final v = readScalar(raw, context);
   if (v is bool) return v;
   if (v is num) return v != 0;
   if (v is String) {
@@ -524,7 +539,7 @@ bool? readBool(dynamic raw, RenderContext context) {
 /// A number slot. Same reason as [readBool]; `?.toDouble()` on a binding
 /// string throws rather than reverting, which is worse.
 double? readNumber(dynamic raw, RenderContext context) {
-  final v = context.resolve<dynamic>(raw);
+  final v = readScalar(raw, context);
   if (v is num) return v.toDouble();
   if (v is Map && v['value'] is num) return (v['value'] as num).toDouble();
   if (v is String) return double.tryParse(v.trim());
@@ -537,7 +552,7 @@ int? readInt(dynamic raw, RenderContext context) => readNumber(raw, context)?.ro
 /// A string slot, resolved. `as String?` answers null for a bound value the
 /// binding engine would have produced from a number.
 String? readString(dynamic raw, RenderContext context) {
-  final v = context.resolve<dynamic>(raw);
+  final v = readScalar(raw, context);
   if (v == null) return null;
   if (v is String) return v;
   if (v is num || v is bool) return v.toString();
@@ -590,11 +605,38 @@ Map<String, dynamic>? readAction(dynamic raw, RenderContext context) {
   return <String, dynamic>{'type': 'sequence', 'actions': actions};
 }
 
+/// A `physics` slot — scroll response, read the same way by every scrollable:
+/// `bouncing`, `clamping`, `never`, `always`, plus the legacy values of
+/// §17.3.1a (`neverScrollable`, `alwaysScrollable`, and `tabBarView`'s
+/// `bounce` / `clamp`). Null — no value, or one outside the set — leaves the
+/// widget's own default.
+///
+/// [raw] is the canonical `physics`; a widget that also accepts the legacy
+/// `scrollPhysics` (§17.3.2) passes `properties['physics'] ??
+/// properties['scrollPhysics']`, so the canonical name wins.
+ScrollPhysics? readScrollPhysics(dynamic raw, RenderContext context) {
+  switch (readEnum(raw, context)) {
+    case 'bouncing':
+    case 'bounce':
+      return const BouncingScrollPhysics();
+    case 'clamping':
+    case 'clamp':
+      return const ClampingScrollPhysics();
+    case 'never':
+    case 'neverScrollable':
+      return const NeverScrollableScrollPhysics();
+    case 'always':
+    case 'alwaysScrollable':
+      return const AlwaysScrollableScrollPhysics();
+  }
+  return null;
+}
+
 /// An enum-valued slot: resolve the binding, then take the value only if it
 /// resolved to a string. `context.resolve<String?>` throws when the document
 /// legitimately carries another shape in the same slot (a `button.style`
 /// object, for instance), which turns a widened schema into a render error.
 String? readEnum(dynamic raw, RenderContext context) {
-  final v = context.resolve<dynamic>(raw);
+  final v = readScalar(raw, context);
   return v is String ? v : null;
 }

@@ -66,6 +66,7 @@ class StandardStudioShell extends StatefulWidget {
     required this.center,
     this.rightPane,
     this.trailing = const <HeaderAction>[],
+    this.hostActions = const <HeaderAction>[],
     this.extraSettingsSections = const <SettingsSection>[],
     this.domainSettings,
     this.domainSettingsBuilder,
@@ -77,6 +78,11 @@ class StandardStudioShell extends StatefulWidget {
     this.onSettingsSaved,
     this.chromeBridge,
     this.shellOverlay,
+    this.settingsPath,
+    this.chatEmptyHint,
+    this.settingsHostName,
+    this.settingsDomainTabLabel = 'Domain',
+    this.settingsHostTabLabel = 'Studio',
   });
 
   /// Optional chrome-level UI action bridge. When provided, the shell
@@ -123,6 +129,10 @@ class StandardStudioShell extends StatefulWidget {
   /// vkb keeps it empty.
   final List<HeaderAction> trailing;
 
+  /// The host's own buttons in the project header's system row (next to
+  /// Settings), kept apart from the domain's icons.
+  final List<HeaderAction> hostActions;
+
   /// Studio-tab extras appended below the built-in sections. Rare.
   final List<SettingsSection> extraSettingsSections;
 
@@ -162,6 +172,25 @@ class StandardStudioShell extends StatefulWidget {
   /// `llmApiKey` / `llmEndpoint` / etc.
   final void Function(VibeSettings updated)? onSettingsSaved;
 
+  /// Settings dialog tab labels: the active bundle's tab and the host's own
+  /// tab (see [showVibeSettingsDialog]).
+  /// Where the settings dialog, the model picker and the panel width save.
+  /// Null → `<backbone.configRoot>/settings.json`. A host whose settings
+  /// live outside the process config root passes the file it loaded.
+  final String? settingsPath;
+
+  /// Line the chat shows while its conversation is empty; null keeps the
+  /// standard line.
+  final String? chatEmptyHint;
+
+  /// Name under the settings dialog's host tab (the host's own settings).
+  /// Null → [appLabel]. A host whose title shows something else — the app
+  /// it runs — names itself here.
+  final String? settingsHostName;
+
+  final String settingsDomainTabLabel;
+  final String settingsHostTabLabel;
+
   @override
   State<StandardStudioShell> createState() => _StandardStudioShellState();
 }
@@ -177,6 +206,10 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
   /// chrome bridge in initState; host's `_captureLayoutSnapshot` reads
   /// it as the preferred root.
   final GlobalKey _shellRootKey = GlobalKey();
+
+  String get _settingsPath =>
+      widget.settingsPath ??
+      p.join(widget.backbone.configRoot, 'settings.json');
 
   @override
   void initState() {
@@ -380,7 +413,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
   void _onModelChange(String id) {
     _settings.llmModel = id;
     // ignore: unawaited_futures
-    _settings.save(p.join(widget.backbone.configRoot, 'settings.json'));
+    _settings.save(_settingsPath);
     widget.onSettingsSaved?.call(_settings);
   }
 
@@ -429,7 +462,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
   }
 
   Future<void> _onSettings() async {
-    final settingsPath = p.join(widget.backbone.configRoot, 'settings.json');
+    final settingsPath = _settingsPath;
     final domain =
         widget.domainSettingsBuilder?.call() ?? widget.domainSettings;
     final updated = await showVibeSettingsDialog(
@@ -439,8 +472,10 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       settingsPath: settingsPath,
       extraSections: widget.extraSettingsSections,
       domain: domain,
-      appName: widget.appLabel,
+      appName: widget.settingsHostName ?? widget.appLabel,
       mcpPort: widget.port,
+      domainTabLabel: widget.settingsDomainTabLabel,
+      hostTabLabel: widget.settingsHostTabLabel,
     );
     if (updated == null) return;
     setState(() => _settings = updated);
@@ -459,7 +494,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
   /// its copy are kept.
   void _applyThemeMode(String themeMode) {
     if (!mounted || _settings.themeMode == themeMode) return;
-    final settingsPath = p.join(widget.backbone.configRoot, 'settings.json');
+    final settingsPath = _settingsPath;
     final updated = VibeSettings.fromJson(_settings.toJson())
       ..themeMode = themeMode;
     setState(() => _settings = updated);
@@ -608,6 +643,10 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                   onOpen: onOpen,
                                                   recentProjects:
                                                       life.recentProjects,
+                                                  boundSlots: life.boundSlots,
+                                                  hostActions:
+                                                      widget.hostActions,
+                                                  slotLabels: life.slotLabels,
                                                   onOpenRecent:
                                                       (path) => bridge
                                                           ?.openProjectInActive
@@ -669,6 +708,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                         final bridge = widget.chromeBridge;
                                         if (bridge == null) {
                                           return ChatPanel(
+                                            emptyHint: widget.chatEmptyHint,
                                             controller: ctrl,
                                             modelOptions: widget.modelOptions,
                                             currentModelId:
@@ -812,6 +852,9 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                                                                   ),
                                                               ];
                                                       return ChatPanel(
+                                                        emptyHint:
+                                                            widget
+                                                                .chatEmptyHint,
                                                         controller: ctrl,
                                                         agentsOverride:
                                                             override,
@@ -903,45 +946,65 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
                               onDragEnd: () {
                                 _settings.chatPanelWidth = _chatWidth;
                                 // ignore: unawaited_futures
-                                _settings.save(
-                                  p.join(
-                                    widget.backbone.configRoot,
-                                    'settings.json',
-                                  ),
-                                );
+                                _settings.save(_settingsPath);
                               },
                             ),
                           ] else ...<Widget>[
-                            ValueListenableBuilder<List<HeaderAction>>(
+                            // Collapsed column: the same system buttons as
+                            // the project header, bound to the same
+                            // lifecycle state and slots.
+                            ValueListenableBuilder<DomainLifecycleState>(
                               valueListenable:
-                                  widget.chromeBridge?.headerActions ??
-                                  ValueNotifier<List<HeaderAction>>(
-                                    const <HeaderAction>[],
+                                  widget.chromeBridge?.lifecycleState ??
+                                  ValueNotifier<DomainLifecycleState>(
+                                    const DomainLifecycleState.empty(),
                                   ),
                               builder:
-                                  (_, dyn, _) => ActivityBar(
-                                    onExpand:
-                                        () => setState(
-                                          () => _leftPanelVisible = true,
+                                  (_, life, _) => ValueListenableBuilder<
+                                    List<HeaderAction>
+                                  >(
+                                    valueListenable:
+                                        widget.chromeBridge?.headerActions ??
+                                        ValueNotifier<List<HeaderAction>>(
+                                          const <HeaderAction>[],
                                         ),
-                                    onNew: () {},
-                                    onOpen: () {},
-                                    onSave: () {},
-                                    onSaveAs: () {},
-                                    onRevert: () {},
-                                    onCloseProject: () {},
-                                    onSettings: _onSettings,
-                                    onUndo: () {},
-                                    onRedo: () {},
-                                    onHistory: _onHistory,
-                                    dirty: false,
-                                    hasProject: false,
-                                    canUndo: false,
-                                    canRedo: false,
-                                    trailing: <HeaderAction>[
-                                      ...widget.trailing,
-                                      ...dyn,
-                                    ],
+                                    builder: (_, dyn, _) {
+                                      void fire(String slot) => widget
+                                          .chromeBridge
+                                          ?.dispatchLifecycleSlot
+                                          ?.call(
+                                            slot,
+                                            const <String, dynamic>{},
+                                          );
+                                      return ActivityBar(
+                                        onExpand:
+                                            () => setState(
+                                              () => _leftPanelVisible = true,
+                                            ),
+                                        onNew: () => fire('project.new'),
+                                        onOpen: () => fire('project.open'),
+                                        onSave: () => fire('project.save'),
+                                        onSaveAs: () => fire('project.saveAs'),
+                                        onRevert: () => fire('project.revert'),
+                                        onCloseProject:
+                                            () => fire('project.close'),
+                                        onSettings: _onSettings,
+                                        onUndo: () => fire('edit.undo'),
+                                        onRedo: () => fire('edit.redo'),
+                                        onHistory: _onHistory,
+                                        dirty: life.dirty,
+                                        hasProject: life.hasProject,
+                                        canUndo: life.canUndo,
+                                        canRedo: life.canRedo,
+                                        boundSlots: life.boundSlots,
+                                        slotLabels: life.slotLabels,
+                                        trailing: <HeaderAction>[
+                                          ...widget.hostActions,
+                                          ...widget.trailing,
+                                          ...dyn,
+                                        ],
+                                      );
+                                    },
                                   ),
                             ),
                           ],

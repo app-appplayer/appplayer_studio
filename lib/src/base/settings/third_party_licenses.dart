@@ -1,10 +1,10 @@
 /// Registers the notices of what the app ships beyond Dart packages with the
-/// platform's [OpenSourceLicenses] (appplayer_core), so the one license page
+/// app's [OpenSourceLicenses], so the one license page
 /// (Settings → About) lists everything:
 ///
 ///   * `apple.json` — native code on macOS: Swift packages, CocoaPods and
 ///     binary artifacts (FFmpeg and its components, PDFium and its
-///     components). Written by appplayer_core's Apple generator per app; a
+///     components). Written by the open_source_licenses recipe's Apple generator per app; a
 ///     tier that links more (Pro) supplies its own list through
 ///     [appleLicenseList].
 ///   * `desktop.json` — what no platform generator lists: QuickJS and
@@ -16,9 +16,10 @@ library;
 
 import 'dart:io' show Platform;
 
-import 'package:appplayer_core/appplayer_core.dart' show OpenSourceLicenses;
 import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/services.dart';
+
+import 'open_source_licenses.dart';
 
 /// Where this build's macOS notice list lives. The open studio ships its own;
 /// a tier that links more native code sets its list before boot.

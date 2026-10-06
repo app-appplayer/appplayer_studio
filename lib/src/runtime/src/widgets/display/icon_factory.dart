@@ -32,8 +32,8 @@ class IconWidgetFactory extends WidgetFactory {
     // token shorthand string — `size: "md"` or new `sizeToken: "md"` —
     // which resolves through [AppIconSizes.of] so icons scale with the
     // active form factor.
-    final rawSize = context.resolve(properties['size']);
-    final rawSizeToken = context.resolve(properties['sizeToken']);
+    final rawSize = readScalar(properties['size'], context);
+    final rawSizeToken = readScalar(properties['sizeToken'], context);
     final tokenName = rawSizeToken is String
         ? rawSizeToken
         : (rawSize is String ? rawSize : null);

@@ -542,6 +542,29 @@ class _DebouncedTextFieldState extends State<_DebouncedTextField> {
     _debouncer = Debouncer(milliseconds: widget.debounceDelay);
   }
 
+  /// A bound value changed from outside — a reset, a tool answer merged into
+  /// state — reaches the field (§2.6.0: binding is two-way). Not while a
+  /// keystroke is still waiting on the debounce: state holds the older value
+  /// then, and taking it would erase what the user just typed.
+  @override
+  void didUpdateWidget(covariant _DebouncedTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_debouncer.isActive) return;
+    final properties = widget.context.renderer.widgetRegistry
+        .get('textInput')!
+        .extractProperties(widget.definition);
+    final bindingPath = readString(properties['binding'], widget.context);
+    final external = bindingPath != null
+        ? widget.context.getState(bindingPath)?.toString() ?? ''
+        : widget.context.resolve<String>(properties['value'] ?? '');
+    if (external == _controller.text) return;
+    _lastValue = external;
+    _controller.value = TextEditingValue(
+      text: external,
+      selection: TextSelection.collapsed(offset: external.length),
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();

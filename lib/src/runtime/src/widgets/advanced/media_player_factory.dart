@@ -65,9 +65,9 @@ class MediaPlayerWidgetFactory extends WidgetFactory {
     final poster = context.resolve<String?>(properties['poster']);
     final title = context.resolve<String?>(properties['title']);
     final duration =
-        parseDimension(context.resolve((properties['duration']))) ?? 180.0;
-    final width = parseDimension(context.resolve((properties['width'])));
-    final height = parseDimension(context.resolve((properties['height']))) ?? 300.0;
+        readDimension(properties['duration'], context) ?? 180.0;
+    final width = readDimension(properties['width'], context);
+    final height = readDimension(properties['height'], context) ?? 300.0;
 
     // Extract colors
     final backgroundColor =

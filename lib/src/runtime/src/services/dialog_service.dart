@@ -24,6 +24,13 @@ class DialogService extends RuntimeService {
   static GlobalKey<NavigatorState> get navigatorKey =>
       NavigationActionExecutor.navigatorKey;
 
+  /// Finds the navigator this service shows dialogs on — the acting
+  /// runtime's (see `navigatorFor`). Unset, the process-wide key is used.
+  NavigatorState? Function()? navigatorResolver;
+
+  NavigatorState? get _navigator =>
+      navigatorResolver != null ? navigatorResolver!() : navigatorKey.currentState;
+
   /// Shows a dialog with custom content
   Future<T?> show<T>({
     required Widget content,
@@ -299,7 +306,7 @@ class DialogService extends RuntimeService {
     // searches upward from there — so it looked for an overlay above the
     // overlay and threw "No Overlay widget found" every time. This surface
     // had never worked.
-    final overlay = navigatorKey.currentState?.overlay;
+    final overlay = _navigator?.overlay;
     if (overlay == null) {
       throw StateError(
           'No overlay available. Make sure navigatorKey is set in MaterialApp');
@@ -359,7 +366,7 @@ class DialogService extends RuntimeService {
   /// Uses the navigator's overlay context to ensure dialogs work properly
   /// even when the navigator state might be in transition
   BuildContext _getContext() {
-    final navigatorState = navigatorKey.currentState;
+    final navigatorState = _navigator;
     if (navigatorState == null) {
       throw StateError(
           'Navigator not initialized. Make sure navigatorKey is set in MaterialApp');
@@ -369,12 +376,8 @@ class DialogService extends RuntimeService {
     // This ensures dialogs can be shown even during navigation transitions
     final overlayContext = navigatorState.overlay?.context;
     if (overlayContext == null) {
-      // Fallback to current context if overlay is not available
-      final context = navigatorKey.currentContext;
-      if (context == null) {
-        throw StateError('No context available. Navigator might not be ready');
-      }
-      return context;
+      // Fallback to the navigator's own context if overlay is not available
+      return navigatorState.context;
     }
 
     return overlayContext;

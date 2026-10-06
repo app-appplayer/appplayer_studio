@@ -21,12 +21,13 @@ class PageViewWidgetFactory extends WidgetFactory {
     final clipBehavior =
         _parseClip(properties['clipBehavior']) ?? Clip.hardEdge;
 
-    // Since v1.3: `initialPage`, `loop`, `scrollPhysics`.
+    // Since v1.3: `initialPage`, `loop`, `physics`.
     final initialPage =
         (context.resolve(properties['initialPage']) as num?)?.toInt() ?? 0;
     final loop = context.resolve(properties['loop']) as bool? ?? false;
-    final physics =
-        _parsePhysics(context.resolve(properties['scrollPhysics']));
+    // `physics` is canonical; `scrollPhysics` is its legacy name (§17.3.2).
+    final physics = readScrollPhysics(
+        properties['physics'] ?? properties['scrollPhysics'], context);
 
     final childrenDef = properties['children'] as List<dynamic>? ??
         definition['children'] as List<dynamic>?;
@@ -78,18 +79,6 @@ class PageViewWidgetFactory extends WidgetFactory {
           );
 
     return applyCommonWrappers(pageView, properties, context);
-  }
-
-  ScrollPhysics? _parsePhysics(dynamic value) {
-    switch (value) {
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      case 'neverScrollable':
-        return const NeverScrollableScrollPhysics();
-    }
-    return null;
   }
 
   Axis? _parseAxis(String? value) {

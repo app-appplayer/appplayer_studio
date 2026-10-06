@@ -1,3 +1,122 @@
+## [Unreleased]
+
+### Added
+
+- The project header can follow the slots a bundle wired: a host that sets
+  `DomainLifecycleState.boundSlots` gets only those system buttons enabled
+  (bundle spec 06 §6.3.1 — an unbound slot is greyed out), with its own
+  tooltips through `slotLabels`. Unset, the header behaves as before.
+- `StandardStudioShell.hostActions` — the host's own buttons in the header's
+  system row next to Settings, apart from the bundle's icons.
+- `StandardStudioShell.settingsDomainTabLabel` / `settingsHostTabLabel` and
+  `showVibeSettingsDialog(domainTabLabel:, hostTabLabel:, hostSections:)` —
+  a host names the two settings tabs and picks its built-in sections.
+- `manifest_chrome.dart` exports the manifest chrome readers
+  (`readManifestLifecycleBindings`, `evalChromeBinding`,
+  `interpolateChromeText`, `readManifestSlashHints`) the workspace used
+  privately, so every host that runs a bundle reads its chrome the same way.
+- `CoverageCapabilities.close()` closes the capability database.
+- A host can run several processes over one set of settings:
+  `StudioApp.settingsRoot` (where `settings.json` and so the LLM key scope
+  live), `StudioApp.fixedPort` (ahead of the Settings MCP URL; `--port` still
+  wins) and `StudioApp.claimsInstanceSlots` (off: no `<base>-N` roots or port
+  bands). `StandardStudioShell.settingsPath` saves to that file. Defaults
+  keep the current behaviour.
+- `ChatPanel.emptyHint` / `StandardStudioShell.chatEmptyHint` — the line an
+  empty conversation shows; unset keeps the standard line.
+- `StandardStudioShell.settingsHostName` — the name under the settings
+  dialog's host tab; unset keeps `appLabel`.
+
+### Changed
+
+- The host seed's specifications, the App Builder widget vocabulary and the
+  embedded schemas follow the published UI DSL 1.4 revision: `physics` is the
+  one scroll-response name (`scrollPhysics` reads as its legacy alias), the
+  schemas accept responsive objects on value slots, and the bundle spec states
+  the app kind by `type` and in-bundle tool names.
+- Depends on `flutter_mcp_ui_runtime` ^0.8.4 and `flutter_mcp_ui_core` ^0.6.9;
+  the vendored runtime copy is regenerated from 0.8.4 and generated apps pin
+  the runtime at ^0.8.4. Documents now load their `i18n` block, pick
+  responsive values on every scalar slot, and report the removed test actions
+  as unknown. Each runtime keeps its own theme, navigation and dialogs, so
+  two documents on screen at once — previews side by side, workspace tabs —
+  no longer draw with each other's palette or open dialogs on each other.
+- The license page and its registration (`OpenSourceLicenses`, exported
+  from `base.dart`) are a vendored copy of the platform's
+  open_source_licenses recipe; `appplayer_core` is no longer a dependency.
+- The host no longer seeds the process-wide `ThemeManager` at boot; every
+  surface sets its theme on its own runtime.
+- App identifiers follow the owned domain in reverse: Studio
+  `app.appplayer.studio` (debug build `app.appplayer.studio.debug`), Studio
+  Pro `app.appplayer.studio.pro`, on macOS and Linux. A build with the new
+  identifier is a new app to the OS — it does not inherit the old install's
+  preferences, privacy grants or keychain items.
+- The host seed carries the published English specifications as knowledge:
+  `spec_ui_dsl` (the series the runtime targets), `spec_bundle`,
+  `spec_platform`, `spec_serving`, `spec_form` and `spec_gateway`, one
+  document per section, generated from `specs-pub/` by
+  `tool/embed_spec_knowledge.py` (`--check` reports drift). They replace the
+  hand-written spec excerpts, which had fallen behind (the UI DSL one still
+  described 1.3). The App Builder seed's widget vocabulary is generated from
+  the published copy too, and regenerating it brought 29 widget docs up to
+  the current spec (aliases, `BoxSpacing`, enumerated `size` …).
+- A bundle calls its own tools by the names it declared. Every name that
+  comes from inside a bundle — a screen `tool` action, `host.mcp.callTool`
+  in js, `wiring.domainActions` / `lifecycle` / `settings`, an agent's
+  `tools` list — resolves to the bundle's own `<namespace>.<name>` first and
+  otherwise as written (a full name, a `studio.*` tool, another bundle's
+  tool); outside a bundle only full names reach (platform spec 04-ui-host
+  "Name isolation"). The rule is `resolveBundleToolName` /
+  `resolveBundleToolPattern`. Before, the paths disagreed: a declared name
+  with a dot (`board.summary`) was passed through unresolved, lifecycle and
+  screen calls were never resolved, and settings rows always prefixed. Full
+  names keep working. `readDomainActionsFromManifest` takes `isRegistered`,
+  `McpAtom` a `namespace`, `DslWorkspaceView` / `StudioUiRenderer` a
+  `toolNamespace`. Resolving a full name from inside a bundle is kept for
+  now, for bundles written before the rule; bundles no longer write one.
+- Studio no longer produces bundles that name their own tools with the
+  bundle id. `selfNamedToolReferences` finds such names (declared tool
+  names, manifest wiring / chat / agent allowlists, `ui/**.json`,
+  `host.mcp.callTool` in `tools/**.js`) when the remainder is one of the
+  bundle's declared tools; a host tool that shares the prefix is not
+  reported. `studio.builder.*` edits answer with `warnings` for each one,
+  and `studio.project.export` refuses the bundle and lists them. The host
+  seed's authoring knowledge now teaches declared names (an agent
+  allowlist example used `<bundleId>.editor.open`; tool naming read
+  "conventionally `<bundle>.<verb>`"), and `example/wire_demo.mbd` calls
+  `shout`.
+- The kind of app is the `manifest.type` chosen in App Builder
+  (platform spec 06 ④): AppPlayer App = `application`, Studio Package =
+  `extension` (built for Studio), Cloud Server App = `server`. The built-in
+  seeds, `example/vbu_smoke.mbd`, Studio Builder and its new-package
+  template are `type: extension`; Studio Builder no longer calls the
+  retired `studio.workspace.adopt`. The authoring knowledge (host seed ·
+  App Builder seed) states the kinds. Studio does not check `type` against
+  what a bundle uses.
+
+### Fixed
+
+- Page, dashboard and component previews carry the application's `i18n`
+  block (spec §12) into the application they wrap the target in. Without
+  it a runtime that loads `i18n` showed every `{{i18n.key}}` on those
+  previews as a missing key, while the app preview translated it.
+- A bundle tool declared `kind: host` failed to register ("unknown tool
+  kind: host"); it is a re-declared host builtin (bundle spec 04 §4.4) and
+  now registers as a declaration with nothing exposed. The App Builder
+  Studio Package template declared two such tools (`hello`, `ping`) that no
+  host has — every new Studio Package carried the failure (silent in
+  Studio, an error band in the Workbench). The template now ships one js
+  sample tool, `hello` (`tools/hello.js`).
+- `kRunsHostExtensions` — hosts built on this library say once that they
+  run extension apps; Studio Pro passes it to the market embed.
+- A screen `tool` action whose tool answered `isError` ran `onSuccess` with
+  the error text as its result; it now runs `onError` with the tool's
+  message.
+- The activity bar shown when the chat column is collapsed ran nothing: its
+  New / Open / Save / Undo … buttons were empty callbacks with the project
+  flags fixed off. It now fires the same lifecycle slots with the same
+  lifecycle state as the project header.
+
 ## [0.1.10] - 2026-09-29
 
 ### Changed

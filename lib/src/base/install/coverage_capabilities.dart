@@ -25,7 +25,11 @@ import 'capability_recipes/capability_recipes.dart';
 /// host ignores [ready] (db.* serves once open completes; fs.* is ready
 /// immediately); a test awaits it before exercising `db.*`.
 class CoverageCapabilities {
-  const CoverageCapabilities({required this.toolNames, required this.ready});
+  const CoverageCapabilities({
+    required this.toolNames,
+    required this.ready,
+    Future<void> Function()? close,
+  }) : _close = close;
 
   /// Every exposed name across the five packs (`canvas.*`, `kv.*`,
   /// `analysis.*`, `fs.*`, `db.*`).
@@ -33,6 +37,13 @@ class CoverageCapabilities {
 
   /// Completes when the sqlite source finishes opening.
   final Future<void> ready;
+
+  final Future<void> Function()? _close;
+
+  /// Closes the storage these packs hold open (the sqlite db). A host that
+  /// re-roots the packs — e.g. per app — unregisters [toolNames] and closes
+  /// the previous set before registering the next.
+  Future<void> close() async => _close?.call();
 }
 
 /// Register the coverage capability packs onto [registry], rooting all
@@ -95,5 +106,12 @@ CoverageCapabilities registerCoverageCapabilities(
     ),
   );
 
-  return CoverageCapabilities(toolNames: names, ready: ready);
+  return CoverageCapabilities(
+    toolNames: names,
+    ready: ready,
+    close: () async {
+      await ready;
+      await sqlite.close();
+    },
+  );
 }

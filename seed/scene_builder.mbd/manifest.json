@@ -6,7 +6,7 @@
     "version": "0.1.0",
     "description": "Authoring surface for scenario-driven recordings — chat with the Scene Manager to script a flow that drives any installed bundle (or the studio itself), record it via the built-in studio.recorder.* tools, and decorate with overlays (subtitles, arrows, check marks, lecture-style markup). The recorder, overlay, and chat-send primitives are HOST built-ins (always on); this bundle is the user-facing library / composer / branding.",
     "schemaVersion": "1.0.0",
-    "type": "application",
+    "type": "extension",
     "icon": "movie_creation_outlined"
   },
   "knowledge": {

@@ -8,7 +8,6 @@ import 'permission_binding_resolver.dart';
 import 'channel_binding_resolver.dart';
 import 'resource_binding_resolver.dart';
 import 'sync_binding_resolver.dart';
-import '../i18n/i18n_manager.dart';
 import '../utils/mcp_logger.dart';
 
 /// Configuration for expression evaluation sandboxing.
@@ -402,24 +401,29 @@ class BindingEngine {
     _logger.debug('_resolveMixedContent called with: $content');
     String result = content;
 
-    // Find all binding expressions in the content
-    final bindingPattern = RegExp(r'\{\{([^}]+)\}\}');
-    final matches = bindingPattern.allMatches(content);
-
-    for (final match in matches) {
-      final fullMatch = match.group(0)!; // e.g., "{{count}}"
-      final expression = match.group(1)!; // e.g., "count"
+    // Find all binding expressions in the content. Each `{{` is closed by the
+    // first `}}` outside any braces the expression itself opens, so
+    // `{{i18n.itemCount({count: 5})}}` is one binding (§12.2.2).
+    for (final span in _bindingSpans(content)) {
+      final fullMatch = content.substring(span.$1, span.$2); // "{{count}}"
+      final expression = span.$3; // e.g., "count"
 
       try {
-        // Convert to BindingExpression for evaluation (with caching)
-        final parsed = _convertCachedToBinding(expression);
-        final resolvedValue = _evaluateExpression(parsed, context);
+        dynamic finalValue;
+        final i18n = _resolveI18nForm(expression, context);
+        if (i18n != null) {
+          finalValue = i18n;
+        } else {
+          // Convert to BindingExpression for evaluation (with caching)
+          final parsed = _convertCachedToBinding(expression);
+          final resolvedValue = _evaluateExpression(parsed, context);
 
-        // Apply transform if specified
-        dynamic finalValue = resolvedValue;
-        if (parsed.transform != null &&
-            _transforms.containsKey(parsed.transform)) {
-          finalValue = _transforms[parsed.transform]!(resolvedValue);
+          // Apply transform if specified
+          finalValue = resolvedValue;
+          if (parsed.transform != null &&
+              _transforms.containsKey(parsed.transform)) {
+            finalValue = _transforms[parsed.transform]!(resolvedValue);
+          }
         }
 
         // Replace the binding with the resolved value (format numbers nicely)
@@ -446,6 +450,133 @@ class BindingEngine {
     return _convertToType<T>(result);
   }
 
+  /// The `{{…}}` bindings in [content] as (start, end, expression) — end
+  /// exclusive. A `}` closing a brace the expression opened, or one inside a
+  /// quoted string, does not end the binding.
+  static List<(int, int, String)> _bindingSpans(String content) {
+    final spans = <(int, int, String)>[];
+    var from = 0;
+    while (true) {
+      final open = content.indexOf('{{', from);
+      if (open < 0) break;
+      var depth = 0;
+      String? quote;
+      int? close;
+      for (var j = open + 2; j < content.length; j++) {
+        final c = content[j];
+        if (quote != null) {
+          if (c == '\\') {
+            j++;
+          } else if (c == quote) {
+            quote = null;
+          }
+          continue;
+        }
+        if (c == '"' || c == "'") {
+          quote = c;
+        } else if (c == '{') {
+          depth++;
+        } else if (c == '}') {
+          if (depth > 0) {
+            depth--;
+          } else if (j + 1 < content.length && content[j + 1] == '}') {
+            close = j;
+            break;
+          }
+        }
+      }
+      if (close == null) break;
+      spans.add((open, close + 2, content.substring(open + 2, close)));
+      from = close + 2;
+    }
+    return spans;
+  }
+
+  /// `i18n.<key>`, then optional arguments `(…)`, then an optional explicit
+  /// locale `:xx-YY` (§12.2).
+  static final RegExp _i18nForm = RegExp(
+    r'^i18n\.([A-Za-z_][\w.]*?)(?:\((.*)\))?(?::([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*))?$',
+    dotAll: true,
+  );
+
+  /// Resolves a binding written in one of the `{{i18n.*}}` forms of §12.2 —
+  /// a plain key, a key with arguments (`i18n.itemCount({count: 5})`,
+  /// `i18n.currency(price)`) or a key with an explicit locale
+  /// (`i18n.greeting:en-US`). The argument and locale forms are outside the
+  /// expression grammar, so they are recognised here, before it. Null when
+  /// [expression] is not one of them; an `i18n.*` path inside a larger
+  /// expression still resolves through the path lookup.
+  String? _resolveI18nForm(String expression, RenderContext context) {
+    final match = _i18nForm.firstMatch(expression.trim());
+    if (match == null) return null;
+    final key = match.group(1)!;
+    final arguments = match.group(2)?.trim();
+    Map<String, dynamic>? named;
+    var positional = const <dynamic>[];
+    if (arguments != null && arguments.isNotEmpty) {
+      if (arguments.startsWith('{') && arguments.endsWith('}')) {
+        named = <String, dynamic>{};
+        final body = arguments.substring(1, arguments.length - 1);
+        for (final entry in _splitTopLevel(body)) {
+          final colon = entry.indexOf(':');
+          if (colon < 0) continue;
+          final name = entry
+              .substring(0, colon)
+              .trim()
+              .replaceAll(RegExp('^["\']|["\']\$'), '');
+          named[name] =
+              _evaluateArgument(entry.substring(colon + 1).trim(), context);
+        }
+      } else {
+        positional = _splitTopLevel(arguments)
+            .map((argument) => _evaluateArgument(argument.trim(), context))
+            .toList();
+      }
+    }
+    return context.i18nManager.resolveBinding(
+      key,
+      locale: match.group(3),
+      named: named,
+      positional: positional,
+    );
+  }
+
+  dynamic _evaluateArgument(String source, RenderContext context) =>
+      _evaluateExpression(_convertCachedToBinding(source), context);
+
+  /// [source] split on the commas that are not inside brackets, braces,
+  /// parentheses or quotes.
+  static List<String> _splitTopLevel(String source) {
+    final parts = <String>[];
+    var depth = 0;
+    String? quote;
+    var start = 0;
+    for (var i = 0; i < source.length; i++) {
+      final c = source[i];
+      if (quote != null) {
+        if (c == '\\') {
+          i++;
+        } else if (c == quote) {
+          quote = null;
+        }
+        continue;
+      }
+      if (c == '"' || c == "'") {
+        quote = c;
+      } else if (c == '(' || c == '[' || c == '{') {
+        depth++;
+      } else if (c == ')' || c == ']' || c == '}') {
+        depth--;
+      } else if (c == ',' && depth == 0) {
+        parts.add(source.substring(start, i));
+        start = i + 1;
+      }
+    }
+    final last = source.substring(start);
+    if (last.trim().isNotEmpty) parts.add(last);
+    return parts;
+  }
+
   /// Resolve a binding expression
   T _resolveBinding<T>(String expression, RenderContext context) {
     // Extract expression content
@@ -456,6 +587,9 @@ class BindingEngine {
       _logger.warning('Empty binding expression found: $expression');
       return _convertToType<T>(expression);
     }
+
+    final i18n = _resolveI18nForm(expr, context);
+    if (i18n != null) return _convertToType<T>(i18n);
 
     // Convert to BindingExpression for evaluation (with caching)
     final parsed = _convertCachedToBinding(expr);
@@ -656,7 +790,7 @@ class BindingEngine {
     // Check for i18n.* prefix - resolves i18n translation keys
     if (path.startsWith('i18n.')) {
       final i18nKey = path.substring(5);
-      final translated = I18nManager.instance.translate(i18nKey);
+      final translated = context.i18nManager.translate(i18nKey);
       _logger.debug('I18n binding resolved: $path -> $translated');
       return translated;
     }

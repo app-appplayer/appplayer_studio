@@ -20,6 +20,10 @@ class RenderContext {
   final BindingEngine bindingEngine;
   final ActionHandler actionHandler;
   final ThemeManager themeManager;
+
+  /// The document's translations and active locale — the engine's own
+  /// manager, so a binding reads the text of the document it belongs to.
+  final I18nManager i18nManager;
   final String? parentId;
   final Map<String, dynamic> localVariables;
   final List<String> _idPath;
@@ -41,6 +45,7 @@ class RenderContext {
     required this.bindingEngine,
     required this.actionHandler,
     required this.themeManager,
+    I18nManager? i18nManager,
     this.parentId,
     this.buildContext,
     this.engine,
@@ -48,7 +53,8 @@ class RenderContext {
     this.resourceHandler,
     Map<String, dynamic>? localVariables,
     List<String>? idPath,
-  })  : localVariables = localVariables ?? {},
+  })  : i18nManager = i18nManager ?? I18nManager.instance,
+        localVariables = localVariables ?? {},
         _idPath = idPath ?? [];
 
   /// Type-safe access to the RuntimeEngine instance.
@@ -78,6 +84,7 @@ class RenderContext {
       bindingEngine: bindingEngine,
       actionHandler: actionHandler,
       themeManager: themeManager,
+      i18nManager: i18nManager,
       parentId: id ?? parentId,
       buildContext: buildContext,
       engine: engine,
@@ -182,6 +189,7 @@ class RenderContext {
       bindingEngine: bindingEngine,
       actionHandler: actionHandler,
       themeManager: themeManager,
+      i18nManager: i18nManager,
       parentId: parentId,
       buildContext: buildContext,
       engine: engine,
@@ -203,12 +211,17 @@ class RenderContext {
   T resolve<T>(dynamic value) {
     if (value == null) return null as T;
 
-    // Responsive override resolution is opt-in via [pickResponsive] —
-    // factories that accept a per-form-factor override map call it
-    // explicitly. Auto-detection here is unsafe because configuration
-    // maps that happen to be keyed by FormFactor labels (notably
-    // `theme.breakpoints: {compact: 0, medium: 600, …}`)
-    // would otherwise be hijacked and collapsed to a single value.
+    // A responsive object (§14.2.2) is picked only when the caller asked for
+    // a scalar — a number, string or boolean. A map can only stand in for a
+    // scalar by being a responsive object, while a caller asking for a map or
+    // for `dynamic` may be reading configuration keyed by the same labels
+    // (`theme.breakpoints: {compact: 0, medium: 600, …}`), which must keep
+    // every entry. Readers that ask for `dynamic` pick through
+    // `readScalar` in widget_factory.dart.
+    if (value is Map && _wantsScalar<T>()) {
+      final picked = pickResponsive(value);
+      if (picked != null) return resolve<T>(picked);
+    }
 
     // Handle different value types
     if (value is Map<String, dynamic>) {
@@ -236,7 +249,7 @@ class RenderContext {
     } else if (value is String) {
       // Check for i18n strings first
       if (value.startsWith('i18n:')) {
-        final translated = I18nManager.instance.resolveI18nString(value);
+        final translated = i18nManager.resolveI18nString(value);
         return (translated ?? value) as T;
       }
       // Check if it contains any binding expressions
@@ -684,6 +697,9 @@ class RenderContext {
   /// theme tables (notably `theme.breakpoints`) share the same key
   /// shape and must not be collapsed.
   dynamic pickResponsive(Map value) => _pickResponsive(value);
+
+  static bool _wantsScalar<T>() =>
+      <T>[] is List<num?> || <T>[] is List<String?> || <T>[] is List<bool?>;
 
   dynamic _pickResponsive(Map value) {
     const ffKeys = {

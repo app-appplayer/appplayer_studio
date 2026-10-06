@@ -25,8 +25,6 @@ import 'package:brain_kernel/brain_kernel.dart' as mk;
 import 'package:brain_kernel/mcp_host.dart' as mh;
 import 'package:appplayer_studio/workspace.dart';
 import 'package:appplayer_studio/src/base/agent/agent_invoke_queue.dart';
-import 'package:appplayer_studio/src/base/install/coverage_capabilities.dart';
-import 'package:appplayer_studio/src/base/install/studio_kb.dart';
 import 'package:appplayer_studio/src/base/install/provisioning_capability.dart'
     show registerProvisioningCapability;
 import 'package:appplayer_studio/src/base/install/plugin_install.dart';
@@ -69,7 +67,6 @@ class StudioExtensionContext {
     required this.configRoot,
     required this.registerInstalledTiles,
     required this.refreshHome,
-    this.themeReinjectTick,
     this.registerKbAppIdOf,
     this.bindAccountStorage,
   });
@@ -101,12 +98,6 @@ class StudioExtensionContext {
 
   /// Kernel server host — register MCP tools (`boot.addTool`).
   final mk.KernelServerHost boot;
-
-  /// Cross-tab "the singleton runtime ThemeManager was reset" signal
-  /// (`ChromeBridge.themeReinjectTick`). An extension that mounts a served-app
-  /// runtime tab (e.g. the marketplace `ServedServiceBody`) passes this so an
-  /// active tab re-injects its theme when a sibling runtime tab tears down.
-  final ValueNotifier<int>? themeReinjectTick;
 
   /// Install a `.mbd` at [mbdPath] through the host's bundle base model.
   /// Returns the install surface result (`{ok, namespace, mbdPath}`).
@@ -1197,7 +1188,6 @@ class VibeStudioHostApp extends StudioApp {
           // ignore: unawaited_futures
           _chromeBridge.reloadTab?.call(0);
         },
-        themeReinjectTick: _chromeBridge.themeReinjectTick,
         registerKbAppIdOf: (resolver) {
           _extensionKbAppIdOf = resolver;
         },
@@ -1232,7 +1222,6 @@ class VibeStudioHostApp extends StudioApp {
             builder: builder,
           );
         },
-        themeReinjectTick: _chromeBridge.themeReinjectTick,
       );
       _localServerManager = localServerManager;
       _extensionTileProviders.add(() async => localServerManager.tiles());
@@ -2195,11 +2184,20 @@ class VibeStudioHostApp extends StudioApp {
       // the currently focused package path.
       final activePath = _activePackageNotifier.value;
       if (activePath == null) return false;
+      final namespace = _chromeBridge.bundleIdForTab(activePath);
       final result = await dispatchLifecycleSlot(
         mbdPath: activePath,
         slot: slot,
         args: effectiveArgs,
-        callTool: boot.callTool,
+        callTool:
+            (name, a) => boot.callTool(
+              resolveBundleToolName(
+                name,
+                namespace: namespace,
+                isRegistered: boot.toolScopes.containsKey,
+              ),
+              a,
+            ),
       );
       return result['ok'] == true;
     };
@@ -3410,6 +3408,10 @@ class VibeStudioHostApp extends StudioApp {
                           boot: _mcpBoot!,
                           chromeBridge: _chromeBridge,
                           initialState: initialState,
+                          toolNamespace:
+                              target == tab.path
+                                  ? tab.activation?.exposedShortId
+                                  : null,
                         );
                       }
                       // No `ui` section in the manifest — treat the bundle as a
@@ -3426,6 +3428,10 @@ class VibeStudioHostApp extends StudioApp {
                         boot: _mcpBoot!,
                         chromeBridge: _chromeBridge,
                         initialState: initialState,
+                        toolNamespace:
+                            target == tab.path
+                                ? tab.activation?.exposedShortId
+                                : null,
                       );
                     },
                   ),

@@ -222,7 +222,12 @@ class ChatPanel extends StatefulWidget {
     this.currentAgentIdOverride,
     this.onAgentSwitch,
     this.effectiveModelId,
+    this.emptyHint,
   });
+
+  /// Line shown while the conversation is empty. Null keeps the standard
+  /// line; a host names what its chat is for.
+  final String? emptyHint;
 
   /// Switch the active conversation to the picked roster agent. When supplied,
   /// selecting an agent in the chip routes here (the host re-keys the panel to
@@ -376,6 +381,7 @@ class _ChatPanelState extends State<ChatPanel> {
                     onDeleteTurn: widget.controller.removeTurn,
                     layerColorBuilder: widget.layerColorBuilder,
                     layerLabelBuilder: widget.layerLabelBuilder,
+                    emptyHint: widget.emptyHint,
                   ),
                 ),
                 _Composer(
@@ -861,7 +867,9 @@ class _Feed extends StatefulWidget {
     required this.onDeleteTurn,
     required this.layerColorBuilder,
     required this.layerLabelBuilder,
+    this.emptyHint,
   });
+  final String? emptyHint;
   final List<ChatTurn> turns;
   final bool busy;
   final ValueChanged<ChatTurn> onDeleteTurn;
@@ -925,7 +933,7 @@ class _FeedState extends State<_Feed> {
               ),
               const SizedBox(height: VibeTokens.space2),
               Text(
-                'No patches yet. Tell vibe what to build.',
+                widget.emptyHint ?? 'No patches yet. Tell vibe what to build.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: VibeTokens.colorOf(context).textTertiary,

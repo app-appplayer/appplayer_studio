@@ -54,7 +54,14 @@ class DslWorkspaceView extends StatefulWidget {
     this.selectedWidgetPath,
     this.onSelectWidget,
     this.inspectRoot,
+    this.toolNamespace,
   });
+
+  /// The running bundle's tool namespace. A `tool` action names the
+  /// bundle's own tools by their declared names; they resolve to
+  /// `<toolNamespace>.<name>` first, then as written
+  /// ([base.resolveBundleToolName]). Null = names are used as written.
+  final String? toolNamespace;
 
   /// Currently-selected widget path — used to draw the mint highlight
   /// over the matching node. Null = no selection / inspect disabled.
@@ -163,11 +170,10 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
 
   /// Tracks whether this tab was the active one on the previous build
   /// of the gate's [ValueListenableBuilder]. Used to detect the
-  /// inactive → active edge so we can re-inject the theme (bundle +
-  /// host merge) the moment we become active. Closing another tab
-  /// fires `_runtime.destroy()` on that view which resets the
-  /// process-singleton ThemeManager; the surviving active tab needs
-  /// to re-push its own theme to restore visible styling.
+  /// inactive → active edge so we can re-push the theme (bundle +
+  /// host merge) and host brightness the moment we become active —
+  /// unmounting the runtime widget while inactive cleared its
+  /// brightness override.
   bool _wasActive = false;
   // Page-nav overlay: populated when the bundle's manifest opts in via
   // `wiring.showPageNav: true` AND `ui/app.json` declares a `VbuRouter`
@@ -205,11 +211,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
   void initState() {
     super.initState();
     _bootRuntime();
-    // Inactive-close path — another tab closing fires that view's
-    // `_runtime.destroy()` which resets the process-singleton
-    // ThemeManager. The current active tab needs to re-inject its
-    // merged theme so its visible styling survives.
-    widget.chromeBridge?.themeReinjectTick.addListener(_onThemeReinjectTick);
     // Debug-mode toggle — Settings → Debug mode flips
     // `chromeBridge.inspectorEnabled`. Live-reboot so the runtime
     // mounts through `MCPUIRuntime.withInspector(...)` (or the fast
@@ -222,13 +223,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
   void _onInspectorEnabledChanged() {
     if (!mounted) return;
     _bootRuntime();
-  }
-
-  void _onThemeReinjectTick() {
-    if (!_wasActive) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _applyHostBrightness(context);
-    });
   }
 
   @override
@@ -298,13 +292,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       default:
         b = Theme.of(context).brightness;
     }
-    // Re-inject the ThemeDefinition on every mount / swap. Closing
-    // a tab fires `_runtime.destroy()` which resets the
-    // process-singleton ThemeManager (mcp_ui_runtime.dart:506
-    // `ThemeManager.instance.reset()`); without re-injection the
-    // other alive tabs lose their theme and revert to the default
-    // Blue indigo seed.
-    //
     // Bundle-authored theme (`ui/app.json#theme`) and the studio's
     // default merge field-by-field — bundle wins when present,
     // host fills the gaps. So a bundle that ships only a `light`
@@ -321,10 +308,9 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
     //
     // No `b == previous` short-circuit — the swap-edge
     // caller invokes this AFTER the previous `MCPRuntimeWidget.dispose`
-    // wiped the singleton's `_hostBrightnessOverride` to null (package
-    // src/mcp_ui_runtime.dart:604). The chrome shell brightness is
-    // unchanged across the swap, but the singleton is in a different
-    // state; without re-pushing the same value the inner MaterialApp's
+    // cleared this runtime's host-brightness override. The chrome shell
+    // brightness is unchanged across the swap, but the runtime is in a
+    // different state; without re-pushing the same value the inner MaterialApp's
     // first build evaluates `flutterThemeMode='system'` and falls back
     // to OS platformBrightness, producing a visible light/dark flip
     // when chrome and OS disagree (e.g. chrome dark + OS light).
@@ -544,17 +530,30 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
     String tool,
     Map<String, dynamic> params,
   ) async {
-    Future<mk.KernelToolResult> doCall() => boot.callTool(tool, params);
+    final target = base.resolveBundleToolName(
+      tool,
+      namespace: widget.toolNamespace,
+      isRegistered: boot.toolScopes.containsKey,
+    );
+    Future<mk.KernelToolResult> doCall() => boot.callTool(target, params);
     final session = _resolveSession();
     final result =
         session == null
             ? await doCall()
             : await base.DispatchContext.instance.runScoped(session, doCall);
+    final text =
+        result.content
+            .whereType<mk.KernelTextContent>()
+            .map((c) => c.text)
+            .join();
+    // A failed tool reaches the action's `onError`, not `onSuccess`.
+    if (result.isError == true) {
+      throw _ToolCallError(text.isEmpty ? 'tool "$target" failed' : text);
+    }
     if (result.content.isEmpty ||
         result.content.first is! mk.KernelTextContent) {
       return <String, dynamic>{};
     }
-    final text = (result.content.first as mk.KernelTextContent).text;
     try {
       final decoded = jsonDecode(text);
       if (decoded is Map<String, dynamic>) return decoded;
@@ -682,12 +681,9 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       // No host-side theme injection. AppPlayer pattern: only the
       // bundle's own `ui.theme` (if any) reaches the runtime;
       // otherwise mcp_ui's default ThemeData applies. Injecting
-      // `studioRuntimeTheme()` on every mount drove the singleton
-      // ThemeManager through repeated `setTheme` calls, leaving the
-      // last-mounted bundle's theme winning across all alive tabs
-      // (visible regression: returning to an earlier tab loses its
-      // text styling). Per-runtime brightness still flows through
-      // `setHostBrightness` from `_applyHostBrightness` below.
+      // `studioRuntimeTheme()` here is unnecessary — the merged theme
+      // and per-runtime brightness flow through `_applyHostBrightness`
+      // below.
       // Host widgets are registered BEFORE `initialize`, and that order is
       // what lets schema validation stay on. The runtime masks any type its
       // widget registry claims before checking the document against the spec
@@ -843,11 +839,12 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
               widget.boot == null
                   ? null
                   : (tool, params) async {
-                    final result = await _callHostTool(
-                      widget.boot!,
-                      tool,
-                      params,
-                    );
+                    final Map<String, dynamic> result;
+                    try {
+                      result = await _callHostTool(widget.boot!, tool, params);
+                    } on _ToolCallError catch (e) {
+                      return <String, dynamic>{'ok': false, 'error': e.message};
+                    }
                     for (final entry in result.entries) {
                       runtime.updateState(entry.key, entry.value);
                     }
@@ -982,7 +979,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
   void dispose() {
     _highlightTicker?.cancel();
     _highlightTicker = null;
-    widget.chromeBridge?.themeReinjectTick.removeListener(_onThemeReinjectTick);
     widget.chromeBridge?.inspectorEnabled.removeListener(
       _onInspectorEnabledChanged,
     );
@@ -994,9 +990,6 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
       _registeredTabKey = null;
     }
     _runtime?.destroy();
-    // Notify surviving tabs to re-inject their merged theme — the
-    // destroy() above just reset the process-singleton ThemeManager.
-    widget.chromeBridge?.themeReinjectTick.value++;
     super.dispose();
   }
 
@@ -1144,8 +1137,7 @@ class _DslWorkspaceViewState extends State<DslWorkspaceView> {
           // Inactive → active edge — `MCPRuntimeWidget.dispose` on
           // the previous SizedBox.expand swap fired
           // `themeManager.setHostBrightness(null)` (package source
-          // `flutter_mcp_ui_runtime/lib/src/mcp_ui_runtime.dart:604`),
-          // wiping the singleton's host-brightness override. The
+          // clearing this runtime's host-brightness override. The
           // newly-mounted inner MaterialApp evaluates
           // `themeManager.flutterThemeMode` during its first build;
           // with the override null and `_themeMode='system'`,
@@ -1648,4 +1640,14 @@ class _PreviewLoaderState extends State<_PreviewLoader> {
       dashboardMode: widget.dashboardMode,
     );
   }
+}
+
+/// A tool call that returned `isError`; its message is the tool's text.
+class _ToolCallError implements Exception {
+  _ToolCallError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

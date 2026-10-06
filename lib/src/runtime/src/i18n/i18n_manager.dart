@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import '../utils/mcp_logger.dart';
 
 /// Manager for internationalization support according to MCP UI DSL v1.0
@@ -9,6 +11,14 @@ class I18nManager extends ChangeNotifier {
   static I18nManager get instance => _instance ??= I18nManager._();
 
   I18nManager._();
+
+  /// A manager of its own, not the process-wide [instance].
+  ///
+  /// Each runtime engine holds one, so two documents open at once — two tabs
+  /// of a player — never read each other's text or switch each other's
+  /// locale.
+  I18nManager.scoped();
+
 
   // Current locale
   String _currentLocale = 'en';
@@ -23,9 +33,368 @@ class I18nManager extends ChangeNotifier {
 
   final MCPLogger _logger = MCPLogger('I18nManager');
 
-  /// Set the current locale
+  // The rest of an `ApplicationDefinition.i18n` block (§12.1), keyed by
+  // locale and then by key.
+  final Map<String, Map<String, dynamic>> _plurals = {};
+  final Map<String, Map<String, dynamic>> _numberFormats = {};
+  final Map<String, Map<String, dynamic>> _dateFormats = {};
+  final Map<String, String> _directions = {};
+  final List<String> _declaredLocales = [];
+
+  // `locale|key` pairs already reported missing — §12.7 asks for one warning
+  // per key per locale, not one per rebuild.
+  final Set<String> _reportedMissing = {};
+
+  bool _hasDefinition = false;
+
+  /// Whether a document's `i18n` block has been loaded. A runtime that never
+  /// received one leaves layout direction to its host.
+  bool get hasDefinition => _hasDefinition;
+
+  /// Loads an `ApplicationDefinition.i18n` block (§12.1) and picks the first
+  /// active locale (§12.6): the first of [preferredLocales] — the host's
+  /// languages, in order — that the document carries entries for, otherwise
+  /// `defaultLocale`.
+  Future<void> loadDefinition(
+    Map<String, dynamic> i18n, {
+    List<String> preferredLocales = const [],
+  }) async {
+    _translations.clear();
+    _plurals.clear();
+    _numberFormats.clear();
+    _dateFormats.clear();
+    _directions.clear();
+    _declaredLocales.clear();
+    _reportedMissing.clear();
+
+    final defaultLocale = i18n['defaultLocale'];
+    _fallbackLocale =
+        defaultLocale is String ? _normalise(defaultLocale) : 'en';
+    _copyLocaleMap(i18n['text'], _translations);
+    _copyLocaleMap(i18n['pluralization'], _plurals);
+    _copyLocaleMap(i18n['numberFormat'], _numberFormats);
+    _copyLocaleMap(i18n['dateFormat'], _dateFormats);
+    final directions = i18n['textDirection'];
+    if (directions is Map) {
+      directions.forEach((locale, direction) {
+        if (direction is String) {
+          _directions[_normalise('$locale')] = direction;
+        }
+      });
+    }
+    final locales = i18n['locales'];
+    if (locales is List) {
+      _declaredLocales.addAll(locales.whereType<String>().map(_normalise));
+    }
+
+    String? chosen;
+    for (final preferred in preferredLocales) {
+      chosen = matchLocale(preferred);
+      if (chosen != null) break;
+    }
+    _currentLocale = chosen ?? _fallbackLocale;
+    _hasDefinition = true;
+
+    // Date patterns need the locale's symbols before the first format call.
+    await initializeDateFormatting();
+    notifyListeners();
+  }
+
+  void _copyLocaleMap(Object? source, Map<String, Map<String, dynamic>> into) {
+    if (source is! Map) return;
+    source.forEach((locale, entries) {
+      if (entries is Map) {
+        into[_normalise('$locale')] = Map<String, dynamic>.from(entries);
+      }
+    });
+  }
+
+  static String _normalise(String tag) => tag.replaceAll('_', '-');
+
+  Iterable<String> get _knownLocales => {
+        ..._declaredLocales,
+        ..._translations.keys,
+        ..._plurals.keys,
+        ..._numberFormats.keys,
+        ..._dateFormats.keys,
+        _fallbackLocale,
+      };
+
+  /// The document's spelling of the locale closest to [requested]: the same
+  /// tag (BCP 47 tags compare case-insensitively), else the first locale of
+  /// the same language — a device set to `ko` reads a document's `ko-KR`.
+  /// Null when the document carries nothing for that language.
+  String? matchLocale(String requested) {
+    final wanted = _normalise(requested).toLowerCase();
+    final known = _knownLocales.toList();
+    for (final tag in known) {
+      if (tag.toLowerCase() == wanted) return tag;
+    }
+    final language = wanted.split('-').first;
+    if (_fallbackLocale.toLowerCase().split('-').first == language) {
+      return _fallbackLocale;
+    }
+    for (final tag in known) {
+      if (tag.toLowerCase().split('-').first == language) return tag;
+    }
+    return null;
+  }
+
+  /// Layout direction for the active locale (§12.8.1): the document's
+  /// `textDirection` entry, else the script's built-in direction.
+  TextDirection get textDirection {
+    final declared = _directions[_currentLocale];
+    if (declared == 'rtl') return TextDirection.rtl;
+    if (declared == 'ltr') return TextDirection.ltr;
+    return isRtl() ? TextDirection.rtl : TextDirection.ltr;
+  }
+
+  /// Resolves a `{{i18n.*}}` binding (§12.2).
+  ///
+  /// [locale] is the explicit-locale form (`{{i18n.greeting:en-US}}`).
+  /// [named] / [positional] are the argument forms; a key with arguments
+  /// resolves against `pluralization`, then `numberFormat`, then
+  /// `dateFormat`, then `text` (§12.2.2).
+  String resolveBinding(
+    String key, {
+    String? locale,
+    Map<String, dynamic>? named,
+    List<dynamic> positional = const [],
+  }) {
+    final active =
+        locale == null ? _currentLocale : (matchLocale(locale) ?? locale);
+    if (named != null || positional.isNotEmpty) {
+      if (_entry(_plurals, active, key) != null) {
+        return _pluralize(key, named ?? const {}, active);
+      }
+      final number = _entry(_numberFormats, active, key);
+      if (number != null) {
+        return _formatNumberEntry(
+            key,
+            number,
+            positional.isEmpty ? named?.values.first : positional.first,
+            active);
+      }
+      final date = _entry(_dateFormats, active, key);
+      if (date != null) {
+        return _formatDateEntry(
+            key,
+            date,
+            positional.isEmpty ? named?.values.first : positional.first,
+            active);
+      }
+    }
+    return translate(key, params: named, locale: active);
+  }
+
+  /// The entry for [key] under [locale], else under `defaultLocale` (§12.7).
+  dynamic _entry(
+      Map<String, Map<String, dynamic>> table, String locale, String key) {
+    return table[locale]?[key] ?? table[_fallbackLocale]?[key];
+  }
+
+  /// §12.7 step 4: the key with a warning marker, and one warning per key per
+  /// locale.
+  String _missing(String key, String locale) {
+    if (_reportedMissing.add('$locale|$key')) {
+      _logger.warning('i18n key "$key" has no entry for $locale '
+          'or the default locale $_fallbackLocale');
+    }
+    return '!!$key';
+  }
+
+  String _pluralize(String key, Map<String, dynamic> args, String locale) {
+    final raw = args['count'];
+    final count = raw is num ? raw : num.tryParse('$raw') ?? 0;
+    String? template(String tag) {
+      final forms = _plurals[tag]?[key];
+      if (forms is! Map) return null;
+      // An explicit zero form is honoured in every locale — the spec's own
+      // en-US example writes one, though CLDR gives English no zero category.
+      if (count == 0 && forms['zero'] is String) return forms['zero'] as String;
+      final form = forms[cldrPluralCategory(tag, count)] ?? forms['other'];
+      return form is String ? form : null;
+    }
+
+    final chosen = template(locale) ??
+        (locale == _fallbackLocale ? null : template(_fallbackLocale));
+    if (chosen == null) return _missing(key, locale);
+    return _interpolate(
+        chosen,
+        args.map((name, value) =>
+            MapEntry(name, value is num ? _decimal(value, locale) : value)));
+  }
+
+  String _decimal(num value, String locale) =>
+      NumberFormat.decimalPattern(_intlLocale(locale)).format(value);
+
+  String _formatNumberEntry(
+      String key, dynamic descriptor, dynamic value, String locale) {
+    final number = value is num ? value : num.tryParse('$value');
+    if (number == null || descriptor is! Map) return _missing(key, locale);
+    final intlLocale = _intlLocale(locale);
+    final style = descriptor['style'] ?? 'decimal';
+    final NumberFormat format;
+    switch (style) {
+      case 'currency':
+        format = NumberFormat.simpleCurrency(
+            locale: intlLocale, name: descriptor['currency'] as String?);
+      case 'percent':
+        format = NumberFormat.percentPattern(intlLocale);
+      default:
+        format = NumberFormat.decimalPattern(intlLocale);
+    }
+    final minimum = descriptor['minimumFractionDigits'];
+    final maximum = descriptor['maximumFractionDigits'];
+    if (minimum is num) format.minimumFractionDigits = minimum.toInt();
+    if (maximum is num) format.maximumFractionDigits = maximum.toInt();
+    if (minimum is num &&
+        maximum is! num &&
+        format.maximumFractionDigits < minimum.toInt()) {
+      format.maximumFractionDigits = minimum.toInt();
+    }
+    if (descriptor['useGrouping'] == false) format.turnOffGrouping();
+    return format.format(number);
+  }
+
+  String _formatDateEntry(
+      String key, dynamic descriptor, dynamic value, String locale) {
+    final DateTime? date = value is num
+        ? DateTime.fromMillisecondsSinceEpoch(value.toInt())
+        : (value is String ? DateTime.tryParse(value) : null);
+    if (date == null) return _missing(key, locale);
+    final intlLocale = _intlLocale(locale);
+    if (descriptor is String) {
+      return DateFormat(descriptor, intlLocale).format(date);
+    }
+    if (descriptor is! Map) return _missing(key, locale);
+    return _dateFormatFor(descriptor, intlLocale).format(date);
+  }
+
+  /// An ECMA-402 `DateTimeFormat` option set as a locale pattern: the
+  /// locale's own pattern for the fields asked for, with `2-digit` fields
+  /// widened.
+  static DateFormat _dateFormatFor(Map descriptor, String locale) {
+    final skeleton = StringBuffer();
+    final year = descriptor['year'];
+    final month = descriptor['month'];
+    final day = descriptor['day'];
+    final weekday = descriptor['weekday'];
+    final hour = descriptor['hour'];
+    final minute = descriptor['minute'];
+    final second = descriptor['second'];
+    final hour12 = descriptor['hour12'];
+    if (year != null) skeleton.write('y');
+    if (month != null) {
+      skeleton.write(switch (month) {
+        'long' => 'MMMM',
+        'short' => 'MMM',
+        'narrow' => 'MMMMM',
+        _ => 'M',
+      });
+    }
+    if (weekday != null) {
+      skeleton.write(weekday == 'long' ? 'EEEE' : 'E');
+    }
+    if (day != null) skeleton.write('d');
+    if (hour != null) {
+      skeleton.write(hour12 == true ? 'h' : (hour12 == false ? 'H' : 'j'));
+    }
+    if (minute != null) skeleton.write('m');
+    if (second != null) skeleton.write('s');
+
+    final format = DateFormat(skeleton.toString(), locale);
+    var pattern = format.pattern ?? skeleton.toString();
+    String widen(String pattern, String letter) => pattern.replaceAllMapped(
+        RegExp('(?<![$letter])$letter(?![$letter])'), (_) => '$letter$letter');
+    if (month == '2-digit') pattern = widen(pattern, 'M');
+    if (day == '2-digit') pattern = widen(pattern, 'd');
+    if (hour == '2-digit') {
+      pattern = widen(widen(pattern, 'h'), 'H');
+    }
+    if (minute == '2-digit') pattern = widen(pattern, 'm');
+    if (second == '2-digit') pattern = widen(pattern, 's');
+    if (year == '2-digit') {
+      pattern = pattern.replaceAll(RegExp('y+'), 'yy');
+    }
+    return DateFormat(pattern, locale);
+  }
+
+  /// [tag] in the form intl looks locale data up by, falling back to the
+  /// language and then to English rather than throwing on an unknown tag.
+  static String _intlLocale(String tag) =>
+      Intl.verifiedLocale(
+          _normalise(tag).replaceAll('-', '_'), NumberFormat.localeExists,
+          onFailure: (_) => 'en') ??
+      'en';
+
+  /// The CLDR plural category of [count] in [locale] (§12.3.1), for the
+  /// languages whose rules differ from English.
+  static String cldrPluralCategory(String locale, num count) {
+    final language = _normalise(locale).toLowerCase().split('-').first;
+    final i = count.abs().truncate();
+    final hasFraction = count != count.truncate();
+    final mod10 = i % 10;
+    final mod100 = i % 100;
+    switch (language) {
+      case 'ja':
+      case 'ko':
+      case 'zh':
+      case 'th':
+      case 'vi':
+      case 'id':
+      case 'ms':
+      case 'lo':
+      case 'my':
+      case 'km':
+        return 'other';
+      case 'fr':
+      case 'pt':
+        return !hasFraction && (i == 0 || i == 1) ? 'one' : 'other';
+      case 'ru':
+      case 'uk':
+      case 'be':
+        if (hasFraction) return 'other';
+        if (mod10 == 1 && mod100 != 11) return 'one';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+          return 'few';
+        }
+        return 'many';
+      case 'pl':
+        if (hasFraction) return 'other';
+        if (i == 1) return 'one';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+          return 'few';
+        }
+        return 'many';
+      case 'cs':
+      case 'sk':
+        if (hasFraction) return 'many';
+        if (i == 1) return 'one';
+        if (i >= 2 && i <= 4) return 'few';
+        return 'other';
+      case 'ar':
+        if (hasFraction) return 'other';
+        if (i == 0) return 'zero';
+        if (i == 1) return 'one';
+        if (i == 2) return 'two';
+        if (mod100 >= 3 && mod100 <= 10) return 'few';
+        if (mod100 >= 11 && mod100 <= 99) return 'many';
+        return 'other';
+      case 'he':
+        if (hasFraction) return 'other';
+        if (i == 1) return 'one';
+        if (i == 2) return 'two';
+        return 'other';
+      default:
+        return !hasFraction && i == 1 ? 'one' : 'other';
+    }
+  }
+
+  /// Set the current locale — the document's spelling of it when the
+  /// document carries that locale or its language (§12.6).
   void setLocale(String locale) {
-    _currentLocale = locale;
+    _currentLocale = matchLocale(locale) ?? locale;
     _logger.debug('Locale changed to: $locale');
     notifyListeners();
   }
@@ -83,28 +452,25 @@ class I18nManager extends ChangeNotifier {
     }
   }
 
-  /// Get a translated string with dot notation support
-  String translate(String key, {Map<String, dynamic>? params}) {
+  /// The `text` entry for [key] (dot notation reaches nested maps), with
+  /// [params] interpolated.
+  ///
+  /// Resolution follows §12.7: [locale] (the active locale when omitted),
+  /// then `defaultLocale`, then the key behind a `!!` marker — a missing
+  /// translation stays visible on screen instead of passing for a label.
+  String translate(String key, {Map<String, dynamic>? params, String? locale}) {
     final keys = key.split('.');
-    dynamic value = _translations[_currentLocale];
-
-    for (final k in keys) {
-      if (value is Map) {
-        value = value[k];
-      } else {
-        break;
-      }
-    }
-
-    if (value == null && _currentLocale != _fallbackLocale) {
+    final active =
+        locale == null ? _currentLocale : (matchLocale(locale) ?? locale);
+    var value = _getFromLocale(active, keys);
+    if (value == null && active != _fallbackLocale) {
       value = _getFromLocale(_fallbackLocale, keys);
     }
-
+    if (value == null) return _missing(key, active);
     if (value is String && params != null) {
       return _interpolate(value, params);
     }
-
-    return value?.toString() ?? key;
+    return value.toString();
   }
 
   /// Get value from locale with keys path
@@ -134,8 +500,17 @@ class I18nManager extends ChangeNotifier {
 
   /// Plural form support
   String plural(String key, int count, {Map<String, dynamic>? params}) {
-    final pluralKey = '$key.${_getPluralForm(count)}';
-    return translate(pluralKey, params: {...?params, 'count': count});
+    final all = {...?params, 'count': count};
+    // A key holding plain text has no forms to choose from; it is the text.
+    final entry = _getFromLocale(_currentLocale, key.split('.')) ??
+        _getFromLocale(_fallbackLocale, key.split('.'));
+    if (entry is String) return _interpolate(entry, all);
+    // A missing category falls back to `other` (§12.3.1).
+    final form = _getPluralForm(count);
+    if (entry is Map && entry[form] == null && entry['other'] != null) {
+      return translate('$key.other', params: all);
+    }
+    return translate('$key.$form', params: all);
   }
 
   /// Get plural form based on CLDR plural rules for major locales
@@ -246,6 +621,13 @@ class I18nManager extends ChangeNotifier {
   /// Clear all translations
   void clear() {
     _translations.clear();
+    _plurals.clear();
+    _numberFormats.clear();
+    _dateFormats.clear();
+    _directions.clear();
+    _declaredLocales.clear();
+    _reportedMissing.clear();
+    _hasDefinition = false;
   }
 
   /// Handle i18n key format from MCP UI DSL

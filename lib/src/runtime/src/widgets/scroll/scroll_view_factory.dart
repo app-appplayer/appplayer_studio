@@ -19,10 +19,9 @@ class ScrollViewFactory extends WidgetFactory {
     final reverse = boolOf(properties['reverse'], context) ?? false;
     final padding = edgeInsetsOf(properties['padding'], context);
     final primary = boolOf(properties['primary'], context);
-    // `scrollPhysics` (canonical) replaces
-    // the legacy `physics` key. Both accepted for backward compat.
-    final physics = _parseScrollPhysics(
-        readEnum(properties['scrollPhysics'] ?? properties['physics'], context));
+    // `physics` is canonical; `scrollPhysics` is its legacy name (§17.3.2).
+    final physics = readScrollPhysics(
+        properties['physics'] ?? properties['scrollPhysics'], context);
 
     // Sliver mode: `slivers` is a distinct layout mode, not a second
     // spelling of `children`. It used to be laid out as ordinary children on
@@ -314,22 +313,6 @@ class ScrollViewFactory extends WidgetFactory {
     );
   }
 
-  ScrollPhysics? _parseScrollPhysics(String? value) {
-    switch (value) {
-      case 'never':
-      case 'neverScrollable':
-        return const NeverScrollableScrollPhysics();
-      case 'always':
-      case 'alwaysScrollable':
-        return const AlwaysScrollableScrollPhysics();
-      case 'bouncing':
-        return const BouncingScrollPhysics();
-      case 'clamping':
-        return const ClampingScrollPhysics();
-      default:
-        return null;
-    }
-  }
 }
 
 /// Holds a `sliverPersistentHeader`'s child between its declared extents.
