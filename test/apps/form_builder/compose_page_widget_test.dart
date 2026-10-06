@@ -209,8 +209,14 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.text('Save draft'));
-    await settle(tester, 12);
-    final drafts = await tester.runAsync(() => h.init.listDrafts());
+    // The draft is written asynchronously; under suite load a fixed number of
+    // rounds can end before the write lands, so wait for the record itself.
+    List<Map<String, dynamic>>? drafts;
+    for (var i = 0; i < 200; i++) {
+      drafts = await tester.runAsync(() => h.init.listDrafts());
+      if (drafts != null && drafts.isNotEmpty) break;
+      await settle(tester, 1);
+    }
     expect(drafts, hasLength(1));
     final doc = (drafts!.first['document'] as Map).cast<String, dynamic>();
     expect(doc['data']?['recipient'], 'Hanul Precision');
