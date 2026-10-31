@@ -851,6 +851,46 @@ void main() {
       expect((manifest['skills'] as Map)['modules'], hasLength(1));
     });
 
+    test('addSkill refuses an entry the bundle schema would drop', () async {
+      await writeManifest(baseManifest());
+      for (final entry in <Map<String, dynamic>>[
+        // Ops-shaped: no name, numeric version.
+        {
+          'id': 'a',
+          'version': 1,
+          'description': 'd',
+          'actionBody': {'kind': 'llm'},
+          'tags': ['t'],
+        },
+        {'id': 'b', 'name': 'B', 'version': 1},
+      ]) {
+        final out = await _call(host, 'studio.builder.addSkill', {
+          'mbdPath': mbdPath,
+          'skill': entry,
+        });
+        expect(out['ok'], isFalse, reason: '$entry');
+        expect(out['issues'], isNotEmpty);
+      }
+      expect((await readManifestFile())['skills'], isNull);
+    });
+
+    test(
+      'addProfile and addPhilosophy refuse an entry without a name',
+      () async {
+        await writeManifest(baseManifest());
+        final profile = await _call(host, 'studio.builder.addProfile', {
+          'mbdPath': mbdPath,
+          'profile': <String, dynamic>{'id': 'p'},
+        });
+        expect(profile['ok'], isFalse);
+        final philosophy = await _call(host, 'studio.builder.addPhilosophy', {
+          'mbdPath': mbdPath,
+          'philosophy': <String, dynamic>{'id': 'ph'},
+        });
+        expect(philosophy['ok'], isFalse);
+      },
+    );
+
     test('addProfile routes to profiles.profiles[]', () async {
       await writeManifest(baseManifest());
       final out = await _call(host, 'studio.builder.addProfile', {

@@ -13,13 +13,20 @@ outputSchema:
     score:  { type: number }
     reason: { type: string }
 actionBody:
-  kind: llm
-  data:
-    prompt: |
-      Evaluate the output below against the metric "{{ in.metric }}".
-      Output: {{ in.prev }}
+  kind: composite
+  steps:
+    - kind: llm
+      id: appraise
+      output: raw
+      prompt: |
+        Evaluate the output below against the metric "{{ in.metric }}".
+        Output: {{ in.prev }}
 
-      Return a score between 0.0 and 1.0 plus a one-line rationale as JSON:
-      { "score": <0..1>, "reason": "<brief rationale>" }
-    maxTokens: 500
+        Return a score between 0.0 and 1.0 plus a one-line rationale as JSON:
+        { "score": <0..1>, "reason": "<brief rationale>" }
+      maxTokens: 500
+    - kind: parse_json
+      id: score
+      inputs:
+        text: "{{ step.raw.text }}"
 tags: [ readOnly, quality ]

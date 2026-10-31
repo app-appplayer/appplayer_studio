@@ -9,8 +9,9 @@ inputSchema:
   required: [ adId ]
 actionBody:
   kind: browser
-  operation: submit_form
   data:
+    operation: submit_form
+  inputs:
     url: "https://makemind.dev/admin/ads/{{ in.adId }}/review"
     steps:
       - { selector: "button[data-action={{ in.action }}]", action: click }

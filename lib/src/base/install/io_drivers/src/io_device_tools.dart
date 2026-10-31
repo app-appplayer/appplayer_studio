@@ -25,13 +25,16 @@ Map<String, IoToolHandler> ioDeviceTools({
   required DevicePlatform platform,
 }) {
   final ioTools = IoTools(runtime: runtime);
-  // Live connection instances: deviceId -> adapterId (the registry keys
-  // adapters by adapterId, so disconnect needs the mapping).
-  final connected = <String, String>{};
+  // Live connection instances: deviceId -> adapter (the registry keys
+  // adapters by adapterId, and unregistering does not close the adapter's
+  // port, so disconnect needs the instance).
+  final connected = <String, AdapterBase>{};
 
   Map<String, dynamic> ok(Object? content) => {'content': content};
-  Map<String, dynamic> err(String message) =>
-      {'isError': true, 'errorMessage': message};
+  Map<String, dynamic> err(String message) => {
+    'isError': true,
+    'errorMessage': message,
+  };
 
   final handlers = <String, IoToolHandler>{};
 
@@ -58,7 +61,8 @@ Map<String, IoToolHandler> ioDeviceTools({
     final config = IoDeviceConfig(
       type: type,
       id: id,
-      params: (args['params'] as Map?)?.cast<String, dynamic>() ??
+      params:
+          (args['params'] as Map?)?.cast<String, dynamic>() ??
           const <String, dynamic>{},
     );
     final AdapterBase adapter;
@@ -67,18 +71,31 @@ Map<String, IoToolHandler> ioDeviceTools({
     } on ProvisionException catch (e) {
       return err(e.message);
     }
+    // Open the connection first: a device that cannot be opened is reported
+    // here instead of failing on its first use.
+    try {
+      await adapter.connect();
+    } on Object catch (e) {
+      return err('io.connect_device could not open "$id": $e');
+    }
     await runtime.registry.registerAdapter(adapter.manifest, adapter);
     await runtime.registry.discover();
-    connected[id] = adapter.manifest.adapterId;
+    connected[id] = adapter;
     return ok({'connected': true, 'id': id});
   };
 
   handlers['io.disconnect_device'] = (args) async {
     final id = args['id'] as String?;
     if (id == null) return err('io.disconnect_device requires "id"');
-    final adapterId = connected.remove(id);
-    if (adapterId == null) return err('device not connected: $id');
-    await runtime.registry.unregisterAdapter(adapterId);
+    final adapter = connected.remove(id);
+    if (adapter == null) return err('device not connected: $id');
+    await runtime.registry.unregisterAdapter(adapter.manifest.adapterId);
+    try {
+      await adapter.disconnect();
+    } on Object {
+      // The device is already unregistered; a failed close leaves nothing
+      // for the caller to act on.
+    }
     return ok({'disconnected': true, 'id': id});
   };
 

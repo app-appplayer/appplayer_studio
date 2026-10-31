@@ -19,11 +19,12 @@ class IoDeviceConfig {
   });
 
   factory IoDeviceConfig.fromJson(Map<String, dynamic> json) => IoDeviceConfig(
-        type: json['type'] as String,
-        id: json['id'] as String,
-        params: (json['params'] as Map?)?.cast<String, dynamic>() ??
-            const <String, dynamic>{},
-      );
+    type: json['type'] as String,
+    id: json['id'] as String,
+    params:
+        (json['params'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{},
+  );
 
   /// Adapter type key (e.g. `modbus`, `mqtt`).
   final String type;
@@ -35,10 +36,10 @@ class IoDeviceConfig {
   final Map<String, dynamic> params;
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'id': id,
-        if (params.isNotEmpty) 'params': params,
-      };
+    'type': type,
+    'id': id,
+    if (params.isNotEmpty) 'params': params,
+  };
 }
 
 /// Builds an adapter instance from its [IoDeviceConfig] — constructing the
@@ -50,7 +51,8 @@ typedef IoDeviceBuilder = AdapterBase Function(IoDeviceConfig config);
 class ProvisionException implements Exception {
   ProvisionException(this.code, this.message);
 
-  /// `unknown_type` | `unsupported_platform`.
+  /// `unknown_type` | `unsupported_platform` | `invalid_params` |
+  /// `driver_unavailable` (a native driver whose library is not installed).
   final String code;
   final String message;
 
@@ -84,9 +86,9 @@ class IoDriverRegistry {
 
   /// Driver types available on [platform].
   Set<String> typesFor(DevicePlatform platform) => {
-        for (final e in _drivers.entries)
-          if (e.value.platforms.contains(platform)) e.key,
-      };
+    for (final e in _drivers.entries)
+      if (e.value.platforms.contains(platform)) e.key,
+  };
 
   /// Build the adapter for [config] on [platform]. Throws
   /// [ProvisionException] for an unknown type or an unsupported platform.

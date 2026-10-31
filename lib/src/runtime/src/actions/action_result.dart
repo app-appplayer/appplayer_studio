@@ -4,6 +4,12 @@
 /// Success: `{success: true, data: ..., timestamp: ...}`
 /// Error: `{success: false, error: {code: ..., message: ..., details: ...}, timestamp: ...}`
 class ActionResult {
+  /// Error code of an action that ran out of its `timeout` (§4.16).
+  static const String timeoutCode = 'TIMEOUT';
+
+  /// Error code of an action ended by `cancel` or page removal (§4.15).
+  static const String cancelledCode = 'CANCELLED';
+
   final bool success;
   final String? error;
   final String? errorCode;

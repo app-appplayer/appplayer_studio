@@ -987,6 +987,16 @@ class ChromeBridge {
   Future<int> Function({required String question, List<String>? options})?
   prompt;
 
+  /// Like [prompt], but the dialog closes by itself (answer `-1`) when
+  /// [until] completes — for a caller that stops waiting (a deadline), so a
+  /// question nobody is waiting for does not stay on the screen.
+  Future<int> Function({
+    required String question,
+    List<String>? options,
+    required Future<void> until,
+  })?
+  promptUntil;
+
   /// Generic lifecycle dispatcher. Chrome surfaces (Home buttons,
   /// Domain toolbars, Tools-mode sub-tab actions) call this with a
   /// conceptual [slot] id (e.g. `'project.new'`, `'project.save'`,

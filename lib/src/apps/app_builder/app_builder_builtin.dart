@@ -482,6 +482,7 @@ class _AppBuilderMountState extends State<_AppBuilderMount> {
       selfUiConv: SelfUiConverterImpl(),
       bridge: _bridge,
     )..register();
+    _bridge.onBecameLive = _boot.reregister;
     // Publish our 4-axis hooks to the registry so host wiring
     // (`_resolveDomainPanel`, `_syncHeaderActions`, `dispatchLifecycleSlot`,
     // composer slash) can reach the same providers regardless of

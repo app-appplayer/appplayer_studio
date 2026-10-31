@@ -60,6 +60,7 @@ export 'src/base/boot/tool_definitions_reader.dart';
 // (`studio.builder.ui.catalog.list` / `…catalog.schema`).
 export 'src/base/builder/widget_spec.dart';
 export 'src/base/builder/dsl_spec_loader.dart';
+export 'src/base/builder/dsl_primitive_loader.dart' show DslPrimitive, DslPrimitiveLoader;
 export 'src/base/builder/vbu_atom_spec_loader.dart';
 export 'src/base/builder/builder_catalog_service.dart';
 export 'src/base/builder/builder_catalog_tools.dart';
@@ -92,11 +93,13 @@ export 'src/base/install/studio_kb.dart';
 export 'src/base/install/form_capability_store.dart';
 export 'src/base/install/channel_capability.dart';
 export 'src/base/install/io_capability.dart';
+export 'src/base/install/plugin_install.dart' show registerPluginTools;
 export 'src/base/install/llm_capability.dart';
 export 'src/base/install/bundle_install_tools.dart';
 export 'src/base/install/bundle_resource_tools.dart';
 export 'src/base/install/builder_mutator_tools.dart';
 export 'src/base/install/bundle_template_loader.dart';
+export 'src/base/install/bundle_history.dart' show bundleHistoryRootFor;
 export 'src/base/install/bundle_loading.dart';
 export 'src/base/install/bundle_manifest_validator.dart';
 export 'src/base/install/fs_tools.dart';
@@ -110,6 +113,21 @@ export 'src/base/install/atoms/kb_atom.dart';
 export 'src/base/install/bundle_self_names.dart';
 export 'src/base/install/bundle_tool_names.dart';
 export 'src/base/install/host_extensions.dart';
+export 'src/base/install/celm_capability.dart' show registerCelmCapability;
+export 'src/base/install/host_approval.dart';
+export 'src/base/install/gateway_node/hub_caller.dart' show HubCaller;
+export 'src/base/install/io_capability.dart'
+    show ioCapabilityId, registerIoCapability;
+export 'src/base/bridge/extension_connect_tool.dart'
+    show registerExtensionConnectTool;
+export 'src/base/install/hub_apps.dart'
+    show HubApp, HubEntryReason, hubEntryReasonOf;
+export 'src/base/install/hub_connections.dart'
+    show HubClientSetup, HubConnectionError, HubLinkState;
+export 'src/base/install/hub_host_wiring.dart' show HubHost, mountHub;
+export 'src/base/install/hub_node_host.dart'
+    show HubNodeInfo, HubNodeLinkState, HubNodePolicy, HubNodeState;
+export 'src/base/install/hub_space.dart' show HubAppView, HubEntry, HubItem, HubSpace;
 export 'src/base/install/atoms/mcp_atom.dart';
 export 'src/base/install/atoms/ui_atom.dart';
 export 'src/base/install/atoms/workspace_atom.dart';

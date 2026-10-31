@@ -22,6 +22,22 @@ import 'package:path/path.dart' as p;
 /// per-project bundle duplicate.
 const String _assetPrefix = 'lib/src/apps/ops/seed/project';
 
+/// Cross-package asset prefix used when the host app is NOT this package
+/// (overlay tiers such as pro). Must match this package's pub name.
+const String _packageAssetPrefix = 'packages/appplayer_studio';
+
+/// Load a seed asset that works in both tiers: the unprefixed key when this
+/// package is the host app, the `packages/<pkg>/` key when an overlay tier
+/// hosts it (Flutter bundles the same assets under that indirection, so the
+/// unprefixed key throws there — the Ops project could not be created).
+Future<String> _loadSeedAsset(String assetPath) async {
+  try {
+    return await rootBundle.loadString(assetPath);
+  } on Object {
+    return rootBundle.loadString('$_packageAssetPrefix/$assetPath');
+  }
+}
+
 /// Files copied verbatim into the project root. Each template carries
 /// `{{id}}`, `{{name}}`, `{{createdAt}}` placeholders replaced at copy
 /// time.
@@ -47,7 +63,7 @@ const String opsProjectMarker = 'project.opsproj';
 Future<void> applyOpsProjectSeed(String projectDir, String projectName) async {
   final createdAt = DateTime.now().toUtc().toIso8601String();
   for (final rel in _seedFiles) {
-    final raw = await rootBundle.loadString('$_assetPrefix/$rel');
+    final raw = await _loadSeedAsset('$_assetPrefix/$rel');
     final substituted = raw
         .replaceAll('{{id}}', projectName)
         .replaceAll('{{name}}', projectName)
@@ -89,7 +105,7 @@ Future<void> applyOpsWorkspaceSeed(
   String wsId,
   String wsName,
 ) async {
-  final raw = await rootBundle.loadString(_workspaceManifestAsset);
+  final raw = await _loadSeedAsset(_workspaceManifestAsset);
   final substituted = raw
       .replaceAll('{{id}}', wsId)
       .replaceAll('{{name}}', wsName);

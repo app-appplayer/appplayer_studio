@@ -477,7 +477,7 @@ A workspace member. Two kinds:
 ## Skill
 A unit capability an agent performs. YAML definition:
 - `id`, `version`, `description`, `inputSchema`, `outputSchema`
-- `actionBody` — kind (llm · browser · mcp · fact.save · fact.query · ingest · channel · composite · map) + steps. (Form rendering = host `form.*` tools via a `kind: mcp` step.)
+- `actionBody` — kind (llm · browser · mcp · fact.save · fact.query · ingest · channel · parse_json · composite · map) + steps. (Form rendering = host `form.*` tools via a `kind: mcp` step.)
 
 **3-layer resolution order**:
 1. agent overlay: `workspaces/<ws>/members/<agentId>/skills/<id>.yaml` (individual)
@@ -698,7 +698,8 @@ outputSchema:
     summary: { type: string }
 actionBody:
   kind: composite            # llm | browser | mcp | fact.save | fact.query
-                             # | ingest | form | channel | composite | map | noop
+                             # | ingest | channel | parse_json | composite
+                             # | map | noop
   steps:                     # executed sequentially when composite
     - kind: llm
       id: draft               # step identifier (referenced by other steps)
@@ -738,6 +739,7 @@ tags: [content, write]
 | `channel` | Send a notification/message |
 | `composite` | Run multiple steps sequentially |
 | `map` | Return inputs as-is wrapped in `{value: inputs}` (for transformation) |
+| `parse_json` | Read JSON out of text (`inputs.text`, a code fence is dropped) → the parsed map; text that is not JSON fails the step |
 | `noop` | Return an empty map |
 
 ## Storage paths

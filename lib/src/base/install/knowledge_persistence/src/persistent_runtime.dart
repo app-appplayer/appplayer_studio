@@ -42,8 +42,7 @@ const List<String> kCollectionNames = [
 const String kFactGraphDirName = '.factgraph';
 
 /// Resolve the on-disk graph directory for a project root.
-String factGraphDirFor(String projectRoot) =>
-    '$projectRoot/$kFactGraphDirName';
+String factGraphDirFor(String projectRoot) => '$projectRoot/$kFactGraphDirName';
 
 /// Assemble a disk-backed [FactGraphRuntime] rooted at [rootDir], hydrated
 /// from any existing collection files. Mirrors the service wiring of
@@ -158,7 +157,8 @@ Future<void> purgeProject(String graphDir) async {
 /// Equivalent to copying the folder, but as a single serializable value for
 /// backup or transfer. Reads the on-disk files directly.
 Future<Map<String, List<Map<String, dynamic>>>> exportProject(
-    String graphDir) async {
+  String graphDir,
+) async {
   final out = <String, List<Map<String, dynamic>>>{};
   for (final name in kCollectionNames) {
     final items = await CollectionFile(graphDir, name).read();

@@ -35,8 +35,7 @@ class _FakeMdnsScanner extends MdnsBoardScanner {
   Stream<MdnsBoardCandidate> scan({
     Duration timeout = const Duration(seconds: 5),
     Duration recordTimeout = const Duration(seconds: 2),
-  }) =>
-      Stream.fromIterable(candidates);
+  }) => Stream.fromIterable(candidates);
 }
 
 /// The MCP Serving service UUID as a radio reports it.
@@ -75,7 +74,7 @@ MdnsBoardCandidate _cand(String name, String proto, {int port = 6270}) =>
 /// Capture-only registry: records exposed names + handlers so tests invoke
 /// tools directly (same pattern as extension_connect_tool_test).
 ({fb.HostToolRegistry registry, Map<String, fb.KernelToolHandler> handlers})
-    _captureRegistry(fb.KernelApp app, String label) {
+_captureRegistry(fb.KernelApp app, String label) {
   final handlers = <String, fb.KernelToolHandler>{};
   final endpoint = app.addEndpoint(label: label, appName: label);
   endpoint.server.register();
@@ -155,11 +154,7 @@ class _SocketBoardTransport implements srv.ServerTransport {
       onMessage: _messages.add,
       onError: _messages.addError,
     );
-    _socket.listen(
-      framer.feed,
-      onDone: close,
-      onError: (Object _) => close(),
-    );
+    _socket.listen(framer.feed, onDone: close, onError: (Object _) => close());
   }
 
   final Socket _socket;
@@ -220,8 +215,7 @@ void main() {
     expect(cap.handlers.keys, containsAll(discovery.toolNames));
   });
 
-  test(
-      'mdns discover: probe-confirmed candidates reported, probe failures '
+  test('mdns discover: probe-confirmed candidates reported, probe failures '
       'and unknown proto dropped, http reported unprobed', () async {
     final cap2 = _captureRegistry(app, 'disc-mdns');
     registerDiscoveryTools(
@@ -254,134 +248,133 @@ void main() {
         };
       }(),
     );
-    final out = await _call(
-      cap2.handlers['mcp.discover_boards']!,
-      const {'source': 'mdns'},
-    );
+    final out = await _call(cap2.handlers['mcp.discover_boards']!, const {
+      'source': 'mdns',
+    });
     expect(out['ok'], isTrue);
     expect(out['count'], 2);
     final candidates = (out['candidates'] as List).cast<Map>();
-    final confirmed =
-        candidates.singleWhere((c) => c['proto'] == 'ndjson');
+    final confirmed = candidates.singleWhere((c) => c['proto'] == 'ndjson');
     expect(confirmed['probed'], isTrue);
     expect(confirmed['name'], 'Good Board');
     expect(confirmed['id'], 'acme.good');
     expect(confirmed['entryPoint'], 'ui://app');
-    expect(
-      (confirmed['connectHint'] as Map)['tool'],
-      'mcp.connect_extension',
-    );
+    expect((confirmed['connectHint'] as Map)['tool'], 'mcp.connect_extension');
     final http = candidates.singleWhere((c) => c['proto'] == 'http');
     expect(http['probed'], isFalse);
     // 'dead' (probe fail) and 'weird' (unknown proto) are absent.
-    expect(candidates.map((c) => c['instanceName']),
-        isNot(contains('dead')));
-    expect(candidates.map((c) => c['instanceName']),
-        isNot(contains('weird')));
+    expect(candidates.map((c) => c['instanceName']), isNot(contains('dead')));
+    expect(candidates.map((c) => c['instanceName']), isNot(contains('weird')));
   });
 
-  test('ble discover: dedupes by deviceId and hands the connect hint',
-      () async {
-    final cap = _captureRegistry(app, 'disc-ble');
-    registerDiscoveryTools(
-      cap.registry,
-      clientHost,
-      bleScan: _fakeBleScan(const [
-        BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -40),
-        BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -42),
-        BleBoardCandidate(deviceId: 'dev-2', localName: '', rssi: 0),
-      ]),
-    );
-    final out = await _call(
-      cap.handlers['mcp.discover_boards']!,
-      const {'source': 'ble'},
-    );
-    expect(out['ok'], isTrue);
-    expect(out['count'], 2);
-    final first = (out['candidates'] as List).first as Map;
-    expect(first['deviceId'], 'dev-1');
-    expect((first['connectHint'] as Map)['tool'], 'mcp.connect_ble_board');
-  });
+  test(
+    'ble discover: dedupes by deviceId and hands the connect hint',
+    () async {
+      final cap = _captureRegistry(app, 'disc-ble');
+      registerDiscoveryTools(
+        cap.registry,
+        clientHost,
+        bleScan: _fakeBleScan(const [
+          BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -40),
+          BleBoardCandidate(deviceId: 'dev-1', localName: 'Board A', rssi: -42),
+          BleBoardCandidate(deviceId: 'dev-2', localName: '', rssi: 0),
+        ]),
+      );
+      final out = await _call(cap.handlers['mcp.discover_boards']!, const {
+        'source': 'ble',
+      });
+      expect(out['ok'], isTrue);
+      expect(out['count'], 2);
+      final first = (out['candidates'] as List).first as Map;
+      expect(first['deviceId'], 'dev-1');
+      expect((first['connectHint'] as Map)['tool'], 'mcp.connect_ble_board');
+    },
+  );
 
-  test('source=ble with NO injected seam takes the studio radio, not its own',
-      () async {
-    // The default seam is the regression that hides: swapping it back to a
-    // private BleBoardScanner changes nothing an ordinary test can see, and the
-    // scan it opens ends everyone else's the moment its window closes.
-    final radio = _RecordingRadio();
-    studioBleStack = StudioBleStack.on(BleScanHub(radio));
-    final cap = _captureRegistry(app, 'disc-ble-default');
-    registerDiscoveryTools(cap.registry, clientHost);
+  test(
+    'source=ble with NO injected seam takes the studio radio, not its own',
+    () async {
+      // The default seam is the regression that hides: swapping it back to a
+      // private BleBoardScanner changes nothing an ordinary test can see, and the
+      // scan it opens ends everyone else's the moment its window closes.
+      final radio = _RecordingRadio();
+      studioBleStack = StudioBleStack.on(BleScanHub(radio));
+      final cap = _captureRegistry(app, 'disc-ble-default');
+      registerDiscoveryTools(cap.registry, clientHost);
 
-    final pending = _call(
-      cap.handlers['mcp.discover_boards']!,
-      const {'source': 'ble', 'timeoutSeconds': 0.2},
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(radio.starts, 1, reason: 'the studio radio, and only once');
-    radio.emit(const BleAdvertisement(
-      deviceId: 'dev-hub',
-      name: 'Board Hub',
-      rssi: -40,
-      serviceUuids: <String>[_mcpUuidLower],
-    ));
+      final pending = _call(cap.handlers['mcp.discover_boards']!, const {
+        'source': 'ble',
+        'timeoutSeconds': 0.2,
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(radio.starts, 1, reason: 'the studio radio, and only once');
+      radio.emit(
+        const BleAdvertisement(
+          deviceId: 'dev-hub',
+          name: 'Board Hub',
+          rssi: -40,
+          serviceUuids: <String>[_mcpUuidLower],
+        ),
+      );
 
-    final out = await pending;
-    expect(out['ok'], isTrue);
-    expect(out['count'], 1);
-    expect(((out['candidates'] as List).first as Map)['deviceId'], 'dev-hub');
-    expect(radio.stops, 1, reason: 'the window released it on the way out');
-  });
+      final out = await pending;
+      expect(out['ok'], isTrue);
+      expect(out['count'], 1);
+      expect(((out['candidates'] as List).first as Map)['deviceId'], 'dev-hub');
+      expect(radio.stops, 1, reason: 'the window released it on the way out');
+    },
+  );
 
-  test('usb discover: every port probed, only confirmed boards surface',
-      () async {
-    final cap = _captureRegistry(app, 'disc-usb');
-    var probes = 0;
-    registerDiscoveryTools(
-      cap.registry,
-      clientHost,
-      enumerateSerialPorts: () => const [
-        (portName: '/dev/cu.usbmodem1', description: 'Board'),
-        (portName: '/dev/cu.usbserial7', description: 'GPS puck'),
-      ],
-      probe: ({
-        required FutureOr<ClientTransport> Function() buildTransport,
-        Duration timeout = const Duration(seconds: 10),
-        String clientName = '',
-        String clientVersion = '',
-      }) async {
-        probes++;
-        if (probes > 1) return null; // second port is not a board
-        return const BoardIdentity(
-          id: 'acme.usb',
-          name: 'USB Board',
-          version: '1.0.0',
-        );
-      },
-    );
-    final out = await _call(
-      cap.handlers['mcp.discover_boards']!,
-      const {'source': 'usb'},
-    );
-    expect(out['ok'], isTrue);
-    expect(out['count'], 1);
-    expect(probes, 2, reason: 'every enumerated port gets a probe');
-    final c = (out['candidates'] as List).single as Map;
-    expect(c['portName'], '/dev/cu.usbmodem1');
-    expect(c['id'], 'acme.usb');
-    final hint = c['connectHint'] as Map;
-    expect(hint['transport'], 'serial');
-    expect((hint['options'] as Map)['port'], '/dev/cu.usbmodem1');
-  });
+  test(
+    'usb discover: every port probed, only confirmed boards surface',
+    () async {
+      final cap = _captureRegistry(app, 'disc-usb');
+      var probes = 0;
+      registerDiscoveryTools(
+        cap.registry,
+        clientHost,
+        enumerateSerialPorts:
+            () => const [
+              (portName: '/dev/cu.usbmodem1', description: 'Board'),
+              (portName: '/dev/cu.usbserial7', description: 'GPS puck'),
+            ],
+        probe: ({
+          required FutureOr<ClientTransport> Function() buildTransport,
+          Duration timeout = const Duration(seconds: 10),
+          String clientName = '',
+          String clientVersion = '',
+        }) async {
+          probes++;
+          if (probes > 1) return null; // second port is not a board
+          return const BoardIdentity(
+            id: 'acme.usb',
+            name: 'USB Board',
+            version: '1.0.0',
+          );
+        },
+      );
+      final out = await _call(cap.handlers['mcp.discover_boards']!, const {
+        'source': 'usb',
+      });
+      expect(out['ok'], isTrue);
+      expect(out['count'], 1);
+      expect(probes, 2, reason: 'every enumerated port gets a probe');
+      final c = (out['candidates'] as List).single as Map;
+      expect(c['portName'], '/dev/cu.usbmodem1');
+      expect(c['id'], 'acme.usb');
+      final hint = c['connectHint'] as Map;
+      expect(hint['transport'], 'serial');
+      expect((hint['options'] as Map)['port'], '/dev/cu.usbmodem1');
+    },
+  );
 
   test('directory discover: unconfigured errors actionably; configured '
       'probe-confirms tcp and reports http unprobed', () async {
     final bare = _captureRegistry(app, 'disc-dir0');
     registerDiscoveryTools(bare.registry, clientHost);
-    final err = await _call(
-      bare.handlers['mcp.discover_boards']!,
-      const {'source': 'directory'},
-    );
+    final err = await _call(bare.handlers['mcp.discover_boards']!, const {
+      'source': 'directory',
+    });
     expect(err['ok'], isFalse);
     expect(err['error'], contains('Settings'));
 
@@ -389,57 +382,53 @@ void main() {
     registerDiscoveryTools(
       cap.registry,
       clientHost,
-      directoryConfig: () =>
-          const DirectoryConfig(host: 'ldap.test', baseDN: 'dc=test'),
+      directoryConfig:
+          () => const DirectoryConfig(host: 'ldap.test', baseDN: 'dc=test'),
       directoryScanner: DirectoryBoardScanner(
-        search: (config) async => [
-          {
-            'labeledURI': ['tcp://10.0.0.5:6270 lab board'],
-            'cn': ['lab-board'],
-          },
-          {
-            'labeledURI': ['https://mcp.example.org/mcp cloud node'],
-            'cn': ['cloud-node'],
-          },
-          {
-            'labeledURI': ['mailto:ops@example.org'],
-            'cn': ['not-a-board'],
-          },
-        ],
+        search:
+            (config) async => [
+              {
+                'labeledURI': ['tcp://10.0.0.5:6270 lab board'],
+                'cn': ['lab-board'],
+              },
+              {
+                'labeledURI': ['https://mcp.example.org/mcp cloud node'],
+                'cn': ['cloud-node'],
+              },
+              {
+                'labeledURI': ['mailto:ops@example.org'],
+                'cn': ['not-a-board'],
+              },
+            ],
       ),
-      probe: ({
-        required FutureOr<ClientTransport> Function() buildTransport,
-        Duration timeout = const Duration(seconds: 10),
-        String clientName = '',
-        String clientVersion = '',
-      }) async =>
-          const BoardIdentity(
+      probe:
+          ({
+            required FutureOr<ClientTransport> Function() buildTransport,
+            Duration timeout = const Duration(seconds: 10),
+            String clientName = '',
+            String clientVersion = '',
+          }) async => const BoardIdentity(
             id: 'acme.lab',
             name: 'Lab Board',
             version: '2.0.0',
           ),
     );
-    final out = await _call(
-      cap.handlers['mcp.discover_boards']!,
-      const {'source': 'directory'},
-    );
+    final out = await _call(cap.handlers['mcp.discover_boards']!, const {
+      'source': 'directory',
+    });
     expect(out['ok'], isTrue);
     expect(out['count'], 2);
     final candidates = (out['candidates'] as List).cast<Map>();
     final tcp = candidates.singleWhere((c) => c['probed'] == true);
     expect(tcp['id'], 'acme.lab');
     expect((tcp['connectHint'] as Map)['transport'], 'tcp');
-    expect(
-      ((tcp['connectHint'] as Map)['options'] as Map)['host'],
-      '10.0.0.5',
-    );
+    expect(((tcp['connectHint'] as Map)['options'] as Map)['host'], '10.0.0.5');
     final http = candidates.singleWhere((c) => c['probed'] == false);
     expect(http['endpoint'], 'https://mcp.example.org/mcp');
     expect(candidates.map((c) => c['name']), isNot(contains('not-a-board')));
   });
 
-  test(
-      'sweep: enabled sources scanned, auto-connect lands the confirmed '
+  test('sweep: enabled sources scanned, auto-connect lands the confirmed '
       'board in the kernel registry (REAL probe + REAL tcp board), rerun '
       'skips the live connection', () async {
     // A real board that accepts SEQUENTIAL connections (probe closes, the
@@ -453,35 +442,41 @@ void main() {
       final board = srv.Server(
         name: 'sweep-board',
         version: '1.0.0',
-        capabilities:
-            srv.ServerCapabilities.simple(tools: true, resources: true),
+        capabilities: srv.ServerCapabilities.simple(
+          tools: true,
+          resources: true,
+        ),
       );
       board.addTool(
         name: 'led.set',
         description: 'set the on-board LED',
         inputSchema: const {'type': 'object'},
-        handler: (args) async =>
-            const srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
+        handler:
+            (args) async =>
+                srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
       );
       board.addResource(
         uri: 'bundle://manifest.json',
         name: 'manifest',
         description: 'board manifest',
         mimeType: 'application/json',
-        handler: (uri, params) async => srv.ReadResourceResult(contents: [
-          srv.ResourceContentInfo(
-            uri: uri,
-            mimeType: 'application/json',
-            text: jsonEncode({
-              'manifest': {
-                'id': 'acme.sweep',
-                'name': 'Sweep Board',
-                'version': '1.0.0',
-                'entryPoint': 'ui://app',
-              },
-            }),
-          ),
-        ]),
+        handler:
+            (uri, params) async => srv.ReadResourceResult(
+              contents: [
+                srv.ResourceContentInfo(
+                  uri: uri,
+                  mimeType: 'application/json',
+                  text: jsonEncode({
+                    'manifest': {
+                      'id': 'acme.sweep',
+                      'name': 'Sweep Board',
+                      'version': '1.0.0',
+                      'entryPoint': 'ui://app',
+                    },
+                  }),
+                ),
+              ],
+            ),
       );
       board.connect(_SocketBoardTransport(socket));
     });
@@ -514,8 +509,9 @@ void main() {
     expect(report['candidates'], 1);
     expect(report['connected'], ['board:acme.sweep']);
     expect(report['errors'], isEmpty);
-    final conn = clientHost.connections
-        .singleWhere((c) => c.id == 'board:acme.sweep');
+    final conn = clientHost.connections.singleWhere(
+      (c) => c.id == 'board:acme.sweep',
+    );
     expect(conn.isConnected, isTrue);
     final tools = await conn.listTools();
     expect(tools.map((t) => t.name), contains('led.set'));
@@ -532,51 +528,54 @@ void main() {
   });
 
   test(
-      'connect_ble_board: full spec-16 path to a simulated mcp_server board '
-      '(MTU-23 chunking) lands in the kernel registry and is driveable',
-      () async {
-    final link = _BoardFakeBleLink()..negotiatedMtu = bleDefaultAttMtu;
-    final board = srv.Server(
-      name: 'ble-board-sim',
-      version: '1.0.0',
-      capabilities:
-          srv.ServerCapabilities.simple(tools: true, resources: true),
-    );
-    board.addTool(
-      name: 'led.set',
-      description: 'set the on-board LED',
-      inputSchema: const {'type': 'object'},
-      handler: (args) async =>
-          const srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
-    );
-    board.connect(_FakeBleBoardTransport(link));
+    'connect_ble_board: full spec-16 path to a simulated mcp_server board '
+    '(MTU-23 chunking) lands in the kernel registry and is driveable',
+    () async {
+      final link = _BoardFakeBleLink()..negotiatedMtu = bleDefaultAttMtu;
+      final board = srv.Server(
+        name: 'ble-board-sim',
+        version: '1.0.0',
+        capabilities: srv.ServerCapabilities.simple(
+          tools: true,
+          resources: true,
+        ),
+      );
+      board.addTool(
+        name: 'led.set',
+        description: 'set the on-board LED',
+        inputSchema: const {'type': 'object'},
+        handler:
+            (args) async =>
+                srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
+      );
+      board.connect(_FakeBleBoardTransport(link));
 
-    final cap = _captureRegistry(app, 'disc-connect');
-    registerDiscoveryTools(
-      cap.registry,
-      clientHost,
-      bleLinkFor: (deviceId) => link,
-    );
-    final out = await _call(
-      cap.handlers['mcp.connect_ble_board']!,
-      const {'deviceId': 'fake-board'},
-    );
-    expect(out['ok'], isTrue);
-    expect(out['id'], 'ble:fake-board');
-    expect(out['connected'], isTrue);
+      final cap = _captureRegistry(app, 'disc-connect');
+      registerDiscoveryTools(
+        cap.registry,
+        clientHost,
+        bleLinkFor: (deviceId) => link,
+      );
+      final out = await _call(cap.handlers['mcp.connect_ble_board']!, const {
+        'deviceId': 'fake-board',
+      });
+      expect(out['ok'], isTrue);
+      expect(out['id'], 'ble:fake-board');
+      expect(out['connected'], isTrue);
 
-    // The connection is in the kernel client-host registry → the standard
-    // mcp.* drive path reaches the board.
-    final conn = clientHost.connections
-        .singleWhere((c) => c.id == 'ble:fake-board');
-    final tools = await conn.listTools();
-    expect(tools.map((t) => t.name), contains('led.set'));
-    final result = await conn.callTool('led.set', const {});
-    expect(result.isError ?? false, isFalse);
-  });
+      // The connection is in the kernel client-host registry → the standard
+      // mcp.* drive path reaches the board.
+      final conn = clientHost.connections.singleWhere(
+        (c) => c.id == 'ble:fake-board',
+      );
+      final tools = await conn.listTools();
+      expect(tools.map((t) => t.name), contains('led.set'));
+      final result = await conn.callTool('led.set', const {});
+      expect(result.isError ?? false, isFalse);
+    },
+  );
 
-  test(
-      'connectCandidate: a tcp candidate connects through the extension seam '
+  test('connectCandidate: a tcp candidate connects through the extension seam '
       'under board:<id> and is driveable (REAL tcp board)', () async {
     final listener = await ServerSocket.bind('localhost', 0);
     final boardPort = listener.port;
@@ -590,8 +589,9 @@ void main() {
         name: 'led.set',
         description: 'set the on-board LED',
         inputSchema: const {'type': 'object'},
-        handler: (args) async =>
-            const srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
+        handler:
+            (args) async =>
+                srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
       );
       board.connect(_SocketBoardTransport(socket));
     });
@@ -612,15 +612,15 @@ void main() {
       },
     });
     expect(id, 'board:acme.cc');
-    final conn =
-        clientHost.connections.singleWhere((c) => c.id == 'board:acme.cc');
+    final conn = clientHost.connections.singleWhere(
+      (c) => c.id == 'board:acme.cc',
+    );
     expect(conn.isConnected, isTrue);
     final tools = await conn.listTools();
     expect(tools.map((t) => t.name), contains('led.set'));
   });
 
-  test(
-      'connectCandidate: a ble candidate connects through the GATT seam under '
+  test('connectCandidate: a ble candidate connects through the GATT seam under '
       'ble:<deviceId> (simulated mcp_server board)', () async {
     final link = _BoardFakeBleLink()..negotiatedMtu = bleDefaultAttMtu;
     final board = srv.Server(
@@ -632,8 +632,9 @@ void main() {
       name: 'led.set',
       description: 'set the on-board LED',
       inputSchema: const {'type': 'object'},
-      handler: (args) async =>
-          const srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
+      handler:
+          (args) async =>
+              srv.CallToolResult(content: [srv.TextContent(text: 'ok')]),
     );
     board.connect(_FakeBleBoardTransport(link));
 
@@ -652,14 +653,14 @@ void main() {
       },
     });
     expect(id, 'ble:cc-dev');
-    final conn =
-        clientHost.connections.singleWhere((c) => c.id == 'ble:cc-dev');
+    final conn = clientHost.connections.singleWhere(
+      (c) => c.id == 'ble:cc-dev',
+    );
     final tools = await conn.listTools();
     expect(tools.map((t) => t.name), contains('led.set'));
   });
 
-  test(
-      'connectCandidate: a candidate without a connectHint is rejected '
+  test('connectCandidate: a candidate without a connectHint is rejected '
       '(http nodes attach by endpoint instead)', () async {
     final cap = _captureRegistry(app, 'cc-nohint');
     final discovery = registerDiscoveryTools(cap.registry, clientHost);

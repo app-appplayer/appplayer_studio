@@ -236,6 +236,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       bridge.notify = _onNotify;
       bridge.dialog = _onDialog;
       bridge.prompt = _onPrompt;
+      bridge.promptUntil = _onPromptUntil;
     }
   }
 
@@ -252,6 +253,7 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
       bridge.notify = null;
       bridge.dialog = null;
       bridge.prompt = null;
+      bridge.promptUntil = null;
       bridge.captureScreenshot = null;
     }
     super.dispose();
@@ -352,53 +354,71 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
   /// [question] and a button per [options] entry (defaults to
   /// `['Cancel', 'OK']`). Resolves with the chosen index or -1 on
   /// dismiss / when no UI context is reachable.
-  Future<int> _onPrompt({
+  Future<int> _onPrompt({required String question, List<String>? options}) =>
+      _showPrompt(question, options, null);
+
+  Future<int> _onPromptUntil({
     required String question,
     List<String>? options,
-  }) async {
+    required Future<void> until,
+  }) => _showPrompt(question, options, until);
+
+  Future<int> _showPrompt(
+    String question,
+    List<String>? options,
+    Future<void>? until,
+  ) async {
     final ctx = _shellRootKey.currentContext;
     if (ctx == null) return -1;
     final opts =
         options == null || options.isEmpty ? <String>['Cancel', 'OK'] : options;
     final c = VbuTokens.colorOf(context);
+    BuildContext? open;
+    var answered = false;
+    until?.whenComplete(() {
+      final dctx = open;
+      if (!answered && dctx != null && dctx.mounted) {
+        Navigator.of(dctx).pop(-1);
+      }
+    });
     final picked = await showDialog<int>(
       context: ctx,
-      builder:
-          (dctx) => VbuDialogScaffold(
-            title: 'PROMPT',
-            titleStyle: vbuMono(
-              size: 11,
-              weight: FontWeight.w600,
-              color: c.textSecondary,
-            ).copyWith(letterSpacing: 1.0),
-            maxWidth: 460,
-            maxHeight: 320,
-            body: Text(
-              question,
-              style: vbuMono(size: 12, color: c.textPrimary),
-            ),
-            actions: <Widget>[
-              for (var i = 0; i < opts.length; i++)
-                TextButton(
-                  onPressed: () => Navigator.of(dctx).pop(i),
-                  style: TextButton.styleFrom(
-                    foregroundColor:
-                        i == opts.length - 1 ? c.mint : c.textSecondary,
-                  ),
-                  child: Text(
-                    opts[i],
-                    style: vbuMono(
-                      size: 11,
-                      weight:
-                          i == opts.length - 1
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                    ),
+      builder: (dctx) {
+        open = dctx;
+        return VbuDialogScaffold(
+          title: 'PROMPT',
+          titleStyle: vbuMono(
+            size: 11,
+            weight: FontWeight.w600,
+            color: c.textSecondary,
+          ).copyWith(letterSpacing: 1.0),
+          maxWidth: 460,
+          maxHeight: 320,
+          body: Text(question, style: vbuMono(size: 12, color: c.textPrimary)),
+          actions: <Widget>[
+            for (var i = 0; i < opts.length; i++)
+              TextButton(
+                onPressed: () => Navigator.of(dctx).pop(i),
+                style: TextButton.styleFrom(
+                  foregroundColor:
+                      i == opts.length - 1 ? c.mint : c.textSecondary,
+                ),
+                child: Text(
+                  opts[i],
+                  style: vbuMono(
+                    size: 11,
+                    weight:
+                        i == opts.length - 1
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
+        );
+      },
     );
+    answered = true;
     return picked ?? -1;
   }
 

@@ -26,8 +26,8 @@ import 'collection_file.dart';
 
 class PersistentEvidenceStorage extends InMemoryEvidenceStorage {
   PersistentEvidenceStorage(String rootDir)
-      : _evidenceFile = CollectionFile(rootDir, 'evidence'),
-        _fragmentsFile = CollectionFile(rootDir, 'fragments');
+    : _evidenceFile = CollectionFile(rootDir, 'evidence'),
+      _fragmentsFile = CollectionFile(rootDir, 'fragments');
 
   final CollectionFile _evidenceFile;
   final CollectionFile _fragmentsFile;
@@ -82,7 +82,7 @@ class PersistentEvidenceStorage extends InMemoryEvidenceStorage {
 
 class PersistentCandidateStorage extends InMemoryCandidateStorage {
   PersistentCandidateStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'candidates');
+    : _file = CollectionFile(rootDir, 'candidates');
 
   final CollectionFile _file;
 
@@ -105,7 +105,9 @@ class PersistentCandidateStorage extends InMemoryCandidateStorage {
 
   @override
   Future<void> updateCandidateStatus(
-      String candidateId, CandidateStatus status) async {
+    String candidateId,
+    CandidateStatus status,
+  ) async {
     await super.updateCandidateStatus(candidateId, status);
     await _flush();
   }
@@ -123,7 +125,7 @@ class PersistentCandidateStorage extends InMemoryCandidateStorage {
 
 class PersistentEntityStorage extends InMemoryEntityStorage {
   PersistentEntityStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'entities');
+    : _file = CollectionFile(rootDir, 'entities');
 
   final CollectionFile _file;
 
@@ -157,7 +159,7 @@ class PersistentEntityStorage extends InMemoryEntityStorage {
 
 class PersistentFactStorage extends InMemoryFactStorage {
   PersistentFactStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'facts');
+    : _file = CollectionFile(rootDir, 'facts');
 
   final CollectionFile _file;
 
@@ -191,7 +193,7 @@ class PersistentFactStorage extends InMemoryFactStorage {
 
 class PersistentViewStorage extends InMemoryViewStorage {
   PersistentViewStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'views');
+    : _file = CollectionFile(rootDir, 'views');
 
   final CollectionFile _file;
 
@@ -225,9 +227,9 @@ class PersistentViewStorage extends InMemoryViewStorage {
 
 class PersistentContextStorage extends InMemoryContextStorage {
   PersistentContextStorage(String rootDir)
-      : _bundlesFile = CollectionFile(rootDir, 'context_bundles'),
-        _summariesFile = CollectionFile(rootDir, 'summary_nodes'),
-        _claimsFile = CollectionFile(rootDir, 'claims');
+    : _bundlesFile = CollectionFile(rootDir, 'context_bundles'),
+      _summariesFile = CollectionFile(rootDir, 'summary_nodes'),
+      _claimsFile = CollectionFile(rootDir, 'claims');
 
   final CollectionFile _bundlesFile;
   final CollectionFile _summariesFile;
@@ -285,10 +287,10 @@ class PersistentContextStorage extends InMemoryContextStorage {
 
 class PersistentSkillOpsStorage extends InMemorySkillOpsStorage {
   PersistentSkillOpsStorage(String rootDir)
-      : _patternsFile = CollectionFile(rootDir, 'patterns'),
-        _skillsFile = CollectionFile(rootDir, 'skills'),
-        _rubricsFile = CollectionFile(rootDir, 'rubrics'),
-        _evalRunsFile = CollectionFile(rootDir, 'evaluation_runs');
+    : _patternsFile = CollectionFile(rootDir, 'patterns'),
+      _skillsFile = CollectionFile(rootDir, 'skills'),
+      _rubricsFile = CollectionFile(rootDir, 'rubrics'),
+      _evalRunsFile = CollectionFile(rootDir, 'evaluation_runs');
 
   final CollectionFile _patternsFile;
   final CollectionFile _skillsFile;
@@ -361,7 +363,7 @@ class PersistentSkillOpsStorage extends InMemorySkillOpsStorage {
 
 class PersistentRelationStorage extends InMemoryRelationStorage {
   PersistentRelationStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'relations');
+    : _file = CollectionFile(rootDir, 'relations');
 
   final CollectionFile _file;
 
@@ -395,7 +397,7 @@ class PersistentRelationStorage extends InMemoryRelationStorage {
 
 class PersistentRunStorage extends InMemoryRunStorage {
   PersistentRunStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'runs');
+    : _file = CollectionFile(rootDir, 'runs');
 
   final CollectionFile _file;
 
@@ -429,7 +431,7 @@ class PersistentRunStorage extends InMemoryRunStorage {
 
 class PersistentArtifactStorage extends InMemoryArtifactStorage {
   PersistentArtifactStorage(String rootDir)
-      : _file = CollectionFile(rootDir, 'artifacts');
+    : _file = CollectionFile(rootDir, 'artifacts');
 
   final CollectionFile _file;
 
@@ -467,16 +469,16 @@ class PersistentArtifactStorage extends InMemoryArtifactStorage {
 /// the runtime to hydrate from disk.
 class PersistentStorageContainer {
   PersistentStorageContainer(this.rootDir)
-      : evidence = PersistentEvidenceStorage(rootDir),
-        candidates = PersistentCandidateStorage(rootDir),
-        entities = PersistentEntityStorage(rootDir),
-        facts = PersistentFactStorage(rootDir),
-        views = PersistentViewStorage(rootDir),
-        context = PersistentContextStorage(rootDir),
-        skillOps = PersistentSkillOpsStorage(rootDir),
-        relations = PersistentRelationStorage(rootDir),
-        runs = PersistentRunStorage(rootDir),
-        artifacts = PersistentArtifactStorage(rootDir);
+    : evidence = PersistentEvidenceStorage(rootDir),
+      candidates = PersistentCandidateStorage(rootDir),
+      entities = PersistentEntityStorage(rootDir),
+      facts = PersistentFactStorage(rootDir),
+      views = PersistentViewStorage(rootDir),
+      context = PersistentContextStorage(rootDir),
+      skillOps = PersistentSkillOpsStorage(rootDir),
+      relations = PersistentRelationStorage(rootDir),
+      runs = PersistentRunStorage(rootDir),
+      artifacts = PersistentArtifactStorage(rootDir);
 
   /// Directory holding the collection files (e.g. `<projectRoot>/.factgraph`).
   final String rootDir;

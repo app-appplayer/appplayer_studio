@@ -34,40 +34,43 @@ void registerChannelConnectors(ChannelDriverRegistry registry) {
   registry.registerConnector(
     'slack',
     platforms: _everywhere,
-    builder: (c) => SlackConnector(
-      config: SlackConfig(
-        botToken: requireParam(c, 'botToken'),
-        signingSecret: requireParam(c, 'signingSecret'),
-        appToken: c.params['appToken'] as String?,
-        workspaceId: c.params['workspaceId'] as String?,
-      ),
-    ),
+    builder:
+        (c) => SlackConnector(
+          config: SlackConfig(
+            botToken: requireParam(c, 'botToken'),
+            signingSecret: requireParam(c, 'signingSecret'),
+            appToken: c.params['appToken'] as String?,
+            workspaceId: c.params['workspaceId'] as String?,
+          ),
+        ),
   );
 
   // Telegram — bot token.
   registry.registerConnector(
     'telegram',
     platforms: _everywhere,
-    builder: (c) => TelegramConnector(
-      config: TelegramConfig(
-        botToken: requireParam(c, 'botToken'),
-        webhookUrl: c.params['webhookUrl'] as String?,
-        webhookSecret: c.params['webhookSecret'] as String?,
-      ),
-    ),
+    builder:
+        (c) => TelegramConnector(
+          config: TelegramConfig(
+            botToken: requireParam(c, 'botToken'),
+            webhookUrl: c.params['webhookUrl'] as String?,
+            webhookSecret: c.params['webhookSecret'] as String?,
+          ),
+        ),
   );
 
   // KakaoTalk — bot id (skill webhook).
   registry.registerConnector(
     'kakao',
     platforms: _everywhere,
-    builder: (c) => KakaoConnector(
-      config: KakaoConfig(
-        botId: requireParam(c, 'botId'),
-        webhookPath: (c.params['webhookPath'] as String?) ?? '/kakao/skill',
-        validationToken: c.params['validationToken'] as String?,
-      ),
-    ),
+    builder:
+        (c) => KakaoConnector(
+          config: KakaoConfig(
+            botId: requireParam(c, 'botId'),
+            webhookPath: (c.params['webhookPath'] as String?) ?? '/kakao/skill',
+            validationToken: c.params['validationToken'] as String?,
+          ),
+        ),
   );
 
   // E-mail — generic IMAP provider (host + credentials). Gmail / Outlook /
@@ -75,19 +78,20 @@ void registerChannelConnectors(ChannelDriverRegistry registry) {
   registry.registerConnector(
     'email',
     platforms: _socket,
-    builder: (c) => EmailConnector(
-      config: EmailConfig(
-        provider: EmailProvider.imap,
-        botEmail: requireParam(c, 'botEmail'),
-        imap: ImapConfig(
-          host: requireParam(c, 'host'),
-          port: (c.params['port'] as num?)?.toInt() ?? 993,
-          useSsl: c.params['useSsl'] as bool? ?? true,
-          username: requireParam(c, 'username'),
-          password: requireParam(c, 'password'),
-          folder: (c.params['folder'] as String?) ?? 'INBOX',
+    builder:
+        (c) => EmailConnector(
+          config: EmailConfig(
+            provider: EmailProvider.imap,
+            botEmail: requireParam(c, 'botEmail'),
+            imap: ImapConfig(
+              host: requireParam(c, 'host'),
+              port: (c.params['port'] as num?)?.toInt() ?? 993,
+              useSsl: c.params['useSsl'] as bool? ?? true,
+              username: requireParam(c, 'username'),
+              password: requireParam(c, 'password'),
+              folder: (c.params['folder'] as String?) ?? 'INBOX',
+            ),
+          ),
         ),
-      ),
-    ),
   );
 }

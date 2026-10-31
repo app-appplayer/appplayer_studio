@@ -3,7 +3,7 @@ import 'runtime_engine.dart';
 
 /// This package's version — the claim's `version_implementation` (§18.8).
 /// A test holds it equal to `pubspec.yaml`.
-const String runtimePackageVersion = '0.8.4';
+const String runtimePackageVersion = '0.8.6';
 
 /// The DSL version the claim is made at (§18.8 `version`).
 const String dslClaimVersion = '1.4';

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'material_icons.g.dart';
+
 /// Central Material Icon name → [IconData] resolver used by every factory
 /// that accepts a string icon name (`icon.icon`, navigation items,
 /// timeline/tree/button leading, etc.).
 ///
 /// Naming is always snake_case, matching the names on
-/// https://fonts.google.com/icons and Flutter's `Icons` class. Unknown names
+/// https://fonts.google.com/icons and Flutter's `Icons` class — every one of
+/// them, from the generated [materialIconsByName]. Unknown names
 /// fall back to `Icons.help_outline` so authors get an obvious "missing
 /// icon" cue rather than a generic black dot.
 
@@ -214,10 +217,13 @@ IconData resolveIconData(String name) {
   final raw = name.startsWith('material:')
       ? name.substring('material:'.length)
       : name;
-  final data = _map[raw] ??
-      _map[raw.toLowerCase()] ??
+  final lower = raw.toLowerCase();
+  final data = materialIconsByName[raw] ??
+      materialIconsByName[lower] ??
+      _map[raw] ??
+      _map[lower] ??
       _aliases[raw] ??
-      _aliases[raw.toLowerCase()];
+      _aliases[lower];
   if (data != null) return data;
   return Icons.help_outline;
 }

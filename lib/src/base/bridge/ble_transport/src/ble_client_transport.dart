@@ -75,7 +75,16 @@ class BleClientTransport implements ClientTransport {
     // CCCD subscription first — the server sends nothing before
     // it, and this transport sends nothing before it either (send() is
     // gated on _started, which only flips after this line).
-    final notifications = await _link.subscribeTxNotifications();
+    final Stream<List<int>> notifications;
+    try {
+      notifications = await _link.subscribeTxNotifications();
+    } catch (_) {
+      // Connected but never usable: let the board go rather than hold it.
+      try {
+        await _link.disconnect();
+      } catch (_) {}
+      rethrow;
+    }
     _notifySub = notifications.listen(
       _framer.feed,
       onError: _emitError,

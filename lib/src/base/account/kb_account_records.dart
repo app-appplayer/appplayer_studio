@@ -88,6 +88,9 @@ class AccountStorageKbRecords implements KbAccountRecords {
     String key,
     Object? value, {
     String? ifMatch,
+    // The store is built without unitOf, so unit is always null here and the
+    // account keeps choosing the record's unit.
+    String? unit,
   }) => _guard(() async {
     try {
       final receipt = await storage.put(

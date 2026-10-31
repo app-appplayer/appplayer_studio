@@ -18,7 +18,8 @@ import 'package:mcp_channel/mcp_channel.dart';
 import 'channel_provisioner.dart';
 
 /// A channel tool handler: JSON args in, JSON-able result out.
-typedef ChannelToolHandler = Future<Object?> Function(Map<String, dynamic> args);
+typedef ChannelToolHandler =
+    Future<Object?> Function(Map<String, dynamic> args);
 
 /// Build the connect/disconnect tool map. [connectors] is the host's live map;
 /// [platform] gates which connectors may be provisioned here.
@@ -28,8 +29,11 @@ Map<String, ChannelToolHandler> channelDriverTools({
   required ChannelPlatform platform,
 }) {
   Map<String, dynamic> ok(Map<String, dynamic> body) => {'ok': true, ...body};
-  Map<String, dynamic> err(String code, String message) =>
-      {'ok': false, 'code': code, 'error': message};
+  Map<String, dynamic> err(String code, String message) => {
+    'ok': false,
+    'code': code,
+    'error': message,
+  };
 
   return <String, ChannelToolHandler>{
     // Provision + register an external connector at runtime.
@@ -37,8 +41,10 @@ Map<String, ChannelToolHandler> channelDriverTools({
       final platformKey = args['platform'] as String?;
       final id = args['id'] as String?;
       if (platformKey == null || id == null) {
-        return err('channel.bad_args',
-            'channel.connect requires "platform" and "id"');
+        return err(
+          'channel.bad_args',
+          'channel.connect requires "platform" and "id"',
+        );
       }
       if (connectors.containsKey(id)) {
         return err('channel.exists', 'channel already connected: $id');
@@ -46,7 +52,8 @@ Map<String, ChannelToolHandler> channelDriverTools({
       final config = ChannelConnectorConfig(
         platform: platformKey,
         id: id,
-        params: (args['params'] as Map?)?.cast<String, dynamic>() ??
+        params:
+            (args['params'] as Map?)?.cast<String, dynamic>() ??
             const <String, dynamic>{},
       );
       final ExtendedChannelPort connector;

@@ -5,10 +5,10 @@ packages:
     dependency: "direct main"
     description:
       name: appplayer_claude_code_provider
-      sha256: "60e70eeccf4433de3f93506fde66ad66d90360bdfdd2e63789dad89cbfdf4f8f"
+      sha256: ebb1c3a82e86acc583ec35a1a8137ef90e0ccafb9b42693c761df48663c69adc
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.1"
+    version: "0.2.0"
   appplayer_form_view:
     dependency: "direct main"
     description:
@@ -109,10 +109,10 @@ packages:
     dependency: "direct main"
     description:
       name: brain_kernel
-      sha256: "2a82cb3fea8a74c140c1355ce5f9de8794997aaab6e80f25d49101c7f850355a"
+      sha256: be181a1f5986b0f7372cdc03faf434a456954abf8cb150603fa645ae4f90f7ee
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.2"
+    version: "0.3.1"
   characters:
     dependency: transitive
     description:
@@ -178,7 +178,7 @@ packages:
     source: hosted
     version: "3.0.7"
   cryptography:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: cryptography
       sha256: "3eda3029d34ec9095a27a198ac9785630fe525c0eb6a49f3d575272f8e792ef0"
@@ -373,10 +373,10 @@ packages:
     dependency: "direct main"
     description:
       name: flowbrain_core
-      sha256: "981af72cc85f9ef936909b8af34370ec89a2bbfbdf46cedfbbc048b1b7a44324"
+      sha256: "83b96356a42b90d64d6f5cf3aef0a9f25342774fcb41c8265514e9e870ca19f6"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.8"
+    version: "0.1.9"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -420,10 +420,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_core
-      sha256: a1d108c36ad6d32424c7f7773c041c5b7d426ee73676f2ad1390a041f80bc1d0
+      sha256: "321983fc13d050c0669ae26664da4263beca11a0245f6d7e21a288009ca69a6c"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.9"
+    version: "0.6.12"
   flutter_mcp_ui_generator:
     dependency: "direct main"
     description:
@@ -436,10 +436,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_mcp_ui_runtime
-      sha256: "42671044058c6e65471b7eeccdfdfb4a0c1e814b0a55b9751b64df252ee92341"
+      sha256: "5fe87cb852b9cbc64ec7e60b0e300553326722a4a6425256324f032b4323a868"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.4"
+    version: "0.8.6"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -808,10 +808,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_bridge
-      sha256: cb3832a1eafca9b8c41a4c21954187998ef6dfceac0f77033ab027f9f29f87e0
+      sha256: "0317eb114c69b3eac46b3d453d7caec637ff2b2d13561d75e83eb668d5f499fd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.0-rc.2"
+    version: "0.2.0-rc.3"
   mcp_browser:
     dependency: "direct main"
     description:
@@ -824,15 +824,23 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_bundle
-      sha256: b0d8a4e089511ca23f262f35af2440ed2fed13d0e7b6c47c96a757eba6e78da3
+      sha256: b654d52d0496822a9a19e2e8f654ccd9e0217bd403ae7191ca3b5ce7fb800c54
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.10"
+    version: "0.4.12"
   mcp_canvas:
     dependency: "direct main"
     description:
       name: mcp_canvas
       sha256: "17294600070fa8d01c0ff2a96bf19702f1c71d35ffd7637c7df26219c797d9ab"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
+  mcp_celm:
+    dependency: "direct main"
+    description:
+      name: mcp_celm
+      sha256: b012edd9bae2ab72686e3043b6a5fb60a10d251f8a5a08fc90309eb8fa0a47e8
       url: "https://pub.dev"
     source: hosted
     version: "0.1.0"
@@ -848,10 +856,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_client
-      sha256: "29fd5e5592016d141b481b2ada0459332058e263b3c44aba8a7819983e4f8eea"
+      sha256: "679aba997e1e19891c96ba864c72249d78b1c80df61c461f75737ad7f708f694"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1"
+    version: "3.0.0"
   mcp_datastore:
     dependency: "direct main"
     description:
@@ -872,10 +880,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_fact_graph
-      sha256: "64dadd664c40ac8cd207cca421ab9d89bd3867132b2407fc0644a5c3b917d199"
+      sha256: "4b18ea4fae1e6963531cb9a723806a6e6968ca1abbaf00b05cf8899dbbf64b82"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.3"
+    version: "0.2.4"
   mcp_form:
     dependency: "direct main"
     description:
@@ -884,6 +892,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  mcp_gateway:
+    dependency: "direct main"
+    description:
+      name: mcp_gateway
+      sha256: "6fa6d883ae0ccd7105302c051367747df5c93c219039b5bfee8387ace4beba8c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   mcp_ingest:
     dependency: "direct main"
     description:
@@ -940,38 +956,46 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.1"
+  mcp_io_serial:
+    dependency: "direct main"
+    description:
+      name: mcp_io_serial
+      sha256: "011d410feef2d8165aaba60eb8700815c5d9802f6ce30962b5bf663eb68bb7f7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   mcp_knowledge:
     dependency: "direct main"
     description:
       name: mcp_knowledge
-      sha256: ff4a16ca6ec38a672a14718acf70ed0c914f6595c3ee963e0500786615600056
+      sha256: "8b1d6276f20d338ec5e2ae021c4515263fab5ba6c4cbd3591faace08beb8445e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.5"
+    version: "0.2.6"
   mcp_knowledge_ops:
     dependency: "direct main"
     description:
       name: mcp_knowledge_ops
-      sha256: ca14d413bd7c0064376c9de7905e8e996eca8a60cd3a5cf4e2747107c0d6bdc8
+      sha256: "3a38fd03b87ea1a67fed9aeef8e065457ddcfa39f4ca32196aaae57c853adee3"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.2"
+    version: "0.3.0"
   mcp_llm:
     dependency: "direct main"
     description:
       name: mcp_llm
-      sha256: "38530a2da69350adb65bb0497e39729d7836b110ba049ef2bba5634d1719759e"
+      sha256: "1e29f0457d948c8b4d683f2183d7c064c388beb1f3c1e1c01572e289d162119a"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.1"
+    version: "3.0.0"
   mcp_philosophy:
     dependency: "direct main"
     description:
       name: mcp_philosophy
-      sha256: "5d7ce707020ed4cbe494ded36db7fe492248bd77613070774434739c4edb9b16"
+      sha256: "48510bf2b5def877279ef094c7419a1c517d002351cc61ee02b46ed7b491b97d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.3"
+    version: "0.1.5"
   mcp_profile:
     dependency: "direct main"
     description:
@@ -984,18 +1008,18 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_server
-      sha256: "58ab3ac35c97afcabc79c2667750007409b9e8e7e86e5027841679d0be3743ba"
+      sha256: d1facf66c6f5ab9072d5e94b6b70fac45f940f048462d57a45f0057a6d230950
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.3"
+    version: "3.0.0"
   mcp_skill:
     dependency: transitive
     description:
       name: mcp_skill
-      sha256: f47c08ded7727c48fba310a89de3914116373edf45f31f3cb1e136be2fab80df
+      sha256: "96662aacad56b0b8d185935f5b0cb44d7cee332a122ea4ed827a5feeb96ef99c"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.1"
+    version: "0.3.0"
   meta:
     dependency: "direct main"
     description:
@@ -1578,7 +1602,7 @@ packages:
     source: hosted
     version: "1.0.1"
   web_socket_channel:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: web_socket_channel
       sha256: d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8

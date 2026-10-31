@@ -4047,6 +4047,32 @@ class SystemTools {
 
     _register(
       server,
+      'knowledge_fact_list',
+      'List the facts of one workspace in this project\'s graph — the read a '
+          'skill\'s `fact.query` step does. `types` narrows to fact types, '
+          '`limit` caps the count (20 when absent or not a number). Answers '
+          '`{count, facts: [{id, type, content}]}`. `workspaceId` defaults to '
+          'the caller\'s execution workspace, then the active one.',
+      const {
+        'type': 'object',
+        'properties': {
+          'types': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'limit': {},
+          'workspaceId': {'type': 'string'},
+        },
+      },
+      (args) => init.skillExecutor.listFacts(
+        workspaceId: (args['workspaceId'] as String?) ?? _wsId(args),
+        types: args['types'],
+        limit: args['limit'],
+      ),
+    );
+
+    _register(
+      server,
       'knowledge_fact_query',
       'Query knowledge facts. `typeFilter` constrains FactQuery.types '
           '(e.g. `agent.invoked` for an agent timeline). `workspaceId` '
@@ -5172,17 +5198,16 @@ class SystemTools {
             final skill = (g.params['skill'] as String?) ?? 'quality_appraise';
             final evalId = 'gate_quality_eval_${s.stepId}';
             final gid = 'gate_quality_${s.stepId}';
-            steps.add(<String, dynamic>{
-              'id': evalId,
-              'do': <String, dynamic>{
-                'skill': skill,
-                'inputs': <String, dynamic>{
-                  'metric': metric,
-                  if (s.assigneeId.isNotEmpty) 'actor': s.assigneeId,
-                },
-              },
-              'dependsOn': <String>[dep],
-            });
+            steps.add(
+              qualityEvalStep(
+                evalId: evalId,
+                skill: skill,
+                metric: metric,
+                assigneeId: s.assigneeId,
+                stepId: s.stepId,
+                dependsOn: dep,
+              ),
+            );
             steps.add(<String, dynamic>{
               'id': gid,
               'when': '$evalId.score >= $min',
@@ -5549,3 +5574,31 @@ class SystemTools {
     security: security ?? src.security,
   );
 }
+
+final RegExp _stepIdIsAPath = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+/// The behavior step that appraises a process step's output for a quality
+/// gate: it runs the appraisal skill with the metric and, as `prev`, what the
+/// step produced. The behavior engine fills `${<step id>}` from the run state
+/// when it dispatches the action; a step id it cannot read as a path is left
+/// out rather than sent as text.
+@visibleForTesting
+Map<String, dynamic> qualityEvalStep({
+  required String evalId,
+  required String skill,
+  required String metric,
+  required String assigneeId,
+  required String stepId,
+  required String dependsOn,
+}) => <String, dynamic>{
+  'id': evalId,
+  'do': <String, dynamic>{
+    'skill': skill,
+    'inputs': <String, dynamic>{
+      'metric': metric,
+      if (assigneeId.isNotEmpty) 'actor': assigneeId,
+      if (_stepIdIsAPath.hasMatch(stepId)) 'prev': '\${$stepId}',
+    },
+  },
+  'dependsOn': <String>[dependsOn],
+};

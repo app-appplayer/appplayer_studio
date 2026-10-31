@@ -1004,14 +1004,17 @@ class VibeStudioHostApp extends StudioApp {
               argv is List && argv.any((a) => a.toString() == '--dry-run');
           if (readOnly.contains(sub) || dryRun) return true;
         }
-        final ask = _chromeBridge.dialog;
+        // A yes / no prompt: the informational dialog only has an OK button
+        // and answers true however it is closed, so it cannot refuse.
+        final ask = _chromeBridge.prompt;
         if (ask == null) return false;
-        return ask(
-          title: 'Confirm irreversible action',
-          body:
+        final picked = await ask(
+          question:
               'An agent wants to run "$toolName" — this action cannot be '
               'undone.\n\nArguments:\n${jsonEncode(args)}\n\nAllow it?',
+          options: const <String>['Deny', 'Allow'],
         );
+        return picked == 1;
       },
     );
     // `mcp.*` — connect · call_tool · read_resource · list_tools ·
@@ -1103,6 +1106,31 @@ class VibeStudioHostApp extends StudioApp {
             ),
         'plugins.json',
       ),
+      // Registering a plugin asks the person (spec 29 §10): the studio's
+      // yes / no prompt, which closes by itself when the time given runs out
+      // or the request is withdrawn. Registrations stored before consents
+      // existed are adopted once instead of being locked out.
+      approver: HostApprover(
+        approver: 'studio-user',
+        ask: (request) async {
+          final promptUntil = _chromeBridge.promptUntil;
+          if (promptUntil == null) return false;
+          final gone = request.withdrawn;
+          final picked = await promptUntil(
+            question:
+                '${request.summary}\n\nAsked by: ${request.origin}'
+                '${request.risk.isEmpty ? '' : '\nRisk: ${request.risk}'}'
+                '\n\nAllow it?',
+            options: const <String>['Deny', 'Allow'],
+            until: Future.any<void>(<Future<void>>[
+              Future<void>.delayed(request.deadline),
+              if (gone != null) gone,
+            ]),
+          );
+          return picked == 1;
+        },
+      ),
+      adoptUnconsented: true,
       activateBundle: (source) async {
         // Plugin mode = activate the bundle's tools with no UI tab (tabKey:'').
         final bundle = await mk.McpBundleLoader.loadDirectory(
@@ -1434,6 +1462,9 @@ class VibeStudioHostApp extends StudioApp {
       );
       unawaited(coverage.ready);
     }
+    // Local decide-and-verify loop — `celm.*` (mcp_celm). Its eyes, hands and
+    // interlock are this host's own tools, resolved as `<server>.<tool>`.
+    registerCelmCapability(hostTools, host: boot);
     // Credential vault — `secret.*` over the OS keychain (vendored
     // secure_capability recipe). Independent of capRoot; set / exists /
     // remove / list, no plaintext get.
@@ -1873,8 +1904,11 @@ class VibeStudioHostApp extends StudioApp {
 ''';
         return mh.GetPromptResult(
           description: 'Bootstrap a new authoring bundle named "$name".',
-          messages: <mh.Message>[
-            mh.Message(role: 'user', content: mh.TextContent(text: body)),
+          messages: <mh.PromptMessage>[
+            mh.PromptMessage(
+              role: mh.Role.user,
+              content: mh.TextContent(text: body),
+            ),
           ],
         );
       },
@@ -1911,8 +1945,11 @@ class VibeStudioHostApp extends StudioApp {
 ''';
         return mh.GetPromptResult(
           description: 'Add a `$widget` to page `$pageId`.',
-          messages: <mh.Message>[
-            mh.Message(role: 'user', content: mh.TextContent(text: body)),
+          messages: <mh.PromptMessage>[
+            mh.PromptMessage(
+              role: mh.Role.user,
+              content: mh.TextContent(text: body),
+            ),
           ],
         );
       },
@@ -1950,8 +1987,11 @@ class VibeStudioHostApp extends StudioApp {
 ''';
         return mh.GetPromptResult(
           description: 'Wire button "$label" to call `$tool`.',
-          messages: <mh.Message>[
-            mh.Message(role: 'user', content: mh.TextContent(text: body)),
+          messages: <mh.PromptMessage>[
+            mh.PromptMessage(
+              role: mh.Role.user,
+              content: mh.TextContent(text: body),
+            ),
           ],
         );
       },
@@ -1980,8 +2020,11 @@ class VibeStudioHostApp extends StudioApp {
 ''';
         return mh.GetPromptResult(
           description: 'Install bundle at `$sourcePath`.',
-          messages: <mh.Message>[
-            mh.Message(role: 'user', content: mh.TextContent(text: body)),
+          messages: <mh.PromptMessage>[
+            mh.PromptMessage(
+              role: mh.Role.user,
+              content: mh.TextContent(text: body),
+            ),
           ],
         );
       },
@@ -2622,7 +2665,7 @@ class VibeStudioHostApp extends StudioApp {
       try {
         target.addTool(
           name: tool.name,
-          description: tool.description,
+          description: tool.description ?? '',
           inputSchema: tool.inputSchema,
           handler: (args) => source.callTool(tool.name, args),
         );
@@ -2658,8 +2701,8 @@ class VibeStudioHostApp extends StudioApp {
         target.addResource(
           uri: res.uri,
           name: res.name,
-          description: res.description,
-          mimeType: res.mimeType,
+          description: res.description ?? '',
+          mimeType: res.mimeType ?? 'text/plain',
           handler: (uri, params) async {
             // Delegate to source's handler by re-reading. The kernel
             // does not expose a direct `callResource(uri)` so we use

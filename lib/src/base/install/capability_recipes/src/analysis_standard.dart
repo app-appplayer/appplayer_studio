@@ -20,10 +20,7 @@ AnalysisPort standardAnalysisPort({
   EventPort? eventPort,
   MetricPort? metricPort,
 }) =>
-    AnalysisPortAdapter.inMemory(
-      eventPort: eventPort,
-      metricPort: metricPort,
-    );
+    AnalysisPortAdapter.inMemory(eventPort: eventPort, metricPort: metricPort);
 
 /// Turnkey: register the `analysis.*` capability on [registry] in one line.
 /// Default engine = [standardAnalysisPort]; a host with its own configured
@@ -34,15 +31,10 @@ List<String> registerAnalysisCapability(
   AnalysisPort? port,
   EventPort? eventPort,
   MetricPort? metricPort,
-}) =>
-    registerCapabilityTools(
-      registry,
-      capabilityId: analysisCapabilityId,
-      tools: analysisCapabilityTools(
-        port ??
-            standardAnalysisPort(
-              eventPort: eventPort,
-              metricPort: metricPort,
-            ),
-      ),
-    );
+}) => registerCapabilityTools(
+  registry,
+  capabilityId: analysisCapabilityId,
+  tools: analysisCapabilityTools(
+    port ?? standardAnalysisPort(eventPort: eventPort, metricPort: metricPort),
+  ),
+);

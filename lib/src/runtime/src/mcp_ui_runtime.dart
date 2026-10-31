@@ -969,14 +969,14 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 // Parameterised routes (`/users/:id`) are pushed with the
                 // parameter filled in, which matches no key in `routes`.
                 onGenerateRoute: widget.engine.routeManager!.onGenerateRoute,
-                title: appDefinition.title,
+                onGenerateTitle: (context) => _resolvedAppTitle(
+                    widget.engine, context, appDefinition.title),
                 theme: widget.engine.themeManager.toFlutterTheme(),
                 darkTheme:
                     widget.engine.themeManager.toFlutterTheme(isDark: true),
                 themeMode: widget.engine.themeManager.flutterThemeMode,
                 debugShowCheckedModeBanner: false,
-                builder: (ctx, child) => _withDocumentDirection(
-                    widget.engine,
+                builder: (ctx, child) => _withDocumentDirection(widget.engine,
                     _withFormFactor(ctx, child ?? const SizedBox.shrink())),
                 home: _ApplicationShell(
                   engine: widget.engine,
@@ -1005,14 +1005,14 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
                 navigatorObservers: <NavigatorObserver>[
                   widget.engine.routeObserver,
                 ],
-                title: appDefinition.title,
+                onGenerateTitle: (context) => _resolvedAppTitle(
+                    widget.engine, context, appDefinition.title),
                 theme: widget.engine.themeManager.toFlutterTheme(),
                 darkTheme:
                     widget.engine.themeManager.toFlutterTheme(isDark: true),
                 themeMode: widget.engine.themeManager.flutterThemeMode,
                 debugShowCheckedModeBanner: false,
-                builder: (ctx, child) => _withDocumentDirection(
-                    widget.engine,
+                builder: (ctx, child) => _withDocumentDirection(widget.engine,
                     _withFormFactor(ctx, child ?? const SizedBox.shrink())),
                 initialRoute: widget.engine.routeManager!.initialRoute,
                 routes: widget.engine.routeManager!.generateRoutes(context),
@@ -1113,6 +1113,32 @@ class _MCPRuntimeWidgetState extends State<MCPRuntimeWidget>
 ///
 /// This allows buttons with navigation actions to work seamlessly with
 /// drawer/tab/bottom navigation, even though they use different systems.
+
+/// A shell string (the application title, a navigation item label) with its
+/// bindings resolved. It is a string like any other (spec §3.1), so it may
+/// carry `{{i18n.*}}`, state or any other binding.
+String _resolvedAppTitle(
+    RuntimeEngine engine, BuildContext context, String title) {
+  if (!title.contains('{{')) return title;
+  final value =
+      engine.renderer.createRootContext(context).resolve<dynamic>(title);
+  return value?.toString() ?? '';
+}
+
+/// What a bound shell string depends on: state and the active locale.
+Listenable _bindingSources(RuntimeEngine engine) =>
+    Listenable.merge([engine.stateManager, engine.i18nManager]);
+
+/// A shell string (the application title, a navigation item label) as text,
+/// drawn again when state or the active locale changes.
+Widget _appTitleText(RuntimeEngine engine, String title, {TextStyle? style}) {
+  if (!title.contains('{{')) return Text(title, style: style);
+  return AnimatedBuilder(
+    animation: _bindingSources(engine),
+    builder: (context, _) =>
+        Text(_resolvedAppTitle(engine, context, title), style: style),
+  );
+}
 
 class _ApplicationShell extends StatefulWidget {
   final RuntimeEngine engine;
@@ -1426,15 +1452,16 @@ class _ApplicationShellState extends State<_ApplicationShell> {
 
               return Scaffold(
                 appBar: AppBar(
-                  title: Text(widget.appDefinition.title),
+                  title:
+                      _appTitleText(widget.engine, widget.appDefinition.title),
                   actions: _shellAppBarActions(),
                   bottom: TabBar(
                     tabs: navigation.items
                         .map((item) => Tab(
-                              text: item.title,
                               icon: item.icon != null
                                   ? Icon(_getIconData(item.icon!))
                                   : null,
+                              child: _appTitleText(widget.engine, item.title),
                             ))
                         .toList(),
                   ),
@@ -1496,20 +1523,24 @@ class _ApplicationShellState extends State<_ApplicationShell> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.appDefinition.title),
+            title: _appTitleText(widget.engine, widget.appDefinition.title),
             actions: _shellAppBarActions(),
           ),
           body: Row(
             children: [
-              _CustomRail(
-                selectedIndex: railSelected,
-                onSelect: selectRail,
-                items: navigation.items
-                    .map((item) => _CustomRailItem(
-                          icon: _getIconData(item.icon ?? 'home'),
-                          label: item.title,
-                        ))
-                    .toList(),
+              AnimatedBuilder(
+                animation: _bindingSources(widget.engine),
+                builder: (context, _) => _CustomRail(
+                  selectedIndex: railSelected,
+                  onSelect: selectRail,
+                  items: navigation.items
+                      .map((item) => _CustomRailItem(
+                            icon: _getIconData(item.icon ?? 'home'),
+                            label: _resolvedAppTitle(
+                                widget.engine, context, item.title),
+                          ))
+                      .toList(),
+                ),
               ),
               const VerticalDivider(thickness: 1, width: 1),
               Expanded(
@@ -1534,7 +1565,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
         if (navigation.items.length < 2) {
           return Scaffold(
             appBar: AppBar(
-              title: Text(widget.appDefinition.title),
+              title: _appTitleText(widget.engine, widget.appDefinition.title),
               actions: _shellAppBarActions(),
             ),
             body: _shellBody(navigation),
@@ -1542,26 +1573,30 @@ class _ApplicationShellState extends State<_ApplicationShell> {
         }
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.appDefinition.title),
+            title: _appTitleText(widget.engine, widget.appDefinition.title),
             actions: _shellAppBarActions(),
           ),
           body: _shellBody(navigation),
-          bottomNavigationBar: BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            currentIndex: _currentIndex,
-            onTap: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-              // Update navigation state in StateManager
-              _updateNavigationState(index);
-            },
-            items: navigation.items
-                .map((item) => BottomNavigationBarItem(
-                      icon: Icon(_getIconData(item.icon ?? 'home')),
-                      label: item.title,
-                    ))
-                .toList(),
+          bottomNavigationBar: AnimatedBuilder(
+            animation: _bindingSources(widget.engine),
+            builder: (context, _) => BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+                // Update navigation state in StateManager
+                _updateNavigationState(index);
+              },
+              items: navigation.items
+                  .map((item) => BottomNavigationBarItem(
+                        icon: Icon(_getIconData(item.icon ?? 'home')),
+                        label: _resolvedAppTitle(
+                            widget.engine, context, item.title),
+                      ))
+                  .toList(),
+            ),
           ),
         );
 
@@ -1573,7 +1608,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
         // variants are author-driven via ResponsiveValue.
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.appDefinition.title),
+            title: _appTitleText(widget.engine, widget.appDefinition.title),
             actions: _shellAppBarActions(),
           ),
           drawer: Drawer(
@@ -1584,7 +1619,8 @@ class _ApplicationShellState extends State<_ApplicationShell> {
                   decoration: BoxDecoration(
                     color: Theme.of(context).primaryColor,
                   ),
-                  child: Text(
+                  child: _appTitleText(
+                    widget.engine,
                     widget.appDefinition.title,
                     style: const TextStyle(
                       color: Colors.white,
@@ -1599,7 +1635,7 @@ class _ApplicationShellState extends State<_ApplicationShell> {
                     leading: item.icon != null
                         ? Icon(_getIconData(item.icon!))
                         : null,
-                    title: Text(item.title),
+                    title: _appTitleText(widget.engine, item.title),
                     selected: index == _currentIndex,
                     onTap: () {
                       setState(() {

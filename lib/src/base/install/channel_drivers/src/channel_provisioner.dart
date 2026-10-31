@@ -27,7 +27,8 @@ class ChannelConnectorConfig {
       ChannelConnectorConfig(
         platform: json['platform'] as String,
         id: json['id'] as String,
-        params: (json['params'] as Map?)?.cast<String, dynamic>() ??
+        params:
+            (json['params'] as Map?)?.cast<String, dynamic>() ??
             const <String, dynamic>{},
       );
 
@@ -41,15 +42,15 @@ class ChannelConnectorConfig {
   final Map<String, dynamic> params;
 
   Map<String, dynamic> toJson() => {
-        'platform': platform,
-        'id': id,
-        if (params.isNotEmpty) 'params': params,
-      };
+    'platform': platform,
+    'id': id,
+    if (params.isNotEmpty) 'params': params,
+  };
 }
 
 /// Builds a connector instance from its [ChannelConnectorConfig].
-typedef ChannelConnectorBuilder = ExtendedChannelPort Function(
-    ChannelConnectorConfig config);
+typedef ChannelConnectorBuilder =
+    ExtendedChannelPort Function(ChannelConnectorConfig config);
 
 /// Raised when a config cannot be provisioned.
 class ChannelProvisionException implements Exception {
@@ -89,9 +90,9 @@ class ChannelDriverRegistry {
 
   /// Connector platforms available on [platform].
   Set<String> platformsFor(ChannelPlatform platform) => {
-        for (final e in _drivers.entries)
-          if (e.value.platforms.contains(platform)) e.key,
-      };
+    for (final e in _drivers.entries)
+      if (e.value.platforms.contains(platform)) e.key,
+  };
 
   /// Build the connector for [config] on [platform]. Throws
   /// [ChannelProvisionException] for an unknown or unsupported platform.

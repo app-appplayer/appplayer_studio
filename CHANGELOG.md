@@ -1,6 +1,12 @@
 ## [Unreleased]
 
+## [0.1.11] - 2026-10-31
+
 ### Added
+
+- Ops host tool `knowledge_fact_list` — the facts of one workspace in the
+  project's graph (`types`, `limit`, `workspaceId`), the read a skill's
+  `fact.query` step does.
 
 - The project header can follow the slots a bundle wired: a host that sets
   `DomainLifecycleState.boundSlots` gets only those system buttons enabled
@@ -93,9 +99,38 @@
   retired `studio.workspace.adopt`. The authoring knowledge (host seed ·
   App Builder seed) states the kinds. Studio does not check `type` against
   what a bundle uses.
+- Ops skills run their steps on the kernel's skill runtime (control flow,
+  templates, results), with the same results, outside calls and errors as
+  before — checked by running every shipped skill and a set of template corner
+  cases on both engines. `browser`, `llm` and `fact.query` steps are the
+  kernel's own; the rest (`fact.save`, `parse_json` and the like) are still
+  run by Ops.
+- Registering a plugin (`plugin.register`) asks the person with the studio's
+  Deny / Allow prompt instead of being allowed by policy; a registration stored
+  before consents existed is adopted once. A skill's `fact.query` reads the
+  workspace the run is pinned to, the same one its `fact.save` writes to.
+- The Ops skill `quality_appraise` now answers `{score, reason}` (it read the
+  model's JSON as text before, so the quality gate never saw a score). The new
+  `parse_json` step kind reads JSON out of text. The process quality gate now
+  hands the appraisal the output of the step it gates (`prev`), filled in by the
+  behavior engine. A process whose quality gate used this skill could never
+  get past the gate before (the appraisal gave no score); it now continues when
+  the score reaches the gate's minimum.
 
 ### Fixed
 
+- Scene Builder lists the scenarios and recordings of the project that was
+  just opened. The mode views loaded once when they were built, so opening a
+  scene project while a mode was showing kept listing the previous project
+  until Refresh. The shell now rebuilds the active mode view when the project
+  changes.
+- Closing a second App Builder surface (a package tab that carries one) no
+  longer leaves the first App Builder tab's `app_builder.*` tools unwired.
+  The tool registry keeps the newest registration of a name, and the closed
+  surface cleared the live bridge, so calls such as `app_builder.project.open`
+  failed with "Bridge slot ... not wired" until restart. The mounted surfaces
+  are now tracked in order, and when the live one closes the newest remaining
+  one becomes live and registers its tools again.
 - Page, dashboard and component previews carry the application's `i18n`
   block (spec §12) into the application they wrap the target in. Without
   it a runtime that loads `i18n` showed every `{{i18n.key}}` on those
@@ -116,6 +151,26 @@
   New / Open / Save / Undo … buttons were empty callbacks with the project
   flags fixed off. It now fires the same lifecycle slots with the same
   lifecycle state as the project header.
+- A destructive tool's confirmation (a server's `destructiveHint`, or a bundle
+  tool that declares one) asked with a dialog that only had OK and counted any
+  way of closing it as approval. It now asks Deny / Allow and only Allow runs
+  the tool; a bundle tool declaring `destructiveHint` is not run at all by a
+  host that cannot ask.
+- `studio.builder.addSkill`, `addProfile` and `addPhilosophy` answered `ok`
+  while dropping an entry the bundle schema does not keep (for example an Ops
+  skill, which has no `name` and a numeric `version`). They now check the entry
+  first and refuse it with the reasons.
+- Creating an Ops project (and a workspace) failed in a tier that hosts the
+  studio as a package (Pro): the seed files were read with a key only the open
+  base resolves. They are now read in either tier.
+- A bundle `mcp` tool whose `stdio` arguments name a file the bundle ships
+  (`${__dirname}/…`) was started with the text unresolved. The call is refused.
+- The Ops skill `ad_publish` named its browser `operation` where the skill
+  definition does not read it and put the form's `url` and `steps` where the
+  browser step does not pass them on, so it always failed. Fixed.
+- An Ops skill's `fact.save` step wrote the fact to the workspace the UI had
+  active instead of the workspace the skill was running for. It now goes
+  through the host's `knowledge_fact_save` into the workspace of the run.
 
 ## [0.1.10] - 2026-09-29
 

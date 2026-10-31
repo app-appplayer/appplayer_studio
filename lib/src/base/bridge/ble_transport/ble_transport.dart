@@ -28,3 +28,5 @@ export 'src/ble_link.dart' show BleLink, BleLocate;
 export 'src/ble_uuids.dart';
 export 'src/newline_json_framer.dart' show NewlineJsonFramer;
 export 'src/universal_ble_link.dart' show UniversalBleLink;
+export 'src/ble_stack.dart' show BleStack, bleLocateVia, hubBoardCandidates;
+export 'src/ble_readiness.dart' show BleReadiness, bleReadiness;

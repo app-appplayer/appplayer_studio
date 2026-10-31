@@ -388,7 +388,8 @@ class InspectorSessionManager extends ChangeNotifier {
             for (final t in session.tools)
               <String, dynamic>{
                 'name': t.name,
-                if (t.description.isNotEmpty) 'description': t.description,
+                if (t.description?.isNotEmpty ?? false)
+                  'description': t.description,
                 if (t.inputSchema.isNotEmpty) 'inputSchema': t.inputSchema,
               },
           ],

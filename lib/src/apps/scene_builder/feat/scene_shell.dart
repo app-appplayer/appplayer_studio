@@ -227,7 +227,10 @@ class _SceneShellState extends State<SceneShell> {
     // adopt) so [didChangeDependencies] can re-apply it verbatim on
     // re-activation without re-deriving from the volatile `activeChatAgentId`.
     _scopedManagerId = widget.chromeBridge.chatManagerOverride.value;
-    setState(() => _currentProject = path);
+    setState(() {
+      if (_currentProject != path) _selectedScenarioId = null;
+      _currentProject = path;
+    });
     _refreshHeaderActions();
     return <String, dynamic>{
       'ok': true,
@@ -415,7 +418,15 @@ class _SceneShellState extends State<SceneShell> {
         children: <Widget>[
           _ModeRail(active: _mode, onSelect: _switchMode),
           const VerticalDivider(width: 1),
-          Expanded(child: _body()),
+          // Keyed by the active project: every mode view loads its data once
+          // in `initState`, so a project switch must rebuild the view or it
+          // keeps listing the previous project's scenarios / recordings.
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey<String?>(_currentProject),
+              child: _body(),
+            ),
+          ),
         ],
       ),
     );

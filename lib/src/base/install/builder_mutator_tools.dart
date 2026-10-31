@@ -648,6 +648,12 @@ void registerBuilderMutatorTools(
       'required': <String>['mbdPath', 'skill'],
     },
     handler: (args) async {
+      final rejected = _rejectInvalidEntry(
+        args,
+        'skill',
+        'studio.builder.addSkill',
+      );
+      if (rejected != null) return rejected;
       return _runKnowledgeMutation(args, 'studio.builder.addSkill', bridge, (
         manifest,
       ) {
@@ -682,6 +688,12 @@ void registerBuilderMutatorTools(
       'required': <String>['mbdPath', 'profile'],
     },
     handler: (args) async {
+      final rejected = _rejectInvalidEntry(
+        args,
+        'profile',
+        'studio.builder.addProfile',
+      );
+      if (rejected != null) return rejected;
       return _runKnowledgeMutation(args, 'studio.builder.addProfile', bridge, (
         manifest,
       ) {
@@ -714,6 +726,12 @@ void registerBuilderMutatorTools(
       'required': <String>['mbdPath', 'philosophy'],
     },
     handler: (args) async {
+      final rejected = _rejectInvalidEntry(
+        args,
+        'philosophy',
+        'studio.builder.addPhilosophy',
+      );
+      if (rejected != null) return rejected;
       return _runKnowledgeMutation(
         args,
         'studio.builder.addPhilosophy',
@@ -2312,6 +2330,34 @@ Map<String, dynamic> _upsertTopLevelList(
     list.add(Map<String, dynamic>.from(entry));
   }
   return <String, dynamic>{'added': listKey, 'id': id};
+}
+
+/// An entry the bundle schema would not keep. The mutator re-reads the
+/// manifest leniently and drops what does not parse, so without this check the
+/// call answers `ok` while nothing was saved. Returns the refusal, or null
+/// when the entry is fine (or is not a map — the mutation reports that).
+mk.KernelToolResult? _rejectInvalidEntry(
+  Map<String, dynamic> args,
+  String kind,
+  String toolName,
+) {
+  final raw = args[kind];
+  if (raw is! Map) return null;
+  final issues = _validateKnowledgeEntry(kind, Map<String, dynamic>.from(raw));
+  if (issues == null || issues.isEmpty) return null;
+  return mk.KernelToolResult(
+    content: <mk.KernelContent>[
+      mk.KernelTextContent(
+        text: jsonEncode(<String, dynamic>{
+          'ok': false,
+          'error': 'validation failed for kind=$kind',
+          'issues': issues,
+          'tool': toolName,
+        }),
+      ),
+    ],
+    isError: true,
+  );
 }
 
 /// Per-kind partial validation — dispatches to

@@ -67,9 +67,22 @@ Future<BoardIdentity?> probeCandidate({
 }) async {
   ClientTransport? transport;
   Client? client;
+  // Set once this probe has given up. A transport still being built at that
+  // moment (a Bluetooth link: GATT connect, discovery, subscribe) completes
+  // later with nobody holding it; it must close itself then, or the board
+  // stays connected to this phone, stops advertising and is never found
+  // again (measured 2026-10-04, ESP32 over BLE on an Android tablet).
+  var abandoned = false;
   try {
     final attempt = Future.sync(() async {
-      transport = await buildTransport();
+      final built = await buildTransport();
+      if (abandoned) {
+        try {
+          built.close();
+        } catch (_) {}
+        throw TimeoutException('probe abandoned while connecting');
+      }
+      transport = built;
       client = Client(name: clientName, version: clientVersion);
       // `connect` performs the MCP `initialize` handshake internally and
       // throws when it does not complete.
@@ -86,6 +99,7 @@ Future<BoardIdentity?> probeCandidate({
     // surfaced — a failed probe simply never reaches the discovery surface.
     return null;
   } finally {
+    abandoned = true;
     try {
       client?.dispose();
     } catch (_) {
@@ -162,8 +176,9 @@ Future<BoardIdentity?> probeConnectedClient(Client client) async {
   if (decoded is! Map) return null;
   // Contract shape: {"manifest": {...}, "ui": {...}} — tolerate a flat
   // manifest object as well.
-  final manifest =
-      decoded['manifest'] is Map ? decoded['manifest'] as Map : decoded;
+  final manifest = decoded['manifest'] is Map
+      ? decoded['manifest'] as Map
+      : decoded;
   final id = manifest['id'];
   final name = manifest['name'];
   final version = manifest['version'];

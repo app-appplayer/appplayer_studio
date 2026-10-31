@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../core/vibe_project.dart';
 import '../feat/build_tools.dart';
 import '../feat/file_tools.dart';
@@ -19,10 +21,10 @@ class VibeServerBridge {
 
   /// The bridge of the **currently-live** App Builder mount.
   ///
-  /// App Builder is single-instance (one domain, one project), so there is
-  /// only ever zero or one live mount — never concurrent instances. A
-  /// re-mount (IndexedStack rebuild, re-open from Home, hot restart) swaps
-  /// this to the new mount; the mount's dispose clears it only-if-mine.
+  /// The newest mount is live. A re-mount (IndexedStack rebuild, re-open
+  /// from Home, hot restart) or a package tab that carries an App Builder
+  /// surface swaps this to the new mount; when that mount's dispose runs,
+  /// the newest remaining mount becomes live again (see [clearLiveIfMine]).
   /// `vibe_*` tool/resource handlers read through [resolve] so a re-mounted
   /// mount's tool (registered via the standard registry's replace) answers
   /// from the live bridge, never a torn-down mount's nulled state.
@@ -39,12 +41,40 @@ class VibeServerBridge {
       live ?? captured;
 
   /// Mark [mount] the live App Builder bridge (called from mount init).
-  static void markLive(VibeServerBridge mount) => live = mount;
+  static void markLive(VibeServerBridge mount) {
+    _mounted.remove(mount);
+    _mounted.add(mount);
+    live = mount;
+  }
 
-  /// Clear the live pointer only if [mount] still holds it — a re-mount
-  /// may have swapped it since (called from mount dispose).
+  /// Every mounted App Builder bridge, oldest first. A package that carries
+  /// an App Builder surface mounts a second instance beside the built-in
+  /// tab; when that one closes, the mount that was open before it must take
+  /// the host tool surface back.
+  static final List<VibeServerBridge> _mounted = <VibeServerBridge>[];
+
+  /// Forget every mount and the live pointer.
+  @visibleForTesting
+  static void resetMounts() {
+    _mounted.clear();
+    live = null;
+  }
+
+  /// Called on the mount that becomes live again after the newer mount
+  /// closed. The mount re-registers its host tools here, because the tool
+  /// registry keeps only the newest registration of a name.
+  void Function()? onBecameLive;
+
+  /// Drop [mount] from the mounted set (called from mount dispose). When it
+  /// held the live pointer, the newest remaining mount takes over and
+  /// re-registers its tools; with none left the pointer is cleared. A
+  /// re-mount may have swapped the pointer already, in which case only the
+  /// set changes.
   static void clearLiveIfMine(VibeServerBridge mount) {
-    if (identical(live, mount)) live = null;
+    _mounted.remove(mount);
+    if (!identical(live, mount)) return;
+    live = _mounted.isEmpty ? null : _mounted.last;
+    live?.onBecameLive?.call();
   }
 
   // ─────────── Project state getters ───────────

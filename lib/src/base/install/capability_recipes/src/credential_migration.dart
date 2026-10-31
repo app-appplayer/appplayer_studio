@@ -28,8 +28,8 @@ class CredentialMigrator {
     this._store, {
     String namespace = defaultCredentialNamespace,
     PassphraseSealer? sealer,
-  })  : _namespace = namespace,
-        _sealer = sealer ?? PassphraseSealer();
+  }) : _namespace = namespace,
+       _sealer = sealer ?? PassphraseSealer();
 
   final SecureStorage _store;
   final String _namespace;

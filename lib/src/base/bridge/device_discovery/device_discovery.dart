@@ -20,3 +20,4 @@ export 'src/mdns_types.dart';
 export 'src/newline_json_framer.dart';
 export 'src/probe.dart';
 export 'src/tcp_probe_transport.dart';
+export 'src/tcp_board_connect.dart';

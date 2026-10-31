@@ -169,6 +169,22 @@ void main() {
       expect(c.turns[1].text, 'hello back');
     });
 
+    test('a failed model call answers in the thread, not only in the log',
+        () async {
+      var persisted = 0;
+      final c = VibeChatController(
+        send: (_) async => throw StateError('claude exited 1: Not logged in'),
+        onTurnPersisted: (_) async => persisted++,
+      );
+      await c.ask('make a counter app');
+      expect(c.turns.map((t) => t.role), <String>['user', 'error']);
+      expect(c.turns.last.text, contains('Not logged in'));
+      expect(c.busy, isFalse, reason: 'the next question can be asked');
+      expect(persisted, 1, reason: 'only the question is kept as history');
+      await c.ask('again');
+      expect(c.turns, hasLength(4));
+    });
+
     test('busy is false before and after ask()', () async {
       final c = _ctrl();
       expect(c.busy, isFalse);

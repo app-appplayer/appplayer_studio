@@ -31,11 +31,11 @@ class FormTemplateRecord {
   final Map<String, dynamic> templateJson;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'templateId': templateId,
-        'version': version,
-        'createdAt': createdAt.toIso8601String(),
-        'template': templateJson,
-      };
+    'templateId': templateId,
+    'version': version,
+    'createdAt': createdAt.toIso8601String(),
+    'template': templateJson,
+  };
 
   factory FormTemplateRecord.fromJson(Map<String, dynamic> json) =>
       FormTemplateRecord(

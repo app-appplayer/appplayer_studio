@@ -1,5 +1,5 @@
 import '../utils/color_parser.dart';
-import 'dart:async' show Future, TimeoutException;
+import 'dart:async' show Completer, Future, Timer;
 import 'dart:convert' show jsonDecode;
 import 'dart:math' show pow;
 import 'package:flutter/foundation.dart';
@@ -23,6 +23,8 @@ import '../permissions/trust_level.dart';
 import '../entry/entry_session.dart';
 import 'action_result.dart';
 import 'dispatch_origin.dart';
+import 'tool_call_signal.dart';
+import '../routing/page_state_scope.dart' show MCPPageWidget;
 
 /// Handles action execution
 /// A callback slot as one action.
@@ -36,10 +38,8 @@ Map<String, dynamic>? _callbackOf(dynamic raw) {
   if (raw is Map<String, dynamic>) return raw;
   if (raw is Map) return Map<String, dynamic>.from(raw);
   if (raw is List) {
-    final actions = raw
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    final actions =
+        raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     if (actions.isEmpty) return null;
     if (actions.length == 1) return actions.first;
     return <String, dynamic>{'type': 'sequence', 'actions': actions};
@@ -50,6 +50,50 @@ Map<String, dynamic>? _callbackOf(dynamic raw) {
 class ActionHandler {
   final Map<String, ActionExecutor> _executors = {};
   final Map<String, Function> _toolExecutors = {};
+
+  /// Actions still waiting on a result, by cancellation id (§4.15).
+  final Map<String, Set<InFlightAction>> _inFlight = {};
+
+  /// Registers a wait that `cancel` or page removal can end.
+  @visibleForTesting
+  InFlightAction beginInFlight(String id,
+      {Object? owner, bool cancellable = false}) {
+    final flight = InFlightAction._(id, owner: owner, cancellable: cancellable);
+    _inFlight.putIfAbsent(id, () => <InFlightAction>{}).add(flight);
+    return flight;
+  }
+
+  void _endInFlight(InFlightAction flight) {
+    final set = _inFlight[flight.id];
+    if (set == null) return;
+    set.remove(flight);
+    if (set.isEmpty) _inFlight.remove(flight.id);
+  }
+
+  /// Ends every cancellable wait registered under [id]. Returns how many.
+  int cancelInFlight(String id) {
+    final targets =
+        (_inFlight[id] ?? const <InFlightAction>{}).where((f) => f.cancellable);
+    var count = 0;
+    for (final flight in targets.toList()) {
+      if (flight._cancel(InFlightEnd.cancelled)) count++;
+    }
+    return count;
+  }
+
+  /// Ends every wait started from [page], which is being removed (§4.15
+  /// implicit trigger). A widget that only left the tree — a button swapped
+  /// for a spinner while it waits — does not end anything.
+  void cancelInFlightOf(Object page) {
+    for (final set in _inFlight.values.toList()) {
+      for (final flight in set.toList()) {
+        if (identical(flight.owner, page)) {
+          flight._cancel(InFlightEnd.detached);
+        }
+      }
+    }
+  }
+
   final MCPLogger _logger = MCPLogger('ActionHandler');
 
   ActionHandler() {
@@ -229,7 +273,8 @@ class ActionHandler {
           context: buildContext,
           builder: (ctx) => AlertDialog(
             title: const Text('Confirmation Required'),
-            content: Text(confirmMessage ?? 'Are you sure you want to proceed?'),
+            content:
+                Text(confirmMessage ?? 'Are you sure you want to proceed?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
@@ -259,11 +304,14 @@ class ActionHandler {
       // Pass dependencies to executor if needed
       if (executor is ToolActionExecutor) {
         executor._toolExecutors = _toolExecutors;
+        executor._actionHandler = this;
       } else if (executor is BatchActionExecutor) {
         executor._actionHandler = this;
       } else if (executor is ConditionalActionExecutor) {
         executor._actionHandler = this;
       } else if (executor is LocationActionExecutor) {
+        executor._actionHandler = this;
+      } else if (executor is CancelActionExecutor) {
         executor._actionHandler = this;
       } else if (executor is PaymentActionExecutor) {
         executor._actionHandler = this;
@@ -304,7 +352,8 @@ class ActionHandler {
           );
           await execute(onSuccess, successContext);
         }
-      } else {
+      } else if (result.errorCode != ActionResult.cancelledCode) {
+        // A cancelled action reports through its own `onCancel`.
         final onError = _callbackOf(action['onError']);
         if (onError != null) {
           final errorContext = context.createChildContext(
@@ -421,6 +470,58 @@ abstract class ActionExecutor {
 class ToolActionExecutor extends ActionExecutor {
   final MCPLogger _logger = MCPLogger('ToolActionExecutor');
   Map<String, Function>? _toolExecutors;
+  ActionHandler? _actionHandler;
+
+  /// Waits for [call] under the document's `timeout` (§4.16: omitted →
+  /// 30000 ms, 0 → no limit) and the action's cancellation handle (§4.15).
+  /// The wait ends on the first of: the result, the limit, a cancel. A call
+  /// that is still running when the wait ends is left to the host — told
+  /// through [ToolCallSignal.current] — and its late result is dropped.
+  Future<_WaitOutcome> _wait(
+    Map<String, dynamic> action,
+    RenderContext context,
+    String tool,
+    Future<dynamic> Function() call,
+  ) async {
+    final timeout = (action['timeout'] as num?)?.toInt() ?? 30000;
+    final id = action['id'] as String? ?? tool;
+    final flight = _actionHandler?.beginInFlight(
+      id,
+      owner: _pageOf(context.buildContext),
+      cancellable: action['cancellable'] == true,
+    );
+    final done = Completer<_WaitOutcome>();
+    Timer? timer;
+    if (timeout > 0) {
+      timer = Timer(Duration(milliseconds: timeout), () {
+        if (!done.isCompleted) done.complete(const _WaitOutcome.timedOut());
+      });
+    }
+    flight?._ended.future.then((end) {
+      if (!done.isCompleted) done.complete(_WaitOutcome.ended(end));
+    });
+    final abandoned = Completer<String>();
+    Future<dynamic>.sync(() => runWithToolCallSignal(abandoned.future, call))
+        .then((value) {
+      if (!done.isCompleted) done.complete(_WaitOutcome.result(value));
+    }, onError: (Object e) {
+      if (!done.isCompleted) done.complete(_WaitOutcome.failure(e));
+    });
+    try {
+      final outcome = await done.future;
+      final reason = switch (outcome.kind) {
+        _WaitKind.timedOut => ToolCallSignal.timeout,
+        _WaitKind.cancelled => ToolCallSignal.cancelled,
+        _WaitKind.detached => ToolCallSignal.pageRemoved,
+        _WaitKind.result || _WaitKind.failure => null,
+      };
+      if (reason != null) abandoned.complete(reason);
+      return outcome;
+    } finally {
+      timer?.cancel();
+      if (flight != null) _actionHandler?._endInFlight(flight);
+    }
+  }
 
   // Deprecation-notice gates: emit once per process per legacy path to
   // alert tool authors / hosts without flooding logs.
@@ -472,20 +573,57 @@ class ToolActionExecutor extends ActionExecutor {
     }
   }
 
-
   /// Runs a `tool` action against the subtree's ambient origin.
   ///
   /// Params resolve in the embedded scope, exactly as they would locally, and
   /// the result takes the same unwrap path — a call is not a different
   /// kind of thing because it crossed an origin, only a differently-addressed
   /// one.
+  static Object? _pageOf(BuildContext? build) =>
+      build != null && build.mounted ? MCPPageWidget.pageOf(build) : null;
+
+  void _clearLoading(
+      RenderContext context, String? binding, String? text, String? indicator) {
+    if (binding == null) return;
+    context.setValue(binding, false);
+    if (text != null) context.setValue('$binding.text', null);
+    if (indicator != null) context.setValue('$binding.indicator', null);
+  }
+
+  /// Reports a wait that ended before the result: `onTimeout` / `onCancel`
+  /// run here, and the result carries `TIMEOUT` / `CANCELLED`. A wait ended
+  /// because its page was removed runs no callback — there is no page left
+  /// to show it on.
+  Future<ActionResult> _endedEarly(Map<String, dynamic> action,
+      RenderContext context, String tool, _WaitOutcome outcome) async {
+    if (outcome.kind == _WaitKind.timedOut) {
+      final timeout = (action['timeout'] as num?)?.toInt() ?? 30000;
+      final onTimeout = action['onTimeout'];
+      if (onTimeout is Map<String, dynamic>) {
+        await DispatchOrigin.run(DispatchOrigin.timer,
+            () => context.actionHandler.execute(onTimeout, context));
+      }
+      return ActionResult.error('Tool execution timed out after ${timeout}ms',
+          errorCode: ActionResult.timeoutCode);
+    }
+    if (outcome.kind == _WaitKind.cancelled) {
+      final onCancel = action['onCancel'];
+      if (onCancel is Map<String, dynamic>) {
+        await context.actionHandler.execute(onCancel, context);
+      }
+    }
+    _logger.debug('Tool "$tool" wait ended: ${outcome.kind.name}');
+    return ActionResult.error('Tool "$tool" was cancelled',
+        errorCode: ActionResult.cancelledCode);
+  }
+
   Future<ActionResult> _executeThroughOrigin(
     Map<String, dynamic> action,
     RenderContext context,
     String tool,
     Map<String, dynamic> origin,
-    Future<dynamic> Function(
-            Map<String, dynamic> origin, String tool, Map<String, dynamic> params)
+    Future<dynamic> Function(Map<String, dynamic> origin, String tool,
+            Map<String, dynamic> params)
         callOrigin,
   ) async {
     final rawParams = action['params'];
@@ -495,12 +633,21 @@ class ToolActionExecutor extends ActionExecutor {
         params['$key'] = context.resolve(value);
       });
     }
-    try {
-      final result = await callOrigin(origin, tool, params);
-      return ActionResult.success(data: _maybeUnwrapMcpWire(result, tool));
-    } catch (e) {
-      _logger.error('Tool "$tool" on origin $origin failed: $e');
-      return ActionResult.error('tool "$tool" failed on origin: $e');
+    final outcome = await _wait(
+        action, context, tool, () => callOrigin(origin, tool, params));
+    switch (outcome.kind) {
+      case _WaitKind.result:
+        return ActionResult.success(
+            data: _maybeUnwrapMcpWire(outcome.value, tool));
+      case _WaitKind.failure:
+        _logger
+            .error('Tool "$tool" on origin $origin failed: ${outcome.value}');
+        return ActionResult.error(
+            'tool "$tool" failed on origin: ${outcome.value}');
+      case _WaitKind.timedOut:
+      case _WaitKind.cancelled:
+      case _WaitKind.detached:
+        return _endedEarly(action, context, tool, outcome);
     }
   }
 
@@ -624,12 +771,10 @@ class ToolActionExecutor extends ActionExecutor {
 
     try {
       dynamic result;
-      // Default timeout of 30000ms if not specified
-      final timeout = action['timeout'] as int? ?? 30000;
 
-      // Create the execution future
-      Future<dynamic> executionFuture() async {
-        if (_toolExecutors?[tool] == null && _toolExecutors?['default'] != null) {
+      Future<dynamic> call() async {
+        if (_toolExecutors?[tool] == null &&
+            _toolExecutors?['default'] != null) {
           _logger.debug(
               'Calling default tool executor with tool=$tool, params=$resolvedParams');
           return await toolExecutor(tool, resolvedParams);
@@ -645,59 +790,53 @@ class ToolActionExecutor extends ActionExecutor {
       final maxAttempts = retryConfig?['maxAttempts'] as int? ?? 1;
       final retryDelay = retryConfig?['delay'] as int? ?? 1000;
       final backoff = retryConfig?['backoff'] as String? ?? 'exponential';
-      final multiplier = (retryConfig?['multiplier'] as num?)?.toDouble() ?? 2.0;
+      final multiplier =
+          (retryConfig?['multiplier'] as num?)?.toDouble() ?? 2.0;
       final maxDelay = retryConfig?['maxDelay'] as int?;
-      final retryOn = (retryConfig?['retryOn'] as List<dynamic>?)?.cast<String>();
+      final retryOn =
+          (retryConfig?['retryOn'] as List<dynamic>?)?.cast<String>();
 
       int attempt = 0;
       dynamic lastError;
 
       while (attempt < maxAttempts) {
-        try {
-          // Handle timeout
-          if (timeout > 0) {
-            result = await executionFuture()
-                .timeout(Duration(milliseconds: timeout));
-          } else {
-            result = await executionFuture();
-          }
+        final outcome = await _wait(action, context, tool, call);
+        if (outcome.kind == _WaitKind.result) {
+          result = outcome.value;
           lastError = null;
           break;
-        } on TimeoutException {
-          lastError = 'Tool execution timed out after ${timeout}ms';
-          // Execute onTimeout action if defined
-          final onTimeout = action['onTimeout'] as Map<String, dynamic>?;
-          if (onTimeout != null) {
-            await DispatchOrigin.run(DispatchOrigin.timer,
-                () => context.actionHandler.execute(onTimeout, context));
-          }
-          attempt++;
-        } catch (e) {
-          lastError = e;
-          attempt++;
+        }
+        if (outcome.kind != _WaitKind.failure) {
+          // Out of time or cancelled. The call may still be running on the
+          // host, so it is never issued again from here.
+          _clearLoading(context, loadingBinding, loadingText, loadingIndicator);
+          return _endedEarly(action, context, tool, outcome);
+        }
+        final e = outcome.value;
+        lastError = e;
+        attempt++;
 
-          // Only retry if retryOn is not specified or the error code matches
-          if (retryOn != null && retryOn.isNotEmpty) {
-            final errorCode = e.toString();
-            final shouldRetry = retryOn.any((code) => errorCode.contains(code));
-            if (!shouldRetry) {
-              break;
-            }
+        // Only retry if retryOn is not specified or the error code matches
+        if (retryOn != null && retryOn.isNotEmpty) {
+          final errorCode = e.toString();
+          final shouldRetry = retryOn.any((code) => errorCode.contains(code));
+          if (!shouldRetry) {
+            break;
           }
+        }
 
-          if (attempt < maxAttempts) {
-            // Calculate retry delay with backoff
-            int currentDelay = retryDelay;
-            if (backoff == 'exponential') {
-              currentDelay = (retryDelay * pow(multiplier, attempt - 1)).toInt();
-            } else if (backoff == 'linear') {
-              currentDelay = retryDelay * attempt;
-            }
-            if (maxDelay != null && currentDelay > maxDelay) {
-              currentDelay = maxDelay;
-            }
-            await Future.delayed(Duration(milliseconds: currentDelay));
+        if (attempt < maxAttempts) {
+          // Calculate retry delay with backoff
+          int currentDelay = retryDelay;
+          if (backoff == 'exponential') {
+            currentDelay = (retryDelay * pow(multiplier, attempt - 1)).toInt();
+          } else if (backoff == 'linear') {
+            currentDelay = retryDelay * attempt;
           }
+          if (maxDelay != null && currentDelay > maxDelay) {
+            currentDelay = maxDelay;
+          }
+          await Future.delayed(Duration(milliseconds: currentDelay));
         }
       }
 
@@ -851,8 +990,7 @@ class ToolActionExecutor extends ActionExecutor {
       } else if (result is Map) {
         // Accept Map<dynamic, dynamic> from JSON decoders that produce a
         // non-typed map (e.g. jsonDecode result). Normalize then merge.
-        context.stateManager
-            .mergeState(Map<String, dynamic>.from(result));
+        context.stateManager.mergeState(Map<String, dynamic>.from(result));
       }
 
       if (loadingBinding != null) {
@@ -1001,8 +1139,7 @@ class NavigationActionExecutor extends ActionExecutor {
       return ActionResult.error('openUrl requires an absolute URL: $url');
     }
     if (_blockedUrlSchemes.contains(uri.scheme.toLowerCase())) {
-      return ActionResult.error(
-          'openUrl refused scheme "${uri.scheme}"');
+      return ActionResult.error('openUrl refused scheme "${uri.scheme}"');
     }
 
     final target = context.resolve<String?>(action['target']) ?? 'new';
@@ -1203,8 +1340,7 @@ class NavigationActionExecutor extends ActionExecutor {
           // setIndex requires a navigation handler (e.g., ApplicationShell)
           // and an index parameter per spec
           if (index == null) {
-            return ActionResult.error(
-                'setIndex requires an index parameter');
+            return ActionResult.error('setIndex requires an index parameter');
           }
           return ActionResult.error(
               'setIndex requires a navigation handler (e.g., ApplicationShell)');
@@ -1269,13 +1405,15 @@ class StateActionExecutor extends ActionExecutor {
           break;
 
         case 'increment':
-          final amount = action['amount'] as num? ?? action['value'] as num? ?? 1;
+          final amount =
+              action['amount'] as num? ?? action['value'] as num? ?? 1;
           final current = context.getValue(binding) as num? ?? 0;
           context.setValue(binding, current + amount, source: _source);
           break;
 
         case 'decrement':
-          final amount = action['amount'] as num? ?? action['value'] as num? ?? 1;
+          final amount =
+              action['amount'] as num? ?? action['value'] as num? ?? 1;
           final current = context.getValue(binding) as num? ?? 0;
           context.setValue(binding, current - amount, source: _source);
           break;
@@ -1359,7 +1497,6 @@ class StateActionExecutor extends ActionExecutor {
 
 /// Executes resource actions
 class ResourceActionExecutor extends ActionExecutor {
-
   /// Per-context registry of live origin subscriptions, keyed by uri.
   ///
   /// Held on the executor rather than the engine: the engine's registry is the
@@ -1432,8 +1569,7 @@ class ResourceActionExecutor extends ActionExecutor {
       return ActionResult.success();
     } catch (e) {
       _logger.error('Subscribe to "$uri" on origin $origin failed: $e');
-      final onSubscriptionError =
-          _callbackOf(action['onSubscriptionError']);
+      final onSubscriptionError = _callbackOf(action['onSubscriptionError']);
       if (onSubscriptionError != null) {
         await context.actionHandler.execute(
           onSubscriptionError,
@@ -1443,6 +1579,7 @@ class ResourceActionExecutor extends ActionExecutor {
       return ActionResult.error('subscribe "$uri" failed on origin: $e');
     }
   }
+
   static final _logger = MCPLogger('ResourceActionExecutor');
 
   @override
@@ -1503,7 +1640,8 @@ class ResourceActionExecutor extends ActionExecutor {
     // the reading renders empty forever.
     final resourceOrigin = context.origin;
     if (resourceOrigin != null &&
-        const <String>{'subscribe', 'unsubscribe', 'read'}.contains(actionType)) {
+        const <String>{'subscribe', 'unsubscribe', 'read'}
+            .contains(actionType)) {
       return _resourceThroughOrigin(
           action, context, actionType, uri, resourceOrigin);
     }
@@ -1769,6 +1907,7 @@ class ConditionalActionExecutor extends ActionExecutor {
 /// Executes dialog actions
 class DialogActionExecutor extends ActionExecutor {
   static final _logger = MCPLogger('DialogActionExecutor');
+
   /// One per executor — one per runtime. A process-wide service made "one
   /// dialog at a time" span every runtime on screen: a dialog open in one
   /// document refused the next one in another.
@@ -1795,9 +1934,8 @@ class DialogActionExecutor extends ActionExecutor {
     // resolved from `child` first (canonical), falling back to a
     // Map-shaped `content` for backwards compatibility.
     final contentRaw = dialog['content'];
-    final content = contentRaw is String
-        ? context.resolve(contentRaw) as String?
-        : null;
+    final content =
+        contentRaw is String ? context.resolve(contentRaw) as String? : null;
     final dismissible = dialog['dismissible'] as bool? ?? true;
     final actions = dialog['actions'] as List<dynamic>?;
 
@@ -1832,8 +1970,7 @@ class DialogActionExecutor extends ActionExecutor {
             return DialogAction(
               text: label,
               onPressed: () async {
-                final navigatorContext =
-                    navigatorFor(context)?.context;
+                final navigatorContext = navigatorFor(context)?.context;
                 if (navigatorContext == null) return;
 
                 if (handler == 'close') {
@@ -1869,8 +2006,7 @@ class DialogActionExecutor extends ActionExecutor {
         case 'simple':
           final options = dialog['options'] as List<dynamic>?;
           if (options != null && options.isNotEmpty) {
-            final onSelect =
-                dialog['onSelect'] as Map<String, dynamic>?;
+            final onSelect = dialog['onSelect'] as Map<String, dynamic>?;
             final simpleActions = options.map((opt) {
               final optMap = opt as Map<String, dynamic>;
               final label = optMap['label']?.toString() ?? '';
@@ -1878,8 +2014,7 @@ class DialogActionExecutor extends ActionExecutor {
               return DialogAction(
                 text: label,
                 onPressed: () async {
-                  final navigatorContext =
-                      navigatorFor(context)?.context;
+                  final navigatorContext = navigatorFor(context)?.context;
                   if (navigatorContext == null) return;
                   Navigator.of(navigatorContext).pop();
                   if (onSelect != null) {
@@ -1888,8 +2023,7 @@ class DialogActionExecutor extends ActionExecutor {
                         'event': {'value': value, 'type': 'select'},
                       },
                     );
-                    await context.actionHandler
-                        .execute(onSelect, eventContext);
+                    await context.actionHandler.execute(onSelect, eventContext);
                   }
                 },
               );
@@ -1945,18 +2079,14 @@ class DialogActionExecutor extends ActionExecutor {
           final message = contentRaw is String
               ? context.resolve<String?>(contentRaw) ?? ''
               : (dialog['message'] as String? ?? '');
-          final duration =
-              (dialog['duration'] as num?)?.toInt() ?? 4000;
-          final snackAction =
-              dialog['action'] as Map<String, dynamic>?;
-          final navigatorContext =
-              navigatorFor(context)?.context;
+          final duration = (dialog['duration'] as num?)?.toInt() ?? 4000;
+          final snackAction = dialog['action'] as Map<String, dynamic>?;
+          final navigatorContext = navigatorFor(context)?.context;
           if (navigatorContext != null) {
             SnackBarAction? uiAction;
             if (snackAction != null) {
               final label = snackAction['label']?.toString() ?? '';
-              final tapAction =
-                  snackAction['onTap'] as Map<String, dynamic>?;
+              final tapAction = snackAction['onTap'] as Map<String, dynamic>?;
               uiAction = SnackBarAction(
                 label: label,
                 onPressed: () {
@@ -2343,7 +2473,6 @@ class SoundActionExecutor extends ActionExecutor {
       return ActionResult.error(e.toString(), errorCode: 'SOUND_REFUSED');
     }
   }
-
 }
 
 /// `media.play` / `media.pause` / `media.toggle` / `media.seek`.
@@ -2381,16 +2510,16 @@ class MediaActionExecutor extends ActionExecutor {
         case 'media.pause':
           await session.pause();
         case 'media.toggle':
-          final playing = await session.playing.first
-              .timeout(const Duration(milliseconds: 200), onTimeout: () => false);
+          final playing = await session.playing.first.timeout(
+              const Duration(milliseconds: 200),
+              onTimeout: () => false);
           await (playing ? session.pause() : session.play());
         case 'media.seek':
           final seconds = context.resolve<num?>(action['position']);
           if (seconds == null) {
             return ActionResult.error('media.seek requires `position` seconds');
           }
-          await session.seek(
-              Duration(milliseconds: (seconds * 1000).round()));
+          await session.seek(Duration(milliseconds: (seconds * 1000).round()));
         default:
           return ActionResult.error('unknown media action: $type');
       }
@@ -2416,7 +2545,8 @@ class NotificationActionExecutor extends ActionExecutor {
     final duration = action['duration'] as int? ?? 3000;
     final position = action['position'] as String? ?? 'bottom';
     // Try 'action' key first, then fallback to 'actionButton'
-    final actionButton = (action['action'] ?? action['actionButton']) as Map<String, dynamic>?;
+    final actionButton =
+        (action['action'] ?? action['actionButton']) as Map<String, dynamic>?;
 
     try {
       final buildContext = context.buildContext;
@@ -2509,7 +2639,6 @@ class AnimationActionExecutor extends ActionExecutor {
 /// Executes cancel actions (v1.1) - cancels a running action by target ID
 class CancelActionExecutor extends ActionExecutor {
   static final _logger = MCPLogger('CancelActionExecutor');
-  // ignore: unused_field
   ActionHandler? _actionHandler;
 
   @override
@@ -2525,8 +2654,8 @@ class CancelActionExecutor extends ActionExecutor {
 
     _logger.debug('Cancelling action: $target');
 
-    // Store cancellation signal in state for the target action to check
-    context.setValue('_cancellations.$target', true);
+    final ended = _actionHandler?.cancelInFlight(target) ?? 0;
+    _logger.debug('Cancelled $ended running action(s) for $target');
 
     // Execute onCancel callback if provided
     final onCancel = action['onCancel'] as Map<String, dynamic>?;
@@ -2564,7 +2693,8 @@ class IdentityActionExecutor extends ActionExecutor {
         return ActionResult.error(
             'Identity action requires an `action` sub-operation');
       }
-      op = sub.startsWith('identity.') ? sub.substring('identity.'.length) : sub;
+      op =
+          sub.startsWith('identity.') ? sub.substring('identity.'.length) : sub;
     } else if (type == ActionTypes.identityPromote) {
       op = 'promote';
     } else if (type == ActionTypes.identityRelease) {
@@ -2638,8 +2768,9 @@ class PermissionRevokeActionExecutor extends ActionExecutor {
         return ActionResult.error(
             'Permission action requires an `action` sub-operation');
       }
-      op =
-          sub.startsWith('permission.') ? sub.substring('permission.'.length) : sub;
+      op = sub.startsWith('permission.')
+          ? sub.substring('permission.'.length)
+          : sub;
     } else if (type == 'permission.revoke') {
       op = 'revoke';
     } else {
@@ -2699,7 +2830,8 @@ class EventActionExecutor extends ActionExecutor {
       _logger.debug('Emitting event: $event');
       // Store event data in state for listeners to pick up
       context.setValue('_events.$event.data', data);
-      context.setValue('_events.$event.timestamp', DateTime.now().toIso8601String());
+      context.setValue(
+          '_events.$event.timestamp', DateTime.now().toIso8601String());
       return ActionResult.success();
     }
 
@@ -2874,7 +3006,8 @@ class PaymentActionExecutor extends ActionExecutor {
     if (amountValue != null) {
       amount = amountValue is num ? amountValue : num.tryParse('$amountValue');
       if (amount == null) {
-        return ActionResult.error('payment amount is not a number: $amountValue');
+        return ActionResult.error(
+            'payment amount is not a number: $amountValue');
       }
       if (amount <= 0) {
         return ActionResult.error('payment amount must be greater than zero');
@@ -2935,4 +3068,50 @@ class PaymentActionExecutor extends ActionExecutor {
         );
     }
   }
+}
+
+/// How an [InFlightAction] wait was ended from outside.
+enum InFlightEnd { cancelled, detached }
+
+/// A running action that `cancel` (§4.11) or the removal of its page
+/// (§4.15) can end.
+class InFlightAction {
+  InFlightAction._(this.id, {this.owner, this.cancellable = false});
+
+  /// Cancellation id: the action's `id`, or its tool name.
+  final String id;
+
+  /// The page it was started from ([MCPPageWidget.pageOf]), when there is
+  /// one.
+  final Object? owner;
+
+  /// Whether an explicit `cancel` may end it (the action's `cancellable`).
+  final bool cancellable;
+
+  final Completer<InFlightEnd> _ended = Completer<InFlightEnd>();
+
+  /// Whether the wait has been ended from outside.
+  bool get isEnded => _ended.isCompleted;
+
+  bool _cancel(InFlightEnd end) {
+    if (_ended.isCompleted) return false;
+    _ended.complete(end);
+    return true;
+  }
+}
+
+enum _WaitKind { result, failure, timedOut, cancelled, detached }
+
+class _WaitOutcome {
+  const _WaitOutcome._(this.kind, [this.value]);
+  const _WaitOutcome.timedOut() : this._(_WaitKind.timedOut);
+  _WaitOutcome.result(dynamic value) : this._(_WaitKind.result, value);
+  _WaitOutcome.failure(Object error) : this._(_WaitKind.failure, error);
+  _WaitOutcome.ended(InFlightEnd end)
+      : this._(end == InFlightEnd.cancelled
+            ? _WaitKind.cancelled
+            : _WaitKind.detached);
+
+  final _WaitKind kind;
+  final dynamic value;
 }

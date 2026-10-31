@@ -93,6 +93,13 @@ class ServerBootstrap {
     _registerDebugTools();
   }
 
+  /// Register the whole surface again so this bootstrap's handlers replace
+  /// whatever a newer, now closed, mount left on the host endpoint.
+  void reregister() {
+    _registered = false;
+    register();
+  }
+
   /// Wrapper around `server.addTool` for `vibe_*` family registrations.
   /// Tracks the spec so `_registerCategorizedAliases` can install the
   /// `app_builder.<family>.<verb>` shim once every primary registration

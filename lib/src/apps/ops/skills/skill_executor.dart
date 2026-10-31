@@ -7,6 +7,9 @@ import 'package:mcp_bundle/mcp_bundle.dart' as bundle;
 import '../adapters/llm_adapter.dart';
 import '../registries/knowledge_registry.dart';
 import 'skill_definition.dart';
+import '../init/workspace_context.dart';
+import '../util/log.dart';
+import 'skill_kernel_runner.dart';
 
 /// Executes a parsed [SkillDefinition] against the live engine.
 ///
@@ -105,6 +108,34 @@ class SkillExecutor {
     String? actorId,
     String? workspaceId,
   }) async {
+    if (useKernelEngine) {
+      PreparedKernelRun? prepared;
+      try {
+        prepared = await PreparedKernelRun.build(
+          OpsSkillConverter.convert(
+            def,
+            actorId: actorId,
+            workspaceId: workspaceId,
+          ),
+          runStep: runRendered,
+          runBrowser: callBrowser,
+          listFacts: callFactList,
+          complete: completeLlm,
+        );
+      } on SkillConversionRefused catch (e) {
+        // A shape the converter does not express: the Ops engine runs it.
+        OpsLog.info('skill', '${def.id} runs on the Ops engine: ${e.reason}');
+      } catch (e) {
+        // Nothing has run yet, so the Ops engine can still take it — and the
+        // reason is logged, not hidden.
+        OpsLog.warn('skill', '${def.id} could not be built for the kernel: $e');
+      }
+      if (prepared != null) {
+        lastEngine = 'kernel';
+        return prepared.run(inputs, actorId: actorId, workspaceId: workspaceId);
+      }
+    }
+    lastEngine = 'ops';
     final ctx = <String, dynamic>{
       'in': inputs,
       'step': <String, dynamic>{},
@@ -113,6 +144,14 @@ class SkillExecutor {
     };
     return _runAction(def.actionBody, ctx);
   }
+
+  /// Which engine ran the most recent skill: `kernel` or `ops`.
+  String lastEngine = 'ops';
+
+  /// Whether a skill the converter can express runs on the kernel's skill
+  /// runtime. Skills it cannot express always run on the Ops engine. Turning it
+  /// off runs everything on the Ops engine, as before the move.
+  bool useKernelEngine = true;
 
   Future<Map<String, dynamic>> _runAction(
     ActionBody body,
@@ -147,13 +186,21 @@ class SkillExecutor {
     // resolved fields.
     final resolved = _resolveMap(step.inputs, ctx);
     final resolvedData = _resolveMap(step.data, ctx);
-    final s = ActionStep(
-      kind: step.kind,
-      id: step.id,
-      output: step.output,
-      inputs: resolved,
-      data: resolvedData,
+    return runRendered(
+      ActionStep(
+        kind: step.kind,
+        id: step.id,
+        output: step.output,
+        inputs: resolved,
+        data: resolvedData,
+      ),
     );
+  }
+
+  /// Runs one step whose templates are already rendered. The single place
+  /// that knows what each step kind does — both engines end up here.
+  Future<Map<String, dynamic>> runRendered(ActionStep s) async {
+    final resolved = s.inputs;
     switch (s.kind) {
       case 'llm':
         return _runLlm(s, resolved);
@@ -169,6 +216,8 @@ class SkillExecutor {
         return _runIngest(s, resolved);
       case 'channel':
         return _runChannel(s, resolved);
+      case 'parse_json':
+        return _runParseJson(s, resolved);
       case 'map':
         return {'value': resolved};
       case 'noop':
@@ -187,6 +236,24 @@ class SkillExecutor {
     final temperature = (step.data['temperature'] as num?)?.toDouble();
     final maxTokens = (step.data['maxTokens'] as int?) ?? 2000;
     final systemPrompt = step.data['systemPrompt'] as String?;
+    return completeLlm(
+      prompt: prompt,
+      systemPrompt: systemPrompt,
+      temperature: temperature,
+      maxTokens: maxTokens,
+    );
+  }
+
+  /// One completion, by the one rule every `llm` step follows: the internal
+  /// provider when one is configured (it takes no system prompt), otherwise
+  /// the connected client's sampling, otherwise an error. Answers
+  /// `{text, usage, model, source}` (`{text, source}` for sampling).
+  Future<Map<String, dynamic>> completeLlm({
+    required String prompt,
+    String? systemPrompt,
+    double? temperature,
+    required int maxTokens,
+  }) async {
     // Path 1: internal provider (config_set_llm_provider).
     if (_llm?.hasInternalLlm == true) {
       final req = bundle.LlmRequest(
@@ -231,10 +298,17 @@ class SkillExecutor {
     if (opId.isEmpty) {
       throw ArgumentError('browser step requires `operation`');
     }
-    // Route through the host `browser.*` capability (parity rule — built-ins
-    // use the host's one shared browser engine, not their own). The host
-    // wraps the op output as JSON text content; decode it back to the op map
-    // so the skill step's result shape is unchanged.
+    return callBrowser(opId, inputs);
+  }
+
+  /// The host `browser.<opId>` capability (parity rule — built-ins use the
+  /// host's one shared browser engine, not their own). The host wraps the op
+  /// output as JSON text content; it is decoded back to the op map so the
+  /// skill step's result shape is unchanged.
+  Future<Map<String, dynamic>> callBrowser(
+    String opId,
+    Map<String, dynamic> inputs,
+  ) async {
     final call = _hostCallTool;
     if (call == null) {
       throw StateError('host browser capability not wired');
@@ -303,20 +377,33 @@ class SkillExecutor {
         inputs.containsKey('content')
             ? inputs['content']
             : (inputs['value'] ?? inputs);
+    final text = value is String ? value : value.toString();
+    final call = _hostCallTool;
     final knowledge = _knowledge;
-    if (knowledge != null) {
-      // Persist to BOTH FactGraph and KV via the registry — same path the
-      // [knowledge_fact_save] tool uses, so skill-saved and tool-saved
-      // facts are queryable through one [knowledge_fact_query].
-      await knowledge.saveFact(
-        category: category,
-        key: key,
-        value: value is String ? value : value.toString(),
-      );
+    if (call != null) {
+      // The host's own `knowledge_fact_save` (FactGraph + KV, the path every
+      // other caller uses). It writes to the workspace the run is pinned to —
+      // the one `dispatch` resolved — not to whichever workspace the UI has
+      // active, which is what the KV-bound registry call did.
+      final result = await call('knowledge_fact_save', <String, dynamic>{
+        'category': category,
+        'key': key,
+        'value': text,
+      });
+      if (result.isError == true) {
+        final reason =
+            result.content
+                .whereType<KernelTextContent>()
+                .map((c) => c.text)
+                .join();
+        throw StateError('knowledge_fact_save failed: $reason');
+      }
+    } else if (knowledge != null) {
+      // No host endpoint bound (a headless run): the registry directly.
+      await knowledge.saveFact(category: category, key: key, value: text);
     } else {
       // Fallback when no registry attached (tests).
-      final content = value is String ? value : value.toString();
-      await system.facts.extractFragments(content, 'text/plain');
+      await system.facts.extractFragments(text, 'text/plain');
     }
     return {'saved': true, 'category': category, 'key': key};
   }
@@ -324,24 +411,45 @@ class SkillExecutor {
   Future<Map<String, dynamic>> _runFactQuery(
     ActionStep step,
     Map<String, dynamic> inputs,
-  ) async {
-    final workspaceId =
-        (inputs['workspaceId'] as String?) ??
-        (step.data['workspaceId'] as String?) ??
+  ) {
+    // Same workspace the run's `fact.save` writes to: the one the run is
+    // pinned to, then the workspace the system was booted with.
+    return listFacts(
+      workspaceId:
+          (inputs['workspaceId'] as String?) ??
+          (step.data['workspaceId'] as String?),
+      types: inputs['types'],
+      limit: inputs['limit'],
+    );
+  }
+
+  /// The facts of one workspace in this project's graph, newest rules of the
+  /// `fact.query` step: [workspaceId] (else the pinned workspace, else the
+  /// one the system was booted with), [types] a list of fact types, [limit]
+  /// a number or a number in text (20 when it is neither). Answers
+  /// `{count, facts: [{id, type, content}]}`. The host tool
+  /// `knowledge_fact_list` is this function.
+  Future<Map<String, dynamic>> listFacts({
+    String? workspaceId,
+    Object? types,
+    Object? limit,
+  }) async {
+    final ws =
+        workspaceId ??
+        WorkspaceExecutionContext.current ??
         system.config.workspaceId;
-    final rawLimit = inputs['limit'];
-    final limit =
-        rawLimit is int
-            ? rawLimit
-            : rawLimit is num
-            ? rawLimit.toInt()
-            : rawLimit is String
-            ? (int.tryParse(rawLimit) ?? 20)
+    final n =
+        limit is int
+            ? limit
+            : limit is num
+            ? limit.toInt()
+            : limit is String
+            ? (int.tryParse(limit) ?? 20)
             : 20;
     final q = bundle.FactQuery(
-      workspaceId: workspaceId,
-      types: (inputs['types'] as List?)?.cast<String>(),
-      limit: limit,
+      workspaceId: ws,
+      types: (types as List?)?.cast<String>(),
+      limit: n,
     );
     final results = await system.facts.queryFacts(q);
     return {
@@ -351,6 +459,31 @@ class SkillExecutor {
           {'id': f.id, 'type': f.type, 'content': f.content},
       ],
     };
+  }
+
+  /// `knowledge_fact_list` on the host, read back as a map (the listing
+  /// itself when no host is bound). A refusal is an error of the step, as it
+  /// is when the step reads the graph itself.
+  Future<Map<String, dynamic>> callFactList(Map<String, dynamic> args) async {
+    final call = _hostCallTool;
+    if (call == null) {
+      // No host endpoint (a headless run): the listing the tool wraps.
+      return listFacts(
+        workspaceId: args['workspaceId'] as String?,
+        types: args['types'],
+        limit: args['limit'],
+      );
+    }
+    final result = await call('knowledge_fact_list', args);
+    final text =
+        result.content.whereType<KernelTextContent>().map((c) => c.text).join();
+    if (result.isError == true) {
+      throw StateError('knowledge_fact_list failed: $text');
+    }
+    final decoded = text.isEmpty ? null : jsonDecode(text);
+    return decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> _runIngest(
@@ -432,6 +565,26 @@ class SkillExecutor {
       await system.facts.createCandidates(candidates);
     }
     return candidates.length;
+  }
+
+  /// Reads JSON out of a model's answer (a code fence around it is dropped) —
+  /// the same reader the kernel's `parseJson` uses. A map is the step's
+  /// result; any other value comes back as `{value: …}`; text that is not
+  /// JSON fails the step.
+  Map<String, dynamic> _runParseJson(
+    ActionStep step,
+    Map<String, dynamic> inputs,
+  ) {
+    final text = step.data['text'] ?? inputs['text'];
+    final Object? parsed;
+    try {
+      parsed = bundle.parseJsonValue(text);
+    } on FormatException catch (e) {
+      throw StateError('parse_json: ${e.message}');
+    }
+    return parsed is Map
+        ? Map<String, dynamic>.from(parsed)
+        : <String, dynamic>{'value': parsed};
   }
 
   Future<Map<String, dynamic>> _runChannel(

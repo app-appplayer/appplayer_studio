@@ -20,7 +20,8 @@
 /// `secure_capability` recipe as a credential subject, not as a Flutter one.
 library;
 
-import 'package:appplayer_secure_core/appplayer_secure_core.dart' show SecureStorage;
+import 'package:appplayer_secure_core/appplayer_secure_core.dart'
+    show SecureStorage;
 import 'capability_tool_pack.dart';
 
 /// Capability id (namespace) — exposed names are `secret.set`,
@@ -48,74 +49,75 @@ String _req(Map<String, dynamic> args, String field) {
 List<CapabilityTool> secretCapabilityTools(
   SecureStorage store, {
   String namespace = defaultCredentialNamespace,
-}) =>
-    <CapabilityTool>[
-      CapabilityTool(
-        verb: 'set',
-        description:
-            'Store a secret under a credential ref (overwrites). The value is '
-            'never read back in plaintext — only set / checked / removed.',
-        inputSchema: const <String, dynamic>{
-          'type': 'object',
-          'properties': <String, dynamic>{
-            'ref': <String, dynamic>{'type': 'string'},
-            'value': <String, dynamic>{'type': 'string'},
-          },
-          'required': <String>['ref', 'value'],
-        },
-        invoke: (args) async {
-          await store.write(
-            _req(args, 'ref'),
-            _req(args, 'value'),
-            namespace: namespace,
-          );
-          return const <String, Object?>{'ok': true};
-        },
-      ),
-      CapabilityTool(
-        verb: 'exists',
-        description: 'Whether a secret is stored under a credential ref.',
-        inputSchema: const <String, dynamic>{
-          'type': 'object',
-          'properties': <String, dynamic>{
-            'ref': <String, dynamic>{'type': 'string'},
-          },
-          'required': <String>['ref'],
-        },
-        invoke: (args) async => <String, Object?>{
+}) => <CapabilityTool>[
+  CapabilityTool(
+    verb: 'set',
+    description:
+        'Store a secret under a credential ref (overwrites). The value is '
+        'never read back in plaintext — only set / checked / removed.',
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{
+        'ref': <String, dynamic>{'type': 'string'},
+        'value': <String, dynamic>{'type': 'string'},
+      },
+      'required': <String>['ref', 'value'],
+    },
+    invoke: (args) async {
+      await store.write(
+        _req(args, 'ref'),
+        _req(args, 'value'),
+        namespace: namespace,
+      );
+      return const <String, Object?>{'ok': true};
+    },
+  ),
+  CapabilityTool(
+    verb: 'exists',
+    description: 'Whether a secret is stored under a credential ref.',
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{
+        'ref': <String, dynamic>{'type': 'string'},
+      },
+      'required': <String>['ref'],
+    },
+    invoke:
+        (args) async => <String, Object?>{
           'exists': await store.exists(_req(args, 'ref'), namespace: namespace),
         },
-      ),
-      CapabilityTool(
-        verb: 'remove',
-        description:
-            'Delete the secret stored under a credential ref (idempotent).',
-        inputSchema: const <String, dynamic>{
-          'type': 'object',
-          'properties': <String, dynamic>{
-            'ref': <String, dynamic>{'type': 'string'},
-          },
-          'required': <String>['ref'],
-        },
-        invoke: (args) async {
-          await store.delete(_req(args, 'ref'), namespace: namespace);
-          return const <String, Object?>{'ok': true};
-        },
-      ),
-      CapabilityTool(
-        verb: 'list',
-        description: 'List stored credential refs (keys only — never values).',
-        inputSchema: const <String, dynamic>{
-          'type': 'object',
-          'properties': <String, dynamic>{
-            'prefix': <String, dynamic>{'type': 'string'},
-          },
-        },
-        invoke: (args) async => <String, Object?>{
+  ),
+  CapabilityTool(
+    verb: 'remove',
+    description:
+        'Delete the secret stored under a credential ref (idempotent).',
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{
+        'ref': <String, dynamic>{'type': 'string'},
+      },
+      'required': <String>['ref'],
+    },
+    invoke: (args) async {
+      await store.delete(_req(args, 'ref'), namespace: namespace);
+      return const <String, Object?>{'ok': true};
+    },
+  ),
+  CapabilityTool(
+    verb: 'list',
+    description: 'List stored credential refs (keys only — never values).',
+    inputSchema: const <String, dynamic>{
+      'type': 'object',
+      'properties': <String, dynamic>{
+        'prefix': <String, dynamic>{'type': 'string'},
+      },
+    },
+    invoke:
+        (args) async => <String, Object?>{
           'refs': await store.listKeys(
             namespace: namespace,
             prefix: args['prefix'] as String?,
           ),
         },
-      ),
-    ];
+  ),
+];

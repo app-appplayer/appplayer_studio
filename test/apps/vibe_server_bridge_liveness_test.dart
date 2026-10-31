@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:appplayer_studio/src/apps/app_builder/infra/vibe_server_bridge.dart';
 
 void main() {
-  tearDown(() => VibeServerBridge.live = null);
+  tearDown(VibeServerBridge.resetMounts);
 
   test('resolve falls back to the captured bridge when none is live', () {
     final captured = VibeServerBridge();
@@ -63,5 +63,44 @@ void main() {
 
     VibeServerBridge.clearLiveIfMine(b); // b disposes while live
     expect(VibeServerBridge.live, isNull);
+  });
+
+  test('closing a newer mount hands the live pointer back to the older one', () {
+    final builtIn = VibeServerBridge();
+    final package = VibeServerBridge(); // a package tab carrying App Builder
+    var builtInTookOver = 0;
+    builtIn.onBecameLive = () => builtInTookOver++;
+    VibeServerBridge.markLive(builtIn);
+    VibeServerBridge.markLive(package);
+    expect(VibeServerBridge.resolve(builtIn), same(package));
+
+    VibeServerBridge.clearLiveIfMine(package);
+
+    expect(VibeServerBridge.live, same(builtIn));
+    expect(builtInTookOver, 1, reason: 'older mount re-registers its tools');
+  });
+
+  test('an older mount closing under a newer one does not trigger takeover', () {
+    final older = VibeServerBridge();
+    final newer = VibeServerBridge();
+    var takeovers = 0;
+    newer.onBecameLive = () => takeovers++;
+    VibeServerBridge.markLive(older);
+    VibeServerBridge.markLive(newer);
+
+    VibeServerBridge.clearLiveIfMine(older);
+
+    expect(VibeServerBridge.live, same(newer));
+    expect(takeovers, 0);
+  });
+
+  test('a re-mount of the same bridge keeps a single entry', () {
+    final a = VibeServerBridge();
+    final b = VibeServerBridge();
+    VibeServerBridge.markLive(a);
+    VibeServerBridge.markLive(b);
+    VibeServerBridge.markLive(a);
+    VibeServerBridge.clearLiveIfMine(a);
+    expect(VibeServerBridge.live, same(b));
   });
 }

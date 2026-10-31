@@ -72,6 +72,8 @@ export 'src/actions/action_result.dart' show ActionResult;
 // A host that dispatches on its own initiative marks the origin, so an action
 // that answers only to a person's act can tell.
 export 'src/actions/dispatch_origin.dart' show DispatchOrigin;
+// A host executor reads it to cancel a call the runtime stopped waiting for.
+export 'src/actions/tool_call_signal.dart' show ToolCallSignal;
 
 // v1.1 exports
 export 'src/core/constants/client_action_types.dart';

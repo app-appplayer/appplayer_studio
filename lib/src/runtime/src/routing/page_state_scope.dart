@@ -78,6 +78,11 @@ class MCPPageWidget extends StatefulWidget {
 
   @override
   State<MCPPageWidget> createState() => _MCPPageWidgetState();
+
+  /// The page that [context] sits in, as an identity token; null outside a
+  /// page. Running actions are owned by it and end when it is removed.
+  static Object? pageOf(BuildContext context) =>
+      context.findAncestorStateOfType<_MCPPageWidgetState>();
 }
 
 class _MCPPageWidgetState extends State<MCPPageWidget>
@@ -231,6 +236,9 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
 
     // Dispose auto-dispose channels for this page (P7)
     widget.runtimeEngine.channelManager.disposeAutoChannels();
+
+    // Waits started from this page end with it (§4.15).
+    widget.runtimeEngine.actionHandler.cancelInFlightOf(this);
     super.dispose();
   }
 
@@ -268,32 +276,49 @@ class _MCPPageWidgetState extends State<MCPPageWidget>
     // title bar.
     final outerScaffold = Scaffold.maybeOf(context);
     final title = widget.pageDefinition.title;
-    final suppressAppBar = outerScaffold != null ||
-        title == null ||
-        title.isEmpty;
+    final hasTitle = title != null && title.isNotEmpty;
+    // A route the app pushed is an inner route: its AppBar `leading` is the
+    // automatic back button, and the host close button belongs to the root
+    // route only (spec §6.6.1, §4.3.2).
+    final isInnerRoute = ModalRoute.of(context)?.canPop ?? false;
+    final showExit = !isInnerRoute && NavigationActionExecutor.hasOnExit;
+    // Only a titled page gets a bar; the back and close buttons sit in it.
+    final showAppBar = outerScaffold == null && hasTitle;
     return PageActivityScope(
       isActive: _active,
       child: Scaffold(
-      appBar: suppressAppBar
-          ? null
-          : AppBar(
-              automaticallyImplyLeading: false,
-              title: Text(title),
-              actions: NavigationActionExecutor.hasOnExit
-                  ? <Widget>[
-                      const IconButton(
-                        key: Key('mcp.page.close'),
-                        icon: Icon(Icons.close),
-                        tooltip: 'Close',
-                        onPressed: NavigationActionExecutor.invokeOnExit,
-                      ),
-                    ]
-                  : const <Widget>[],
-            ),
+        appBar: !showAppBar
+            ? null
+            : AppBar(
+                title: hasTitle
+                    // A title is a string like any other (spec §3.1).
+                    ? AnimatedBuilder(
+                        animation: widget.runtimeEngine.stateManager,
+                        builder: (context, _) =>
+                            Text(_resolveTitle(renderContext, title)),
+                      )
+                    : null,
+                actions: showExit
+                    ? <Widget>[
+                        const IconButton(
+                          key: Key('mcp.page.close'),
+                          icon: Icon(Icons.close),
+                          tooltip: 'Close',
+                          onPressed: NavigationActionExecutor.invokeOnExit,
+                        ),
+                      ]
+                    : const <Widget>[],
+              ),
         body: body,
       ),
     );
   }
+}
+
+/// [title] with its bindings resolved.
+String _resolveTitle(RenderContext context, String title) {
+  if (!title.contains('{{')) return title;
+  return context.resolve<dynamic>(title)?.toString() ?? '';
 }
 
 /// Widget that provides page state scope wrapper

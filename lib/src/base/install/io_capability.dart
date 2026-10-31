@@ -13,8 +13,9 @@
 /// Two registration modes:
 ///   - **boot** — `process` (host-owned, target-less) via the recipe's
 ///     [bootAdapters]; registered lazily on the first `io.*` call.
-///   - **on-connect** — network drivers via [registerNetworkDrivers], built
-///     at runtime through `io.connect_device`.
+///   - **on-connect** — network drivers via [registerNetworkDrivers] and the
+///     desktop serial driver via [registerNativeDrivers], built at runtime
+///     through `io.connect_device`.
 ///
 /// All execution / driver / sandbox / policy logic lives in the mcp_io
 /// packages and the recipe; the host only wires the runtime, fills the
@@ -25,6 +26,12 @@ import 'dart:convert' show jsonEncode;
 
 import 'package:brain_kernel/brain_kernel.dart';
 import 'package:mcp_io/mcp_io.dart';
+// The io policy types are not part of mcp_bundle's public surface; the
+// recipe's local_drivers imports them the same way.
+// ignore: implementation_imports
+import 'package:mcp_bundle/src/ports/io_policy_port.dart'
+    as io_policy
+    show PolicyCondition, PolicyRule;
 
 import 'io_drivers/io_drivers.dart';
 
@@ -44,20 +51,40 @@ const String ioCapabilityId = 'io';
 /// [allowedRoots] are filled; [roles] opts actor roles into `process.*`
 /// (`process.spawn` stays plan→commit); [allowShell] stays false unless the
 /// host needs pipes/redirects. These flow into the recipe's [ProcessOptions]
-/// so process config/policy is identical across hosts.
+/// so process config/policy is identical across hosts. [extraAllowedActions]
+/// (action → actor roles) opens actions the host owns, nothing else, and
+/// [onRuntime] hands the host the one runtime so it can run an action it has
+/// already asked the person about, without a second ask.
 List<String> registerIoCapability({
   required HostToolRegistry registry,
   List<String> executableAllowlist = const <String>[],
   List<String> allowedRoots = const <String>[],
   List<String> roles = const <String>['manager', 'operator'],
   bool allowShell = false,
+  Map<String, List<String>> extraAllowedActions =
+      const <String, List<String>>{},
+  void Function(IoRuntime runtime)? onRuntime,
 }) {
   final runtime = IoRuntime(
     policyPort: InMemoryIoPolicyPort(
-      initialRules: recommendedPolicyRules(roles: roles),
+      initialRules: <io_policy.PolicyRule>[
+        ...recommendedPolicyRules(roles: roles),
+        for (final e in extraAllowedActions.entries)
+          io_policy.PolicyRule(
+            id: 'host.allow.${e.key}',
+            name: 'Host allows ${e.key}',
+            when: io_policy.PolicyCondition(
+              action: e.key,
+              actorRoleIn: e.value,
+            ),
+            allow: true,
+            priority: 100,
+          ),
+      ],
     ),
     auditPort: InMemoryAuditPort(),
   );
+  onRuntime?.call(runtime);
   // Boot adapters (process on desktop) — from the recipe, not hand-built.
   final boot = bootAdapters(
     platform: DevicePlatform.desktop,
@@ -81,6 +108,9 @@ List<String> registerIoCapability({
   // Connection drivers (network: modbus/mqtt/http/scpi) — recipe builders.
   final drivers = IoDriverRegistry();
   registerNetworkDrivers(drivers);
+  // Desktop-only native drivers (serial). The builder registers for desktop
+  // and the connect fails as a tool error when libserialport is absent.
+  registerNativeDrivers(drivers);
 
   // Host-agnostic tool map: fixed io.* (passthrough) + connect/disconnect.
   final toolMap = ioDeviceTools(

@@ -45,26 +45,33 @@ class FactBackedFormTemplatePort implements FormTemplatePort {
     required FormTemplate template,
   }) async {
     // FR-TMPL-001: reject a duplicate templateId+version.
-    final dup = _records.any((r) =>
-        r.templateId == template.templateId && r.version == template.version);
+    final dup = _records.any(
+      (r) =>
+          r.templateId == template.templateId && r.version == template.version,
+    );
     if (dup) {
-      return FormResult.fail(FormError(
-        code: 'template.duplicate',
-        message: 'Template "${template.templateId}" version '
-            '"${template.version}" already exists',
-        path: '/templateId',
-      ));
+      return FormResult.fail(
+        FormError(
+          code: 'template.duplicate',
+          message:
+              'Template "${template.templateId}" version '
+              '"${template.version}" already exists',
+          path: '/templateId',
+        ),
+      );
     }
 
     // FR-TMPL-002: schema must have at least one valid field.
     final schemaErrors = validateSchema(template.schema);
     if (schemaErrors.isNotEmpty) {
-      return FormResult.fail(FormError(
-        code: 'template.invalid_schema',
-        message:
-            'Template schema validation failed: ${schemaErrors.first.message}',
-        path: '/schema',
-      ));
+      return FormResult.fail(
+        FormError(
+          code: 'template.invalid_schema',
+          message:
+              'Template schema validation failed: ${schemaErrors.first.message}',
+          path: '/schema',
+        ),
+      );
     }
 
     final record = FormTemplateRecord(
@@ -83,18 +90,24 @@ class FactBackedFormTemplatePort implements FormTemplatePort {
     required String templateId,
     String? version,
   }) async {
-    final record = version == null
-        ? _currentRecord(templateId)
-        : _records.firstWhereOrNull(
-            (r) => r.templateId == templateId && r.version == version);
+    final record =
+        version == null
+            ? _currentRecord(templateId)
+            : _records.firstWhereOrNull(
+              (r) => r.templateId == templateId && r.version == version,
+            );
     if (record == null) {
-      return FormResult.fail(FormError(
-        code: version == null
-            ? 'template.not_found'
-            : 'template.version_not_found',
-        message: 'Template "$templateId"'
-            '${version == null ? '' : ' version "$version"'} not found',
-      ));
+      return FormResult.fail(
+        FormError(
+          code:
+              version == null
+                  ? 'template.not_found'
+                  : 'template.version_not_found',
+          message:
+              'Template "$templateId"'
+              '${version == null ? '' : ' version "$version"'} not found',
+        ),
+      );
     }
     return FormResult.ok(FormTemplate.fromJson(record.templateJson));
   }
@@ -122,9 +135,10 @@ class FactBackedFormTemplatePort implements FormTemplatePort {
       current.add(tpl);
     }
     final start = (offset ?? 0).clamp(0, current.length);
-    final end = limit == null
-        ? current.length
-        : (start + limit).clamp(start, current.length);
+    final end =
+        limit == null
+            ? current.length
+            : (start + limit).clamp(start, current.length);
     return FormResult.ok(current.sublist(start, end));
   }
 
@@ -132,19 +146,24 @@ class FactBackedFormTemplatePort implements FormTemplatePort {
   Future<FormResult<List<FormTemplateVersion>>> getTemplateVersions({
     required String templateId,
   }) async {
-    final versions = _records
-        .where((r) => r.templateId == templateId)
-        .map((r) => FormTemplateVersion(
-              templateId: r.templateId,
-              version: r.version,
-              createdAt: r.createdAt,
-            ))
-        .toList();
+    final versions =
+        _records
+            .where((r) => r.templateId == templateId)
+            .map(
+              (r) => FormTemplateVersion(
+                templateId: r.templateId,
+                version: r.version,
+                createdAt: r.createdAt,
+              ),
+            )
+            .toList();
     if (versions.isEmpty) {
-      return FormResult.fail(FormError(
-        code: 'template.not_found',
-        message: 'Template "$templateId" not found',
-      ));
+      return FormResult.fail(
+        FormError(
+          code: 'template.not_found',
+          message: 'Template "$templateId" not found',
+        ),
+      );
     }
     return FormResult.ok(versions);
   }
@@ -155,14 +174,18 @@ class FactBackedFormTemplatePort implements FormTemplatePort {
     String? version,
   }) async {
     final before = _records.length;
-    _records.removeWhere((r) =>
-        r.templateId == templateId &&
-        (version == null || r.version == version));
+    _records.removeWhere(
+      (r) =>
+          r.templateId == templateId &&
+          (version == null || r.version == version),
+    );
     if (_records.length == before) {
-      return FormResult.fail(FormError(
-        code: 'template.not_found',
-        message: 'Template "$templateId" not found',
-      ));
+      return FormResult.fail(
+        FormError(
+          code: 'template.not_found',
+          message: 'Template "$templateId" not found',
+        ),
+      );
     }
     await _store.remove(templateId, version: version);
     return FormResult.ok(null);

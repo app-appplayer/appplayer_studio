@@ -128,6 +128,11 @@ class VibeChatController extends ChangeNotifier {
               : await send(text);
       _turns.add(reply);
       onTurnPersisted?.call(reply);
+    } on Object catch (e) {
+      // A failed model call used to leave the question hanging with no word
+      // back, the error reaching only the host's log. Say so in the thread;
+      // it is not persisted, so it does not come back as history.
+      _turns.add(ChatTurn(role: 'error', text: _reason(e)));
     } finally {
       _busy = false;
       notifyListeners();
@@ -147,4 +152,9 @@ class VibeChatAgentEntry {
   final String id;
   final String displayName;
   final String? modelId;
+}
+
+String _reason(Object e) {
+  final text = '$e'.trim();
+  return text.isEmpty ? 'The model call failed.' : text;
 }

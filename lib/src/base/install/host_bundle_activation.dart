@@ -240,6 +240,37 @@ class HostBundleActivationContext implements BundleActivationContext {
     return missing.isEmpty;
   }
 
+  /// A tool the bundle declares `destructiveHint: true` is asked about before
+  /// it runs (platform spec 29 §6): the hint adds a confirmation, its absence
+  /// or `readOnlyHint` removes none, and a host with no way to ask does not
+  /// run the tool.
+  Future<mk.KernelToolResult> Function(Map<String, dynamic>) _gated(
+    mb.ToolEntry tool,
+    String exposedName,
+    Future<mk.KernelToolResult> Function(Map<String, dynamic>) handler,
+  ) {
+    if (tool.annotations?.destructiveHint != true) return handler;
+    return (args) async {
+      final ask = _chromeBridge?.prompt;
+      if (ask == null) {
+        return _errorResult(
+          '$exposedName is marked destructive and this host cannot ask '
+          'for confirmation',
+        );
+      }
+      final picked = await ask(
+        question:
+            'A bundle tool "$exposedName" is marked destructive.\n\n'
+            'Arguments:\n${jsonEncode(args)}\n\nAllow it?',
+        options: const <String>['Deny', 'Allow'],
+      );
+      if (picked != 1) {
+        return _errorResult('$exposedName was not approved');
+      }
+      return handler(args);
+    };
+  }
+
   @override
   Future<RegistrationResult> registerTool(mb.ToolEntry tool) async {
     if (_closed) {
@@ -380,7 +411,7 @@ class HostBundleActivationContext implements BundleActivationContext {
       name: exposedName,
       description: desc,
       inputSchema: jsSchema,
-      handler: jsHandler,
+      handler: _gated(tool, exposedName, jsHandler),
     );
     _registeredToolNames.add(exposedName);
     return RegistrationResult(ok: true, exposedName: exposedName);
@@ -458,6 +489,20 @@ class HostBundleActivationContext implements BundleActivationContext {
               extra: extra,
             );
           }
+          final shipped = (target['args'] as List?)
+              ?.whereType<String>()
+              .any((a) => a.contains(r'${'));
+          if (shipped ?? false) {
+            // A path token in the arguments names a file the bundle ships;
+            // resolving it needs the install directory and the containment
+            // check (mcp_bundle 4.5.1), which this host does not do. Passing
+            // the raw token would start the program on a path that is not one.
+            return _errorResult(
+              'mcp tool ${tool.name} names a file the bundle ships; this host '
+              'cannot start it yet',
+              extra: extra,
+            );
+          }
           kind = mk.KernelTransportKind.stdio;
           options = <String, dynamic>{
             'command': command,
@@ -493,7 +538,7 @@ class HostBundleActivationContext implements BundleActivationContext {
       name: exposedName,
       description: desc,
       inputSchema: mcpSchema,
-      handler: mcpHandler,
+      handler: _gated(tool, exposedName, mcpHandler),
     );
     _registeredToolNames.add(exposedName);
     return RegistrationResult(ok: true, exposedName: exposedName);
@@ -580,7 +625,7 @@ class HostBundleActivationContext implements BundleActivationContext {
       name: exposedName,
       description: desc,
       inputSchema: cloudSchema,
-      handler: cloudHandler,
+      handler: _gated(tool, exposedName, cloudHandler),
     );
     _registeredToolNames.add(exposedName);
     return RegistrationResult(ok: true, exposedName: exposedName);
