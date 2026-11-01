@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/json_pointer.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Public JSON Pointer helpers (RFC 6901). Lifted from the
 /// file-private `_ptr*` helpers in `builder_mutator_tools.dart` so the
 /// new atomic ui mutators (P2~P4 of studio-builder-rebuild) can share

@@ -22,11 +22,11 @@ dependencies:
   file_picker: ^8.0.0
   flutter_markdown: ^0.7.0
   path: ^1.9.0
-  mcp_bundle: ^0.4.12
+  mcp_bundle: ^0.4.13
   # Direct dep to pin the EthosStoreDelete-capable adapter (KvEthosStoreAdapter,
   # re-exported via mcp_knowledge) — transitive resolution can pick an older
   # 0.1.2 that lacks it. Used by ops workspace purge (charter ethos cleanup).
-  mcp_philosophy: ^0.1.5
+  mcp_philosophy: ^0.1.6
   google_fonts: ^8.2.1
   video_player: ^2.9.1
   meta: ^1.15.0
@@ -40,10 +40,10 @@ dependencies:
   # library, the browser-capable relay socket, and Ed25519 caller-token checks.
   mcp_gateway: ^0.1.2
   # Local decide-and-verify loop over the host's own tools (`celm.*`).
-  mcp_celm: ^0.1.0
+  mcp_celm: ^0.1.1
   web_socket_channel: ^3.0.2
   cryptography: ^2.7.0
-  mcp_llm: ^3.0.0
+  mcp_llm: ^3.0.1
   flutter_mcp_ui_runtime: ^0.8.6
   flutter_mcp_ui_core: ^0.6.12
   json_schema: ^5.1.1
@@ -75,8 +75,8 @@ dependencies:
   mcp_datastore: ^0.1.0
   mcp_datastore_sqlite: ^0.1.0
   flutter_mcp_ui_generator: ^0.6.4
-  mcp_knowledge: ^0.2.6
-  mcp_fact_graph: ^0.2.4
+  mcp_knowledge: ^0.2.7
+  mcp_fact_graph: ^0.2.5
   # Direct dep (was transitive via mcp_knowledge) so the host can wire the
   # real Decision port + engines into the per-project OpsRuntime / ProfileRuntime
   # (judgment-determinism). flowbrain_core re-exports EnginePorts but not the
@@ -86,7 +86,7 @@ dependencies:
   # PERSISTENT behavior StateStore (KvStateStore over the per-project KV)
   # into BundleActivation — without it suspended approval runs live in the
   # in-memory default and die on restart (zombie pending; 2026-07-04).
-  mcp_knowledge_ops: ^0.3.0
+  mcp_knowledge_ops: ^0.3.2
   uuid: ^4.0.0
   yaml: ^3.1.2
   # Published AppPlayer utility packages (pub.dev): UI view widgets, the

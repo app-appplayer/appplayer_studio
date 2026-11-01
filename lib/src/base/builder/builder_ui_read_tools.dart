@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/builder_ui_read_tools.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Registers the four read-side `studio.builder.ui.*` MCP tools
 /// (P2 of studio-builder-rebuild):
 ///
@@ -17,7 +21,7 @@ import 'dart:convert';
 
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
-import 'builder_library_tools.dart' show ActiveMbdResolver;
+import 'builder_ui_types.dart';
 import 'builder_ui_read_service.dart';
 
 String? _resolveMbdPath(
@@ -37,8 +41,7 @@ void registerUiReadTools(
   // ── readNode ────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.readNode',
-    description:
-        'Return type + props + child path summary for one node in '
+    description: 'Return type + props + child path summary for one node in '
         '<mbdPath>/ui/app.json. Path is a JSON Pointer (RFC 6901) — '
         'e.g. `""` for the root page, `/content/children/0/child` '
         'for the first center column. Children are returned as a '
@@ -63,8 +66,7 @@ void registerUiReadTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'readNode has no active project — pass mbdPath or open '
+          message: 'readNode has no active project — pass mbdPath or open '
               'a project first.',
         );
       }
@@ -79,8 +81,7 @@ void registerUiReadTools(
           expected: 'valid JSON Pointer that resolves inside the tree',
           actual: path,
           message: e.message,
-          suggestion:
-              'Call studio.builder.ui.readTree with a shallow depth '
+          suggestion: 'Call studio.builder.ui.readTree with a shallow depth '
               'to discover valid paths.',
         );
       }
@@ -90,8 +91,7 @@ void registerUiReadTools(
   // ── readTree ────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.readTree',
-    description:
-        'Return the subtree at JSON Pointer `path` (default: root) '
+    description: 'Return the subtree at JSON Pointer `path` (default: root) '
         'capped to `depth` levels. Anything deeper renders as the '
         'string `"<truncated>"` so the response stays bounded. Omit '
         '`mbdPath` to target the active project. Default depth = '
@@ -119,8 +119,7 @@ void registerUiReadTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'readTree has no active project — pass mbdPath or open '
+          message: 'readTree has no active project — pass mbdPath or open '
               'a project first.',
         );
       }
@@ -137,8 +136,7 @@ void registerUiReadTools(
           expected: 'valid JSON Pointer',
           actual: path,
           message: e.message,
-          suggestion:
-              'Call readTree with an empty path first to see the '
+          suggestion: 'Call readTree with an empty path first to see the '
               'root shape.',
         );
       }
@@ -148,8 +146,7 @@ void registerUiReadTools(
   // ── findNodes ───────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.findNodes',
-    description:
-        'Walk the entire tree and return JSON-Pointer paths of '
+    description: 'Walk the entire tree and return JSON-Pointer paths of '
         'every node that matches the filters. `typeOf` matches '
         '`node["type"]` exactly. `propEq` is a map of '
         '`{prop: value}` pairs each of which must equal '
@@ -178,16 +175,14 @@ void registerUiReadTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'findNodes has no active project — pass mbdPath or '
+          message: 'findNodes has no active project — pass mbdPath or '
               'open a project first.',
         );
       }
       final typeOf = args['typeOf'] as String?;
-      final propEq =
-          args['propEq'] is Map
-              ? (args['propEq'] as Map).cast<String, Object?>()
-              : null;
+      final propEq = args['propEq'] is Map
+          ? (args['propEq'] as Map).cast<String, Object?>()
+          : null;
       try {
         final paths = await reader.findNodes(
           mbd,
@@ -208,8 +203,7 @@ void registerUiReadTools(
   // ── diff ─────────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.diff',
-    description:
-        'Return a list of RFC-6902-shaped ops (`add`/`remove`/'
+    description: 'Return a list of RFC-6902-shaped ops (`add`/`remove`/'
         '`replace` + `path` + `value?`) describing every leaf-level '
         'difference between two subtrees. Two input modes:\n'
         '  • `from` / `to` (inline JSON trees) — caller supplies '
@@ -242,11 +236,9 @@ void registerUiReadTools(
           return _reject(
             code: 'noActiveProject',
             expected: 'either {from,to} or active project + fromPath/toPath',
-            message:
-                'diff needs inline trees OR a bundle path + two '
+            message: 'diff needs inline trees OR a bundle path + two '
                 'JSON-Pointer paths.',
-            suggestion:
-                'Pass {"from": ..., "to": ...} or open a project '
+            suggestion: 'Pass {"from": ..., "to": ...} or open a project '
                 'first (or pass mbdPath explicitly).',
           );
         }
@@ -270,8 +262,10 @@ void registerUiReadTools(
 }
 
 mk.KernelToolResult _ok(Object payload) => mk.KernelToolResult(
-  content: <mk.KernelContent>[mk.KernelTextContent(text: jsonEncode(payload))],
-);
+      content: <mk.KernelContent>[
+        mk.KernelTextContent(text: jsonEncode(payload))
+      ],
+    );
 
 mk.KernelToolResult _reject({
   required String code,

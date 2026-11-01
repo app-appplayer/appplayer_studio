@@ -20,4 +20,4 @@ const String kTemplateMcpServer = '^3.0.0';
 
 /// `mcp_bundle` — the .mbd bundle format library the bundle-backed variants
 /// read at runtime.
-const String kTemplateMcpBundle = '^0.4.12';
+const String kTemplateMcpBundle = '^0.4.13';

@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/builder_ui_read_service.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Backs the four read-side `studio.builder.ui.*` tools:
 /// `readNode` / `readTree` / `findNodes` / `diff`. Every path is a
 /// JSON Pointer ([ptrGet]) so callers share the same mental model

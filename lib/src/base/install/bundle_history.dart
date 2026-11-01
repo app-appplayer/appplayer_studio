@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/bundle_history.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Bundle mutation-history location — OUTSIDE the bundle.
 ///
 /// Mutator snapshots used to live at `<mbd>/.history/<ts>-<label>/`,

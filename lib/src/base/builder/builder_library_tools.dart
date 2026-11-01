@@ -38,12 +38,10 @@ import 'package:path/path.dart' as p;
 
 import 'builder_library_service.dart';
 import 'builder_ui_write_service.dart';
+import 'builder_ui_types.dart' show ActiveMbdResolver;
 import 'schema_validator.dart';
 
-/// Resolves the active project's `.mbd` path when a tool's caller
-/// omits `mbdPath` from its arguments. Wired by the host (see
-/// `vibe_studio_host_app.dart`) against `chromeBridge.activeProjectInfo`.
-typedef ActiveMbdResolver = String? Function();
+export 'builder_ui_types.dart' show ActiveMbdResolver;
 
 /// Renders a UI DSL page definition to PNG bytes at [width] x [height]
 /// logical pixels. Throws when the host cannot mount or capture it.

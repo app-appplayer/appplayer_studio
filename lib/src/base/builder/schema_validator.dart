@@ -23,18 +23,21 @@
 library;
 
 import 'builder_catalog_service.dart';
+import 'builder_ui_types.dart';
 import 'dsl_primitive_loader.dart';
 import 'widget_spec.dart';
 
-class ValidationResult {
+class ValidationResult implements UiValidation {
   ValidationResult.ok() : ok = true, rejection = null;
   ValidationResult.reject(Map<String, dynamic> r) : ok = false, rejection = r;
 
+  @override
   final bool ok;
+  @override
   final Map<String, dynamic>? rejection;
 }
 
-class SchemaValidator {
+class SchemaValidator implements UiNodeValidator {
   SchemaValidator(this.catalog, {DslPrimitiveLoader? primitives})
     : _primitives = primitives ?? DslPrimitiveLoader();
 
@@ -52,6 +55,7 @@ class SchemaValidator {
   /// 2. Every required prop is present.
   /// 3. Every provided prop is in the schema (strict).
   /// 4. Every provided prop matches its declared type / enum.
+  @override
   Future<ValidationResult> validateNode(Object? node) async {
     _prims = await _primitives.load();
     if (node is! Map) {
@@ -246,6 +250,7 @@ class SchemaValidator {
   /// Validate a single prop change before `setProp` commits. The
   /// caller supplies the node's current `type` (which can be read
   /// via `readNode` first).
+  @override
   Future<ValidationResult> validateProp({
     required String type,
     required String key,

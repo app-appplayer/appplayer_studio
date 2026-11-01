@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/builder_ui_write_tools.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Registers the five atomic write `studio.builder.ui.*` tools
 /// (P3.1 of studio-builder-rebuild — without schema validation).
 ///
@@ -18,10 +22,9 @@ import 'dart:convert';
 
 import 'package:brain_kernel/brain_kernel.dart' as mk;
 
-import 'builder_library_tools.dart' show ActiveMbdResolver;
+import 'builder_ui_types.dart';
 import 'builder_ui_read_service.dart';
 import 'builder_ui_write_service.dart';
-import 'schema_validator.dart';
 
 String? _resolveMbdPath(
   Map<String, dynamic> args,
@@ -36,14 +39,13 @@ void registerUiWriteTools(
   mk.KernelServerHost boot, {
   required BuilderUiWriteService writer,
   required BuilderUiReadService reader,
-  required SchemaValidator validator,
+  UiNodeValidator? validator,
   ActiveMbdResolver? resolveActiveMbdPath,
 }) {
   // ── addNode ─────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.addNode',
-    description:
-        'Insert a new node at JSON Pointer `path`. When the target '
+    description: 'Insert a new node at JSON Pointer `path`. When the target '
         'parent is a list, `position` picks the index (default = '
         'end). When the parent is a map, `path` names the new key '
         'slot directly and the value is created (or replaced). '
@@ -73,8 +75,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'addNode has no active project — pass mbdPath or open '
+          message: 'addNode has no active project — pass mbdPath or open '
               'a project first.',
         );
       }
@@ -87,8 +88,7 @@ void registerUiWriteTools(
             'node': node?.runtimeType.toString(),
           },
           message: 'addNode requires path and node.',
-          suggestion:
-              'Pass {"path": "<JSON Pointer>", '
+          suggestion: 'Pass {"path": "<JSON Pointer>", '
               '"node": {"type": "<widget type>", ...}}.',
         );
       }
@@ -98,8 +98,8 @@ void registerUiWriteTools(
       // Schema validation first — catches unknownType / missing
       // required / propTypeMismatch / enumOutOfRange / extraProperty
       // before the writer ever touches ui/app.json.
-      final v = await validator.validateNode(node);
-      if (!v.ok) {
+      final v = validator == null ? null : await validator.validateNode(node);
+      if (v != null && !v.ok) {
         return _rejectMap(v.rejection!);
       }
       try {
@@ -116,8 +116,7 @@ void registerUiWriteTools(
           code: 'pathNotFound',
           path: path,
           message: e.message,
-          suggestion:
-              'Use studio.builder.ui.readTree to verify the parent '
+          suggestion: 'Use studio.builder.ui.readTree to verify the parent '
               'path exists.',
         );
       }
@@ -127,8 +126,7 @@ void registerUiWriteTools(
   // ── setProp ─────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.setProp',
-    description:
-        'Set one property on a single node. Path resolves to the '
+    description: 'Set one property on a single node. Path resolves to the '
         'node (a map) and `key` names the property to replace or '
         'create. `value` is any JSON type (string / number / bool '
         '/ list / map / null). Omit `mbdPath` to target the active '
@@ -155,8 +153,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'setProp has no active project — pass mbdPath or open '
+          message: 'setProp has no active project — pass mbdPath or open '
               'a project first.',
         );
       }
@@ -165,8 +162,7 @@ void registerUiWriteTools(
           code: 'missingRequired',
           expected: 'path, key',
           message: 'setProp requires path and key.',
-          suggestion:
-              'Pass {"path": ..., "key": "<prop>", '
+          suggestion: 'Pass {"path": ..., "key": "<prop>", '
               '"value": <any JSON>}.',
         );
       }
@@ -182,8 +178,7 @@ void registerUiWriteTools(
           code: 'pathNotFound',
           path: path,
           message: e.message,
-          suggestion:
-              'Use studio.builder.ui.readNode to verify the node '
+          suggestion: 'Use studio.builder.ui.readNode to verify the node '
               'exists.',
         );
       }
@@ -192,18 +187,19 @@ void registerUiWriteTools(
           code: 'propTypeMismatch',
           path: path,
           expected: 'a Map node with a `type` field',
-          message:
-              'setProp can only target widget nodes (Map with type), '
+          message: 'setProp can only target widget nodes (Map with type), '
               'not primitives or lists.',
           suggestion: 'Use addNode / removeNode on non-widget slots.',
         );
       }
-      final v = await validator.validateProp(
-        type: nodeType,
-        key: key,
-        value: args['value'],
-      );
-      if (!v.ok) {
+      final v = validator == null
+          ? null
+          : await validator.validateProp(
+              type: nodeType,
+              key: key,
+              value: args['value'],
+            );
+      if (v != null && !v.ok) {
         return _rejectMap(v.rejection!);
       }
       try {
@@ -220,8 +216,7 @@ void registerUiWriteTools(
           code: 'pathNotFound',
           path: path,
           message: e.message,
-          suggestion:
-              'Use studio.builder.ui.readNode to verify the node '
+          suggestion: 'Use studio.builder.ui.readNode to verify the node '
               'exists and is a map.',
         );
       }
@@ -231,8 +226,7 @@ void registerUiWriteTools(
   // ── removeNode ──────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.removeNode',
-    description:
-        'Remove the node at JSON Pointer `path` (and its entire '
+    description: 'Remove the node at JSON Pointer `path` (and its entire '
         'subtree). List elements collapse, map keys disappear. '
         'Omit `mbdPath` to target the active project. Cannot target '
         'the root (`""`).',
@@ -254,8 +248,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'removeNode has no active project — pass mbdPath or '
+          message: 'removeNode has no active project — pass mbdPath or '
               'open a project first.',
         );
       }
@@ -283,8 +276,7 @@ void registerUiWriteTools(
   // ── moveNode ────────────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.moveNode',
-    description:
-        'Move the node at `fromPath` to `toPath`. If `toPath`\'s '
+    description: 'Move the node at `fromPath` to `toPath`. If `toPath`\'s '
         'parent is a list, `position` picks the insert index '
         '(default = end). Omit `mbdPath` to target the active '
         'project. Removes from the source first; index shifts '
@@ -311,8 +303,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'moveNode has no active project — pass mbdPath or '
+          message: 'moveNode has no active project — pass mbdPath or '
               'open a project first.',
         );
       }
@@ -344,8 +335,7 @@ void registerUiWriteTools(
   // ── applyPatch (P4 — RFC 6902 batch) ────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.applyPatch',
-    description:
-        'Apply a JSON-Patch (RFC 6902) batch of ops atomically. Each '
+    description: 'Apply a JSON-Patch (RFC 6902) batch of ops atomically. Each '
         'op is one of `{op:"add"|"remove"|"replace"|"move"|"copy"|'
         '"test", path, value?, from?}`. Every widget value goes '
         'through the same schema validation as `addNode` first; '
@@ -379,8 +369,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'applyPatch has no active project — pass mbdPath or '
+          message: 'applyPatch has no active project — pass mbdPath or '
               'open a project first.',
         );
       }
@@ -398,10 +387,12 @@ void registerUiWriteTools(
           mbdPath: mbd,
           ops: rawOps,
           dryRun: dryRun,
-          validateNode: (node) async {
-            final v = await validator.validateNode(node);
-            return v.ok ? null : v.rejection;
-          },
+          validateNode: validator == null
+              ? null
+              : (node) async {
+                  final v = await validator.validateNode(node);
+                  return v.ok ? null : v.rejection;
+                },
         );
         if (r['ok'] == false) {
           return _rejectMap(r);
@@ -426,8 +417,7 @@ void registerUiWriteTools(
         return _reject(
           code: code,
           message: msg,
-          suggestion:
-              'Verify each op\'s path / shape with readTree + the '
+          suggestion: 'Verify each op\'s path / shape with readTree + the '
               'RFC 6902 spec before retrying. No partial commit '
               'happened — ui/app.json is unchanged.',
         );
@@ -438,8 +428,7 @@ void registerUiWriteTools(
   // ── reorderChildren ─────────────────────────────────────────
   boot.addTool(
     name: 'studio.builder.ui.reorderChildren',
-    description:
-        'Reorder a list at `path` using `order` — an index '
+    description: 'Reorder a list at `path` using `order` — an index '
         'permutation whose length equals the current list length. '
         'New element `i` is the old element at `order[i]`. Omit '
         '`mbdPath` to target the active project. Useful for '
@@ -468,8 +457,7 @@ void registerUiWriteTools(
       if (mbd == null) {
         return _reject(
           code: 'noActiveProject',
-          message:
-              'reorderChildren has no active project — pass mbdPath '
+          message: 'reorderChildren has no active project — pass mbdPath '
               'or open a project first.',
         );
       }
@@ -498,8 +486,7 @@ void registerUiWriteTools(
           code: 'childArityViolation',
           path: path,
           message: e.message,
-          suggestion:
-              'order must be a permutation of [0..n) where n is the '
+          suggestion: 'order must be a permutation of [0..n) where n is the '
               'list length. Use readNode to inspect the list first.',
         );
       }
@@ -508,8 +495,10 @@ void registerUiWriteTools(
 }
 
 mk.KernelToolResult _ok(Object payload) => mk.KernelToolResult(
-  content: <mk.KernelContent>[mk.KernelTextContent(text: jsonEncode(payload))],
-);
+      content: <mk.KernelContent>[
+        mk.KernelTextContent(text: jsonEncode(payload))
+      ],
+    );
 
 mk.KernelToolResult _reject({
   required String code,
@@ -518,22 +507,23 @@ mk.KernelToolResult _reject({
   Object? actual,
   required String message,
   String? suggestion,
-}) => mk.KernelToolResult(
-  content: <mk.KernelContent>[
-    mk.KernelTextContent(
-      text: jsonEncode(<String, dynamic>{
-        'ok': false,
-        'code': code,
-        if (path != null) 'path': path,
-        if (expected != null) 'expected': expected,
-        if (actual != null) 'actual': actual,
-        'message': message,
-        if (suggestion != null) 'suggestion': suggestion,
-      }),
-    ),
-  ],
-  isError: true,
-);
+}) =>
+    mk.KernelToolResult(
+      content: <mk.KernelContent>[
+        mk.KernelTextContent(
+          text: jsonEncode(<String, dynamic>{
+            'ok': false,
+            'code': code,
+            if (path != null) 'path': path,
+            if (expected != null) 'expected': expected,
+            if (actual != null) 'actual': actual,
+            'message': message,
+            if (suggestion != null) 'suggestion': suggestion,
+          }),
+        ),
+      ],
+      isError: true,
+    );
 
 /// Validator → MCP rejection. The validator already produced the
 /// diagnostic-shaped map (`code` / `path?` / `expected?` / `actual?` /

@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/builder_ui_write_service.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Backs the five atomic write tools (P3 of studio-builder-rebuild):
 /// `addNode` / `setProp` / `removeNode` / `moveNode` /
 /// `reorderChildren`. Each method:
@@ -149,10 +153,9 @@ class BuilderUiWriteService {
     if (root is! Map) {
       throw FormatException('addTemplate requires a Map root in ui/app.json');
     }
-    final templates =
-        (root['templates'] is Map)
-            ? (root['templates'] as Map).cast<String, Object?>()
-            : <String, Object?>{};
+    final templates = (root['templates'] is Map)
+        ? (root['templates'] as Map).cast<String, Object?>()
+        : <String, Object?>{};
     final existing = templates[name];
     var replaced = false;
     var registered = true;
@@ -215,17 +218,16 @@ class BuilderUiWriteService {
     // segment's index was earlier, the destination index would
     // shift; RFC-6902 leaves that ambiguous — we honor the post-
     // remove tree as-is, matching the json-patch convention.
-    final destParent =
-        (() {
-          try {
-            final segs = ptrSegments(toPath);
-            if (segs.isEmpty) return null;
-            final parentPath = '/${segs.sublist(0, segs.length - 1).join('/')}';
-            return ptrGet(root, parentPath == '/' ? '' : parentPath);
-          } on FormatException {
-            return null;
-          }
-        })();
+    final destParent = (() {
+      try {
+        final segs = ptrSegments(toPath);
+        if (segs.isEmpty) return null;
+        final parentPath = '/${segs.sublist(0, segs.length - 1).join('/')}';
+        return ptrGet(root, parentPath == '/' ? '' : parentPath);
+      } on FormatException {
+        return null;
+      }
+    })();
     if (destParent is List && position != null) {
       destParent.insert(position, v);
     } else {

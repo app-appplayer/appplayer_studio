@@ -824,10 +824,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_bundle
-      sha256: b654d52d0496822a9a19e2e8f654ccd9e0217bd403ae7191ca3b5ce7fb800c54
+      sha256: "52a25c4f0911a5a3ad82d02f8ea4ff8ae78c9b36e1858cff8c4cf8f4d6bc8c9a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.12"
+    version: "0.4.13"
   mcp_canvas:
     dependency: "direct main"
     description:
@@ -840,10 +840,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_celm
-      sha256: b012edd9bae2ab72686e3043b6a5fb60a10d251f8a5a08fc90309eb8fa0a47e8
+      sha256: "7f00a5ec2418c6b43814b654b7f3e8fe64ef9822960443169213664f6d86b17e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.1.1"
   mcp_channel:
     dependency: "direct main"
     description:
@@ -880,10 +880,10 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_fact_graph
-      sha256: "4b18ea4fae1e6963531cb9a723806a6e6968ca1abbaf00b05cf8899dbbf64b82"
+      sha256: bf00ecf4d25a8f16696448e988c9a90c492010394f27b8e1f1f60210d7015af5
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.4"
+    version: "0.2.5"
   mcp_form:
     dependency: "direct main"
     description:
@@ -968,34 +968,34 @@ packages:
     dependency: "direct main"
     description:
       name: mcp_knowledge
-      sha256: "8b1d6276f20d338ec5e2ae021c4515263fab5ba6c4cbd3591faace08beb8445e"
+      sha256: "9d101f11cda2b8b54644ce1b22ea963b3203ee31f1eaf05872ffbbe4d005ce74"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.6"
+    version: "0.2.7"
   mcp_knowledge_ops:
     dependency: "direct main"
     description:
       name: mcp_knowledge_ops
-      sha256: "3a38fd03b87ea1a67fed9aeef8e065457ddcfa39f4ca32196aaae57c853adee3"
+      sha256: bbb121cd0a0207bf038ff74e0746a29085cfa44392d3c1087f2c91e817c00cbd
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.0"
+    version: "0.3.2"
   mcp_llm:
     dependency: "direct main"
     description:
       name: mcp_llm
-      sha256: "1e29f0457d948c8b4d683f2183d7c064c388beb1f3c1e1c01572e289d162119a"
+      sha256: c5eef253320cb4bbd7ba5a9907680840c22d4a73117d4d18d4abe62b031e4c11
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0"
+    version: "3.0.1"
   mcp_philosophy:
     dependency: "direct main"
     description:
       name: mcp_philosophy
-      sha256: "48510bf2b5def877279ef094c7419a1c517d002351cc61ee02b46ed7b491b97d"
+      sha256: de4bd5dbb714bbc9f51d6fd7b9b66afe9b6df07263512e974078357e44e15d24
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.5"
+    version: "0.1.6"
   mcp_profile:
     dependency: "direct main"
     description:

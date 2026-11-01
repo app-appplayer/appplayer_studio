@@ -392,9 +392,9 @@ class _StandardStudioShellState extends State<StandardStudioShell> {
             weight: FontWeight.w600,
             color: c.textSecondary,
           ).copyWith(letterSpacing: 1.0),
-          maxWidth: 460,
-          maxHeight: 320,
-          body: Text(question, style: vbuMono(size: 12, color: c.textPrimary)),
+          maxWidth: 560,
+          maxHeight: 520,
+          body: VbuPromptBody(text: question),
           actions: <Widget>[
             for (var i = 0; i < opts.length; i++)
               TextButton(

@@ -21,6 +21,7 @@ export 'src/ui/atoms/vbu_busy_indicator.dart';
 export 'src/ui/atoms/vbu_composer.dart';
 export 'src/ui/atoms/vbu_copy_on_hover.dart';
 export 'src/ui/atoms/vbu_dialog_scaffold.dart';
+export 'src/ui/atoms/vbu_prompt_body.dart';
 export 'src/ui/atoms/vbu_domain_actions_row.dart';
 export 'src/ui/atoms/vbu_form_section.dart';
 export 'src/ui/atoms/vbu_hero_panel.dart';

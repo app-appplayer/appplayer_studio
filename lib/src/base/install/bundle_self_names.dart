@@ -1,3 +1,7 @@
+// VENDORED COPY — do not hand-edit. Canonical source:
+//   os/core/brain_kernel/recipes/builder_mutator/lib/bundle_self_names.dart
+// Regenerate with debug/tool/sync_builder_mutator_fork.sh.
+//
 /// Finds tool names in a bundle's own documents that carry the bundle's
 /// id (platform spec 02 · 04-ui-host "Name isolation").
 ///
@@ -150,9 +154,8 @@ List<SelfNamedToolReference> selfNamedToolReferences(String bundleDir) {
   for (final folder in const <String>['ui', 'tools']) {
     final dir = Directory(p.join(bundleDir, folder));
     if (!dir.existsSync()) continue;
-    final files =
-        dir.listSync(recursive: true).whereType<File>().toList()
-          ..sort((a, b) => a.path.compareTo(b.path));
+    final files = dir.listSync(recursive: true).whereType<File>().toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
     for (final f in files) {
       final rel = p.relative(f.path, from: bundleDir);
       if (p.split(rel).any((seg) => seg.startsWith('.'))) continue;
